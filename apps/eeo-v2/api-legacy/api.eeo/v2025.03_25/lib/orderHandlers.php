@@ -894,6 +894,33 @@ function enrichOrderFinancovani($db, &$order) {
                     
                     // Načíst zbývající budget z tabulky čerpání
                     $budget_info = getLPBudgetInfo($db, $lp_id);
+                    // Live dotaz: kolik dalších objednávek na tomto LP čeká na schválení (bez aktuální)
+                    $ke_schvaleni_castka = 0;
+                    $ke_schvaleni_pocet = 0;
+                    try {
+                        $current_order_id = isset($order['id']) ? (int)$order['id'] : 0;
+                        $stmt_ks = $db->prepare("
+                            SELECT COUNT(*) as pocet, COALESCE(SUM(o.max_cena_s_dph), 0) as castka
+                            FROM " . TBL_OBJEDNAVKY . " o
+                            WHERE o.aktivni = 1
+                              AND o.stav_objednavky = 'Ke schválení'
+                              AND o.id != :current_id
+                              AND EXISTS (
+                                  SELECT 1 FROM " . TBL_LP_MASTER . " lpm
+                                  WHERE lpm.id = :lp_id
+                                    AND JSON_CONTAINS(o.financovani, CAST(lpm.id AS CHAR), '$.lp_kody')
+                              )
+                        ");
+                        $stmt_ks->execute([':current_id' => $current_order_id, ':lp_id' => $lp_id]);
+                        $ks_row = $stmt_ks->fetch(PDO::FETCH_ASSOC);
+                        if ($ks_row) {
+                            $ke_schvaleni_castka = (float)$ks_row['castka'];
+                            $ke_schvaleni_pocet  = (int)$ks_row['pocet'];
+                        }
+                    } catch (Exception $ks_err) {
+                        error_log("enrichOrderFinancovani ke_schvaleni Error: " . $ks_err->getMessage());
+                    }
+
                     $lp_info_enriched[] = array(
                         'id' => $lp_id,
                         'kod' => $lp['cislo_lp'],
@@ -906,7 +933,9 @@ function enrichOrderFinancovani($db, &$order) {
                         'cerpano_predpoklad' => $budget_info ? $budget_info['predpokladane_cerpani'] : null,
                         'cerpano_skutecne' => $budget_info ? $budget_info['skutecne_cerpano'] : null,
                         'zbyva_skutecne' => $budget_info ? $budget_info['zbyva_skutecne'] : null,
-                        'rezervovano' => $budget_info ? $budget_info['rezervovano'] : null
+                        'rezervovano' => $budget_info ? $budget_info['rezervovano'] : null,
+                        'ke_schvaleni_castka' => $ke_schvaleni_castka,
+                        'ke_schvaleni_pocet' => $ke_schvaleni_pocet
                     );
                 } else {
                     $lp_detaily[] = array(
@@ -946,6 +975,29 @@ function enrichOrderFinancovani($db, &$order) {
             }
             
             if ($smlouva_cerpani) {
+                // Live dotaz: kolik objednávek na této smlouvě čeká na schválení (bez aktuální)
+                $ke_schvaleni_castka_s = 0;
+                $ke_schvaleni_pocet_s = 0;
+                try {
+                    $current_order_id_s = isset($order['id']) ? (int)$order['id'] : 0;
+                    $stmt_ks_s = $db->prepare("
+                        SELECT COUNT(*) as pocet, COALESCE(SUM(o.max_cena_s_dph), 0) as castka
+                        FROM " . TBL_OBJEDNAVKY . " o
+                        WHERE o.aktivni = 1
+                          AND o.stav_objednavky = 'Ke schválení'
+                          AND o.id != :current_id
+                          AND JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = :cislo_smlouvy
+                    ");
+                    $stmt_ks_s->execute([':current_id' => $current_order_id_s, ':cislo_smlouvy' => $cislo_smlouvy]);
+                    $ks_row_s = $stmt_ks_s->fetch(PDO::FETCH_ASSOC);
+                    if ($ks_row_s) {
+                        $ke_schvaleni_castka_s = (float)$ks_row_s['castka'];
+                        $ke_schvaleni_pocet_s  = (int)$ks_row_s['pocet'];
+                    }
+                } catch (Exception $ks_err_s) {
+                    error_log("enrichOrderFinancovani smlouva ke_schvaleni Error: " . $ks_err_s->getMessage());
+                }
+
                 $order['_enriched']['smlouva_info'] = array(
                     'cislo_smlouvy' => $cislo_smlouvy,
                     'hodnota' => $smlouva_cerpani['hodnota'],
@@ -956,7 +1008,9 @@ function enrichOrderFinancovani($db, &$order) {
                     'zbyva_planovano' => $smlouva_cerpani['zbyva_planovano'],
                     'zbyva_skutecne' => $smlouva_cerpani['zbyva_skutecne'],
                     'nazev_firmy' => isset($smlouva_cerpani['nazev_firmy']) ? $smlouva_cerpani['nazev_firmy'] : null,
-                    'ico' => isset($smlouva_cerpani['ico']) ? $smlouva_cerpani['ico'] : null
+                    'ico' => isset($smlouva_cerpani['ico']) ? $smlouva_cerpani['ico'] : null,
+                    'ke_schvaleni_castka' => $ke_schvaleni_castka_s,
+                    'ke_schvaleni_pocet' => $ke_schvaleni_pocet_s
                 );
                 error_log("DEBUG enrichOrderFinancovani: Pridano smlouva_info do _enriched");
             } else {

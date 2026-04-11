@@ -4,12 +4,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faUser, faClipboardCheck, faChevronUp, faChevronDown, faTimes, faClipboard, faSave, faCheckCircle, faFileContract, faHashtag, faLock, faUnlock, faFileAlt, faFileCircleXmark, faTrash, faSync, faBrain, faDatabase, faDownload, faCheck, faClock, faBookmark, faInfoCircle, faExpand, faCompress, faCreditCard, faPlus, faMinus, faBuilding, faGlobe, faExclamationTriangle, faTimesCircle } from '@fortawesome/free-solid-svg-icons';
+import { faUser, faClipboardCheck, faChevronUp, faChevronDown, faTimes, faClipboard, faSave, faCheckCircle, faFileContract, faHashtag, faLock, faUnlock, faFileAlt, faFileCircleXmark, faTrash, faSync, faBrain, faDatabase, faDownload, faCheck, faClock, faBookmark, faInfoCircle, faExpand, faCompress, faCreditCard, faPlus, faMinus, faBuilding, faGlobe, faExclamationTriangle, faTimesCircle, faComment } from '@fortawesome/free-solid-svg-icons';
 import { User, Package, Calendar, FileText, Building, CreditCard, Hash, Users, Mail, Phone, MapPin, Calculator, Coins, Unlock, Lock, Plus, Trash, Search, X, RefreshCw, Bookmark, Eye, CheckCircle, ShoppingCart, Info, Copy, FileDown, AlertCircle, CheckCircle2, AlertTriangle, InfoIcon } from 'lucide-react';
 import { CustomSelect, SelectWithIcon } from '../components/CustomSelect';
 import { InvoiceAttachmentsCompact, LPCerpaniEditor } from '../components/invoices';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SupplierAddDialog from '../components/SupplierAddDialog';
+import KeSchvaleniDrawer from '../components/ordersV3/KeSchvaleniDrawer';
 import ModernHelper from '../components/ModernHelper'; // 💡 Moderní Sponka helper
 import FloatingNavigator from '../components/FloatingNavigator'; // 🧭 Plovoucí navigátor po sekcích
 import { ToastContext } from '../context/ToastContext';
@@ -4505,7 +4506,14 @@ function OrderForm25() {
     details: {}, // { lp_id: { zbyva_skutecne, celkovy_limit, ... } }
     loading: {} // { lp_id: true/false }
   });
-  
+
+  // 🔒 Enriched financovani data z BE (lp_info + smlouva_info s ke_schvaleni daty)
+  // Ukládáme SEPARÁTNĚ od formData, aby nebylo přepsáno draft mergem
+  const [enrichedFinancovani, setEnrichedFinancovani] = useState({ lp_info: [], smlouva_info: null });
+
+  // Popup panel pro "Ke schválení" a "V procesu" objednávky na approval sekci OrderForm25
+  const [keSchvaleniPopup, setKeSchvaleniPopup] = useState({ open: false, title: '', data: null, loading: false, anchorRect: null });
+
   // 📋 SPRINT 4: Consolidated Smlouvy (Contracts) State (6→1 hook)
   const [smlouvyState, setSmlouvyState] = useState({
     list: [], // Seznam všech smluv pro autocomplete
@@ -6091,6 +6099,15 @@ function OrderForm25() {
       if (Object.keys(finalData).length > 0) {
         setFormData(finalData);
 
+        // 🔒 Uložit _enriched financovani data (lp_info + smlouva_info s ke_schvaleni) do separátního state
+        // aby nebyla přepsána draft mergem
+        if (finalData._enriched) {
+          setEnrichedFinancovani({
+            lp_info: Array.isArray(finalData._enriched.lp_info) ? finalData._enriched.lp_info : [],
+            smlouva_info: finalData._enriched.smlouva_info || null
+          });
+        }
+
         // 🐛 DEBUG: Log workflow stav při otevření objednávky O-0151
         if (finalData?.cislo_objednavky && String(finalData.cislo_objednavky).includes('O-0151')) {
           console.log('🧾 [OrderForm25] O-0151 loaded', {
@@ -6829,6 +6846,13 @@ function OrderForm25() {
             }
 
             setFormData(mergedData);
+            // 🔒 Aktualizovat enriched financovani při DB sync
+            if (syncCheck.dbData._enriched) {
+              setEnrichedFinancovani({
+                lp_info: Array.isArray(syncCheck.dbData._enriched.lp_info) ? syncCheck.dbData._enriched.lp_info : [],
+                smlouva_info: syncCheck.dbData._enriched.smlouva_info || null
+              });
+            }
             setIsChanged(false);
             setIsEditMode(true);
             // 🔥 KRITICKÉ: Poslat broadcast po DB sync
@@ -7394,6 +7418,35 @@ function OrderForm25() {
 
   // ✅ Poznámka/Důvod schválení se po fázi 2 vždy zamyká (i pro adminy)
   const shouldLockSchvaleniComment = isArchived || shouldLockPhase2Sections || currentPhase >= 3;
+
+  // 🔴 LP přečerpání - detekce zda by schválení způsobilo přečerpání LP
+  const lpWouldExceedInForm = useMemo(() => {
+    const lpKod = formData?.lp_kod;
+    if (!lpKod || !Array.isArray(lpKod) || lpKod.length === 0) return false;
+    const maxCena = parseFloat(formData?.max_cena_s_dph) || 0;
+    if (maxCena <= 0) return false;
+    const lpPodil = maxCena / lpKod.length;
+    return lpKod.some(lp_id => {
+      const d = lpDetails[lp_id];
+      if (!d) return false;
+      const limit = parseFloat(d.celkovy_limit) || 0;
+      if (limit <= 0) return false;
+      const skutecne = parseFloat(d.skutecne_cerpano) || 0;
+      const predpoklad = parseFloat(d.predpokladane_cerpani) || 0;
+      return (skutecne + predpoklad + lpPodil) > limit;
+    });
+  }, [formData?.lp_kod, formData?.max_cena_s_dph, lpDetails]);
+
+  // 🔴 Smlouva přečerpání - detekce zda by schválení způsobilo překročení stropu smlouvy
+  const smlouvaWouldExceedInForm = useMemo(() => {
+    if (!smlouvaDetail || smlouvaDetail.notFound) return false;
+    const celkova = parseFloat(smlouvaDetail.hodnota_s_dph || smlouvaDetail.celkova_castka || 0);
+    // Smlouvy s hodnotou ≤ 10 Kč jsou bez stropové ceny – nesmí blokovat schválení
+    if (celkova <= 10) return false;
+    const cerpano = parseFloat(smlouvaDetail.cerpano_celkem || smlouvaDetail.cerpano || 0);
+    const maxCena = parseFloat(formData?.max_cena_s_dph) || 0;
+    return (cerpano + maxCena) > celkova;
+  }, [smlouvaDetail, formData?.max_cena_s_dph]);
 
   // ✅ Financování je FÁZE 1-2 (samostatná sekce)
   const financovaniState = allSectionStates.financovani;
@@ -21911,7 +21964,15 @@ function OrderForm25() {
                     marginTop: '1rem'
                   }} />
 
-                  <div style={{gridColumn: '1 / -1'}}>
+                  <div style={{
+                    gridColumn: '1 / -1',
+                    ...((lpWouldExceedInForm || smlouvaWouldExceedInForm) ? {
+                      border: '3px solid #dc2626',
+                      borderRadius: '12px',
+                      padding: '1rem',
+                      backgroundColor: '#fff5f5'
+                    } : {})
+                  }}>
                     {/* Checkboxy - zobrazit JEN když je objednávka ULOŽENA v DB */}
                     {!!formData.id && (
                       <>
@@ -21938,7 +21999,36 @@ function OrderForm25() {
                           )}
                         </div>
 
-                    {/* Čeká se */}
+                        {/* 🔴 Varování při hrozícím přečerpání LP nebo stropu smlouvy */}
+                        {(lpWouldExceedInForm || smlouvaWouldExceedInForm) && (
+                          <div style={{
+                            marginBottom: '1rem',
+                            padding: '0.875rem 1rem',
+                            backgroundColor: '#fef2f2',
+                            border: '2px solid #dc2626',
+                            borderRadius: '8px',
+                            color: '#991b1b',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.625rem',
+                            fontSize: '0.9375rem',
+                            fontWeight: '600'
+                          }}>
+                            <span style={{ fontSize: '1.25rem' }}>⛔</span>
+                            {lpWouldExceedInForm
+                              ? 'Schválením dojde k přečerpání LP. Lze provést pouze zamítnutí.'
+                              : 'Schválením dojde k překročení stropu smlouvy. Lze provést pouze zamítnutí.'}
+                          </div>
+                        )}
+
+                        {/* Split layout: vlevo checkboxy, vpravo LP/smlouva přehled */}
+                        {/* anyRightPanel = má LP nebo smlouvu s detailem */}
+                        <div style={{ display: 'grid', gridTemplateColumns: (formData.lp_kod?.length > 0 || (smlouvaDetail && !smlouvaDetail.notFound && formData.cislo_smlouvy)) ? '1fr 1fr' : '1fr', gap: '1.5rem', alignItems: 'start' }}>
+                          {/* VLEVO: Checkboxy */}
+                          <div>
+
+                    {/* Čeká se - skryto při přečerpání LP nebo smlouvy */}
+                    {!lpWouldExceedInForm && !smlouvaWouldExceedInForm && (
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -21988,16 +22078,17 @@ function OrderForm25() {
                         </span>
                       )}
                     </label>
+                    )}
 
-                    {/* Neschváleno */}
+                    {/* Zamítnuto (dříve Neschváleno) - vždy viditelné */}
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
                       gap: '1rem',
                       padding: '1rem',
-                      border: '1px solid #e5e7eb',
+                      border: (lpWouldExceedInForm || smlouvaWouldExceedInForm) ? '2px solid #dc2626' : '1px solid #e5e7eb',
                       borderRadius: '8px',
-                      backgroundColor: formData.stav_schvaleni === 'neschvaleno' ? '#fef2f2' : '#f9fafb',
+                      backgroundColor: formData.stav_schvaleni === 'neschvaleno' ? '#fef2f2' : ((lpWouldExceedInForm || smlouvaWouldExceedInForm) ? '#fff5f5' : '#f9fafb'),
                       cursor: shouldLockSchvaleniCheckboxes ? 'not-allowed' : 'pointer',
                       opacity: shouldLockSchvaleniCheckboxes ? 0.6 : 1,
                       marginBottom: '1rem',
@@ -22027,7 +22118,7 @@ function OrderForm25() {
                         }}
                       />
                       <FontAwesomeIcon icon={faTimes} size="lg" />
-                      Neschváleno
+                      Zamítnuto
                       {formData.stav_schvaleni === 'neschvaleno' && (
                         <span style={{
                           marginLeft: '0.5rem',
@@ -22040,7 +22131,8 @@ function OrderForm25() {
                       )}
                     </label>
 
-                    {/* Schváleno */}
+                    {/* Schváleno - skryto při přečerpání LP nebo smlouvy */}
+                    {!lpWouldExceedInForm && !smlouvaWouldExceedInForm && (
                     <label style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -22089,6 +22181,7 @@ function OrderForm25() {
                         </span>
                       )}
                     </label>
+                    )}
 
                     {/* Komentář/Důvod - zobrazuje se pro VŠECHNY stavy */}
                     {formData.stav_schvaleni && (
@@ -22118,7 +22211,7 @@ function OrderForm25() {
                                 formData.stav_schvaleni === 'schvaleno'
                                   ? "Volitelná poznámka ke schválení..."
                                   : formData.stav_schvaleni === 'neschvaleno'
-                                  ? "Uveďte důvod neschválení..."
+                                  ? "Uveďte důvod zamítnutí..."
                                   : "Uveďte důvod čekání na schválení..."
                               }
                               hasIcon
@@ -22131,6 +22224,186 @@ function OrderForm25() {
                         )}
                       </div>
                     )}
+                          </div>{/* konec vlevo: checkboxy */}
+
+                          {/* VPRAVO: LP nebo Smlouva přehled čerpání */}
+                          {(formData.lp_kod?.length > 0 || (smlouvaDetail && !smlouvaDetail.notFound && formData.cislo_smlouvy)) && (
+                            <div style={{
+                              padding: '1rem',
+                              backgroundColor: (lpWouldExceedInForm || smlouvaWouldExceedInForm) ? '#fef2f2' : '#f8fafc',
+                              border: (lpWouldExceedInForm || smlouvaWouldExceedInForm) ? '2px solid #dc2626' : '1px solid #e2e8f0',
+                              borderRadius: '8px'
+                            }}>
+                              <div style={{ fontWeight: '600', fontSize: '0.875rem', color: '#374151', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <span>{formData.lp_kod?.length > 0 ? '📊' : '📄'}</span>
+                                <span>{formData.lp_kod?.length > 0 ? 'Limitované přísliby' : 'Smlouva'}</span>
+                              </div>
+                              {formData.lp_kod.map(lp_id => {
+                                const d = lpDetails[lp_id];
+                                if (!d) return (
+                                  <div key={lp_id} style={{ fontSize: '0.8125rem', color: '#6b7280', fontStyle: 'italic', marginBottom: '0.5rem' }}>
+                                    {lp_id} – načítání…
+                                  </div>
+                                );
+                                const limit = parseFloat(d.celkovy_limit) || 0;
+                                const skutecne = parseFloat(d.skutecne_cerpano) || 0;
+                                const predpoklad = parseFloat(d.predpokladane_cerpani) || 0;
+                                const lpPodilHere = (parseFloat(formData.max_cena_s_dph) || 0) / (formData.lp_kod.length || 1);
+                                const potentialTotal = skutecne + predpoklad + lpPodilHere;
+                                const wouldExceed = limit > 0 && potentialTotal > limit;
+                                const zbyvaPotential = limit - potentialTotal;
+                                const formatCZK = (v) => new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(v);
+                                const lpKodLabel = d.cislo_lp || lp_id;
+                                const lpNazev = d.nazev_uctu || '';
+                                // Další ke schválení na tomto LP z enrichedFinancovani.lp_info
+                                const enrichedLpInfo = enrichedFinancovani.lp_info.find(
+                                  li => String(li.id) === String(lp_id) || li.kod === lp_id || li.kod === (d.cislo_lp)
+                                );
+                                const keSchvaleniCastka = parseFloat(enrichedLpInfo?.ke_schvaleni_castka) || 0;
+                                const keSchvaleniPocet = parseInt(enrichedLpInfo?.ke_schvaleni_pocet) || 0;
+                                const wouldExceedIfAll = !wouldExceed && keSchvaleniCastka > 0 && limit > 0 && (potentialTotal + keSchvaleniCastka) > limit;
+                                return (
+                                  <div key={lp_id} style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #e5e7eb' }}>
+                                    <div style={{ fontWeight: '600', fontSize: '0.8125rem', color: wouldExceed ? '#dc2626' : '#1e40af', marginBottom: '0.375rem' }}>
+                                      {lpKodLabel}{lpNazev ? ` – ${lpNazev}` : ''} {wouldExceed ? '⚠️' : ''}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                                      <span style={{ color: '#6b7280' }}>Celkový limit:</span>
+                                      <span style={{ fontWeight: '600', textAlign: 'right' }}>{formatCZK(limit)}</span>
+                                      <span style={{ color: '#6b7280' }}>V procesu:</span>
+                                      <span style={{ textAlign: 'right' }}>{formatCZK(predpoklad)}</span>
+                                      <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>Volné:</span>
+                                      <span style={{ fontWeight: '700', textAlign: 'right', color: wouldExceed ? '#dc2626' : '#059669' }}>{formatCZK(zbyvaPotential)}</span>
+                                      <span style={{ color: '#6b7280' }}>Dokončeno:</span>
+                                      <span style={{ textAlign: 'right' }}>{formatCZK(skutecne)}</span>
+                                    </div>
+                                    {keSchvaleniCastka > 0 && (
+                                      <button
+                                        onClick={(e) => {
+                                          if (keSchvaleniPopup.open && keSchvaleniPopup.title?.includes(lpKodLabel)) {
+                                            setKeSchvaleniPopup(p => ({ ...p, open: false }));
+                                            return;
+                                          }
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setKeSchvaleniPopup({ open: false, title: `LP ${lpKodLabel} — ke schválení`, data: null, loading: true, anchorRect: rect });
+                                          const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                                          fetch(`${baseURL}orders-v3/lp-ke-schvaleni`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ token, username, lp_id: enrichedLpInfo?.id || parseInt(lp_id) || 0, current_order_id: formData.id || 0 }),
+                                          })
+                                            .then(r => r.json())
+                                            .then(res => setKeSchvaleniPopup({ open: true, title: `LP ${lpKodLabel} — ke schválení`, data: res.data || [], loading: false, anchorRect: rect }))
+                                            .catch(() => setKeSchvaleniPopup({ open: true, title: `LP ${lpKodLabel} — ke schválení`, data: [], loading: false, anchorRect: rect }));
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          marginTop: '0.5rem',
+                                          padding: '0.5rem 0.625rem',
+                                          backgroundColor: keSchvaleniPopup.open && keSchvaleniPopup.title?.includes(lpKodLabel) ? '#fee2e2' : '#fef2f2',
+                                          border: `1px solid ${keSchvaleniPopup.open && keSchvaleniPopup.title?.includes(lpKodLabel) ? '#dc2626' : '#fca5a5'}`,
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          textAlign: 'left',
+                                          transition: 'background 0.15s',
+                                        }}
+                                      >
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.125rem 0.5rem', fontSize: '0.75rem' }}>
+                                          <span style={{ color: '#991b1b', fontWeight: '600' }}>Další ke schválení ({keSchvaleniPocet} obj.):</span>
+                                          <span style={{ color: '#991b1b', fontWeight: '700', textAlign: 'right' }}>{formatCZK(keSchvaleniCastka)}</span>
+                                        </div>
+                                        {wouldExceedIfAll && (
+                                          <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#dc2626', fontWeight: '600' }}>
+                                            ⚠️ Při schválení všech dojde k přečerpání!
+                                          </div>
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {/* Smlouva panel */}
+                              {formData.lp_kod?.length === 0 && smlouvaDetail && !smlouvaDetail.notFound && formData.cislo_smlouvy && (() => {
+                                const formatCZK = (v) => new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(v);
+                                const celkova = parseFloat(smlouvaDetail.hodnota_s_dph || smlouvaDetail.celkova_castka || 0);
+                                const cerpano = parseFloat(smlouvaDetail.cerpano_celkem || smlouvaDetail.cerpano || 0);
+                                const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
+                                const potentialTotal = cerpano + maxCena;
+                                const wouldExceed = celkova > 0 && potentialTotal > celkova;
+                                const zbyvaPotential = celkova - potentialTotal;
+                                // Další ke schválení na této smlouvě z enrichedFinancovani.smlouva_info
+                                const enrichedSmlouvaInfo = enrichedFinancovani.smlouva_info;
+                                const keSchvaleniCastkaS = parseFloat(enrichedSmlouvaInfo?.ke_schvaleni_castka) || 0;
+                                const keSchvaleniPocetS = parseInt(enrichedSmlouvaInfo?.ke_schvaleni_pocet) || 0;
+                                const wouldExceedIfAllS = !wouldExceed && keSchvaleniCastkaS > 0 && celkova > 10 && (potentialTotal + keSchvaleniCastkaS) > celkova;
+                                const hasStropovaCena = celkova > 10;
+                                return (
+                                  <div style={{ marginBottom: '0.75rem' }}>
+                                    <div style={{ fontWeight: '600', fontSize: '0.8125rem', color: wouldExceed ? '#dc2626' : '#1e40af', marginBottom: '0.375rem' }}>
+                                      {formData.cislo_smlouvy}{smlouvaDetail.nazev_smlouvy ? ` – ${smlouvaDetail.nazev_smlouvy}` : ''} {wouldExceed ? '⚠️' : ''}
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                                      {hasStropovaCena && (<>
+                                        <span style={{ color: '#6b7280' }}>Hodnota smlouvy:</span>
+                                        <span style={{ fontWeight: '600', textAlign: 'right' }}>{formatCZK(celkova)}</span>
+                                      </>)}
+                                      <span style={{ color: '#6b7280' }}>V procesu:</span>
+                                      <span style={{ textAlign: 'right' }}>{formatCZK(cerpano)}</span>
+                                      {hasStropovaCena && (<>
+                                        <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>Volné:</span>
+                                        <span style={{ fontWeight: '700', textAlign: 'right', color: wouldExceed ? '#dc2626' : '#059669' }}>{formatCZK(zbyvaPotential)}</span>
+                                      </>)}
+                                      <span style={{ color: '#6b7280' }}>Dokončeno:</span>
+                                      <span style={{ textAlign: 'right' }}>{formatCZK(parseFloat(smlouvaDetail.cerpano_skutecne || 0))}</span>
+                                    </div>
+                                    {keSchvaleniCastkaS > 0 && (
+                                      <button
+                                        onClick={(e) => {
+                                          if (keSchvaleniPopup.open && keSchvaleniPopup.title?.includes(formData.cislo_smlouvy)) {
+                                            setKeSchvaleniPopup(p => ({ ...p, open: false }));
+                                            return;
+                                          }
+                                          const rect = e.currentTarget.getBoundingClientRect();
+                                          setKeSchvaleniPopup({ open: false, title: `Smlouva ${formData.cislo_smlouvy} — ke schválení`, data: null, loading: true, anchorRect: rect });
+                                          const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                                          fetch(`${baseURL}orders-v3/smlouva-ke-schvaleni`, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ token, username, cislo_smlouvy: formData.cislo_smlouvy, current_order_id: formData.id || 0 }),
+                                          })
+                                            .then(r => r.json())
+                                            .then(res => setKeSchvaleniPopup({ open: true, title: `Smlouva ${formData.cislo_smlouvy} — ke schválení`, data: res.data || [], loading: false, anchorRect: rect }))
+                                            .catch(() => setKeSchvaleniPopup({ open: true, title: `Smlouva ${formData.cislo_smlouvy} — ke schválení`, data: [], loading: false, anchorRect: rect }));
+                                        }}
+                                        style={{
+                                          width: '100%',
+                                          marginTop: '0.5rem',
+                                          padding: '0.5rem 0.625rem',
+                                          backgroundColor: keSchvaleniPopup.open && keSchvaleniPopup.title?.includes(formData.cislo_smlouvy) ? '#fee2e2' : '#fef2f2',
+                                          border: `1px solid ${keSchvaleniPopup.open && keSchvaleniPopup.title?.includes(formData.cislo_smlouvy) ? '#dc2626' : '#fca5a5'}`,
+                                          borderRadius: '6px',
+                                          cursor: 'pointer',
+                                          textAlign: 'left',
+                                          transition: 'background 0.15s',
+                                        }}
+                                      >
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.125rem 0.5rem', fontSize: '0.75rem' }}>
+                                          <span style={{ color: '#991b1b', fontWeight: '600' }}>Další ke schválení ({keSchvaleniPocetS} obj.):</span>
+                                          <span style={{ color: '#991b1b', fontWeight: '700', textAlign: 'right' }}>{formatCZK(keSchvaleniCastkaS)}</span>
+                                        </div>
+                                        {wouldExceedIfAllS && (
+                                          <div style={{ marginTop: '0.25rem', fontSize: '0.75rem', color: '#dc2626', fontWeight: '600' }}>
+                                            ⚠️ Při schválení všech dojde k přečerpání!
+                                          </div>
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                        </div>{/* konec split grid */}
                       </>
                     )}
 
@@ -27229,6 +27502,23 @@ function OrderForm25() {
           </ScrollableInner>
         </ScrollableContent>
       </FormWrapper>
+
+      {/* Popup "Ke schválení" – sdílená komponenta */}
+      <KeSchvaleniDrawer
+        open={keSchvaleniPopup.open}
+        title={keSchvaleniPopup.title}
+        data={keSchvaleniPopup.data}
+        loading={keSchvaleniPopup.loading}
+        anchorRect={keSchvaleniPopup.anchorRect}
+        onClose={() => setKeSchvaleniPopup(p => ({ ...p, open: false }))}
+        onLoadComments={handleNaviLoadComments}
+        onAddComment={handleNaviAddComment}
+        onDeleteComment={handleNaviDeleteComment}
+        currentUserId={user_id}
+        token={token}
+        username={username}
+        showToast={showToast}
+      />
 
       {/* Supplier Search Dialog */}
       {showSupplierSearchDialog && ReactDOM.createPortal(

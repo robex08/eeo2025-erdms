@@ -2425,6 +2425,28 @@ switch ($endpoint) {
         }
         break;
 
+    // POST /api.eeo/orders-v3/lp-ke-schvaleni - Seznam objednávek "Ke schválení" pro LP kód
+    case 'orders-v3/lp-ke-schvaleni':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/orderV3Handlers.php';
+            handle_orderV3_lp_ke_schvaleni($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    // POST /api.eeo/orders-v3/smlouva-ke-schvaleni - Seznam objednávek "Ke schválení" pro smlouvu
+    case 'orders-v3/smlouva-ke-schvaleni':
+        if ($request_method === 'POST') {
+            require_once __DIR__ . '/v2025.03_25/lib/orderV3Handlers.php';
+            handle_orderV3_smlouva_ke_schvaleni($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     // === ORDERS V3 - KONTROLA A KOMENTÁŘE ===
     
     // POST /api.eeo/orders-v3/check - Toggle stav kontroly objednávky

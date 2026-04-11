@@ -1452,12 +1452,14 @@ const ApprovalDialog = styled.div`
 `;
 
 const ApprovalDialogHeader = styled.div`
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: ${props => props.$danger
+    ? 'linear-gradient(135deg, #ef4444, #dc2626)'
+    : 'linear-gradient(135deg, #10b981, #059669)'};
   padding: 1rem 1.5rem;
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  border-bottom: 2px solid #047857;
+  border-bottom: ${props => props.$danger ? '2px solid #b91c1c' : '2px solid #047857'};
 `;
 
 const ApprovalDialogIcon = styled.div`
@@ -1753,6 +1755,29 @@ const ApprovalDialogButton = styled.button`
   &:active {
     transform: translateY(0);
   }
+
+  &:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+    pointer-events: none;
+  }
+`;
+
+const ApprovalBudgetWarning = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #dc2626;
+  font-size: 0.825rem;
+  font-weight: 700;
+  background: #fef2f2;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  padding: 0.5rem 0.85rem;
+  line-height: 1.3;
 `;
 
 const ApprovalLPItem = styled.div`
@@ -2543,7 +2568,40 @@ const OrdersTableV3 = ({
   const [activeVProcesuTitle, setActiveVProcesuTitle] = useState('');
   const [vProcesuAnchorY, setVProcesuAnchorY] = useState(0);
   const [vProcesuBottomLimit, setVProcesuBottomLimit] = useState(null);
+  // Drawer otevřený NAHORU (pro boxy na konci panelu)
+  const [vProcesuOpenUpward, setVProcesuOpenUpward] = useState(false);
   const approvalActionsRef = useRef(null);
+
+  // 🔴 Detekce přečerpání rozpočtu LP/Smluv schvalované objednávky
+  const isBudgetExceeded = useMemo(() => {
+    if (!orderToApprove) return false;
+    const maxCena = parseFloat(orderToApprove.max_cena_s_dph) || 0;
+    const lpKody = orderToApprove.financovani?.lp_kody || [];
+    const lpInfo = orderToApprove._enriched?.lp_info || [];
+    const lpPodil = maxCena / (lpKody.length || 1);
+    for (const lp of lpInfo) {
+      if (!lpKody.includes(lp.id)) continue;
+      const hodnotaLP = parseFloat(lp.total_limit) || 0;
+      if (hodnotaLP <= 0) continue;
+      const cerpanoSkutecne = parseFloat(lp.cerpano_skutecne) || 0;
+      const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
+      const cerpanoRezervovano = parseFloat(lp.rezervovano) || 0;
+      const plannedFull = cerpanoPredpoklad + cerpanoRezervovano;
+      if ((hodnotaLP - cerpanoSkutecne - plannedFull - lpPodil) < 0) return true;
+    }
+    const smlouvaInfo = orderToApprove._enriched?.smlouva_info;
+    if (smlouvaInfo?.hodnota) {
+      const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
+      // Smlouvy s hodnotou ≤ 10 Kč jsou bez stropové ceny – nesmí blokovat schválení
+      if (hodnotaSmlouvy > 10) {
+        const cerpanoPozadovano = parseFloat(
+          smlouvaInfo.cerpano_v_procesu != null ? smlouvaInfo.cerpano_v_procesu : smlouvaInfo.cerpano_pozadovano
+        ) || 0;
+        if ((cerpanoPozadovano + maxCena) > hodnotaSmlouvy) return true;
+      }
+    }
+    return false;
+  }, [orderToApprove]);
 
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [orderToCancel, setOrderToCancel] = useState(null);
@@ -3064,6 +3122,7 @@ const OrdersTableV3 = ({
       setVProcesuPanels({});
       setActiveVProcesuKey(null);
       setVProcesuAnchorY(0);
+      setVProcesuOpenUpward(false);
 
       // ✅ Zobraz úspěšnou zprávu s detaily
       const actionMessages = {
@@ -5170,18 +5229,18 @@ const OrdersTableV3 = ({
       {showApprovalDialog && orderToApprove && ReactDOM.createPortal(
         <ApprovalDialogOverlay>
           <ApprovalDialog onClick={(e) => e.stopPropagation()}>
-            <ApprovalDialogHeader>
+            <ApprovalDialogHeader $danger={isBudgetExceeded}>
               <ApprovalDialogTitle>
-                Schválení objednávky
+                {isBudgetExceeded ? '⛔ Nedostatek prostředků' : 'Schválení objednávky'}
                 <span style={{ 
                   marginLeft: '1rem', 
                   fontSize: '0.9em', 
                   fontWeight: 700,
-                  color: '#fbbf24',
-                  background: '#065f46',
+                  color: isBudgetExceeded ? '#fff' : '#fbbf24',
+                  background: isBudgetExceeded ? '#991b1b' : '#065f46',
                   padding: '0.35rem 0.85rem',
                   borderRadius: '6px',
-                  border: '2px solid #047857',
+                  border: isBudgetExceeded ? '2px solid #7f1d1d' : '2px solid #047857',
                   textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)'
                 }}>
                   {orderToApprove.stav_objednavky || '---'}
@@ -5363,11 +5422,17 @@ const OrdersTableV3 = ({
                             const cerpanoRezervovano = parseFloat(lp.rezervovano) || 0;
                             // plannedFull = celkové „v procesu“ (predpokladane + rezervovano) - stejná logika jako modul Čerpání
                             const plannedFull = cerpanoPredpoklad + cerpanoRezervovano;
-                            
-                            // ✅ percentCerpani = total (skutecne + predpokladane + rezervovano) / limit - shoduje se s modulem Čerpání
-                            const percentCerpani = hodnotaLP > 0 ? Math.round(((cerpanoSkutecne + plannedFull) / hodnotaLP) * 100) : 0;
+                            // Podil teto objednavky na LP + simulovany % po schvaleni
+                            const lpPodil = lpKody.includes(lp.id) ? maxCena / (lpKody.length || 1) : 0;
+                            // Ostatní čekající ke schválení na tomto LP
+                            const keSchvaleniCastka = parseFloat(lp.ke_schvaleni_castka) || 0;
+                            const percentCerpani = hodnotaLP > 0 ? Math.round(((cerpanoSkutecne + plannedFull + lpPodil) / hodnotaLP) * 100) : 0;
                             const hasLimit = hodnotaLP > 0;
-                            
+                            // Překročení limitu LP po schválení TÉTO objednávky
+                            const lpExceeded = hodnotaLP > 0 && (hodnotaLP - cerpanoSkutecne - plannedFull - lpPodil) < 0;
+                            // Varování: pokud by se schválily i všechny ostatní čekající, dojde k přečerpání
+                            const lpWouldExceedIfAll = !lpExceeded && hodnotaLP > 0 && keSchvaleniCastka > 0 &&
+                              (hodnotaLP - cerpanoSkutecne - plannedFull - lpPodil - keSchvaleniCastka) < 0;
                             return (
                               <ApprovalLPItem key={idx}>
                                 <ApprovalLPHeader style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -5417,6 +5482,7 @@ const OrdersTableV3 = ({
                                             }
                                             const rect = e.currentTarget.getBoundingClientRect();
                                             setVProcesuAnchorY(rect.bottom + 6);
+                                            setVProcesuOpenUpward(false);
                                             const actionsEl = approvalActionsRef.current;
                                             setVProcesuBottomLimit(actionsEl ? actionsEl.getBoundingClientRect().top - 8 : null);
                                             // Pokud máme data, jen otevřít popup
@@ -5455,16 +5521,18 @@ const OrdersTableV3 = ({
                                     })()}
                                     {lpKody.includes(lp.id) && maxCena > 0 && (
                                       <span
-                                        title={`Tato objednávka je zahrnuta v rezervaci LP (+${(maxCena / (lpKody.length || 1)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
+                                        title={lpExceeded
+                                          ? `⛔ Po schválení dojde k přečerpání LP! (+${(maxCena / (lpKody.length || 1)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`
+                                          : `Tato objednávka je zahrnuta v rezervaci LP (+${(maxCena / (lpKody.length || 1)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
                                         style={{ 
                                           fontSize: '0.75rem', 
-                                          color: '#10b981', 
-                                          fontWeight: 600,
+                                          color: lpExceeded ? '#991b1b' : '#10b981', 
+                                          fontWeight: 700,
                                           marginLeft: '0.5rem',
-                                          background: '#d1fae5',
+                                          background: lpExceeded ? '#fee2e2' : '#d1fae5',
                                           padding: '2px 6px',
                                           borderRadius: '3px',
-                                          border: '1px solid #6ee7b7',
+                                          border: lpExceeded ? '1px solid #fca5a5' : '1px solid #6ee7b7',
                                           cursor: 'help'
                                         }}>
                                         +{(maxCena / (lpKody.length || 1)).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
@@ -5551,6 +5619,71 @@ const OrdersTableV3 = ({
                                     </ApprovalLPRow>
                                   );
                                 })()}
+                                {lp.ke_schvaleni_pocet > 0 && (() => {
+                                  const ksKey = `ks_lp_${lp.id}`;
+                                  const ksPanel = vProcesuPanels[ksKey];
+                                  const isKsActive = activeVProcesuKey === ksKey;
+                                  return (
+                                    <button
+                                      onClick={(e) => {
+                                        if (isKsActive) { setActiveVProcesuKey(null); return; }
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        // Otevřít NAHORU – anchor = top hrany boxíku
+                                        setVProcesuAnchorY(rect.top);
+                                        setVProcesuOpenUpward(true);
+                                        setVProcesuBottomLimit(null);
+                                        if (ksPanel?.data) {
+                                          setActiveVProcesuTitle(`LP ${lp.cislo_lp || lp.kod} — objednávky ke schválení`);
+                                          setActiveVProcesuKey(ksKey);
+                                          return;
+                                        }
+                                        setVProcesuPanels(prev => ({ ...prev, [ksKey]: { loading: true, data: null, error: null } }));
+                                        const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                                        fetch(`${baseURL}orders-v3/lp-ke-schvaleni`, {
+                                          method: 'POST',
+                                          headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ token, username, lp_id: lp.id, current_order_id: orderToApprove?.id || 0 }),
+                                        })
+                                          .then(r => r.json())
+                                          .then(res => {
+                                            setVProcesuPanels(prev => ({ ...prev, [ksKey]: { loading: false, data: res.data || [], error: null } }));
+                                            setActiveVProcesuTitle(`LP ${lp.cislo_lp || lp.kod} — objednávky ke schválení`);
+                                            setActiveVProcesuKey(ksKey);
+                                          })
+                                          .catch(() => setVProcesuPanels(prev => ({ ...prev, [ksKey]: { loading: false, data: null, error: 'Chyba načítání' } })));
+                                      }}
+                                      style={{
+                                        width: '100%',
+                                        backgroundColor: isKsActive ? '#fee2e2' : '#fef2f2',
+                                        border: `1px solid ${isKsActive ? '#dc2626' : '#fca5a5'}`,
+                                        borderRadius: '6px',
+                                        padding: '6px 10px',
+                                        marginTop: '6px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '2px',
+                                        cursor: 'pointer',
+                                        textAlign: 'left',
+                                        transition: 'background 0.15s, border-color 0.15s',
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: '#991b1b', fontWeight: 600, fontSize: '0.78rem' }}>
+                                          Další ke schválení ({lp.ke_schvaleni_pocet} obj.):
+                                          {ksPanel?.loading && <span style={{ fontSize: '0.68rem', color: '#b45309', marginLeft: '4px' }}>…</span>}
+                                        </span>
+                                        <strong style={{ color: '#dc2626', fontSize: '0.78rem' }}>
+                                          {parseFloat(lp.ke_schvaleni_castka).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                        </strong>
+                                      </div>
+                                      {lpWouldExceedIfAll && (
+                                        <div style={{ fontSize: '0.68rem', color: '#991b1b', fontStyle: 'italic' }}>
+                                          ⚠️ Při schválení všech dojde k přečerpání!
+                                        </div>
+                                      )}
+                                    </button>
+                                  );
+                                })()}
                               </ApprovalLPItem>
                             );
                           });
@@ -5585,8 +5718,9 @@ const OrdersTableV3 = ({
                           
                           // ✅ Připočíst aktuální objednávku k simulaci
                           const simulovaneCerpaniSmlouva = cerpanoPozadovano + maxCenaSmlouva;
-                          const percentCerpani = hodnotaSmlouvy > 0 ? Math.round((simulovaneCerpaniSmlouva / hodnotaSmlouvy) * 100) : 0;
-                          const hasStropovaCena = hodnotaSmlouvy > 0;
+                          // Smlouvy s hodnotou ≤ 10 Kč jsou bez stropové ceny
+                          const percentCerpani = hodnotaSmlouvy > 10 ? Math.round((simulovaneCerpaniSmlouva / hodnotaSmlouvy) * 100) : 0;
+                          const hasStropovaCena = hodnotaSmlouvy > 10;
                           
                           return (
                             <ApprovalLPItem>
@@ -5638,6 +5772,7 @@ const OrdersTableV3 = ({
                                           }
                                           const rect = e.currentTarget.getBoundingClientRect();
                                           setVProcesuAnchorY(rect.bottom + 6);
+                                          setVProcesuOpenUpward(false);
                                           const actionsEl = approvalActionsRef.current;
                                           setVProcesuBottomLimit(actionsEl ? actionsEl.getBoundingClientRect().top - 8 : null);
                                           if (panel?.data) {
@@ -5670,31 +5805,38 @@ const OrdersTableV3 = ({
                                       </button>
                                     );
                                   })()}
-                                  {maxCenaSmlouva > 0 && (
-                                    <span
-                                      title={`Vč. této objednávky (+${maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
-                                      style={{ 
-                                        fontSize: '0.75rem', 
-                                        color: '#10b981', 
-                                        fontWeight: 600,
-                                        marginLeft: '0.5rem',
-                                        background: '#d1fae5',
-                                        padding: '2px 6px',
-                                        borderRadius: '3px',
-                                        border: '1px solid #6ee7b7',
-                                        cursor: 'help'
-                                      }}>
-                                      +{maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
-                                    </span>
-                                  )}
+                                  {maxCenaSmlouva > 0 && (() => {
+                                    const smlouvaExceeded = hodnotaSmlouvy > 10 && (hodnotaSmlouvy - simulovaneCerpaniSmlouva) < 0;
+                                    return (
+                                      <span
+                                        title={smlouvaExceeded
+                                          ? `⛔ Po schválení dojde k přečerpání smlouvy! (+${maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`
+                                          : `Vč. této objednávky (+${maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč)`}
+                                        style={{ 
+                                          fontSize: '0.75rem', 
+                                          color: smlouvaExceeded ? '#991b1b' : '#10b981', 
+                                          fontWeight: 700,
+                                          marginLeft: '0.5rem',
+                                          background: smlouvaExceeded ? '#fee2e2' : '#d1fae5',
+                                          padding: '2px 6px',
+                                          borderRadius: '3px',
+                                          border: smlouvaExceeded ? '1px solid #fca5a5' : '1px solid #6ee7b7',
+                                          cursor: 'help'
+                                        }}>
+                                        +{maxCenaSmlouva.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                      </span>
+                                    );
+                                  })()}
                                 </strong>
                               </ApprovalLPRow>
-                              <ApprovalLPRow $highlight>
-                                <span>Volné:</span>
-                                <strong style={{ color: (hodnotaSmlouvy - simulovaneCerpaniSmlouva) < 0 ? '#dc2626' : '#059669' }}>
-                                  {(hodnotaSmlouvy - simulovaneCerpaniSmlouva).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
-                                </strong>
-                              </ApprovalLPRow>
+                              {hasStropovaCena && (
+                                <ApprovalLPRow $highlight>
+                                  <span>Volné:</span>
+                                  <strong style={{ color: (hodnotaSmlouvy - simulovaneCerpaniSmlouva) < 0 ? '#dc2626' : '#059669' }}>
+                                    {(hodnotaSmlouvy - simulovaneCerpaniSmlouva).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                  </strong>
+                                </ApprovalLPRow>
+                              )}
                               <ApprovalLPRow>
                                 <span>Dokončeno:</span>
                                 <strong>{smlouvaInfo.cerpano_skutecne ? parseFloat(smlouvaInfo.cerpano_skutecne).toLocaleString('cs-CZ', { minimumFractionDigits: 2 }) : '0,00'} Kč</strong>
@@ -5766,6 +5908,72 @@ const OrdersTableV3 = ({
                                   </ApprovalLPRow>
                                 );
                               })()}
+                              {/* Červený box: Další ke schválení pro smlouvu */}
+                              {smlouvaInfo.ke_schvaleni_pocet > 0 && (() => {
+                                const ksKeyS = `ks_smlouva_${cisloSmlouvy}`;
+                                const ksPanelS = vProcesuPanels[ksKeyS];
+                                const isKsActiveS = activeVProcesuKey === ksKeyS;
+                                const smlouvaWouldExceedIfAll = hasStropovaCena && (simulovaneCerpaniSmlouva + parseFloat(smlouvaInfo.ke_schvaleni_castka || 0)) > hodnotaSmlouvy;
+                                return (
+                                  <button
+                                    onClick={(e) => {
+                                      if (isKsActiveS) { setActiveVProcesuKey(null); return; }
+                                      const rect = e.currentTarget.getBoundingClientRect();
+                                      setVProcesuAnchorY(rect.top);
+                                      setVProcesuOpenUpward(true);
+                                      setVProcesuBottomLimit(null);
+                                      if (ksPanelS?.data) {
+                                        setActiveVProcesuTitle(`Smlouva ${cisloSmlouvy} — objednávky ke schválení`);
+                                        setActiveVProcesuKey(ksKeyS);
+                                        return;
+                                      }
+                                      setVProcesuPanels(prev => ({ ...prev, [ksKeyS]: { loading: true, data: null, error: null } }));
+                                      const baseURL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+                                      fetch(`${baseURL}orders-v3/smlouva-ke-schvaleni`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ token, username, cislo_smlouvy: cisloSmlouvy, current_order_id: orderToApprove?.id || 0 }),
+                                      })
+                                        .then(r => r.json())
+                                        .then(res => {
+                                          setVProcesuPanels(prev => ({ ...prev, [ksKeyS]: { loading: false, data: res.data || [], error: null } }));
+                                          setActiveVProcesuTitle(`Smlouva ${cisloSmlouvy} — objednávky ke schválení`);
+                                          setActiveVProcesuKey(ksKeyS);
+                                        })
+                                        .catch(() => setVProcesuPanels(prev => ({ ...prev, [ksKeyS]: { loading: false, data: null, error: 'Chyba načítání' } })));
+                                    }}
+                                    style={{
+                                      width: '100%',
+                                      backgroundColor: isKsActiveS ? '#fee2e2' : '#fef2f2',
+                                      border: `1px solid ${isKsActiveS ? '#dc2626' : '#fca5a5'}`,
+                                      borderRadius: '6px',
+                                      padding: '6px 10px',
+                                      marginTop: '6px',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '2px',
+                                      cursor: 'pointer',
+                                      textAlign: 'left',
+                                      transition: 'background 0.15s, border-color 0.15s',
+                                    }}
+                                  >
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                      <span style={{ color: '#991b1b', fontWeight: 600, fontSize: '0.78rem' }}>
+                                        Další ke schválení ({smlouvaInfo.ke_schvaleni_pocet} obj.):
+                                        {ksPanelS?.loading && <span style={{ fontSize: '0.68rem', color: '#b45309', marginLeft: '4px' }}>…</span>}
+                                      </span>
+                                      <strong style={{ color: '#dc2626', fontSize: '0.78rem' }}>
+                                        {parseFloat(smlouvaInfo.ke_schvaleni_castka).toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč
+                                      </strong>
+                                    </div>
+                                    {smlouvaWouldExceedIfAll && (
+                                      <div style={{ fontSize: '0.68rem', color: '#991b1b', fontStyle: 'italic' }}>
+                                        ⚠️ Při schválení všech dojde k přečerpání!
+                                      </div>
+                                    )}
+                                  </button>
+                                );
+                              })()}
                             </ApprovalLPItem>
                           );
                         } else {
@@ -5783,6 +5991,12 @@ const OrdersTableV3 = ({
             </ApprovalDialogContent>
 
             <ApprovalDialogActions ref={approvalActionsRef}>
+              {isBudgetExceeded && (
+                <ApprovalBudgetWarning>
+                  ⛔ Schválením by došlo k přečerpání rozpočtu. Objednávku nelze schválit.
+                </ApprovalBudgetWarning>
+              )}
+
               <ApprovalDialogButton onClick={() => {
                 setShowApprovalDialog(false);
                 setOrderToApprove(null);
@@ -5795,12 +6009,14 @@ const OrdersTableV3 = ({
                 Storno
               </ApprovalDialogButton>
 
-              <ApprovalDialogButton 
-                $postpone
-                onClick={() => handleApprovalAction('postpone')}
-              >
-                ⏰ Odložit
-              </ApprovalDialogButton>
+              {!isBudgetExceeded && (
+                <ApprovalDialogButton 
+                  $postpone
+                  onClick={() => handleApprovalAction('postpone')}
+                >
+                  ⏰ Odložit
+                </ApprovalDialogButton>
+              )}
 
               <ApprovalDialogButton 
                 $reject
@@ -5809,12 +6025,14 @@ const OrdersTableV3 = ({
                 ❌ Zamítnout
               </ApprovalDialogButton>
 
-              <ApprovalDialogButton 
-                $approve
-                onClick={() => handleApprovalAction('approve')}
-              >
-                ✅ Schválit
-              </ApprovalDialogButton>
+              {!isBudgetExceeded && (
+                <ApprovalDialogButton 
+                  $approve
+                  onClick={() => handleApprovalAction('approve')}
+                >
+                  ✅ Schválit
+                </ApprovalDialogButton>
+              )}
             </ApprovalDialogActions>
           </ApprovalDialog>
         </ApprovalDialogOverlay>,
@@ -5823,7 +6041,15 @@ const OrdersTableV3 = ({
 
       {/* Drawer "V procesu" - otevírá se pod řádkem V procesu */}
       {activeVProcesuKey && vProcesuPanels[activeVProcesuKey]?.data && ReactDOM.createPortal(
-        <VProcesuDrawer style={{
+        <VProcesuDrawer style={vProcesuOpenUpward ? {
+          // Otevřít NAHORU – bottom = viewport výška - top hrany boxíku
+          bottom: window.innerHeight - vProcesuAnchorY + 6,
+          top: 'auto',
+          maxHeight: `${Math.min(vProcesuAnchorY - 60, 480)}px`,
+          borderRadius: '12px 12px 0 0',
+          borderTop: '2px solid #6366f1',
+          borderBottom: 'none',
+        } : {
           top: vProcesuAnchorY,
           maxHeight: vProcesuBottomLimit
             ? `${Math.max(vProcesuBottomLimit - vProcesuAnchorY, 120)}px`
@@ -5836,6 +6062,7 @@ const OrdersTableV3 = ({
             borderBottom: '2px solid #c7d2fe',
             background: '#e0e7ff',
             flexShrink: 0,
+            order: vProcesuOpenUpward ? 1 : 0,
           }}>
             <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#3730a3' }}>
               {activeVProcesuTitle}
@@ -5873,13 +6100,22 @@ const OrdersTableV3 = ({
                   <tbody>
                     {panelData.map((o, i) => (
                       <tr key={o.id} style={{ background: i % 2 === 0 ? '#fff' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
-                        <td style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '6px 10px', maxWidth: '200px' }}>
                           <a href={`${process.env.PUBLIC_URL}/order-form-25?edit=${o.id}`} target="_blank" rel="noopener noreferrer"
-                            style={{ color: '#6366f1', fontWeight: 600, textDecoration: 'none' }}
+                            style={{ color: '#6366f1', fontWeight: 600, textDecoration: 'none', whiteSpace: 'nowrap' }}
                             onMouseOver={e => e.target.style.textDecoration='underline'}
                             onMouseOut={e => e.target.style.textDecoration='none'}>
                             {o.cislo_objednavky}
                           </a>
+                          {o.predmet && (
+                            <SmartTooltip text={o.predmet} preferredPosition="right" multiline={true}>
+                              <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '2px',
+                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                                maxWidth: '180px', cursor: 'help' }}>
+                                {o.predmet}
+                              </div>
+                            </SmartTooltip>
+                          )}
                         </td>
                         <td style={{ padding: '6px 10px', textAlign: 'center' }}>
                           {(() => {

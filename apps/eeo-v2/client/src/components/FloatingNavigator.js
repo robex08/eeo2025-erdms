@@ -29,7 +29,11 @@ import {
   faExpand,
   faCompress,
   faSave,
-  faComment
+  faComment,
+  faSpinner,
+  faPaperPlane,
+  faTrash,
+  faReply
 } from '@fortawesome/free-solid-svg-icons';
 import TemplateDropdown from './TemplateDropdown';
 import OrderCommentsTooltip from './ordersV3/OrderCommentsTooltip';
@@ -540,6 +544,182 @@ const DropzoneText = styled.div`
   line-height: 1.4;
 `;
 
+// ============================================================
+// 💬 INLINE KOMENTÁŘE - styled components
+// ============================================================
+const InlineCommentsPanel = styled.div`
+  margin: 0 8px 8px 8px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #f0f7ff;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+`;
+
+const InlineCommentsPanelHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  background: #1e40af;
+  color: white;
+  font-size: 12px;
+  font-weight: 700;
+`;
+
+const InlineCommentsList = styled.div`
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  &::-webkit-scrollbar { width: 4px; }
+  &::-webkit-scrollbar-thumb { background: #93c5fd; border-radius: 4px; }
+`;
+
+const InlineCommentItem = styled.div`
+  background: white;
+  border: 1px solid #dbeafe;
+  border-radius: 6px;
+  padding: 6px 8px;
+`;
+
+const InlineCommentMeta = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 3px;
+  gap: 4px;
+`;
+
+const InlineCommentAuthor = styled.span`
+  font-weight: 700;
+  color: #1e40af;
+  font-size: 11px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+`;
+
+const InlineCommentDate = styled.span`
+  color: #6b7280;
+  font-size: 10px;
+  white-space: nowrap;
+`;
+
+const InlineCommentText = styled.div`
+  color: #1f2937;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+`;
+
+const InlineCommentFooter = styled.div`
+  padding: 6px 8px;
+  border-top: 1px solid #bfdbfe;
+  display: flex;
+  gap: 5px;
+  align-items: flex-end;
+`;
+
+const InlineCommentTextarea = styled.textarea`
+  flex: 1;
+  border: 1px solid #93c5fd;
+  border-radius: 6px;
+  padding: 5px 7px;
+  font-size: 11px;
+  font-family: inherit;
+  resize: none;
+  min-height: 46px;
+  max-height: 72px;
+  outline: none;
+  background: white;
+  color: #1f2937;
+
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+  }
+  &::placeholder { color: #9ca3af; }
+`;
+
+const InlineCommentSendButton = styled.button`
+  background: #1e40af;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  transition: background 0.15s;
+  align-self: flex-end;
+
+  &:hover:not(:disabled) { background: #1d4ed8; }
+  &:disabled { background: #93c5fd; cursor: not-allowed; }
+`;
+
+const InlineCommentDeleteBtn = styled.button`
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 10px;
+  opacity: 0.55;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  &:hover { opacity: 1; }
+`;
+
+const InlineCommentReplyBtn = styled.button`
+  background: none;
+  border: none;
+  color: #6366f1;
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 10px;
+  opacity: 0.50;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  transition: opacity 0.15s;
+
+  &:hover { opacity: 1; }
+`;
+
+const InlineReplyIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #e0e7ff;
+  border-top: 1px solid #bfdbfe;
+  border-bottom: 1px solid #c7d2fe;
+  font-size: 10px;
+  color: #4338ca;
+  font-weight: 600;
+`;
+
+const InlineCommentReply = styled.div`
+  margin-left: 14px;
+  border-left: 2px solid #c7d2fe;
+  background: #f5f7ff;
+  border-radius: 0 6px 6px 0;
+`;
+
 // Definice sekcí formuláře - barvy odpovídají OrderForm25 schématu
 const FORM_SECTIONS = [
   {
@@ -768,6 +948,10 @@ const FloatingNavigator = ({
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
   const contentRef = useRef(null); // ✅ Ref pro scroll pozici
+  const [newCommentText, setNewCommentText] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [replyToId, setReplyToId] = useState(null);
+  const [replyToAuthor, setReplyToAuthor] = useState('');
 
   // 💬 Synchronizace externího commentsCount → interní state (pro badge aktualizaci po přidání)
   useEffect(() => {
@@ -1251,6 +1435,30 @@ const FloatingNavigator = ({
     }
   }, [onLoadComments, orderId]);
 
+  // 💬 Odeslání nového inline komentáře
+  const handleSubmitComment = useCallback(async () => {
+    if (!newCommentText.trim() || isSubmittingComment) return;
+    setIsSubmittingComment(true);
+    const parentId = replyToId;
+    try {
+      await handleAddCommentInternal(newCommentText.trim(), parentId);
+      setNewCommentText('');
+      setReplyToId(null);
+      setReplyToAuthor('');
+      // Znovu načíst komentáře
+      if (onLoadComments && orderId) {
+        const result = await onLoadComments(orderId);
+        const arr = result.data || result.comments || [];
+        setCommentsState({ comments: arr, loading: false, error: null });
+        if (result.comments_count !== undefined) setInternalCommentsCount(result.comments_count);
+      }
+    } catch (e) {
+      // chybu ignorujeme, showToast není vždy dostupný
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  }, [newCommentText, isSubmittingComment, replyToId, handleAddCommentInternal, onLoadComments, orderId]);
+
   // 💬 Z-index pro komentáře: nad floating panel (99999) a nad fullscreen formulář (999999) → 1000001
   const commentsZIndex = isFullscreen ? 1000001 : 100000;
 
@@ -1432,6 +1640,141 @@ const FloatingNavigator = ({
         >
           <ChevronRight />
         </MinimizedExpandButton>
+      )}
+
+      {/* 💬 INLINE PANEL KOMENTÁŘŮ - zobrazí se pod toolbarem při otevření */}
+      {!isMinimized && commentsOpen && orderId && (
+        <InlineCommentsPanel>
+          <InlineCommentsPanelHeader>
+            <span>💬 Komentáře{internalCommentsCount > 0 ? ` (${internalCommentsCount})` : ''}</span>
+            <button
+              onClick={() => setCommentsOpen(false)}
+              title="Zavřít komentáře"
+              style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', fontSize: '16px', lineHeight: 1, padding: '0 2px' }}
+            >×</button>
+          </InlineCommentsPanelHeader>
+
+          <InlineCommentsList>
+            {commentsState.loading && (
+              <div style={{ textAlign: 'center', padding: '12px', color: '#6b7280', fontSize: '11px' }}>
+                <FontAwesomeIcon icon={faSpinner} spin /> Načítám...
+              </div>
+            )}
+            {!commentsState.loading && commentsState.error && (
+              <div style={{ padding: '8px', color: '#ef4444', fontSize: '11px' }}>
+                Chyba: {commentsState.error}
+              </div>
+            )}
+            {!commentsState.loading && !commentsState.error && commentsState.comments.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '10px', color: '#9ca3af', fontSize: '11px', fontStyle: 'italic' }}>
+                Zatím žádné komentáře
+              </div>
+            )}
+            {!commentsState.loading && commentsState.comments
+              .filter(c => !c.parent_comment_id) // jen top-level
+              .map((comment) => {
+                const isOwn = (comment.user_id || comment.autor_id) === currentUserId;
+                const replies = commentsState.comments.filter(r => r.parent_comment_id && Number(r.parent_comment_id) === Number(comment.id));
+                return (
+                  <React.Fragment key={comment.id}>
+                    <InlineCommentItem>
+                      <InlineCommentMeta>
+                        <InlineCommentAuthor title={comment.autor_jmeno || 'Neznámý'}>
+                          {comment.autor_jmeno || 'Neznámý'}
+                        </InlineCommentAuthor>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                          <InlineCommentDate>
+                            {comment.dt_vytvoreni
+                              ? new Date(comment.dt_vytvoreni).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                              : ''}
+                          </InlineCommentDate>
+                          <InlineCommentReplyBtn
+                            onClick={() => { setReplyToId(comment.id); setReplyToAuthor(comment.autor_jmeno || 'Neznámý'); }}
+                            title={`Odpovědět ${comment.autor_jmeno || ''}`}
+                          >
+                            <FontAwesomeIcon icon={faReply} />
+                          </InlineCommentReplyBtn>
+                          {isOwn && (
+                            <InlineCommentDeleteBtn
+                              onClick={() => handleDeleteCommentInternal(comment.id).then(handleLoadCommentsInternal)}
+                              title="Smazat komentář"
+                            >
+                              <FontAwesomeIcon icon={faTrash} />
+                            </InlineCommentDeleteBtn>
+                          )}
+                        </div>
+                      </InlineCommentMeta>
+                      <InlineCommentText>{comment.obsah || comment.komentar_text || comment.text || ''}</InlineCommentText>
+                    </InlineCommentItem>
+                    {replies.map(reply => {
+                      const isReplyOwn = (reply.user_id || reply.autor_id) === currentUserId;
+                      return (
+                        <InlineCommentReply key={reply.id}>
+                          <InlineCommentItem style={{ borderRadius: '0 6px 6px 0', border: 'none', background: 'transparent' }}>
+                            <InlineCommentMeta>
+                              <InlineCommentAuthor title={reply.autor_jmeno || 'Neznámý'}>
+                                ↩ {reply.autor_jmeno || 'Neznámý'}
+                              </InlineCommentAuthor>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                                <InlineCommentDate>
+                                  {reply.dt_vytvoreni
+                                    ? new Date(reply.dt_vytvoreni).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                                    : ''}
+                                </InlineCommentDate>
+                                {isReplyOwn && (
+                                  <InlineCommentDeleteBtn
+                                    onClick={() => handleDeleteCommentInternal(reply.id).then(handleLoadCommentsInternal)}
+                                    title="Smazat odpověď"
+                                  >
+                                    <FontAwesomeIcon icon={faTrash} />
+                                  </InlineCommentDeleteBtn>
+                                )}
+                              </div>
+                            </InlineCommentMeta>
+                            <InlineCommentText>{reply.obsah || reply.komentar_text || reply.text || ''}</InlineCommentText>
+                          </InlineCommentItem>
+                        </InlineCommentReply>
+                      );
+                    })}
+                  </React.Fragment>
+                );
+              })
+            }
+          </InlineCommentsList>
+
+          {replyToId && (
+            <InlineReplyIndicator>
+              <span>↩ Odpovídám: <strong>{replyToAuthor}</strong></span>
+              <button
+                onClick={() => { setReplyToId(null); setReplyToAuthor(''); }}
+                style={{ background: 'none', border: 'none', color: '#4338ca', cursor: 'pointer', fontSize: '13px', lineHeight: 1, padding: '0 1px', fontWeight: 700 }}
+                title="Zrušit odpověď"
+              >×</button>
+            </InlineReplyIndicator>
+          )}
+          <InlineCommentFooter>
+            <InlineCommentTextarea
+              value={newCommentText}
+              onChange={e => setNewCommentText(e.target.value)}
+              placeholder="Napište komentář... (Enter = odeslat)"
+              onKeyDown={e => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmitComment();
+                }
+              }}
+            />
+            <InlineCommentSendButton
+              onClick={handleSubmitComment}
+              disabled={!newCommentText.trim() || isSubmittingComment}
+              title="Odeslat komentář"
+            >
+              {isSubmittingComment
+                ? <FontAwesomeIcon icon={faSpinner} spin />
+                : <FontAwesomeIcon icon={faPaperPlane} />}
+            </InlineCommentSendButton>
+          </InlineCommentFooter>
+        </InlineCommentsPanel>
       )}
 
       {!isMinimized && (
@@ -1639,31 +1982,6 @@ const FloatingNavigator = ({
   return (
     <>
       {ReactDOM.createPortal(navigatorContent, document.body)}
-      {commentsOpen && orderId && ReactDOM.createPortal(
-        <OrderCommentsTooltip
-          isOpen={commentsOpen}
-          orderId={orderId}
-          orderNumber={formData?.cislo_objednavky || null}
-          orderInfo={formData?.objednatel ? { objednatel: formData.objednatel, castka: formData.castka } : null}
-          iconRef={commentButtonRef}
-          onClose={() => setCommentsOpen(false)}
-          comments={commentsState.comments}
-          loading={commentsState.loading}
-          error={commentsState.error}
-          currentUserId={currentUserId}
-          onLoadComments={handleLoadCommentsInternal}
-          onAddComment={handleAddCommentInternal}
-          onDeleteComment={handleDeleteCommentInternal}
-          onUpdateComments={(updatedComments) => {
-            setCommentsState(prev => ({ ...prev, comments: updatedComments }));
-          }}
-          showToast={showToast}
-          token={token}
-          username={username}
-          zIndexBase={commentsZIndex}
-        />,
-        document.body
-      )}
     </>
   );
 };

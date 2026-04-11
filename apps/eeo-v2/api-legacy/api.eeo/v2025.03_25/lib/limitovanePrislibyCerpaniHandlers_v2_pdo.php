@@ -81,8 +81,9 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             $meta['rok'] = $rok;
         }
         
-        // KROK 2: REZERVACE - max_cena_s_dph pro objednávky ve schvalování (pesimistický odhad)
-        // STAVY: ODESLANA_KE_SCHVALENI (požadavek na schválení) + SCHVALENA (schválená, ale ještě nejsou položky)
+        // KROK 2: REZERVACE - max_cena_s_dph pro schválené objednávky (pesimistický odhad)
+        // STAVY: SCHVALENA pouze (schválená, ale ještě nejsou položky)
+        // ⚠️ Neschválené objednávky ('Ke schválení') se do rezervace NEPOČÍTAJÍ
         // ✅ POUZE objednávky BEZ faktur A BEZ položek (pokud má, započítá se do předpokladu/skutečně)
         // ✅ Podporuje NEW formát (JSON) i OLD formát (plain string)
         // ⚠️ OPRAVA 8.2.2026: Přidán filtr na položky - priority logic (faktury > položky > max_cena)
@@ -97,7 +98,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             WHERE obj.aktivni = 1
             AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
-            AND obj.stav_objednavky IN ('Ke schválení', 'Schválená')
+            AND obj.stav_objednavky IN ('Schválená')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             AND fakt.id IS NULL
             AND pol.id IS NULL
