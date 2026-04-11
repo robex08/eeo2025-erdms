@@ -38,7 +38,9 @@ import {
   faReply,
   faShoppingCart,
   faFileInvoiceDollar,
-  faCog
+  faCog,
+  faUser,
+  faEnvelope
 } from '@fortawesome/free-solid-svg-icons';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { SmartTooltip } from '../styles/SmartTooltip';
@@ -2974,8 +2976,11 @@ export const NotificationsPage = () => {
                   $priority={priority}
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  <NotificationContent style={(notification.objekt_typ === 'orders' || notification.objekt_typ === 'order' || notification.objekt_typ === 'invoices' || notification.objekt_typ === 'invoice' || notification.objekt_typ === 'objednavka') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
-                    {/* Badge OBJ/FAK/KOM přes celou výšku */}
+                  <NotificationContent style={(notification.objekt_typ === 'orders' || notification.objekt_typ === 'order' || notification.objekt_typ === 'invoices' || notification.objekt_typ === 'invoice' || notification.objekt_typ === 'objednavka' || notification.typ === 'ADMIN_MESSAGE') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
+                    {/* Badge MSG/OBJ/FAK/KOM přes celou výšku */}
+                    {notification.typ === 'ADMIN_MESSAGE' && (
+                      <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #f59e0b, #d97706)', color: '#fff', fontSize: '0.55em', fontWeight: '800', letterSpacing: '0.1em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(217,119,6,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>MSG</span>
+                    )}
                     {(notification.objekt_typ === 'orders' || notification.objekt_typ === 'order') && (
                       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #3b82f6, #2563eb)', color: '#fff', fontSize: '0.6em', fontWeight: '800', letterSpacing: '0.12em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(37,99,235,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>OBJ</span>
                     )}
@@ -2989,6 +2994,33 @@ export const NotificationsPage = () => {
                       <NotificationTitle $isUnread={isUnread}>
                         {(() => {
                           const placeholders = notification.data?.placeholders || {};
+
+                          // ✅ ADMIN_MESSAGE - zprávy od správce systému
+                          if (notification.typ === 'ADMIN_MESSAGE') {
+                            const nadpis = notification.nadpis || notification.titulek || 'Zpráva od správce';
+                            const priorita = notification.priorita || notification.priority || 'normal';
+                            const isUrgent = priorita === 'urgent' || priorita === 'high';
+                            
+                            return (
+                              <>
+                                <span style={{ color: '#6366f1', fontWeight: '700', fontSize: '1.05em' }}>
+                                  {nadpis}
+                                </span>
+                                <span style={{ color: '#94a3b8', margin: '0 0.4em' }}>:</span>
+                                <span style={{ color: '#475569', fontWeight: '600' }}>zpráva od správce systému</span>
+                                <FontAwesomeIcon 
+                                  icon={isUrgent ? faExclamationTriangle : faEnvelope} 
+                                  style={{ 
+                                    marginLeft: '0.6em', 
+                                    color: isUrgent ? '#dc2626' : '#6366f1', 
+                                    fontSize: '0.9em', 
+                                    verticalAlign: 'middle' 
+                                  }} 
+                                  title={isUrgent ? 'Urgentní zpráva' : 'Zpráva od správce'} 
+                                />
+                              </>
+                            );
+                          }
 
                           // ✅ OBJEDNÁVKY - formátovaný řádek s číslem O-
                           if (notification.objekt_typ && (notification.objekt_typ === 'orders' || notification.objekt_typ === 'order') && notification.data?.order_id) {
@@ -3115,6 +3147,7 @@ export const NotificationsPage = () => {
                         })()}
                       </NotificationTitle>
                     </NotificationHeader>
+                    {/* Message body: zobrazí se pro detailMode NEBO pro ADMIN_MESSAGE vždy */}
                     {detailMode && notification.objekt_typ && (notification.objekt_typ === 'orders' || notification.objekt_typ === 'order') && notification.data?.placeholders ? (
                       <NotificationMessage>
                         <strong>Předmět:</strong> {notification.data.placeholders.order_subject || notification.data.placeholders.predmet || 'N/A'} | <strong>Cena:</strong> {notification.data.placeholders.amount || notification.data.placeholders.max_price_with_dph || 'N/A'} | <strong>Objednatel:</strong> {notification.data.placeholders.creator_name || notification.data.placeholders.objednatel_name || 'N/A'} | <strong>Garant:</strong> {notification.data.placeholders.garant_name || 'N/A'} | <strong>Příkazce:</strong> {notification.data.placeholders.prikazce_name || notification.data.placeholders.schvalovatel_name || 'N/A'}
@@ -3123,7 +3156,7 @@ export const NotificationsPage = () => {
                       <NotificationMessage>
                         <strong>Částka:</strong> {notification.data.placeholders.invoice_amount || notification.data.placeholders.amount || 'N/A'} | <strong>Dodavatel:</strong> {notification.data.placeholders.supplier_name || notification.data.placeholders.dodavatel_nazev || 'N/A'} | <strong>Splatnost:</strong> {notification.data.placeholders.due_date || notification.data.placeholders.invoice_due_date || notification.data.placeholders.datum_splatnosti || 'N/A'} | <strong>Vytvořil:</strong> {notification.data.placeholders.creator_name || notification.data.placeholders.vytvoril_fa_name || 'N/A'}
                       </NotificationMessage>
-                    ) : detailMode && notification.zprava ? (
+                    ) : (detailMode || notification.typ === 'ADMIN_MESSAGE') && notification.zprava ? (
                       <NotificationMessage>
                         {formatZpravaWithBoldQuotes(notification.zprava)}
                       </NotificationMessage>
@@ -3147,19 +3180,34 @@ export const NotificationsPage = () => {
                     )}
 
                     <NotificationMeta>
-                      {detailMode && (
+                      {detailMode && notification.typ !== 'ADMIN_MESSAGE' && (
                         <MetaItem>
                           <FontAwesomeIcon icon={faClock} style={{ fontSize: '12px' }} />
                           {getTimeAgo(notification.dt_created || notification.created_at)}
                         </MetaItem>
                       )}
-                      {detailMode && (notification.data?.placeholders?.action_date || notification.dt_created) && (
+                      {/* ADMIN_MESSAGE: čas + celé jméno odesílatele */}
+                      {detailMode && notification.typ === 'ADMIN_MESSAGE' && notification.dt_created && (
+                        <TypeBadge style={{ background: '#dbeafe', color: '#1e40af' }}>
+                          📅 {new Date(notification.dt_created).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </TypeBadge>
+                      )}
+                      {detailMode && notification.typ === 'ADMIN_MESSAGE' && (() => {
+                        const senderName = notification.from_user_name || 'Administrátor';
+                        return (
+                          <TypeBadge style={{ background: '#fef3c7', color: '#d97706', fontWeight: 600 }}>
+                            👤 {senderName}
+                          </TypeBadge>
+                        );
+                      })()}
+                      {/* Ostatní typy: běžné meta */}
+                      {detailMode && notification.typ !== 'ADMIN_MESSAGE' && (notification.data?.placeholders?.action_date || notification.dt_created) && (
                         <TypeBadge style={{ background: '#dbeafe', color: '#1e40af' }}>
                           📅 {notification.data?.placeholders?.action_date || new Date(notification.dt_created).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </TypeBadge>
                       )}
                       {/* Osoba jako badge */}
-                      {detailMode && (notification.data?.placeholders?.action_performed_by || notification.from_user_name) && (
+                      {detailMode && notification.typ !== 'ADMIN_MESSAGE' && (notification.data?.placeholders?.action_performed_by || notification.from_user_name) && (
                         <TypeBadge style={{ background: '#f3e8ff', color: '#6b21a8', fontWeight: 600 }}>
                           👤 {notification.data?.placeholders?.action_performed_by || notification.from_user_name}
                         </TypeBadge>

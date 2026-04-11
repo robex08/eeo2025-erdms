@@ -71,7 +71,8 @@ export const NOTIFICATION_TYPES = {
   // ====================================================================
   USER_MENTION: 'user_mention',
   DEADLINE_REMINDER: 'deadline_reminder', // ⚡ HIGH
-  ORDER_UNLOCK_FORCED: 'order_unlock_forced' // ⚡ HIGH
+  ORDER_UNLOCK_FORCED: 'order_unlock_forced', // ⚡ HIGH
+  ADMIN_MESSAGE: 'ADMIN_MESSAGE' // Rychlá zpráva od administrátora
 };
 
 /**
@@ -133,6 +134,7 @@ export const getNotificationTypeName = (type) => {
     'user_mention': 'Zmínka v komentáři',
     'deadline_reminder': 'Připomínka termínu',
     'order_unlock_forced': 'Objednávka násilně odemknuta',
+    'ADMIN_MESSAGE': 'Zpráva od administrátora',
 
     // DEPRECATED
     'order_approved': 'Objednávka schválena (deprecated)',

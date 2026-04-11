@@ -1224,25 +1224,44 @@ function handle_notifications_create($input, $config, $queries) {
         // Použij template_override pokud je zadáno (FE může přepsat template)
         $template_override = isset($input['template_override']) ? $input['template_override'] : array();
         
-        $app_nadpis = isset($template_override['app_nadpis']) ? 
-            $template_override['app_nadpis'] : $template['app_nadpis'];
-        $app_message = isset($template_override['app_zprava']) ? 
-            $template_override['app_zprava'] : $template['app_zprava'];
-        $email_predmet = isset($template_override['email_predmet']) ? 
-            $template_override['email_predmet'] : $template['email_predmet'];
-        $email_telo = isset($template_override['email_telo']) ? 
-            $template_override['email_telo'] : $template['email_telo'];
+        // ✅ ADMIN_MESSAGE logika: Custom nadpis/zpráva má PRIORITU před templatem
+        if ($typ === 'ADMIN_MESSAGE') {
+            // Pro admin zprávy použij PŘÍMO vstupní data (bez template nahrazování)
+            $app_nadpis = !empty($input['nadpis']) ? $input['nadpis'] : 'Zpráva od správce systému';
+            $app_message = !empty($input['zprava']) ? $input['zprava'] : '';
+            
+            // Email texty můžou zůstat z templatu (pokud budeme chtít posílat emaily)
+            $email_predmet = isset($template_override['email_predmet']) ? 
+                $template_override['email_predmet'] : $template['email_predmet'];
+            $email_telo = isset($template_override['email_telo']) ? 
+                $template_override['email_telo'] : $template['email_telo'];
+                
+            error_log("[Notifications] ADMIN_MESSAGE - using custom title: " . $app_nadpis);
+            error_log("[Notifications] ADMIN_MESSAGE - using custom message: " . substr($app_message, 0, 100));
+        } else {
+            // Standardní logika pro ostatní typy notifikací
+            $app_nadpis = isset($template_override['app_nadpis']) ? 
+                $template_override['app_nadpis'] : $template['app_nadpis'];
+            $app_message = isset($template_override['app_zprava']) ? 
+                $template_override['app_zprava'] : $template['app_zprava'];
+            $email_predmet = isset($template_override['email_predmet']) ? 
+                $template_override['email_predmet'] : $template['email_predmet'];
+            $email_telo = isset($template_override['email_telo']) ? 
+                $template_override['email_telo'] : $template['email_telo'];
+            
+            // Nahraď placeholdery v template
+            $app_nadpis = notif_replacePlaceholders($app_nadpis, $finalData);
+            $app_message = notif_replacePlaceholders($app_message, $finalData);
+            
+            error_log("[Notifications] After placeholder replacement - Title: " . $app_nadpis);
+            error_log("[Notifications] After placeholder replacement - Message: " . substr($app_message, 0, 100));
+        }
         
-        // Nahraď placeholdery v template
-        $app_nadpis = notif_replacePlaceholders($app_nadpis, $finalData);
-        $app_message = notif_replacePlaceholders($app_message, $finalData);
-        
-        // Email vždy s placeholdery
-        $email_predmet = notif_replacePlaceholders($email_predmet, $finalData);
-        $email_telo = notif_replacePlaceholders($email_telo, $finalData);
-        
-        error_log("[Notifications] After placeholder replacement - Title: " . $app_nadpis);
-        error_log("[Notifications] After placeholder replacement - Message: " . substr($app_message, 0, 100));
+        // Email vždy s placeholdery (pokud není ADMIN_MESSAGE)
+        if ($typ !== 'ADMIN_MESSAGE') {
+            $email_predmet = notif_replacePlaceholders($email_predmet, $finalData);
+            $email_telo = notif_replacePlaceholders($email_telo, $finalData);
+        }
         
         // KLÍČOVÁ LOGIKA: Určení příjemců
         $pro_uzivatele_id = isset($input['pro_uzivatele_id']) ? (int)$input['pro_uzivatele_id'] : null;
@@ -5117,5 +5136,96 @@ function getNotificationByIdHandler($db, $notification_id) {
             'status' => 'error',
             'message' => 'Chyba při načítání notifikace: ' . $e->getMessage()
         );
+    }
+}
+
+/**
+ * GET - Počet nepřečtených admin zpráv pro konkrétního uživatele
+ * Endpoint: notifications/admin-messages-unread-count
+ * POST: {token, username, user_id}
+ * 
+ * Vrací počet nepřečtených ADMIN_MESSAGE zpráv, které nejsou starší než 7 dní.
+ * Po 7 dnech se zprávy automaticky berou jako přečtené (nevracejí se).
+ */
+function handle_notifications_admin_messages_unread_count($input, $config, $queries) {
+    // ✅ Validace POST metody
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    // ✅ Parametry z body
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $target_user_id = $input['user_id'] ?? null;
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    if (!$target_user_id) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí user_id']);
+        return;
+    }
+
+    // ✅ Ověření tokenu
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        // ✅ DB připojení
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        // ✅ TIMEZONE: Nastavit MySQL session timezone
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // ✅ SQL: Počet nepřečtených ADMIN_MESSAGE zpráv (ne starších než 7 dní)
+        $sql = "
+            SELECT COUNT(*) as unread_count
+            FROM `" . TBL_NOTIFIKACE . "` n
+            INNER JOIN `" . TBL_NOTIFIKACE_PRECTENI . "` nr 
+                ON n.id = nr.notifikace_id
+            WHERE nr.uzivatel_id = ?
+                AND nr.precteno = 0
+                AND n.typ = 'ADMIN_MESSAGE'
+                AND n.aktivni = 1
+                AND n.dt_created >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        ";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$target_user_id]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        $unread_count = (int)($result['unread_count'] ?? 0);
+
+        // ✅ Úspěšná odpověď
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => [
+                'user_id' => $target_user_id,
+                'unread_count' => $unread_count
+            ],
+            'message' => 'Počet nepřečtených zpráv načten'
+        ]);
+
+    } catch (Exception $e) {
+        error_log("❌ [notifications/admin-messages-unread-count] Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání počtu zpráv: ' . $e->getMessage()
+        ]);
     }
 }

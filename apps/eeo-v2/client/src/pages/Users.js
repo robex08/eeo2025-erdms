@@ -1937,12 +1937,42 @@ const Users = () => {
     {
       accessorKey: 'email',
       header: 'E-mail',
-      cell: (info) => <div>{info.getValue()}</div>,
+      cell: (info) => {
+        const val = info.getValue();
+        if (!val || val === 'N/A') return <div style={{ color: '#9ca3af', fontStyle: 'italic' }}>—</div>;
+        return (
+          <a
+            href={`mailto:${val}`}
+            onClick={e => e.stopPropagation()}
+            style={{ color: '#2563eb', textDecoration: 'none', fontSize: '0.85rem' }}
+            title={`Odeslat e-mail: ${val}`}
+            onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; }}
+            onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; }}
+          >
+            {val}
+          </a>
+        );
+      },
     },
     {
       accessorKey: 'phone',
       header: 'Telefon',
-      cell: (info) => <div style={{ textAlign: 'center' }}>{info.getValue()}</div>,
+      cell: (info) => {
+        const val = info.getValue();
+        if (!val || val === 'N/A') return <div style={{ color: '#9ca3af', fontStyle: 'italic', textAlign: 'center' }}>—</div>;
+        return (
+          <a
+            href={`tel:${val.replace(/\s/g, '')}`}
+            onClick={e => e.stopPropagation()}
+            style={{ color: '#0891b2', textDecoration: 'none', fontSize: '0.85rem', display: 'block', textAlign: 'center' }}
+            title={`Volat: ${val}`}
+            onMouseEnter={e => { e.currentTarget.style.textDecoration = 'underline'; }}
+            onMouseLeave={e => { e.currentTarget.style.textDecoration = 'none'; }}
+          >
+            {val}
+          </a>
+        );
+      },
     },
     {
       accessorKey: 'location',

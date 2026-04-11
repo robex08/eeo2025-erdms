@@ -16,7 +16,8 @@ import {
   faEyeSlash,
   faBolt,
   faExclamation,
-  faExclamationTriangle
+  faExclamationTriangle,
+  faUserShield
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -622,6 +623,13 @@ export const NotificationDropdown = ({
   const getPriorityIcon = (priority, nadpis = '', notificationType = '') => {
     const normalizedPriority = (priority || 'INFO').toUpperCase();
     
+    // 🌟 SPECIÁLNÍ: ADMIN_MESSAGE - ikona štítu
+    if (notificationType === 'ADMIN_MESSAGE') {
+      return normalizedPriority === 'HIGH' || normalizedPriority === 'URGENT' 
+        ? faBolt  // Vysoká priorita - blesk
+        : faUserShield;  // Normální - štít správce
+    }
+    
     // 🌟 SPECIÁLNÍ: Pro potvrzení věcné správnosti zobraz zelenou fajfku
     if (notificationType === 'invoice_material_check_approved' || 
         notificationType === 'INVOICE_MATERIAL_CHECK_APPROVED') {
@@ -768,7 +776,7 @@ export const NotificationDropdown = ({
                         {getTimeAgo(notification.dt_created || notification.created_at)}
                       </NotificationTime>
                       {/* Zobraz jméno uživatele, který provedl akci */}
-                      {(notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by) && (
+                      {notification.typ !== 'ADMIN_MESSAGE' && (notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by) && (
                         <span style={{
                           background: '#f3e8ff',
                           color: '#6b21a8',
@@ -780,6 +788,22 @@ export const NotificationDropdown = ({
                           👤 {notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by}
                         </span>
                       )}
+                      {/* Zobraz odesílatele pro ADMIN zprávy - zvýrazněně */}
+                      {notification.typ === 'ADMIN_MESSAGE' && (() => {
+                        const senderName = notification.from_user_name || 'Administrátor';
+                        return (
+                          <span style={{
+                            background: '#fef3c7',
+                            color: '#d97706',
+                            padding: '2px 7px',
+                            borderRadius: '4px',
+                            fontSize: '11px',
+                            fontWeight: '600'
+                          }}>
+                            👤 Od: {senderName}
+                          </span>
+                        );
+                      })()}
                     </NotificationMeta>
                   </NotificationContent>
                   <NotificationActions>

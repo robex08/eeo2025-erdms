@@ -2355,6 +2355,75 @@ const Layout = ({ children }) => {
   const [statsNavPinned, setStatsNavPinned] = useState(false);
   const [statsNavSections, setStatsNavSections] = useState([]);
 
+  // ── Dashboard Quick Nav ──────────────────────────────────────────────────────
+  const [dashNavOpen, setDashNavOpen] = useState(false);
+  const [dashNavPinned, setDashNavPinned] = useState(false);
+  const [dashNavItems, setDashNavItems] = useState([]);
+  const [dashScrollAtBottom, setDashScrollAtBottom] = useState(false);
+  const [dashNavFavorites, setDashNavFavorites] = useState(() => {
+    try {
+      const stored = localStorage.getItem(`dash_nav_favorites_${user_id || 'anon'}`);
+      return stored ? new Set(JSON.parse(stored)) : new Set();
+    } catch { return new Set(); }
+  });
+
+  const toggleDashFavorite = useCallback((key, e) => {
+    e.stopPropagation();
+    setDashNavFavorites(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) { next.delete(key); } else { next.add(key); }
+      try { localStorage.setItem(`dash_nav_favorites_${user_id || 'anon'}`, JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  }, [user_id]);
+
+  useEffect(() => {
+    const handler = (e) => setDashNavItems(e.detail?.items || []);
+    window.addEventListener('dashNavItems', handler);
+    return () => window.removeEventListener('dashNavItems', handler);
+  }, []);
+
+  // Scroll tracker pro dashboard FAB (75% threshold)
+  useEffect(() => {
+    if (!location.pathname.startsWith('/dashboard')) return;
+    const el = document.querySelector('main');
+    if (!el) return;
+    const onScroll = () => {
+      setDashScrollAtBottom(el.scrollTop / (el.scrollHeight - el.clientHeight) >= 0.75);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!dashNavOpen) return;
+    const handler = (e) => {
+      if (!e.target.closest('[data-dash-nav]')) { setDashNavOpen(false); setDashNavPinned(false); }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [dashNavOpen]);
+
+  useEffect(() => {
+    if (!location.pathname.startsWith('/dashboard')) { setDashNavOpen(false); setDashNavPinned(false); }
+  }, [location.pathname]);
+
+  const handleDashNavItem = (key) => {
+    window.dispatchEvent(new CustomEvent('dashScrollToWidget', { detail: { key } }));
+    if (!dashNavPinned) setDashNavOpen(false);
+  };
+
+  const handleDashScrollFab = () => {
+    const el = document.querySelector('main');
+    if (!el) return;
+    if (dashScrollAtBottom) {
+      el.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  };
+  // ────────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (!location.pathname.startsWith('/stats-reports')) return;
     const el = document.querySelector('main');
@@ -4544,7 +4613,112 @@ const Layout = ({ children }) => {
         </div>
       )}
 
-      {/* DEBUG PANEL RE-ENABLED */}
+      {/* Dashboard Quick Nav – pouze na stránce Dashboard */}
+      {isLoggedIn && location.pathname.startsWith('/dashboard') && dashNavItems.length > 0 && (
+        <div data-dash-nav
+          onMouseEnter={() => setDashNavOpen(true)}
+          onMouseLeave={() => { if (!dashNavPinned) setDashNavOpen(false); }}
+          style={{ position: 'fixed', left: '.75rem', bottom: '.75rem', zIndex: 4001, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+          {/* Quick nav popup */}
+          {dashNavOpen && (
+            <div style={{
+              position: 'absolute', bottom: '54px', left: 0,
+              background: 'rgba(10,18,36,0.78)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)',
+              border: '1px solid rgba(255,255,255,0.10)',
+              borderRadius: '12px', padding: '0.5rem 0 0.5rem',
+              width: 'max-content', maxWidth: 'calc(100vw - 1.5rem)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
+              zIndex: 4002,
+              boxSizing: 'border-box',
+            }}>
+              <div style={{ padding: '0.4rem 0.9rem 0.5rem', fontSize: '0.7rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em', borderBottom: '1px solid #334155', marginBottom: '0.3rem' }}>
+                Rychlá navigace
+              </div>
+              {(() => {
+                const favItems = dashNavItems.filter(item => dashNavFavorites.has(item.key));
+                const otherItems = dashNavItems.filter(item => !dashNavFavorites.has(item.key));
+                const renderItem = (item, idx, isFav) => (
+                  <div key={item.key} style={{ display: 'flex', alignItems: 'center', borderRadius: '4px', overflow: 'hidden' }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#334155'; e.currentTarget.querySelector('[data-nav-btn]').style.borderLeftColor = isFav ? '#f59e0b' : '#3b82f6'; e.currentTarget.querySelector('[data-nav-btn]').style.color = '#fff'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.querySelector('[data-nav-btn]').style.borderLeftColor = 'transparent'; e.currentTarget.querySelector('[data-nav-btn]').style.color = '#e2e8f0'; }}
+                  >
+                    <button data-nav-btn onClick={() => handleDashNavItem(item.key)} style={{
+                      flex: 1, textAlign: 'left', padding: '0.4rem 0.3rem 0.4rem 0.65rem',
+                      background: 'transparent', border: 'none', color: '#e2e8f0',
+                      fontSize: '0.82rem', cursor: 'pointer',
+                      borderLeft: `3px solid transparent`, transition: 'all 0.12s',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {isFav && <span style={{ color: '#f59e0b', fontSize: '0.7rem', marginRight: '0.3rem' }}>★</span>}
+                      {!isFav && <span style={{ color: '#64748b', fontSize: '0.72rem', marginRight: '0.35rem' }}>{idx + 1}.</span>}
+                      {item.label}
+                    </button>
+                    <button onClick={(e) => toggleDashFavorite(item.key, e)} title={isFav ? 'Odebrat z oblíbených' : 'Přidat do oblíbených'} style={{
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      padding: '0.4rem 0.55rem 0.4rem 0.2rem', fontSize: '0.9rem',
+                      color: isFav ? '#f59e0b' : 'rgba(255,255,255,0.75)', transition: 'color 0.12s', lineHeight: 1,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.color = isFav ? '#fbbf24' : '#ffffff'; }}
+                    onMouseLeave={e => { e.currentTarget.style.color = isFav ? '#f59e0b' : 'rgba(255,255,255,0.75)'; }}
+                    >
+                      {isFav ? '★' : '☆'}
+                    </button>
+                  </div>
+                );
+                return (
+                  <div style={{ padding: '0 0.25rem' }}>
+                    {favItems.length > 0 && (
+                      <>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 0.25rem' }}>
+                          {favItems.map((item, i) => renderItem(item, i, true))}
+                        </div>
+                        {otherItems.length > 0 && (
+                          <div style={{ borderTop: '1px solid #334155', margin: '0.3rem 0.4rem', opacity: 0.6 }} />
+                        )}
+                      </>
+                    )}
+                    {otherItems.length > 0 && (
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 0.25rem' }}>
+                        {otherItems.map((item, i) => renderItem(item, i, false))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+              {/* Bridge – zabraňuje mezeře mezi popupem a čepičkou při přejezdu myší */}
+              <div style={{ position: 'absolute', bottom: '-10px', left: 0, right: 0, height: '10px' }} />
+            </div>
+          )}
+          {/* Split FAB: čepička (pin) + tělo (ikona) */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', borderRadius: '999px', overflow: 'hidden', boxShadow: '0 4px 14px rgba(29,78,216,0.45)' }}>
+            <div
+              onClick={() => {
+                if (dashNavPinned) { setDashNavPinned(false); setDashNavOpen(false); }
+                else { setDashNavPinned(true); setDashNavOpen(true); }
+              }}
+              style={{
+                width: '40px', height: '14px',
+                background: dashNavPinned ? '#7c3aed' : dashNavOpen ? '#1e40af' : '#2563eb',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderBottom: '1px solid rgba(255,255,255,0.15)', transition: 'background 0.15s',
+                cursor: 'pointer',
+              }}
+            >
+              <span style={{ width: dashNavPinned ? '8px' : '12px', height: '1.5px', background: '#fff', borderRadius: '1px', display: 'block', transition: 'width 0.15s' }} />
+            </div>
+            <RoundFab type="button" style={{
+              background: '#1d4ed8', width: '40px', height: '40px',
+              borderRadius: 0, boxShadow: 'none',
+            }}
+            onClick={handleDashScrollFab}
+            >
+              <FontAwesomeIcon icon={dashScrollAtBottom ? faChevronUp : faChevronDown} />
+            </RoundFab>
+          </div>
+        </div>
+      )}
+
+
       {canDebug && (
         <DebugDockWrapper>
           {debugOpen && (

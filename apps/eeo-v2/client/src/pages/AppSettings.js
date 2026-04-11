@@ -1031,10 +1031,10 @@ const AppSettings = () => {
                         }}
                         style={{marginTop: '0.75rem'}}
                       >
-                        <option value={5}>5 článků</option>
                         <option value={10}>10 článků</option>
-                        <option value={15}>15 článků</option>
                         <option value={20}>20 článků</option>
+                        <option value={50}>50 článků</option>
+                        <option value={100}>100 článků</option>
                       </Select>
                     </SettingInfo>
                   </SettingRow>

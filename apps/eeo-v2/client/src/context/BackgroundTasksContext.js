@@ -34,6 +34,7 @@ export const BackgroundTasksProvider = ({ children }) => {
   const notificationsCallbackRef = useRef(null);
   const newNotificationsCallbackRef = useRef(null);
   const getCurrentFiltersCallbackRef = useRef(null);  // ← Nový ref pro getCurrentFilters
+  const dashboardRefreshCallbackRef = useRef(null);  // ← Dashboard silent refresh
 
   /**
    * Registrace callback pro refresh objednávek
@@ -85,6 +86,13 @@ export const BackgroundTasksProvider = ({ children }) => {
    */
   const registerNewNotificationsCallback = useCallback((callback) => {
     newNotificationsCallbackRef.current = callback;
+  }, []);
+
+  /**
+   * Registrace callback pro dashboard refresh (tichý reload dat)
+   */
+  const registerDashboardRefreshCallback = useCallback((callback) => {
+    dashboardRefreshCallbackRef.current = callback;
   }, []);
 
   /**
@@ -171,6 +179,20 @@ export const BackgroundTasksProvider = ({ children }) => {
     }
   }, []);
 
+  /**
+   * Tichý refresh dashboardu (reload dat bez blikání stránky)
+   * Volá se při příchodu nových notifikací
+   */
+  const triggerDashboardRefresh = useCallback(() => {
+    if (dashboardRefreshCallbackRef.current) {
+      try {
+        dashboardRefreshCallbackRef.current();
+      } catch (error) {
+        console.error('❌ [BackgroundTasksContext] Error refreshing dashboard:', error);
+      }
+    }
+  }, []);
+
   const value = {
     // State
     unreadNotificationsCount,
@@ -184,6 +206,7 @@ export const BackgroundTasksProvider = ({ children }) => {
     registerGetCurrentFiltersCallback,  // ← Nová registrace pro getCurrentFilters
     registerNotificationsCallback,
     registerNewNotificationsCallback,
+    registerDashboardRefreshCallback,
 
     // Gettery
     getCurrentFilters,  // ← Funkce pro získání aktuálních filtrů
@@ -193,7 +216,8 @@ export const BackgroundTasksProvider = ({ children }) => {
     triggerOrdersV3Refresh,
     handleUnreadCountChange,
     handleNewNotifications,
-    triggerNotificationsRefresh  // NOVÁ funkce pro manuální refresh
+    triggerNotificationsRefresh,  // NOVÁ funkce pro manuální refresh
+    triggerDashboardRefresh  // Tichý refresh dashboardu při nových notifikacích
   };
 
   return (

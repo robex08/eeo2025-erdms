@@ -75,7 +75,7 @@ function handle_rss_feed($input, $db) {
         // Celkový max z DB nastavení (kolik zobrazit na FE)
         $maxTotal = isset($input['max_items']) ? (int)$input['max_items'] : 10;
         $dbMaxItems = (int)($rssSettings['rss_max_items'] ?? $maxTotal);
-        $maxTotal = max(1, min(50, $dbMaxItems));
+        $maxTotal = max(1, min(100, $dbMaxItems));
         
         // Každý feed vrátí maxTotal položek — FE filtruje a limituje
         $perFeedMax = $maxTotal;

@@ -57,6 +57,7 @@ const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
 const PostLoginModal = lazy(() => import('./components/PostLoginModal'));
 const UpdateNotificationModal = lazy(() => import('./components/UpdateNotificationModal'));
+const HighPriorityNotificationModal = lazy(() => import('./components/HighPriorityNotificationModal'));
 const AccessDenied = lazy(() => import('./pages/AccessDenied'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const AppShell = ({ children }) => (
@@ -384,7 +385,10 @@ function App() {
     fromPasswordChange: false // 🔑 Flag pokud modal přišel po změně hesla
   });
 
-  // 🔄 VERSION CHECKER: Automatická detekce nové verze aplikace
+  // � HIGH PRIORITY NOTIFICATION: State pro high priority popup modal
+  const [highPriorityNotif, setHighPriorityNotif] = React.useState(null);
+
+  // �🔄 VERSION CHECKER: Automatická detekce nové verze aplikace
   const [updateAvailable, setUpdateAvailable] = React.useState(false);
   const [updateData, setUpdateData] = React.useState(null);
   
@@ -648,6 +652,81 @@ function App() {
     return () => window.removeEventListener('show-post-login-modal', handlePostLoginModal);
   }, []);
 
+  // 🚨 HIGH PRIORITY NOTIFICATION: Handler pro high priority popup modal
+  useEffect(() => {
+    if (!bgTasksContext?.registerNewNotificationsCallback) {
+      return;
+    }
+
+    const handleNewNotifications = (notifications, unreadCount) => {
+      if (!notifications || notifications.length === 0) {
+        return;
+      }
+
+      // 🔍 Filtruj high priority nepřečtené notifikace
+      const highPriorityNotifs = notifications.filter(n =>
+        n.precteno === false &&
+        (
+          (n.priorita || '').toLowerCase() === 'high' ||
+          (n.priorita || '').toLowerCase() === 'urgent'
+        )
+      );
+
+      if (highPriorityNotifs.length > 0) {
+        // Zobraz první high priority notifikaci
+        const notification = highPriorityNotifs[0];
+
+        // Parsuj data z notifikace
+        let notifData = {};
+        try {
+          notifData = typeof notification.data === 'string'
+            ? JSON.parse(notification.data)
+            : (notification.data || {});
+        } catch (e) {
+          notifData = notification.data || {};
+        }
+
+        // Parsuj placeholder_data
+        let placeholderData = {};
+        try {
+          placeholderData = typeof notification.placeholder_data === 'string'
+            ? JSON.parse(notification.placeholder_data)
+            : (notification.placeholder_data || {});
+        } catch (e) {
+          placeholderData = notification.placeholder_data || {};
+        }
+
+        // 🎯 Vytvoř objekt kompatibilní s HighPriorityNotificationModal
+        setHighPriorityNotif({
+          id: notification.id,
+          nadpis: notification.titulek || notification.nadpis || 'Důležitá zpráva',
+          zprava: notification.zprava || '',
+          priorita: notification.priorita || 'high',
+          dt_created: notification.vytvoren_kdy || notification.dt_created || new Date().toISOString(),
+          typ: notification.typ || 'ADMIN_MESSAGE',
+          from_user_name: notification.from_user_name || placeholderData.sender_name || notifData.sender_name || 'Administrátor',
+          data_json: {
+            placeholder_data: {
+              sender_name: notification.from_user_name || placeholderData.sender_name || notifData.sender_name || 'Administrátor',
+              sender_username: placeholderData.sender_username || notifData.sender_username || null
+            }
+          }
+        });
+      }
+
+      // ✅ Refresh dashboardu pokud je aktivní (tichý reload dat)
+      if (bgTasksContext?.triggerDashboardRefresh) {
+        bgTasksContext.triggerDashboardRefresh();
+      }
+    };
+
+    bgTasksContext.registerNewNotificationsCallback(handleNewNotifications);
+
+    return () => {
+      bgTasksContext.registerNewNotificationsCallback?.(null);
+    };
+  }, [bgTasksContext]);
+
   // Registrace background tasks po přihlášení
   useEffect(() => {
     if (!isLoggedIn || !bgTasksRef.current) {
@@ -868,6 +947,20 @@ function App() {
     handleClosePostLoginModal();
   };
 
+  // 🚨 HIGH PRIORITY NOTIFICATION: Handler pro zavření high priority modalu
+  const handleCloseHighPriorityNotif = async () => {
+    if (highPriorityNotif?.id) {
+      try {
+        // Dynamický import pro markNotificationAsRead
+        const { markNotificationAsRead } = await import('./services/notificationsApi');
+        await markNotificationAsRead(highPriorityNotif.id);
+      } catch (error) {
+        console.error('❌ Chyba při označování notifikace jako přečtené:', error);
+      }
+    }
+    setHighPriorityNotif(null);
+  };
+
   // NOTE: navigate/useLocation must be called inside Router context. We render
   // a small child component inside the Router below to perform the restore.
   // If auth initialization is still in progress, don't mount the Router/routes.
@@ -1058,7 +1151,17 @@ function App() {
           </Suspense>
         )}
 
-        {/* 🔄 UPDATE NOTIFICATION: Zobrazí se při detekci nové verze aplikace */}
+        {/* � HIGH PRIORITY NOTIFICATION: Popup modal pro urgent/high priority notifikace */}
+        {highPriorityNotif && (
+          <Suspense fallback={null}>
+            <HighPriorityNotificationModal
+              notification={highPriorityNotif}
+              onClose={handleCloseHighPriorityNotif}
+            />
+          </Suspense>
+        )}
+
+        {/* �🔄 UPDATE NOTIFICATION: Zobrazí se při detekci nové verze aplikace */}
         {updateAvailable && updateData && (
           <Suspense fallback={null}>
             <UpdateNotificationModal

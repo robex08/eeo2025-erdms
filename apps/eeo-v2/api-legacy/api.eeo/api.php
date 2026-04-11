@@ -2927,6 +2927,15 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Metoda není povolena'));
         }
         break;
+
+    case 'notifications/admin-messages-unread-count':
+        if ($request_method === 'POST') {
+            handle_notifications_admin_messages_unread_count($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Metoda není povolena'));
+        }
+        break;
         
     case 'notifications/mark-read':
         if ($request_method === 'POST') {

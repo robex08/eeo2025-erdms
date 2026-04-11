@@ -341,6 +341,18 @@ export const NOTIFICATION_CONFIG = {
     category: 'system',
     label: 'Upozornění na místo na disku',
     priority: 'high'
+  },
+
+  // ADMIN ZPRÁVY
+  [NOTIFICATION_TYPES.ADMIN_MESSAGE]: {
+    icon: '📨',
+    color: '#3b82f6',
+    category: 'system',
+    label: 'Zpráva od administrátora',
+    priority: 'normal',
+    gradient: 'linear-gradient(135deg, #60a5fa, #3b82f6, #2563eb)',
+    borderColor: '#60a5fa',
+    shadowColor: 'rgba(59, 130, 246, 0.3)'
   }
 };
 
@@ -759,8 +771,12 @@ export const createNotification = async (notificationData) => {
     const mappedData = {
       ...notificationData,
       typ: notificationData.type,  // Mapuj type → typ pro backend
+      nadpis: notificationData.title,  // Mapuj title → nadpis
+      zprava: notificationData.message,  // Mapuj message → zprava
       pro_uzivatele_id: notificationData.to_user_id,  // Mapuj to_user_id → pro_uzivatele_id
       pro_vsechny: notificationData.to_all_users,  // Mapuj to_all_users → pro_vsechny
+      priorita: notificationData.priority,  // 🚨 Mapuj priority → priorita
+      kategorie: notificationData.category,  // Mapuj category → kategorie
       odeslat_email: notificationData.send_email,  // Mapuj send_email → odeslat_email
       objekt_typ: notificationData.related_object_type,  // Mapuj related_object_type → objekt_typ
       objekt_id: notificationData.related_object_id  // Mapuj related_object_id → objekt_id
@@ -768,8 +784,12 @@ export const createNotification = async (notificationData) => {
 
     // Odstraň původní FE názvy, které už byly namapovány
     delete mappedData.type;
+    delete mappedData.title;
+    delete mappedData.message;
     delete mappedData.to_user_id;
     delete mappedData.to_all_users;
+    delete mappedData.priority;  // 🚨 Odstraň FE název
+    delete mappedData.category;
     delete mappedData.send_email;
     delete mappedData.related_object_type;
     delete mappedData.related_object_id;
@@ -1304,6 +1324,40 @@ export const notifyTodoAlarm = async (userId, todoData, isExpired = false, isHig
 };
 
 // =============================================================================
+// ADMIN MESSAGES HELPERS
+// =============================================================================
+
+/**
+ * 🆕 Získat počet nepřečtených ADMIN_MESSAGE zpráv pro konkrétního uživatele
+ * Filtruje pouze zprávy ne starší než 7 dní
+ * @param {number} userId - ID uživatele
+ * @returns {Promise<number>} - Počet nepřečtených zpráv
+ */
+export const getAdminMessagesUnreadCount = async (userId) => {
+  try {
+    const auth = await getAuthData();
+    
+    const payload = {
+      ...auth,
+      user_id: userId
+    };
+
+    const response = await notificationsApi.post('/notifications/admin-messages-unread-count', payload);
+    const result = response.data;
+    
+    // Backend vrací {status:'success', data:{unread_count:N}}
+    if (result?.status === 'success') {
+      return result?.data?.unread_count || 0;
+    }
+    return 0;
+
+  } catch (error) {
+    console.error('❌ [NotificationsAPI] Chyba při získávání počtu nepřečtených zpráv:', error);
+    return 0;
+  }
+};
+
+// =============================================================================
 // DEFAULT EXPORT
 // =============================================================================
 
@@ -1328,6 +1382,8 @@ export default {
   notifyUser,
   notifyUsers,
   notifyAll,
+  // Admin messages
+  getAdminMessagesUnreadCount,
   // Order status helpers
   notifyOrderSubmittedForApproval,
   notifyOrderApproved,
@@ -1353,6 +1409,8 @@ export default {
   notifyTodoAlarmExpired,
   // Deprecated
   notifyOrderApprovers,
+  // Admin messages
+  getAdminMessagesUnreadCount,
   // Konstanty
   NOTIFICATION_TYPES,
   NOTIFICATION_CONFIG,
