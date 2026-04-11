@@ -5336,7 +5336,16 @@ function OrderForm25() {
   const disableAutosaveRef = useRef(false); // 🚀 REF pro OKAMŽITOU kontrolu (bez async delay)
   const autoSaveTimerRef = useRef(null); // ⏱️ Timer pro debounce autosave při psaní
 
-  // 🔥 REF pro sledování uploadovaných souborů (prevence duplikace)
+  // � CONFLICT DETECTION: Ukládá dt_aktualizace z DB při načtení objednávky.
+  // Před uložením se porovná s aktuálním DB timestampem - pokud je DB novější,
+  // jiný uživatel provedl změny a uživatel je varován.
+  const serverDtAktualizaceRef = useRef(null);
+
+  // 🔒 CONFLICT DETECTION: state pro dialog konfliktu při uložení
+  const [showConflictDialog, setShowConflictDialog] = useState(false);
+  const [conflictPendingSave, setConflictPendingSave] = useState(null); // uložená funkce pro force save
+
+  // �🔥 REF pro sledování uploadovaných souborů (prevence duplikace)
   const uploadedFilesRef = useRef(new Set());
   const uploadingFilesRef = useRef(new Set());
   
@@ -6098,6 +6107,16 @@ function OrderForm25() {
       // Nastavit finální data (pokud není prázdné)
       if (Object.keys(finalData).length > 0) {
         setFormData(finalData);
+
+        // 🔒 CONFLICT DETECTION: Nastavit server timestamp při načtení objednávky z DB
+        // Používáme loadedData.dt_aktualizace (čerstvá DB hodnota), ne finalData (může být z draftu)
+        console.warn(`🔒 [ConflictDetect] handleDataLoaded BEFORE ref set: loadedData.id=${loadedData?.id}, loadedData.dt_aktualizace=${loadedData?.dt_aktualizace}, finalData.dt_aktualizace=${finalData?.dt_aktualizace}, ref CURRENT=${serverDtAktualizaceRef.current}`);
+        if (loadedData?.id && loadedData?.dt_aktualizace) {
+          serverDtAktualizaceRef.current = loadedData.dt_aktualizace;
+          console.warn(`🔒 [ConflictDetect] handleDataLoaded: ref NASTAVEN na: ${loadedData.dt_aktualizace}`);
+        } else {
+          console.warn(`🔒 [ConflictDetect] handleDataLoaded: ref NEBYL NASTAVEN! loadedData.id=${loadedData?.id}, dt_aktualizace=${loadedData?.dt_aktualizace}`);
+        }
 
         // 🔒 Uložit _enriched financovani data (lp_info + smlouva_info s ke_schvaleni) do separátního state
         // aby nebyla přepsána draft mergem
@@ -6863,6 +6882,12 @@ function OrderForm25() {
               orderNumber: syncCheck.dbData.cislo_objednavky || syncCheck.dbData.ev_cislo
             });
             await draftManager.syncWithDatabase(syncCheck.dbData, syncCheck.dbData.id);
+
+            // 🔒 CONFLICT DETECTION: Nastavit ref na aktuální DB timestamp po DB sync
+            if (syncCheck.dbTimestamp) {
+              serverDtAktualizaceRef.current = syncCheck.dbTimestamp;
+              console.warn(`🔒 [ConflictDetect] loadDraftData/dbSync: ref nastaven na DB timestamp: ${syncCheck.dbTimestamp}`);
+            }
             return;
           }
         }
@@ -6950,6 +6975,25 @@ function OrderForm25() {
             orderId: draftData.formData.id,
             orderNumber: draftData.formData.cislo_objednavky || draftData.formData.ev_cislo
           });
+
+          // 🔒 CONFLICT DETECTION: Získat aktuální DB timestamp při načtení draftu
+          // Draft může být starý hodiny - potřebujeme vědět jaký je AKTUÁLNÍ stav DB
+          const ordIdForTs = draftData.formData.id;
+          try {
+            const freshTs = await getOrderTimestampV2(ordIdForTs, token, username);
+            if (freshTs?.dt_aktualizace) {
+              serverDtAktualizaceRef.current = freshTs.dt_aktualizace;
+              console.warn(`🔒 [ConflictDetect] loadDraftData/draft: ref nastaven na DB timestamp: ${freshTs.dt_aktualizace}`);
+            } else if (draftData.formData.dt_aktualizace) {
+              serverDtAktualizaceRef.current = draftData.formData.dt_aktualizace;
+              console.warn(`🔒 [ConflictDetect] loadDraftData/draft: ref nastaven na DRAFT timestamp (fallback): ${draftData.formData.dt_aktualizace}`);
+            }
+          } catch (tsErr) {
+            if (draftData.formData.dt_aktualizace) {
+              serverDtAktualizaceRef.current = draftData.formData.dt_aktualizace;
+              console.warn(`🔒 [ConflictDetect] loadDraftData/draft: ref nastaven na DRAFT timestamp (error fallback): ${draftData.formData.dt_aktualizace}`);
+            }
+          }
         }
 
       } catch (error) {
@@ -7433,7 +7477,8 @@ function OrderForm25() {
       if (limit <= 0) return false;
       const skutecne = parseFloat(d.skutecne_cerpano) || 0;
       const predpoklad = parseFloat(d.predpokladane_cerpani) || 0;
-      return (skutecne + predpoklad + lpPodil) > limit;
+      const pokladna = parseFloat(d.cerpano_pokladna) || 0;
+      return (skutecne + predpoklad + pokladna + lpPodil) > limit;
     });
   }, [formData?.lp_kod, formData?.max_cena_s_dph, lpDetails]);
 
@@ -7587,6 +7632,29 @@ function OrderForm25() {
             
             // ✅ KRITICKÉ: Nastavit isEditMode state komponenty
             setIsEditMode(true);
+
+            // 🔒 CONFLICT DETECTION: Získat aktuální DB timestamp (draft může být starý)
+            // Vždy se dotážeme DB - ne draft hodnotu (ta může být stará hodiny)
+            try {
+              const freshTs = await getOrderTimestampV2(editOrderId, token, username);
+              if (freshTs?.dt_aktualizace) {
+                const draftDt = existingDraft.formData.dt_aktualizace;
+                if (draftDt && freshTs.dt_aktualizace !== draftDt) {
+                  // DB je novější než draft - jiný uživatel změnil objednávku!
+                  // Odlogovat ale NEBLOKOVAT načtení formuláře - varovat uživatele při save
+                  console.warn(`⚠️ [ConflictDetect] Draft je starší než DB: draft=${draftDt}, DB=${freshTs.dt_aktualizace}`);
+                }
+                // Vždy nastavit ref podle aktuálního DB stavu
+                serverDtAktualizaceRef.current = freshTs.dt_aktualizace;
+              } else if (existingDraft.formData.dt_aktualizace) {
+                serverDtAktualizaceRef.current = existingDraft.formData.dt_aktualizace;
+              }
+            } catch (tsErr) {
+              // Nepodařilo se načíst timestamp - fallback na draft hodnotu
+              if (existingDraft.formData.dt_aktualizace) {
+                serverDtAktualizaceRef.current = existingDraft.formData.dt_aktualizace;
+              }
+            }
 
             return; // HOTOVO - draft načten
           }
@@ -7959,6 +8027,11 @@ function OrderForm25() {
           
           await draftManager.syncWithDatabase(freshDraft.formData, orderId);
           
+          // 🔒 CONFLICT DETECTION: Uložit server timestamp při načtení objednávky
+          if (dbOrder.dt_aktualizace) {
+            serverDtAktualizaceRef.current = dbOrder.dt_aktualizace;
+          }
+
           // DEBUG: localStorage PO syncWithDatabase
           
           // DEBUG: Načtení z DB PO syncWithDatabase
@@ -12070,6 +12143,49 @@ function OrderForm25() {
 
         addDebugLog('info', 'SAVE-V2', 'update-start', `Volam updateOrderV2(${formData.id})`);
 
+        // 🔒 CONFLICT DETECTION: Porovnej timestamp s DB před uložením
+        // Vždy kontroluj v edit mode (formData.id existuje)
+        if (formData.id) {
+          try {
+            const serverTs = await getOrderTimestampV2(formData.id, token, username);
+            const dbDt = serverTs?.dt_aktualizace;
+            console.warn(`🔒 [ConflictDetect] SAVE CHECK: ref=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
+            addDebugLog('info', 'SAVE-V2', 'conflict-check', `ref=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
+            if (dbDt) {
+              if (serverDtAktualizaceRef.current === null) {
+                // Ref nebyl nastaven (edge case) - zkus fallback na formData.dt_aktualizace
+                const fallbackRef = formData.dt_aktualizace;
+                if (fallbackRef && dbDt !== fallbackRef) {
+                  // formData timestamp se liší od DB - CONFLICT!
+                  console.warn(`🔒 [ConflictDetect] ❌ KONFLIKT (fallback)! formData.dt=${fallbackRef} !== DB=${dbDt}`);
+                  addDebugLog('warning', 'SAVE-V2', 'conflict-detected-fallback',
+                    `Konflikt (fallback): formData.dt=${fallbackRef}, DB=${dbDt}`);
+                  setShowConflictDialog(true);
+                  setIsSaving(false);
+                  return;
+                }
+                // Inicializuj ref pro příští save
+                serverDtAktualizaceRef.current = dbDt;
+                console.warn(`🔒 [ConflictDetect] ref byl null, inicializuji na DB=${dbDt}, pokračuji v save`);
+              } else if (dbDt !== serverDtAktualizaceRef.current) {
+                // DB timestamp se liší od toho co jsme načetli - CONFLICT!
+                console.warn(`🔒 [ConflictDetect] ❌ KONFLIKT! ref=${serverDtAktualizaceRef.current} !== DB=${dbDt}`);
+                addDebugLog('warning', 'SAVE-V2', 'conflict-detected',
+                  `Konflikt: načteno=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
+                setShowConflictDialog(true);
+                setIsSaving(false);
+                return; // Přerušit save - čekáme na rozhodnutí uživatele
+              } else {
+                console.warn(`🔒 [ConflictDetect] ✅ OK - timestamps se shodují`);
+              }
+            }
+          } catch (tsErr) {
+            // Chyba při kontrole timestampu - loguj ale pokračuj v save (neblokuj uživatele)
+            console.warn(`🔒 [ConflictDetect] ⚠️ Chyba při kontrole: ${tsErr.message}`);
+            addDebugLog('warning', 'SAVE-V2', 'conflict-check-failed', `Nepodařilo se zkontrolovat timestamp: ${tsErr.message}`);
+          }
+        }
+
         // ⚠️ prepareDataForAPI() se volá automaticky uvnitř updateOrderV2() - NEMĚNIT ZNOVU!
         // const preparedData = prepareDataForAPI(orderData);  ❌ DUPLICITNÍ - již se dělá v updateOrderV2()
 
@@ -12093,7 +12209,16 @@ function OrderForm25() {
           faktury: result.faktury?.length || 0
         });
 
-        // 🔍 DEBUG: Zkontroluj co backend vrací v dodavatel_zpusob_potvrzeni
+        // 🔐 CONFLICT DETECTION: Aktualizovat server timestamp po úspěšném uložení
+        console.warn(`🔒 [ConflictDetect] POST-SAVE: result.dt_aktualizace=${result?.dt_aktualizace}, result dt_ keys=${result ? Object.keys(result).filter(k => k.includes('dt_')).join(',') : 'null'}`);
+        if (result.dt_aktualizace) {
+          serverDtAktualizaceRef.current = result.dt_aktualizace;
+          console.warn(`🔒 [ConflictDetect] POST-SAVE: ref AKTUALIZOVÁN na: ${result.dt_aktualizace}`);
+        } else {
+          console.warn(`🔒 [ConflictDetect] POST-SAVE: ⚠️ result NEMÁ dt_aktualizace! ref zůstává: ${serverDtAktualizaceRef.current}`);
+        }
+
+        // �🔍 DEBUG: Zkontroluj co backend vrací v dodavatel_zpusob_potvrzeni
 
         // Odeslat notifikace při změně workflow stavu
         try {
@@ -20520,13 +20645,14 @@ function OrderForm25() {
                     let zbyva, typCerpani, aktualneCerpani;
                     
                     if (currentPhase <= 2) {
-                      // Fáze 1-2: Poměrné rozdělení MAX CENY mezi vybraná LP
+                      // Fáze 1-2: Zobrazit zbyva_predpoklad (zahrnuje V procesu) minus podíl TÉTO objednávky
+                      // Objednávky "Ke schválení" se nepočítají do predpokladu - proto odečítáme ručně
                       const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
                       const pocetLP = formData.lp_kod.length;
                       const pomernaCast = pocetLP > 0 ? maxCena / pocetLP : 0;
                       
-                      const rezervace = parseFloat(detail.zbyva_rezervace || 0);
-                      zbyva = rezervace - pomernaCast;
+                      const predpoklad = parseFloat(detail.zbyva_predpoklad || detail.zbyva_rezervace || 0);
+                      zbyva = predpoklad - pomernaCast;
                       aktualneCerpani = pomernaCast;
                       typCerpani = 'Rezervace';
                     } else if (currentPhase >= 3 && currentPhase <= 6) {
@@ -22234,9 +22360,8 @@ function OrderForm25() {
                               border: (lpWouldExceedInForm || smlouvaWouldExceedInForm) ? '2px solid #dc2626' : '1px solid #e2e8f0',
                               borderRadius: '8px'
                             }}>
-                              <div style={{ fontWeight: '600', fontSize: '0.875rem', color: '#374151', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <span>{formData.lp_kod?.length > 0 ? '📊' : '📄'}</span>
-                                <span>{formData.lp_kod?.length > 0 ? 'Limitované přísliby' : 'Smlouva'}</span>
+                              <div style={{ fontWeight: '600', fontSize: '0.875rem', color: '#374151', marginBottom: '0.75rem' }}>
+                                {formData.lp_kod?.length > 0 ? 'Limitované přísliby' : 'Smlouva'}
                               </div>
                               {formData.lp_kod.map(lp_id => {
                                 const d = lpDetails[lp_id];
@@ -22248,20 +22373,34 @@ function OrderForm25() {
                                 const limit = parseFloat(d.celkovy_limit) || 0;
                                 const skutecne = parseFloat(d.skutecne_cerpano) || 0;
                                 const predpoklad = parseFloat(d.predpokladane_cerpani) || 0;
+                                const pokladna = parseFloat(d.cerpano_pokladna) || 0;
                                 const lpPodilHere = (parseFloat(formData.max_cena_s_dph) || 0) / (formData.lp_kod.length || 1);
-                                const potentialTotal = skutecne + predpoklad + lpPodilHere;
+                                // potentialTotal: skutečně + plánováno + tato objednávka + pokladna
+                                const potentialTotal = skutecne + predpoklad + pokladna + lpPodilHere;
                                 const wouldExceed = limit > 0 && potentialTotal > limit;
                                 const zbyvaPotential = limit - potentialTotal;
                                 const formatCZK = (v) => new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', maximumFractionDigits: 0 }).format(v);
                                 const lpKodLabel = d.cislo_lp || lp_id;
                                 const lpNazev = d.nazev_uctu || '';
-                                // Další ke schválení na tomto LP z enrichedFinancovani.lp_info
                                 const enrichedLpInfo = enrichedFinancovani.lp_info.find(
                                   li => String(li.id) === String(lp_id) || li.kod === lp_id || li.kod === (d.cislo_lp)
                                 );
                                 const keSchvaleniCastka = parseFloat(enrichedLpInfo?.ke_schvaleni_castka) || 0;
                                 const keSchvaleniPocet = parseInt(enrichedLpInfo?.ke_schvaleni_pocet) || 0;
                                 const wouldExceedIfAll = !wouldExceed && keSchvaleniCastka > 0 && limit > 0 && (potentialTotal + keSchvaleniCastka) > limit;
+                                // Jezevčík výpočty
+                                const currentMonth = new Date().getMonth();
+                                const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
+                                // ✅ PŘESNĚ podle modulu čerpání:
+                                const spentPct = (skutecne / limit) * 100;
+                                const plannedPct = ((predpoklad + pokladna) / limit) * 100;
+                                const totalPct = spentPct + plannedPct;
+                                const isCritical = totalPct > targetPct * 2 || (skutecne / limit) * 100 >= 100;
+                                const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                const baseBarColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+                                const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+                                // wouldExceed = TRUE když limit < potentialTotal (použij pro červený bar!)
                                 return (
                                   <div key={lp_id} style={{ marginBottom: '0.75rem', paddingBottom: '0.75rem', borderBottom: '1px solid #e5e7eb' }}>
                                     <div style={{ fontWeight: '600', fontSize: '0.8125rem', color: wouldExceed ? '#dc2626' : '#1e40af', marginBottom: '0.375rem' }}>
@@ -22272,11 +22411,84 @@ function OrderForm25() {
                                       <span style={{ fontWeight: '600', textAlign: 'right' }}>{formatCZK(limit)}</span>
                                       <span style={{ color: '#6b7280' }}>V procesu:</span>
                                       <span style={{ textAlign: 'right' }}>{formatCZK(predpoklad)}</span>
-                                      <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>Volné:</span>
-                                      <span style={{ fontWeight: '700', textAlign: 'right', color: wouldExceed ? '#dc2626' : '#059669' }}>{formatCZK(zbyvaPotential)}</span>
+                                      <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>
+                                        {wouldExceed ? 'Přečerpáno:' : 'Volné:'}
+                                      </span>
+                                      <span style={{ fontWeight: '700', textAlign: 'right', color: wouldExceed ? '#dc2626' : '#059669' }}>
+                                        {wouldExceed ? `−${formatCZK(Math.abs(zbyvaPotential)).replace(/^[−-]?/, '')}` : formatCZK(zbyvaPotential)}
+                                      </span>
+                                      {pokladna > 0 && <span style={{ color: '#6b7280' }}>Pokladna:</span>}
+                                      {pokladna > 0 && <span style={{ textAlign: 'right' }}>{formatCZK(pokladna)}</span>}
                                       <span style={{ color: '#6b7280' }}>Dokončeno:</span>
                                       <span style={{ textAlign: 'right' }}>{formatCZK(skutecne)}</span>
                                     </div>
+                                    {/* Ježeček progress bar */}
+                                    {limit > 0 && (
+                                      <div style={{ display: 'flex', flexDirection: 'column', width: '100%', marginTop: '0.5rem', paddingTop: '0.5rem', borderTop: '1px solid #f1f5f9' }}>
+                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '4px' }}>Roční plán čerpání</span>
+                                        {/* Header s procenty */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '4px', padding: '0 2px' }}>
+                                          <div style={{ display: 'flex', alignItems: 'baseline' }}>
+                                            <span style={{ fontSize: '1rem', fontWeight: 800, letterSpacing: '-0.02em', color: wouldExceed ? '#ef4444' : baseBarColor }}>{totalPct.toFixed(1)}%</span>
+                                            <span style={{ fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.1em', color: '#94a3b8', marginLeft: '4px' }}>Čerpání</span>
+                                          </div>
+                                          <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                                            <span style={{ display: 'block', fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b' }}>Cíl k datu</span>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#64748b' }}>{targetPct}% ({currentMonthName})</span>
+                                          </div>
+                                        </div>
+                                        {/* Progress bar */}
+                                        <div style={{ position: 'relative', height: '22px', width: '100%', background: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(226,232,240,0.5)' }} title={`Čerpání: ${totalPct.toFixed(1)}% / Cíl: ${targetPct}%`}>
+                                          {/* Měsíční rastr */}
+                                          <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+                                            {Array.from({ length: 12 }).map((_, i) => (
+                                              <div key={i} style={{ flex: 1, borderRight: '1px solid rgba(203,213,225,0.3)', background: i === currentMonth ? 'rgba(100,116,139,0.05)' : 'transparent' }} />
+                                            ))}
+                                          </div>
+                                          {/* Target line */}
+                                          <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${Math.min(targetPct, 100)}%`, width: '2px', background: '#64748b', zIndex: 30, opacity: 0.6 }} />
+                                          {/* DOKONČENO - solid bar */}
+                                          <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', zIndex: 10, transition: 'width 0.5s ease', background: baseBarColor, width: `${Math.min(spentPct, 100)}%` }}>
+                                            <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.1)' }} />
+                                          </div>
+                                          {/* PLÁNOVÁNO (včetně pokladny) - striped bar */}
+                                          {plannedPct > 0 && (() => {
+                                            const plannedWidth = Math.min(plannedPct, Math.max(0, 100 - spentPct));
+                                            return plannedWidth > 0 ? (
+                                              <div style={{
+                                                position: 'absolute',
+                                                top: 0,
+                                                height: '100%',
+                                                left: `${Math.min(spentPct, 100)}%`,
+                                                width: `${plannedWidth}%`,
+                                                zIndex: 5,
+                                                opacity: wouldExceed ? 1 : 0.45,
+                                                backgroundColor: wouldExceed ? '#ef4444' : barColorLight,
+                                                backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,0.3) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.3) 75%, transparent 75%, transparent)',
+                                                backgroundSize: '8px 8px',
+                                                transition: 'width 0.5s ease'
+                                              }} />
+                                            ) : null;
+                                          })()}
+                                        </div>
+                                        {/* Legenda */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '4px', padding: '0 2px' }}>
+                                          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                              <div style={{ width: 5, height: 5, borderRadius: '50%', background: baseBarColor }} />
+                                              <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>Dokončeno</span>
+                                            </div>
+                                            {plannedPct > 0 && (
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                <div style={{ width: 5, height: 5, borderRadius: '50%', background: wouldExceed ? '#ef4444' : barColorLight, opacity: 0.7 }} />
+                                                <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                              </div>
+                                            )}
+                                          </div>
+                                          {wouldExceed && <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#ef4444' }}>⚠ Kritické přečerpání</span>}
+                                        </div>
+                                      </div>
+                                    )}
                                     {keSchvaleniCastka > 0 && (
                                       <button
                                         onClick={(e) => {
@@ -22337,6 +22549,10 @@ function OrderForm25() {
                                 const keSchvaleniPocetS = parseInt(enrichedSmlouvaInfo?.ke_schvaleni_pocet) || 0;
                                 const wouldExceedIfAllS = !wouldExceed && keSchvaleniCastkaS > 0 && celkova > 10 && (potentialTotal + keSchvaleniCastkaS) > celkova;
                                 const hasStropovaCena = celkova > 10;
+                                const percentCompletionS = celkova > 0 ? Math.round((potentialTotal / celkova) * 100) : 0;
+                                const isOverBudgetS = percentCompletionS > 100;
+                                const displayPercentS = Math.min(percentCompletionS, 150);
+                                const barColorS = isOverBudgetS ? '#dc2626' : percentCompletionS > 80 ? '#f59e0b' : '#10b981';
                                 return (
                                   <div style={{ marginBottom: '0.75rem' }}>
                                     <div style={{ fontWeight: '600', fontSize: '0.8125rem', color: wouldExceed ? '#dc2626' : '#1e40af', marginBottom: '0.375rem' }}>
@@ -22350,12 +22566,108 @@ function OrderForm25() {
                                       <span style={{ color: '#6b7280' }}>V procesu:</span>
                                       <span style={{ textAlign: 'right' }}>{formatCZK(cerpano)}</span>
                                       {hasStropovaCena && (<>
-                                        <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>Volné:</span>
-                                        <span style={{ fontWeight: '700', textAlign: 'right', color: wouldExceed ? '#dc2626' : '#059669' }}>{formatCZK(zbyvaPotential)}</span>
+                                        <span style={{ color: wouldExceed ? '#dc2626' : '#059669', fontWeight: '600' }}>
+                                          {wouldExceed ? 'Přečerpáno:' : 'Volné:'}
+                                        </span>
+                                        <span style={{ fontWeight: '700', textAlign: 'right', color: wouldExceed ? '#dc2626' : '#059669' }}>
+                                          {wouldExceed ? `−${formatCZK(Math.abs(zbyvaPotential)).replace(/^[−-]?/, '')}` : formatCZK(zbyvaPotential)}
+                                        </span>
                                       </>)}
                                       <span style={{ color: '#6b7280' }}>Dokončeno:</span>
                                       <span style={{ textAlign: 'right' }}>{formatCZK(parseFloat(smlouvaDetail.cerpano_skutecne || 0))}</span>
                                     </div>
+                                    {/* Roční plán čerpání - Ježeček progress bar */}
+                                    {hasStropovaCena && celkova > 0 && (() => {
+                                      const currentMonth = new Date().getMonth();
+                                      const currentMonthName = new Date().toLocaleDateString('cs-CZ', { month: 'long' });
+                                      const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
+                                      // ✅ PŘESNĚ podle modulu čerpání:
+                                      const cerpanoSkutecneSmlouva = parseFloat(smlouvaDetail.cerpano_skutecne) || 0;
+                                      const spentPct = (cerpanoSkutecneSmlouva / celkova) * 100;
+                                      const plannedPct = ((cerpano - cerpanoSkutecneSmlouva) / celkova) * 100;
+                                      const totalPct = spentPct + plannedPct;
+                                      const isCritical = totalPct > targetPct * 2 || (cerpanoSkutecneSmlouva / celkova) * 100 >= 100;
+                                      const isWarning = !isCritical && totalPct > targetPct * 1.3;
+                                      const baseBarColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+                                      const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+                                      // wouldExceed už je definovaný výš - NEREDEFINUJ!
+
+                                      return (
+                                        <div style={{ marginTop: '0.625rem', paddingTop: '0.5rem', borderTop: '1px solid #f1f5f9' }}>
+                                          <div style={{ marginBottom: '0.5rem' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '0.375rem' }}>
+                                              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.375rem' }}>
+                                                <span style={{ fontSize: '1.125rem', fontWeight: 700, color: wouldExceed ? '#ef4444' : baseBarColor, lineHeight: 1 }}>
+                                                  {totalPct.toFixed(1)}%
+                                                </span>
+                                                <span style={{ fontSize: '0.5625rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8' }}>
+                                                  Čerpání
+                                                </span>
+                                              </div>
+                                              <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
+                                                <div style={{ fontSize: '0.5rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.05em' }}>
+                                                  Cíl k datu
+                                                </div>
+                                                <div style={{ fontSize: '0.6875rem', fontWeight: 700, color: '#475569' }}>
+                                                  {targetPct}% ({currentMonthName})
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div style={{ position: 'relative', width: '100%', height: '22px', backgroundColor: '#f1f5f9', borderRadius: '6px', overflow: 'hidden', border: '1px solid #e2e8f0' }} title={`Čerpání: ${totalPct.toFixed(1)}% / Cíl: ${targetPct}%`}>
+                                              <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+                                                {Array.from({ length: 12 }).map((_, i) => (
+                                                  <div key={i} style={{
+                                                    flex: 1,
+                                                    borderRight: '1px solid rgba(203,213,225,0.3)',
+                                                    background: i === currentMonth ? 'rgba(100,116,139,0.05)' : 'transparent'
+                                                  }} />
+                                                ))}
+                                              </div>
+                                              {/* Target line */}
+                                              <div style={{ position: 'absolute', left: `${Math.min(targetPct, 100)}%`, top: 0, bottom: 0, width: '2px', background: '#475569', zIndex: 25, pointerEvents: 'none', boxShadow: '0 0 4px rgba(71,85,105,0.5)' }} />
+                                              {/* DOKONČENO - solid bar */}
+                                              <div style={{ position: 'absolute', left: 0, top: 0, height: '100%', width: `${Math.min(spentPct, 100)}%`, background: baseBarColor, zIndex: 10, transition: 'width 0.5s ease, background 0.3s ease' }} />
+                                              {/* PLÁNOVÁNO - striped bar */}
+                                              {plannedPct > 0 && (() => {
+                                                const plannedWidth = Math.min(plannedPct, Math.max(0, 100 - spentPct));
+                                                return plannedWidth > 0 ? (
+                                                  <div style={{
+                                                    position: 'absolute',
+                                                    left: `${Math.min(spentPct, 100)}%`,
+                                                    top: 0,
+                                                    height: '100%',
+                                                    width: `${plannedWidth}%`,
+                                                    background: `repeating-linear-gradient(45deg, ${wouldExceed ? '#ef4444' : barColorLight}, ${wouldExceed ? '#ef4444' : barColorLight} 6px, transparent 6px, transparent 12px)`,
+                                                    opacity: wouldExceed ? 1 : 0.45,
+                                                    zIndex: 5,
+                                                    transition: 'width 0.5s ease, left 0.5s ease'
+                                                  }} />
+                                                ) : null;
+                                              })()}
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.375rem' }}>
+                                              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: baseBarColor }} />
+                                                  <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>Dokončeno</span>
+                                                </div>
+                                                {plannedPct > 0 && (
+                                                  <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                                                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: wouldExceed ? '#ef4444' : barColorLight, opacity: 0.7 }} />
+                                                    <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#94a3b8' }}>V procesu</span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                              {wouldExceed && (
+                                                <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase', color: '#ef4444' }}>
+                                                  ⚠ Kritické přečerpání
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
                                     {keSchvaleniCastkaS > 0 && (
                                       <button
                                         onClick={(e) => {
@@ -28886,6 +29198,46 @@ function OrderForm25() {
       />
     )}
 
+    {/* 🔒 CONFLICT DETECTION: Dialog při detekci konfliktu (jiný uživatel změnil objednávku) */}
+    {showConflictDialog && (
+      <ConfirmDialog
+        isOpen={showConflictDialog}
+        title="⚠️ Objednávka byla změněna jiným uživatelem"
+        icon={faExclamationTriangle}
+        variant="warning"
+        confirmText="Načíst aktuální data"
+        showCancel={false}
+        onConfirm={() => {
+          // Načíst aktuální data z DB (zahodit lokální změny)
+          setShowConflictDialog(false);
+          if (formData.id) {
+            getOrderV2(formData.id, token, username, true)
+              .then(freshData => {
+                if (freshData) {
+                  const transformed = transformBackendDataToFrontend(freshData);
+                  setFormData(prev => ({ ...prev, ...transformed }));
+                  // Aktualizovat server timestamp
+                  if (freshData.dt_aktualizace) {
+                    serverDtAktualizaceRef.current = freshData.dt_aktualizace;
+                    console.warn(`🔒 [ConflictDetect] Ref aktualizován po reload: ${freshData.dt_aktualizace}`);
+                  }
+                  showToast && showToast('Objednávka byla znovu načtena z databáze. Zkontrolujte data a uložte znovu.', { type: 'info' });
+                }
+              })
+              .catch(err => {
+                showToast && showToast('Nepodařilo se načíst aktuální data objednávky.', { type: 'error' });
+              });
+          }
+        }}
+        onClose={() => {
+          setShowConflictDialog(false);
+        }}
+      >
+        <p>Objednávka <strong>{formData.cislo_objednavky || formData.ev_cislo || `#${formData.id}`}</strong> byla od doby, kdy jste ji otevřeli, změněna jiným uživatelem.</p>
+        <p style={{ marginTop: '0.75rem', fontWeight: 'bold', color: '#c0392b' }}>Uložení není možné. Musíte nejprve načíst aktuální data z databáze a poté provést své změny znovu.</p>
+      </ConfirmDialog>
+    )}
+
     {/* 🏢 Dialog pro přidání dodavatele do adresáře */}
     <SupplierAddDialog
       isOpen={showSupplierAddDialog}
@@ -28930,7 +29282,7 @@ function OrderForm25() {
       />
     )}
 
-    {/* � Financial Control Confirmation Modal - Potvrzení dokončení objednávky */}
+    {/* Financial Control Confirmation Modal - Potvrzeni dokonceni objednavky */}
     {showFinancialControlConfirmation && (
       <FinancialControlConfirmationModal
         order={formData}
