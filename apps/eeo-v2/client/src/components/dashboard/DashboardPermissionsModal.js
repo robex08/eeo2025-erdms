@@ -207,7 +207,9 @@ const WIDGET_LABELS = {
   DASHBOARD_CHART_TIMELINE:      'Graf objednávek v čase',
   DASHBOARD_TOP_SUPPLIERS:       'Top dodavatelé',
   DASHBOARD_CHART_MAJETEK:       'Graf majetku podle druhu',
-  DASHBOARD_CHART_FEES:          'Graf ročních poplatků'
+  DASHBOARD_CHART_FEES:          'Graf ročních poplatků',
+  DASHBOARD_WEATHER:             'Počasí',
+  DASHBOARD_CALENDAR:            'Kalendář'
 };
 
 // ============================================================================
