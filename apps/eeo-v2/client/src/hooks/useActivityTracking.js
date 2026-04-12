@@ -94,8 +94,8 @@ export const useActivityTracking = () => {
    */
   const getModuleName = (pathname) => {
     const moduleMap = {
-      '/': 'Dashboard',
-      '/dashboard': 'Dashboard',
+      '/': 'Domovská stránka',
+      '/dashboard': 'Domovská stránka',
       '/orders25-list': 'Objednávky',
       '/order-form-25': 'Formulář objednávky',
       '/invoices25-list': 'Faktury',

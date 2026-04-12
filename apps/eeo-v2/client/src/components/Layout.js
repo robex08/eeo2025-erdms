@@ -3453,7 +3453,7 @@ const Layout = ({ children }) => {
             </MenuCornerLeft>
           )}
           <MenuLeft ref={menuLeftRef}>
-            <SmartTooltip content="Dashboard" position="bottom">
+            <SmartTooltip content="Domovská stránka" position="bottom">
               <MenuLinkLeft to="/dashboard" style={{ fontSize: '1.02em', padding: '0.35em 0.55em' }}>
                 <FontAwesomeIcon icon={faHome} style={{ marginRight: 0, fontSize: '1.05em' }} />
               </MenuLinkLeft>

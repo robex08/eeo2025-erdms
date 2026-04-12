@@ -863,7 +863,7 @@ const AppSettings = () => {
                 <FontAwesomeIcon icon={faExclamationTriangle} />
                 <div>
                   <strong>Zastupování je vypnuto!</strong><br />
-                  Uživatelé nemohou nastavovat zastupce a aktivní zastupování nebude fungovat. Dashboard a ostatní části systému zobrazují pouze vlastní data uživatele.
+                  Uživatelé nemohou nastavovat zastupce a aktivní zastupování nebude fungovat. Domovská stránka a ostatní části systému zobrazují pouze vlastní data uživatele.
                 </div>
               </WarningBox>
             )}
@@ -963,10 +963,10 @@ const AppSettings = () => {
               <SettingInfo>
                 <SettingLabel>
                   <FontAwesomeIcon icon={faRss} />
-                  Povolit RSS feed na dashboardu
+                  Povolit RSS feed na domovské stránce
                 </SettingLabel>
                 <SettingDescription>
-                  Zobrazí widget s novinkami z nakonfigurovaných RSS feedů na dashboardu uživatelů.
+                  Zobrazí widget s novinkami z nakonfigurovaných RSS feedů na domovské stránce uživatelů.
                 </SettingDescription>
               </SettingInfo>
               <ToggleButton
@@ -986,7 +986,7 @@ const AppSettings = () => {
                       RSS Feedy
                     </SettingLabel>
                     <SettingDescription>
-                      Zadejte URL adresy RSS feedů, které se budou zobrazovat na dashboardu.
+                      Zadejte URL adresy RSS feedů, které se budou zobrazovat na domovské stránce.
                     </SettingDescription>
                     
                     {(() => {
@@ -1088,7 +1088,7 @@ const AppSettings = () => {
                         Max. počet článků
                       </SettingLabel>
                       <SettingDescription>
-                        Maximální počet zobrazených článků na dashboardu.
+                        Maximální počet zobrazených článků na domovské stránce.
                       </SettingDescription>
                       <Select
                         value={settings.rss_max_items || 10}

@@ -197,7 +197,9 @@ const PermSource = styled.span`
 const norm = (s) => (s || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 
 const WIDGET_LABELS = {
+  DASHBOARD_WELCOME:             'Přehled',
   DASHBOARD_ORDERS_STATS:        'Statistiky objednávek',
+  DASHBOARD_MY_ORDERS:           'Moje objednávky',
   DASHBOARD_INVOICES_CONFIRM:    'Faktury k potvrzení',
   DASHBOARD_ORDERS_APPROVE:      'Ke schválení',
   DASHBOARD_INVOICES_OVERDUE:    'Faktury po splatnosti',
@@ -211,6 +213,12 @@ const WIDGET_LABELS = {
   DASHBOARD_TOP_SUPPLIERS:       'Top dodavatelé',
   DASHBOARD_CHART_MAJETEK:       'Graf majetku podle druhu',
   DASHBOARD_CHART_FEES:          'Graf ročních poplatků',
+  DASHBOARD_ANNUAL_FEES:         'Roční poplatky - splatnost',
+  DASHBOARD_CASH_BOOK:           'Pokladna - přehled',
+  DASHBOARD_NOTIFICATIONS:       'Notifikace',
+  DASHBOARD_RSS_NEWS:            'Zprávy (RSS)',
+  DASHBOARD_ORDER_COMMENTS:      'Komentáře k objednávkám',
+  DASHBOARD_ALERTS:              'Upozornění',
   DASHBOARD_WEATHER:             'Počasí',
   DASHBOARD_FINANCE_MARKETS:     'Finanční trhy (krypto + FX)',
   DASHBOARD_CALENDAR:            'Kalendář'
@@ -385,7 +393,7 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
         <Header>
           <h2>
             <FontAwesomeIcon icon={faUserShield} style={{ color: '#7c3aed' }} />
-            Správa oprávnění dashboardu
+            Správa oprávnění domovské stránky
           </h2>
           <CloseBtn onClick={onClose}><FontAwesomeIcon icon={faTimes} /></CloseBtn>
         </Header>

@@ -580,9 +580,9 @@ const PostLoginModal = ({
             {primaryButtonLabel}
           </OkButton>
           {hasReachedEnd && (
-            <DashboardButton onClick={() => { onClose?.(); navigate('/dashboard'); }} title="Zavřít a přejít na Dashboard">
+            <DashboardButton onClick={() => { onClose?.(); navigate('/dashboard'); }} title="Zavřít a přejít na Domovskou stránku">
               <FontAwesomeIcon icon={faHome} />
-              Dashboard
+              Domovská stránka
             </DashboardButton>
           )}
         </Actions>
