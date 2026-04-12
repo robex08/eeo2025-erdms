@@ -203,6 +203,7 @@ const PermList = styled.div`
   display: flex;
   flex-wrap: wrap;
   gap: 0.3rem;
+  max-width: 340px;
 `;
 
 // ─── Akce tlačítka ────────────────────────────────────────────────────────────
@@ -446,6 +447,17 @@ function isFuture(sub) {
 }
 
 const STATUS_LABELS = { active: 'Aktivní', future: 'Plánované', past: 'Ukončeno' };
+
+function getPermissionLabel(key, value) {
+  if (key === 'view_scope') {
+    return value === 'inherit' ? 'Rozsah zobrazení: Dědit práva' : 'Rozsah zobrazení: Vlastní';
+  }
+  if (key === 'approve_scope') {
+    return value === 'inherit' ? 'Rozsah schvalování: Dědit práva' : 'Rozsah schvalování: Vlastní';
+  }
+  const m = OPRAVNENI_META.find(x => x.key === key);
+  return m?.label || key;
+}
 
 const OPRAVNENI_META = [
   {
@@ -809,6 +821,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                 <Th>Email</Th>
                 <Th>Telefon</Th>
                 <Th>Období</Th>
+                <Th>Ukončeno</Th>
                 <Th>Oprávnění</Th>
                 <Th>Stav</Th>
                 <Th style={{ width: 80 }}>Akce</Th>
@@ -817,7 +830,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
             <tbody>
               {rows.length === 0 ? (
                 <EmptyRow>
-                  <td colSpan={5}>
+                  <td colSpan={8}>
                     <EmptyIcon><UserCheck size={24} /></EmptyIcon>
                     <div style={{ fontWeight: 600, color: '#475569', marginBottom: '.25rem' }}>Žádné zastupování</div>
                     <div style={{ fontSize: '.8rem' }}>Klikněte na „+ Přidat" a nastavte svého zástupce.</div>
@@ -863,13 +876,22 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                         {formatDate(sub.dt_od)} – {formatDate(sub.dt_do)}
                       </div>
                     </Td>
+                    <Td style={{ fontSize: '.75rem', color: sub.dt_ukonceni ? '#dc2626' : '#94a3b8', whiteSpace: 'nowrap' }}>
+                      {sub.dt_ukonceni ? (
+                        <div title={`Předčasně ukončeno: ${sub.dt_ukonceni}`}>
+                          ⛔ {formatDate(sub.dt_ukonceni.substring(0, 10))}
+                        </div>
+                      ) : sub.aktivni === 0 ? (
+                        <span style={{ color: '#94a3b8' }}>{sub.dt_do ? formatDate(sub.dt_do) : '—'}</span>
+                      ) : '–'}
+                    </Td>
                     <Td>
                       <PermList>
                         {Object.entries(perms)
                           .filter(([k, v]) => v && k !== 'notify_zastupce')
-                          .map(([k]) => {
-                            const m = OPRAVNENI_META.find(x => x.key === k);
-                            return m ? <PermPill key={k}>{m.label}</PermPill> : null;
+                          .map(([k, v]) => {
+                            const label = getPermissionLabel(k, v);
+                            return label ? <PermPill key={k}>{label}</PermPill> : null;
                           })}
                       </PermList>
                     </Td>
@@ -930,6 +952,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                 <Th>Email</Th>
                 <Th>Telefon</Th>
                 <Th>Období</Th>
+                <Th>Ukončeno</Th>
                 <Th>Oprávnění</Th>
                 <Th>Stav</Th>
                 <Th style={{ width: 60 }}>Akce</Th>
@@ -938,14 +961,14 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
             <tbody>
               {adminLoading ? (
                 <EmptyRow>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <SpinIcon size={22} style={{ display: 'block', margin: '0 auto .5rem', color: '#94a3b8' }} />
                     <div style={{ color: '#94a3b8' }}>Načítám…</div>
                   </td>
                 </EmptyRow>
               ) : adminSubstitutions.length === 0 ? (
                 <EmptyRow>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <EmptyIcon><Users size={22} /></EmptyIcon>
                     <div style={{ fontSize: '.82rem', color: '#94a3b8' }}>Žádná zastupování v systému</div>
                   </td>
@@ -979,13 +1002,21 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                         {formatDate(s.dt_od)} – {formatDate(s.dt_do)}
                       </div>
                     </Td>
+                    <Td style={{ fontSize: '.75rem', color: s.dt_ukonceni ? '#dc2626' : '#94a3b8', whiteSpace: 'nowrap' }}>
+                      {s.dt_ukonceni ? (
+                        <div title={`Předčasně ukončeno: ${s.dt_ukonceni}`}>
+                          ⛔ {formatDate(s.dt_ukonceni.substring(0, 10))}
+                        </div>
+                      ) : !s.aktivni ? (
+                        <span style={{ color: '#94a3b8' }}>{s.dt_do ? formatDate(s.dt_do) : '—'}</span>
+                      ) : '–'}
+                    </Td>
                     <Td>
                       <PermList>
                         {Object.entries(perms)
                           .filter(([k, v]) => v && k !== 'notify_zastupce')
-                          .map(([k]) => {
-                            const m = OPRAVNENI_META.find(x => x.key === k);
-                            return <PermPill key={k}>{m?.label || k}</PermPill>;
+                          .map(([k, v]) => {
+                            return <PermPill key={k}>{getPermissionLabel(k, v)}</PermPill>;
                           })}
                       </PermList>
                     </Td>

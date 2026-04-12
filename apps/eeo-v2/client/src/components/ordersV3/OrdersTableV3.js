@@ -51,6 +51,7 @@ import {
   faBoltLightning,
   faGripVertical,
   faEyeSlash,
+  faEye,
   faTimes,
   faUndo,
   faTrash,
@@ -544,7 +545,7 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
     CEKA_SE: {
       date: order.dt_schvaleni,
       user: formatUserName(order.schvalovatel_jmeno, order.schvalovatel_prijmeni, order.schvalovatel_titul_pred, order.schvalovatel_titul_za),
-      label: 'Čeká se (odložena)',
+      label: 'Odloženo',
       extra: order.schvaleni_komentar || null
     },
     ZRUSENA: {
@@ -2003,6 +2004,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
+    'Odloženo': 'CEKA_SE',
     'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
     'Zkontrolovaná': 'ZKONTROLOVANA',
@@ -3104,7 +3106,7 @@ const OrdersTableV3 = ({
         case 'postpone':
           // Odložit - přidej CEKA_SE (také zaznamenat kdo a kdy)
           newWorkflowStates.push('CEKA_SE');
-          orderUpdate.stav_objednavky = 'Čeká se';
+          orderUpdate.stav_objednavky = 'Odloženo';
           orderUpdate.schvalovatel_id = userId;
           break;
 
@@ -4647,10 +4649,9 @@ const OrdersTableV3 = ({
               <ActionMenuButton
                 className="edit"
                 onClick={() => onActionClick?.('edit', order)}
-                title="Editovat"
-                disabled={!canEdit(order)}
+                title={canEdit(order) ? 'Editovat' : 'Zobrazit (náhled)'}
               >
-                <FontAwesomeIcon icon={faEdit} />
+                <FontAwesomeIcon icon={canEdit(order) ? faEdit : faEye} />
               </ActionMenuButton>
               
               <ActionMenuButton

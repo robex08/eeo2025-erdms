@@ -225,7 +225,7 @@ export const filterByStatus = (order, filterValue, getOrderDisplayStatus) => {
     'ODESLANA_KE_SCHVALENI': 'Ke schválení',
     'SCHVALENA': 'Schválená',
     'ZAMITNUTA': 'Zamítnutá',
-    'CEKA_SE': 'Čeká se',
+    'CEKA_SE': 'Odloženo',
     'ROZPRACOVANA': 'Rozpracovaná',
     'ODESLANA': 'Odeslaná dodavateli',
     'POTVRZENA': 'Potvrzená dodavatelem',

@@ -332,7 +332,8 @@ function handle_substitution_list($data, $pdo) {
                 'dt_do' => $row['dt_do'],
                 'opravneni' => _substitution_decode_opravneni($row['opravneni']),
                 'popis' => $row['popis'],
-                'aktivni' => (int)$row['aktivni']
+                'aktivni' => (int)$row['aktivni'],
+                'dt_ukonceni' => $row['dt_ukonceni'] ?? null
             );
         }
 
@@ -843,10 +844,15 @@ function handle_substitution_admin_list($data, $pdo) {
                 'popis'                 => $row['popis'],
                 'aktivni'               => (bool)$row['aktivni'],
                 'dt_vytvoreni'          => $row['dt_vytvoreni'],
+                'dt_ukonceni'           => $row['dt_ukonceni'] ?? null,
                 'zastupovany_username'  => $row['zastupovany_username'],
                 'zastupovany_jmeno'     => trim($row['zastupovany_jmeno'] . ' ' . $row['zastupovany_prijmeni']),
+                'zastupovany_email'     => $row['zastupovany_email'] ?? '',
+                'zastupovany_telefon'   => $row['zastupovany_telefon'] ?? '',
                 'zastupce_username'     => $row['zastupce_username'],
                 'zastupce_jmeno'        => trim($row['zastupce_jmeno'] . ' ' . $row['zastupce_prijmeni']),
+                'zastupce_email'        => $row['zastupce_email'] ?? '',
+                'zastupce_telefon'      => $row['zastupce_telefon'] ?? '',
             );
         }
 
@@ -920,6 +926,279 @@ function log_zastupovani_akce($pdo, $zastupovani_id, $zastupce_id, $zastupovany_
         return true;
     } catch (PDOException $e) {
         error_log("log_zastupovani_akce DB error: " . $e->getMessage() . " | zastupovani_id=$zastupovani_id akce=$akce_typ");
+        return false;
+    }
+}
+
+// ============ SYSTÉMOVÉ NASTAVENÍ ZASTUPOVÁNÍ ============
+
+/**
+ * Zkontroluje, zda je funkce zastupování globálně aktivní v systému
+ * Kontroluje nastavení v tabulce 25a_nastaveni_globalni (klic: 'substitution_enabled')
+ * 
+ * @param PDO $pdo Database connection
+ * @return bool TRUE pokud je zastupování zapnuté, FALSE pokud vypnuté nebo nenalezeno
+ */
+function isSubstitutionEnabled($pdo) {
+    try {
+        // Zkusit načíst nastavení z 25a_nastaveni_globalni
+        $stmt = $pdo->prepare("
+            SELECT hodnota 
+            FROM " . TBL_NASTAVENI_GLOBALNI . " 
+            WHERE klic = 'substitution_enabled'
+            LIMIT 1
+        ");
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($row) {
+            $enabled = (int)$row['hodnota'] === 1;
+            error_log("🔍 SUBSTITUTION: System setting loaded - substitution_enabled = " . ($enabled ? 'YES' : 'NO'));
+            return $enabled;
+        }
+        
+        // Pokud záznam neexistuje → DEFAULTNĚ VYPNUTO (bezpečná varianta)
+        error_log("⚠️ SUBSTITUTION: Setting 'substitution_enabled' not found in DB - defaulting to DISABLED");
+        return false;
+        
+    } catch (PDOException $e) {
+        error_log("❌ SUBSTITUTION: Error checking system setting: " . $e->getMessage());
+        // V případě chyby → VYPNUTO (fail-safe)
+        return false;
+    }
+}
+
+// ============ HELPER FUNKCE PRO ROZŠÍŘENÍ PRÁV ============
+
+/**
+ * Zjistí všechna user_id která má uživatel vidět (vlastní + zastupovaní).
+ * Používá se pro rozšíření viditelnosti dat v dashboardu a endpointech.
+ * 
+ * ⚠️ KONTROLUJE APP SETTING: Pokud je zastupování vypnuto → vrací pouze vlastní ID.
+ * 
+ * Podporuje SCOPE systém:
+ * - view_scope = "own" (výchozí) → zástupce vidí jen záznamy kde je zastupovaný účastníkem
+ * - view_scope = "inherit" → zástupce ZDĚDÍ kompletní přístupovou úroveň zastupovaného
+ *   (pokud je zastupovaný admin → zástupce vidí VŠE, pokud má _SUBORDINATE → vidí i podřízené)
+ * 
+ * @param PDO $pdo PDO instance
+ * @param int $user_id ID přihlášeného uživatele
+ * @param array $required_permissions Jaká oprávnění musí být v zastupování (např. ['view'])
+ * @param array|null &$scope_info Volitelný výstupní parametr s rozšířenými info o scope
+ * @return array Pole user_id (vždy obsahuje minimálně vlastní ID)
+ */
+function get_user_ids_with_substitution($pdo, $user_id, $required_permissions = ['view'], &$scope_info = null) {
+    $user_ids = [(int)$user_id]; // Vždy vlastní ID
+    
+    // Inicializace scope_info
+    $scope_info = [
+        'has_inherit_full_access' => false,
+        'inherit_subordinate_ids' => [],
+    ];
+    
+    // ⚠️ KONTROLA APP SETTING - pokud je zastupování vypnuto → vrátit pouze vlastní ID
+    if (!isSubstitutionEnabled($pdo)) {
+        error_log("🔍 SUBSTITUTION: System disabled → returning only own user_id=$user_id");
+        return $user_ids;
+    }
+    
+    try {
+        // Kontrola aktivního zastupování (dnes platné)
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT z.zastupovany_id, z.opravneni
+            FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+            WHERE z.zastupce_id = :user_id
+              AND z.aktivni = 1
+              AND z.dt_od <= CURDATE()
+              AND z.dt_do >= CURDATE()
+        ");
+        $stmt->execute([':user_id' => $user_id]);
+        
+        $count_substitutions = 0;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            // Dekódování oprávnění z JSON
+            $opravneni = json_decode($row['opravneni'], true);
+            if (!is_array($opravneni)) {
+                continue; // Pokud JSON je neplatný, přeskočit
+            }
+            
+            // Kontrola požadovaných oprávnění
+            $has_all_required = true;
+            foreach ($required_permissions as $perm) {
+                if (empty($opravneni[$perm])) {
+                    $has_all_required = false;
+                    break;
+                }
+            }
+            
+            if (!$has_all_required) {
+                continue;
+            }
+            
+            $zastupovany_id = (int)$row['zastupovany_id'];
+            $user_ids[] = $zastupovany_id;
+            $count_substitutions++;
+            
+            // === SCOPE SYSTÉM ===
+            // Určení scope klíče podle požadovaného oprávnění
+            $scope_key = 'view_scope'; // default
+            if (in_array('approve', $required_permissions)) {
+                $scope_key = 'approve_scope';
+            }
+            $scope = $opravneni[$scope_key] ?? 'own';
+            
+            error_log("🔍 SUBSTITUTION: User $user_id zastupuje user $zastupovany_id, scope=$scope (key=$scope_key)");
+            
+            if ($scope === 'inherit') {
+                // INHERIT: Zdědí kompletní přístupovou úroveň zastupovaného uživatele
+                error_log("🔍 SUBSTITUTION INHERIT: Načítám oprávnění zastupovaného uživatele $zastupovany_id");
+                
+                // Načti role zastupovaného
+                $sub_roles = function_exists('getUserRoles') ? getUserRoles($zastupovany_id, $pdo) : [];
+                $sub_permissions = function_exists('getUserOrderPermissions') ? getUserOrderPermissions($zastupovany_id, $pdo) : [];
+                
+                error_log("🔍 SUBSTITUTION INHERIT: User $zastupovany_id roles=" . implode(',', $sub_roles) . " perms=" . implode(',', $sub_permissions));
+                
+                // Kontrola admin přístupu zastupovaného
+                $isSubAdmin = in_array('SUPERADMIN', $sub_roles) || in_array('ADMINISTRATOR', $sub_roles);
+                $hasSubReadAll = in_array('ORDER_READ_ALL', $sub_permissions) || in_array('ORDER_VIEW_ALL', $sub_permissions);
+                
+                if ($isSubAdmin || $hasSubReadAll) {
+                    $scope_info['has_inherit_full_access'] = true;
+                    error_log("✅ SUBSTITUTION INHERIT: Zastupovaný user $zastupovany_id je ADMIN → zástupce $user_id získává PLNÝ PŘÍSTUP");
+                }
+                
+                // Kontrola subordinate přístupu zastupovaného
+                $hasSubReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $sub_permissions) || in_array('ORDER_EDIT_SUBORDINATE', $sub_permissions);
+                if ($hasSubReadSubordinate && function_exists('getUserDepartmentColleagueIds')) {
+                    $sub_colleagues = getUserDepartmentColleagueIds($zastupovany_id, $pdo);
+                    if (!empty($sub_colleagues)) {
+                        $scope_info['inherit_subordinate_ids'] = array_merge(
+                            $scope_info['inherit_subordinate_ids'],
+                            array_map('intval', $sub_colleagues)
+                        );
+                        error_log("✅ SUBSTITUTION INHERIT: Přidáno " . count($sub_colleagues) . " podřízených uživatele $zastupovany_id");
+                    }
+                }
+            } else {
+                error_log("🔍 SUBSTITUTION OWN: User $user_id vidí jen záznamy uživatele $zastupovany_id (scope=own)");
+            }
+        }
+        
+        // Deduplikace inherit_subordinate_ids
+        if (!empty($scope_info['inherit_subordinate_ids'])) {
+            $scope_info['inherit_subordinate_ids'] = array_values(array_unique($scope_info['inherit_subordinate_ids']));
+        }
+        
+        if ($count_substitutions > 0) {
+            error_log("✅ SUBSTITUTION: User $user_id má rozšířenou viditelnost na " . count($user_ids) . " uživatelů (vlastní + $count_substitutions zastupovaných)" .
+                ($scope_info['has_inherit_full_access'] ? ' [INHERIT FULL ACCESS]' : '') .
+                (!empty($scope_info['inherit_subordinate_ids']) ? ' [+' . count($scope_info['inherit_subordinate_ids']) . ' subordinates]' : ''));
+        } else {
+            error_log("🔍 SUBSTITUTION: User $user_id nemá žádné aktivní zastupování s požadovanými oprávněními");
+        }
+        
+        return array_unique($user_ids);
+        
+    } catch (PDOException $e) {
+        error_log("❌ SUBSTITUTION: Chyba při načítání zastupování: " . $e->getMessage());
+        // V případě chyby vrátit pouze vlastní ID (fail-safe)
+        $scope_info = ['has_inherit_full_access' => false, 'inherit_subordinate_ids' => []];
+        return [(int)$user_id];
+    }
+}
+
+/**
+ * Zjistí zda uživatel někoho aktivně zastupuje (s konkrétním oprávněním).
+ * Vrací info o zastupování včetně oprávnění.
+ * Používá se při akcích (schvalování, potvrzování) pro detekci a logování.
+ * 
+ * ⚠️ KONTROLUJE APP SETTING: Pokud je zastupování vypnuto → vrací NULL.
+ * 
+ * @param PDO $pdo PDO instance
+ * @param int $zastupce_id ID zástupce (přihlášený user)
+ * @param string $required_permission Požadované oprávnění (view, approve, confirm...)
+ * @return array|null Pole s info [zastupovani_id, zastupovany_id, opravneni] nebo NULL
+ */
+function get_active_substitution_for_action($pdo, $zastupce_id, $required_permission = 'approve') {
+    // ⚠️ KONTROLA APP SETTING - pokud je zastupování vypnuto → vrátit NULL
+    if (!isSubstitutionEnabled($pdo)) {
+        return null;
+    }
+    
+    try {
+        $stmt = $pdo->prepare("
+            SELECT z.id, z.zastupovany_id, z.opravneni
+            FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+            WHERE z.zastupce_id = :zastupce_id
+              AND z.aktivni = 1
+              AND z.dt_od <= CURDATE()
+              AND z.dt_do >= CURDATE()
+            LIMIT 1
+        ");
+        $stmt->execute([':zastupce_id' => $zastupce_id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$row) {
+            return null; // Neexistuje aktivní zastupování
+        }
+        
+        $opravneni = json_decode($row['opravneni'], true);
+        if (!is_array($opravneni) || empty($opravneni[$required_permission])) {
+            error_log("🔍 SUBSTITUTION: User $zastupce_id zastupuje, ale NEMÁ oprávnění '$required_permission'");
+            return null; // Nemá požadované oprávnění
+        }
+        
+        error_log("✅ SUBSTITUTION: User $zastupce_id aktivně zastupuje user " . $row['zastupovany_id'] . " s oprávněním '$required_permission'");
+        
+        return [
+            'zastupovani_id' => (int)$row['id'],
+            'zastupovany_id' => (int)$row['zastupovany_id'],
+            'opravneni' => $opravneni
+        ];
+        
+    } catch (PDOException $e) {
+        error_log("❌ SUBSTITUTION: Chyba při kontrole aktivního zastupování: " . $e->getMessage());
+        return null;
+    }
+}
+
+/**
+ * Zapíše audit log akce provedené v zastoupení.
+ * Tabulka: 25_zastupovani_akce_log
+ * 
+ * @param PDO $pdo PDO instance
+ * @param int $zastupovani_id ID záznamu zastupování
+ * @param int $zastupce_id ID zástupce (kdo akci provedl)
+ * @param int $zastupovany_id ID zastupovaného (v čí prospěch)
+ * @param string $akce_typ Typ akce (APPROVE, CONFIRM, REJECT, VIEW, EDIT...)
+ * @param string $objekt_typ Typ objektu (OBJEDNAVKA, FAKTURA, SMLOUVA...)
+ * @param int|null $objekt_id ID objektu (číslo objednávky, faktury apod.)
+ * @param string $popis_akce Textový popis akce
+ * @return bool Úspěch zápisu
+ */
+function log_substitution_action($pdo, $zastupovani_id, $zastupce_id, $zastupovany_id, $akce_typ, $objekt_typ, $objekt_id = null, $popis_akce = '') {
+    try {
+        $stmt = $pdo->prepare("
+            INSERT INTO `" . TBL_ZASTUPOVANI_AKCE_LOG . "` 
+            (zastupovani_id, zastupce_id, zastupovany_id, akce_typ, objekt_typ, objekt_id, popis_akce, dt_akce)
+            VALUES (:zast_id, :zastupce, :zastupovany, :akce, :objekt, :objekt_id, :popis, NOW())
+        ");
+        $stmt->execute([
+            ':zast_id' => $zastupovani_id,
+            ':zastupce' => $zastupce_id,
+            ':zastupovany' => $zastupovany_id,
+            ':akce' => $akce_typ,
+            ':objekt' => $objekt_typ,
+            ':objekt_id' => $objekt_id,
+            ':popis' => $popis_akce
+        ]);
+        
+        error_log("📝 SUBSTITUTION AUDIT: $akce_typ on $objekt_typ #$objekt_id by user $zastupce_id (v zastoupení user $zastupovany_id)");
+        return true;
+        
+    } catch (PDOException $e) {
+        error_log("❌ SUBSTITUTION AUDIT ERROR: " . $e->getMessage());
         return false;
     }
 }

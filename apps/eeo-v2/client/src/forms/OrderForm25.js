@@ -4325,6 +4325,7 @@ function OrderForm25() {
   
   // 🎯 PERSISTENCE: Čti editOrderId z URL nebo z draftManager
   const editOrderIdFromUrl = urlParams.get('edit');
+  const isViewOnly = urlParams.get('viewOnly') === '1'; // 🔍 Režim náhledu (zastupování bez edit práv)
   const metadata = draftManager.getMetadata();
   const editOrderIdFromLS = metadata?.editOrderId;
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
@@ -5132,10 +5133,10 @@ function OrderForm25() {
         description: 'Objednávka nebyla schválena'
       },
       'CEKA_SE': {
-        text: 'Čeká se na rozhodnutí',
+        text: 'Odloženo',
         icon: '⏳',
         type: 'warning',
-        description: 'Čeká se na další kroky'
+        description: 'Rozhodnutí bylo odloženo'
       },
       'ROZPRACOVANA': {
         text: 'Rozpracovaná objednávka',
@@ -7096,7 +7097,7 @@ function OrderForm25() {
   const canEditApprovedSections = canApproveOrders || canManageOrders;
   const canPublishRegistry = hasPermission && hasPermission('ORDER_PUBLISH_REGISTRY'); // 🆕 Pro editaci polí registru smluv
   const canManageInvoices = hasPermission && hasPermission('INVOICE_MANAGE'); // 🆕 Pro editaci faktur ve Fázi 7
-  const canSaveOrder = hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_APPROVE') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_EDIT_ALL')); // Pro ukládání objednávek (včetně schválení)
+  const canSaveOrder = !isViewOnly && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_APPROVE') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_EDIT_ALL')); // Pro ukládání objednávek (včetně schválení) - viewOnly režim blokuje
 
   // Kontrola rolí pro speciální oprávnění - MUSÍ BÝT PŘED použitím!
   const isSuperAdmin = userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
@@ -10848,7 +10849,13 @@ function OrderForm25() {
       // 2. dt_schvaleni - datum schválení
       // 3. stav_workflow_kod - přidáme "SCHVALENA" do array
 
-      if (formData.dt_schvaleni) orderData.dt_schvaleni = formData.dt_schvaleni;
+      // ✅ OPRAVA: VŽDY posílat dt_schvaleni - i jako null pro vymazání při resetu stavu
+      if (formData.dt_schvaleni) {
+        orderData.dt_schvaleni = formData.dt_schvaleni;
+      } else if (formData.stav_schvaleni === '' || !formData.stav_schvaleni) {
+        // Uživatel nemá vybraný žádný stav schválení → vymazat dt_schvaleni v DB
+        orderData.dt_schvaleni = null;
+      }
 
       // Komentář ke schválení
       // ✅ ZMĚNA: Ukládat komentář i při schválení (volitelný)
@@ -11289,6 +11296,9 @@ function OrderForm25() {
         // Pouze pokud NENÍ stav NOVA a máme platné ID
         if (formData.schvalovatel_id && formData.schvalovatel_id > 0) {
           orderData.schvalovatel_id = formData.schvalovatel_id;
+        } else if (formData.stav_schvaleni === '' || !formData.stav_schvaleni) {
+          // ✅ OPRAVA: Uživatel nemá vybraný žádný stav schválení → vymazat schvalovatel_id v DB
+          orderData.schvalovatel_id = null;
         }
         // ⚠️ Pokud není NOVA ale schvalovatel_id chybí, necháme pole prázdné
         // Backend si poradí s tím, že pole není v requestu (partial update)
@@ -20656,8 +20666,13 @@ function OrderForm25() {
                       aktualneCerpani = pomernaCast;
                       typCerpani = 'Rezervace';
                     } else if (currentPhase >= 3 && currentPhase <= 6) {
-                      // Fáze 3-6: Předpokládané čerpání (součet položek)
-                      zbyva = parseFloat(detail.zbyva_predpoklad || 0);
+                      // Fáze 3-6: Předpokládané čerpání - odečíst podíl TÉTO objednávky
+                      // (backend predpokladane_cerpani vylučuje stavy Schválená/Rozpracovaná)
+                      const maxCena36 = parseFloat(formData.max_cena_s_dph) || 0;
+                      const pocetLP36 = formData.lp_kod.length;
+                      const pomernaCast36 = pocetLP36 > 0 ? maxCena36 / pocetLP36 : 0;
+                      const predpoklad36 = parseFloat(detail.zbyva_predpoklad || 0);
+                      zbyva = predpoklad36 - pomernaCast36;
                       typCerpani = 'Předpoklad';
                     } else {
                       // Fáze 7-8: Skutečné čerpání (faktury)
@@ -21182,15 +21197,17 @@ function OrderForm25() {
                     return isWorkflowCompleted && !canUnlockAnything;
                   })()}
                   title={
-                    isLoadingEvCislo
-                      ? 'Načítá se evidenční číslo...'
-                      : !isValidEvCislo(formData.ev_cislo)
-                        ? 'Evidenční číslo se nepodařilo načíst'
-                        : (isWorkflowCompleted && !canUnlockAnything)
-                          ? 'Objednávka je dokončena/zamítnuta/stornována a uzamčena'
-                          : !canSaveOrder
-                            ? 'Nemáte oprávnění k ukládání objednávek'
-                            : 'Uložit objednávku'
+                    isViewOnly
+                      ? 'Režim náhledu — objednávku zobrazujete přes zastupování. Ukládání není k dispozici.'
+                      : isLoadingEvCislo
+                        ? 'Načítá se evidenční číslo...'
+                        : !isValidEvCislo(formData.ev_cislo)
+                          ? 'Evidenční číslo se nepodařilo načíst'
+                          : (isWorkflowCompleted && !canUnlockAnything)
+                            ? 'Objednávka je dokončena/zamítnuta/stornována a uzamčena'
+                            : !canSaveOrder
+                              ? 'Nemáte oprávnění k ukládání objednávek'
+                              : 'Uložit objednávku'
                   }
                 >
                   <FontAwesomeIcon icon={faSave} />
@@ -22153,7 +22170,7 @@ function OrderForm25() {
                           {/* VLEVO: Checkboxy */}
                           <div>
 
-                    {/* Čeká se - skryto při přečerpání LP nebo smlouvy */}
+                    {/* Odložit - skryto při přečerpání LP nebo smlouvy */}
                     {!lpWouldExceedInForm && !smlouvaWouldExceedInForm && (
                     <label style={{
                       display: 'flex',
@@ -22192,7 +22209,7 @@ function OrderForm25() {
                         }}
                       />
                       <FontAwesomeIcon icon={faClock} size="lg" />
-                      Čeká se
+                      Odložit
                       {formData.stav_schvaleni === 'ceka_se' && (
                         <span style={{
                           marginLeft: '0.5rem',

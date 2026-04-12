@@ -565,6 +565,91 @@ function canUserViewOrder($orderId, $userId, $db) {
         return true;
     }
 
+    // 0x. ZASTUPOVÁNÍ: Kontrola, zda uživatel zastupuje někoho, kdo má přístup k této objednávce
+    require_once __DIR__ . '/hierarchyHandlers.php';
+    $scope_info = null;
+    $substitution_ids = get_user_ids_with_substitution($db, $userId, ['view'], $scope_info);
+    
+    // Pokud zástupce získává PLNÝ PŘÍSTUP (inherit od admina)
+    if (!empty($scope_info['has_inherit_full_access'])) {
+        error_log("HIERARCHY: User $userId CAN view order $orderId (substitution INHERIT full access)");
+        return true;
+    }
+    
+    // Pokud má zastupované uživatele, zkontroluj zda je některý z nich účastníkem objednávky
+    if (count($substitution_ids) > 1) { // >1 protože vlastní ID je vždy včetně
+        try {
+            $placeholders = implode(',', array_fill(0, count($substitution_ids), '?'));
+            $subCheckSql = "
+                SELECT id FROM " . TBL_OBJEDNAVKY . "
+                WHERE id = ? AND aktivni = 1 AND (
+                    uzivatel_id IN ($placeholders)
+                    OR objednatel_id IN ($placeholders)
+                    OR garant_uzivatel_id IN ($placeholders)
+                    OR schvalovatel_id IN ($placeholders)
+                    OR prikazce_id IN ($placeholders)
+                    OR uzivatel_akt_id IN ($placeholders)
+                    OR odesilatel_id IN ($placeholders)
+                    OR dodavatel_potvrdil_id IN ($placeholders)
+                    OR zverejnil_id IN ($placeholders)
+                    OR fakturant_id IN ($placeholders)
+                    OR dokoncil_id IN ($placeholders)
+                    OR potvrdil_vecnou_spravnost_id IN ($placeholders)
+                )
+            ";
+            // Parametry: orderId + 12x substitution_ids
+            $subParams = [$orderId];
+            for ($i = 0; $i < 12; $i++) {
+                $subParams = array_merge($subParams, $substitution_ids);
+            }
+            $stmt = $db->prepare($subCheckSql);
+            $stmt->execute($subParams);
+            if ($stmt->fetch(PDO::FETCH_ASSOC)) {
+                error_log("HIERARCHY: User $userId CAN view order $orderId (substitution - participant match)");
+                return true;
+            }
+        } catch (PDOException $e) {
+            error_log("HIERARCHY ERROR: Substitution check failed: " . $e->getMessage());
+        }
+        
+        // Kontrola inherit_subordinate_ids
+        if (!empty($scope_info['inherit_subordinate_ids'])) {
+            $allIds = array_unique(array_merge($substitution_ids, $scope_info['inherit_subordinate_ids']));
+            try {
+                $placeholders2 = implode(',', array_fill(0, count($allIds), '?'));
+                $subCheckSql2 = "
+                    SELECT id FROM " . TBL_OBJEDNAVKY . "
+                    WHERE id = ? AND aktivni = 1 AND (
+                        uzivatel_id IN ($placeholders2)
+                        OR objednatel_id IN ($placeholders2)
+                        OR garant_uzivatel_id IN ($placeholders2)
+                        OR schvalovatel_id IN ($placeholders2)
+                        OR prikazce_id IN ($placeholders2)
+                        OR uzivatel_akt_id IN ($placeholders2)
+                        OR odesilatel_id IN ($placeholders2)
+                        OR dodavatel_potvrdil_id IN ($placeholders2)
+                        OR zverejnil_id IN ($placeholders2)
+                        OR fakturant_id IN ($placeholders2)
+                        OR dokoncil_id IN ($placeholders2)
+                        OR potvrdil_vecnou_spravnost_id IN ($placeholders2)
+                    )
+                ";
+                $subParams2 = [$orderId];
+                for ($i = 0; $i < 12; $i++) {
+                    $subParams2 = array_merge($subParams2, $allIds);
+                }
+                $stmt2 = $db->prepare($subCheckSql2);
+                $stmt2->execute($subParams2);
+                if ($stmt2->fetch(PDO::FETCH_ASSOC)) {
+                    error_log("HIERARCHY: User $userId CAN view order $orderId (substitution inherit_subordinate match)");
+                    return true;
+                }
+            } catch (PDOException $e) {
+                error_log("HIERARCHY ERROR: Subordinate substitution check failed: " . $e->getMessage());
+            }
+        }
+    }
+
     // 0a. Subordinate read/edit - má přístup k objednávkám podřízených
     if (in_array('ORDER_READ_SUBORDINATE', $user_permissions) || in_array('ORDER_EDIT_SUBORDINATE', $user_permissions)) {
         error_log("HIERARCHY: User $userId CAN view order $orderId (has ORDER_*_SUBORDINATE)");

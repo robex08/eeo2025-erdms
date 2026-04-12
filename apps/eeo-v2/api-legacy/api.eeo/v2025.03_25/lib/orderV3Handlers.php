@@ -149,6 +149,74 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
         }
     }
     
+    // 4️⃣ ZASTUPOVÁNÍ - ROZŠÍŘENÍ (pokud je aktivní v APP SETTING)
+    if (function_exists('get_user_ids_with_substitution')) {
+        try {
+            $scope_info = null;
+            $substitution_ids = get_user_ids_with_substitution($db, $user_id, ['view'], $scope_info);
+            
+            // INHERIT scope: pokud zastupovaný je admin → zástupce vidí VŠE
+            if ($scope_info && !empty($scope_info['has_inherit_full_access'])) {
+                error_log("[OrderV3 Permissions] ✅ SUBSTITUTION INHERIT: User $user_id dědí PLNÝ PŘÍSTUP ze zastupování → showing ALL orders");
+                // Zahodit dosavadní visibility conditions - admin vidí vše
+                // Musíme ale smazat i parametry co jsme přidali pro 12 polí
+                array_splice($where_params, -12); // Odeber 12 parametrů z role-based
+                $visibilityConditions = []; // Reset - žádné filtry
+                // Nebudeme přidávat podmínku → podmínky budou prázdné → vidí vše
+                return true; // Admin access přes zastupování
+            }
+            
+            // Pokud jsou zastupovaní uživatelé (víc než jen vlastní ID)
+            if (count($substitution_ids) > 1) {
+                $substitutionIdsStr = implode(',', array_map('intval', $substitution_ids));
+                
+                $substitutionCondition = "(
+                    o.uzivatel_id IN ($substitutionIdsStr)
+                    OR o.objednatel_id IN ($substitutionIdsStr)
+                    OR o.garant_uzivatel_id IN ($substitutionIdsStr)
+                    OR o.schvalovatel_id IN ($substitutionIdsStr)
+                    OR o.prikazce_id IN ($substitutionIdsStr)
+                    OR o.uzivatel_akt_id IN ($substitutionIdsStr)
+                    OR o.odesilatel_id IN ($substitutionIdsStr)
+                    OR o.dodavatel_potvrdil_id IN ($substitutionIdsStr)
+                    OR o.zverejnil_id IN ($substitutionIdsStr)
+                    OR o.fakturant_id IN ($substitutionIdsStr)
+                    OR o.dokoncil_id IN ($substitutionIdsStr)
+                    OR o.potvrdil_vecnou_spravnost_id IN ($substitutionIdsStr)
+                )";
+                
+                $visibilityConditions[] = $substitutionCondition;
+                error_log("[OrderV3 Permissions] ✅ SUBSTITUTION filter ADDED - user $user_id sees orders of users: $substitutionIdsStr");
+            }
+            
+            // INHERIT scope: přidej subordinates zastupovaného uživatele
+            if ($scope_info && !empty($scope_info['inherit_subordinate_ids'])) {
+                $inheritSubIds = implode(',', array_map('intval', $scope_info['inherit_subordinate_ids']));
+                
+                $inheritSubCondition = "(
+                    o.uzivatel_id IN ($inheritSubIds)
+                    OR o.objednatel_id IN ($inheritSubIds)
+                    OR o.garant_uzivatel_id IN ($inheritSubIds)
+                    OR o.schvalovatel_id IN ($inheritSubIds)
+                    OR o.prikazce_id IN ($inheritSubIds)
+                    OR o.uzivatel_akt_id IN ($inheritSubIds)
+                    OR o.odesilatel_id IN ($inheritSubIds)
+                    OR o.dodavatel_potvrdil_id IN ($inheritSubIds)
+                    OR o.zverejnil_id IN ($inheritSubIds)
+                    OR o.fakturant_id IN ($inheritSubIds)
+                    OR o.dokoncil_id IN ($inheritSubIds)
+                    OR o.potvrdil_vecnou_spravnost_id IN ($inheritSubIds)
+                )";
+                
+                $visibilityConditions[] = $inheritSubCondition;
+                error_log("[OrderV3 Permissions] ✅ SUBSTITUTION INHERIT subordinates ADDED: $inheritSubIds");
+            }
+        } catch (Exception $e) {
+            error_log("[OrderV3 Permissions] ⚠️ SUBSTITUTION error (fail-safe, continuing without): " . $e->getMessage());
+            // Fail-safe: pokud selže, pokračujeme bez zastupování
+        }
+    }
+    
     // 4️⃣ KOMBINACE S OR LOGIKOU - Order V2 compatible
     if (!empty($visibilityConditions)) {
         if (count($visibilityConditions) == 1) {

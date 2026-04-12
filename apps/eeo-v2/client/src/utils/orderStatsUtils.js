@@ -28,6 +28,7 @@ function mapUserStatusToSystemCode(userStatus) {
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
+    'Odloženo': 'CEKA_SE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
     'Smazaná': 'SMAZANA',
     'Koncept': 'NOVA'

@@ -8,7 +8,7 @@
  * - HTML obsah z databáze notifikací
  */
 
-import { getGlobalSettings } from './globalSettingsApi';
+import { getGlobalSettings, getGlobalSettingsForDisplay } from './globalSettingsApi';
 import notificationService from './notificationService';
 
 /**
@@ -21,7 +21,6 @@ import notificationService from './notificationService';
 export const checkPostLoginModal = async (userId, token, username) => {
   try {
     // Načíst globální nastavení PRO ZOBRAZENÍ (s obsahem z notifikace)
-    const { getGlobalSettingsForDisplay } = await import('./globalSettingsApi');
     const globalSettings = await getGlobalSettingsForDisplay(token, username);
     
     // KRITICKÉ: Kontrola, zda je modal povolen (priorita #1)

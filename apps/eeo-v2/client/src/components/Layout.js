@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
@@ -42,6 +42,7 @@ import { getToolsVisibility } from '../utils/toolsVisibility';
 import UniversalSearchInput from './UniversalSearch/UniversalSearchInput';
 import { checkMaintenanceMode } from '../services/globalSettingsApi';
 import { getGlobalSettings } from '../services/globalSettingsApi';
+import { fetchMySubstitutions, fetchCurrentlySubstituting } from '../services/apiSubstitution';
 import { getDefaultHomepageSync } from '../utils/homepageHelper';
 import cashbookAPI from '../services/cashbookService';
 
@@ -1645,8 +1646,15 @@ const Layout = ({ children }) => {
     module_orders_visible: true,
     module_orders_v3_visible: false,
     module_invoices_visible: true,
-    module_annual_fees_visible: true
+    module_annual_fees_visible: true,
+    module_assets_visible: true,
+    module_contacts_visible: true,
+    module_stats_reports_visible: true,
+    module_cerpani_visible: true
   });
+  const [substitutionEnabled, setSubstitutionEnabled] = useState(false);
+  const [mySubstitutions, setMySubstitutions] = useState([]);
+  const [substituting, setSubstituting] = useState([]);
 
   // Pozice dropdownu pro Administrace se počítá synchronně v onClick handleru
 
@@ -2066,8 +2074,13 @@ const Layout = ({ children }) => {
             module_orders_visible: settings.module_orders_visible ?? true,
             module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
             module_invoices_visible: settings.module_invoices_visible ?? true,
-            module_annual_fees_visible: settings.module_annual_fees_visible ?? true
+            module_annual_fees_visible: settings.module_annual_fees_visible ?? true,
+            module_assets_visible: settings.module_assets_visible ?? true,
+            module_contacts_visible: settings.module_contacts_visible ?? true,
+            module_stats_reports_visible: settings.module_stats_reports_visible ?? true,
+            module_cerpani_visible: settings.module_cerpani_visible ?? true
           });
+          setSubstitutionEnabled(!!settings.substitution_enabled);
         } catch (error) {
           console.warn('Nepodařilo se načíst nastavení modulů:', error);
         }
@@ -2101,8 +2114,13 @@ const Layout = ({ children }) => {
             module_orders_visible: settings.module_orders_visible ?? true,
             module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
             module_invoices_visible: settings.module_invoices_visible ?? true,
-            module_annual_fees_visible: settings.module_annual_fees_visible ?? true
+            module_annual_fees_visible: settings.module_annual_fees_visible ?? true,
+            module_assets_visible: settings.module_assets_visible ?? true,
+            module_contacts_visible: settings.module_contacts_visible ?? true,
+            module_stats_reports_visible: settings.module_stats_reports_visible ?? true,
+            module_cerpani_visible: settings.module_cerpani_visible ?? true
           });
+          setSubstitutionEnabled(!!settings.substitution_enabled);
         } catch (error) {
           console.warn('Nepodařilo se aktualizovat systémové informace:', error);
         }
@@ -2119,8 +2137,45 @@ const Layout = ({ children }) => {
       SystemInfoService.clearCache();
       setSystemInfo(null);
       setDatabaseName(null);
+      setSubstituting([]);
+      setMySubstitutions([]);
     }
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSubstitutionStatus = async () => {
+      if (!isLoggedIn || !token || !username || !substitutionEnabled) {
+        if (!cancelled) {
+          setSubstituting([]);
+          setMySubstitutions([]);
+        }
+        return;
+      }
+
+      try {
+        const [mine, current] = await Promise.all([
+          fetchMySubstitutions({ token, username }),
+          fetchCurrentlySubstituting({ token, username }),
+        ]);
+        if (!cancelled) {
+          setMySubstitutions(Array.isArray(mine) ? mine : []);
+          setSubstituting(Array.isArray(current) ? current : []);
+        }
+      } catch (_) {
+        if (!cancelled) {
+          setMySubstitutions([]);
+          setSubstituting([]);
+        }
+      }
+    };
+
+    loadSubstitutionStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, token, username, substitutionEnabled]);
 
   // Check maintenance mode status periodically
   useEffect(() => {
@@ -3309,26 +3364,67 @@ const Layout = ({ children }) => {
             {isLoggedIn && userDetail && (
               <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 500, letterSpacing: '.4px', color: 'rgba(255,255,255,0.9)' }}>
                 Přihlášený uživatel: <span style={{ fontWeight: 600 }}>
+                  {`${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim() || 'Neuvedeno'}
                   {(() => {
-                    const base = `${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim() || 'Neuvedeno';
+                    const todayStr = new Date().toISOString().split('T')[0];
+                    const activeSubstitutions = (substituting || []).filter(s => s.aktivni && todayStr >= s.dt_od && todayStr <= s.dt_do);
+                    const activeBeingSubstituted = (mySubstitutions || []).filter(s => s.aktivni && todayStr >= s.dt_od && todayStr <= s.dt_do);
 
-                    // usek_zkr může být string, array nebo prázdné
+                    const substitutionTooltip = activeSubstitutions.map(s => {
+                      const jmeno = s.zastupovany_jmeno
+                        ? `${s.zastupovany_jmeno} ${s.zastupovany_prijmeni || ''}`.trim()
+                        : `id#${s.zastupovany_id || '?'}`;
+                      const email = s.zastupovany_email || '';
+                      const telefon = s.zastupovany_telefon || '';
+                      let line = `Zastupuji: ${jmeno} | ${s.dt_od} - ${s.dt_do}`;
+                      if (email) line += `\nEmail: ${email}`;
+                      if (telefon) line += `\nTelefon: ${telefon}`;
+                      return line;
+                    }).join('\n\n');
+
+                    const beingSubstitutedTooltip = activeBeingSubstituted.map(s => {
+                      const jmeno = s.zastupce?.jmeno
+                        ? `${s.zastupce.jmeno} ${s.zastupce.prijmeni || ''}`.trim()
+                        : `id#${s.zastupce?.id || s.zastupce_id || '?'}`;
+                      const email = s.zastupce?.email || '';
+                      const telefon = s.zastupce?.telefon || '';
+                      let line = `Zástupce: ${jmeno} | ${s.dt_od} - ${s.dt_do}`;
+                      if (email) line += `\nEmail: ${email}`;
+                      if (telefon) line += `\nTelefon: ${telefon}`;
+                      return line;
+                    }).join('\n\n');
+
+                    return (
+                      <>
+                        {activeSubstitutions.length > 0 && (
+                          <FontAwesomeIcon
+                            icon={faUserFriends}
+                            title={substitutionTooltip}
+                            style={{ marginLeft: '0.4rem', marginRight: '0.15rem', color: '#a855f7', fontSize: '0.9em', verticalAlign: 'middle', cursor: 'help' }}
+                          />
+                        )}
+                        {activeBeingSubstituted.length > 0 && (
+                          <FontAwesomeIcon
+                            icon={faUserFriends}
+                            title={beingSubstitutedTooltip}
+                            style={{ marginLeft: '0.4rem', marginRight: '0.15rem', color: '#0891b2', fontSize: '0.9em', verticalAlign: 'middle', cursor: 'help' }}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
+                  {(() => {
                     let usekZkr = '';
                     if (Array.isArray(userDetail.usek_zkr) && userDetail.usek_zkr.length > 0) {
                       usekZkr = userDetail.usek_zkr.join(', ');
                     } else if (typeof userDetail.usek_zkr === 'string' && userDetail.usek_zkr.trim()) {
                       usekZkr = userDetail.usek_zkr.trim();
                     }
-
-                    // Lokalita z userDetail
                     const lokalita = userDetail?.lokalita_nazev?.nazev || userDetail?.lokalita?.nazev || '';
-
-                    // Sestavení výsledného řetězce: Jméno | Úsek | Lokalita
-                    let result = base;
-                    if (usekZkr) result += ` | ${usekZkr}`;
-                    if (lokalita) result += ` | ${lokalita}`;
-
-                    return result;
+                    let suffix = '';
+                    if (usekZkr) suffix += ` | ${usekZkr}`;
+                    if (lokalita) suffix += ` | ${lokalita}`;
+                    return suffix;
                   })()}
                 </span>
               </p>
@@ -3471,8 +3567,8 @@ const Layout = ({ children }) => {
                   document.body
                 )}
               </MenuDropdownWrapper>
-            ) }
-            { (hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW')) ? (
+) }
+            { ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && moduleSettings.module_contacts_visible ? (
               <MenuLinkLeft to="/contacts" $active={isActive('/contacts')}>
                 <FontAwesomeIcon icon={faAddressBook} /> Kontakty
               </MenuLinkLeft>
@@ -3542,7 +3638,7 @@ const Layout = ({ children }) => {
                     )}
                     
                     {/* Majetek - pro uživatele s ASSET oprávněním (v submenu = jen "Majetek") */}
-                    {((hasAdminRole && hasAdminRole()) || hasAssetMenuAccess) && (
+                    {((hasAdminRole && hasAdminRole()) || hasAssetMenuAccess) && moduleSettings.module_assets_visible && (
                       <MenuDropdownItem 
                         to="/majetek-overview" 
                         onClick={() => setPrehledMenuOpen(false)}
@@ -3568,43 +3664,6 @@ const Layout = ({ children }) => {
                     >
                       <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Objednávky (&lt; 2026)
                     </MenuDropdownItem>
-
-                    {/* --- DISABLED MODULY (jen pro admin/BETA_TESTER) - na konci --- */}
-                    {!moduleSettings.module_orders_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
-                      <MenuDropdownItem 
-                        to="/orders25-list" 
-                        onClick={() => setPrehledMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth style={{color: '#f59e0b'}} /> Objednávky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
-                      </MenuDropdownItem>
-                    )}
-                    
-                    {!moduleSettings.module_orders_v3_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
-                      <MenuDropdownItem 
-                        to="/orders25-list-v3" 
-                        onClick={() => setPrehledMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth style={{color: '#3b82f6'}} /> Objednávky (V3) <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
-                      </MenuDropdownItem>
-                    )}
-                    
-                    {!moduleSettings.module_invoices_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
-                      <MenuDropdownItem 
-                        to="/invoices25-list" 
-                        onClick={() => setPrehledMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth style={{color: '#10b981'}} /> Faktury <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
-                      </MenuDropdownItem>
-                    )}
-                    
-                    {!moduleSettings.module_annual_fees_visible && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('BETA_TESTER'))) && (
-                      <MenuDropdownItem 
-                        to="/annual-fees" 
-                        onClick={() => setPrehledMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faMoneyBill} fixedWidth style={{color: '#10b981'}} /> Roční poplatky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
-                      </MenuDropdownItem>
-                    )}
                   </MenuDropdownContent>,
                   document.body
                 )}
@@ -3617,7 +3676,7 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
-            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && moduleSettings.module_orders_visible && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt; 2026)
               </MenuLinkLeft>
@@ -3633,14 +3692,14 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) }
 
-            {!hasAnalyticsManagePermission && canAccessCerpani && (
+            {!hasAnalyticsManagePermission && canAccessCerpani && moduleSettings.module_cerpani_visible && (
               <MenuLinkLeft to="/cerpani" $active={isActive('/cerpani')}>
                 <FontAwesomeIcon icon={faMoneyBill} /> Čerpání
               </MenuLinkLeft>
             )}
 
             {/* Přehled majetku - standalone link pro uživatele bez Přehled dropdown */}
-            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasAssetMenuAccess && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasAssetMenuAccess && moduleSettings.module_assets_visible && (
               <MenuLinkLeft to="/majetek-overview" $active={isActive('/majetek-overview')}>
                 <FontAwesomeIcon icon={faList} style={{color: '#6366f1'}} /> Přehled majetku
               </MenuLinkLeft>
@@ -3679,7 +3738,7 @@ const Layout = ({ children }) => {
                       minWidth: `${dropdownPosition.width}px`
                     }}
                   >
-                    {canAccessCerpani && (
+                    {canAccessCerpani && moduleSettings.module_cerpani_visible && (
                       <MenuDropdownItem 
                         to="/cerpani" 
                         onClick={() => setAnalyticsMenuOpen(false)}
@@ -3696,7 +3755,7 @@ const Layout = ({ children }) => {
                       hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
                       hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
                       hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE')
-                    )) && (
+                    )) && moduleSettings.module_stats_reports_visible && (
                       <MenuDropdownItem 
                         to="/stats-reports" 
                         onClick={() => setAnalyticsMenuOpen(false)}
@@ -3771,7 +3830,7 @@ const Layout = ({ children }) => {
                         to="/orders25-list-v3" 
                         onClick={() => setBetaMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3)
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#3b82f6'}} /> Objednávky (V3) <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     {hasBetaMenuAccess && !moduleSettings.module_orders_visible && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && (
@@ -3779,7 +3838,7 @@ const Layout = ({ children }) => {
                         to="/orders25-list" 
                         onClick={() => setBetaMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky - přehled
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     {hasBetaMenuAccess && !moduleSettings.module_invoices_visible && hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')) && (
@@ -3787,7 +3846,47 @@ const Layout = ({ children }) => {
                         to="/invoices25-list" 
                         onClick={() => setBetaMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#10b981'}} /> Faktury - přehled
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#10b981'}} /> Faktury <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    {hasBetaMenuAccess && !moduleSettings.module_annual_fees_visible && (
+                      <MenuDropdownItem 
+                        to="/annual-fees" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faMoneyBill} fixedWidth style={{color: '#10b981'}} /> Roční poplatky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    {hasBetaMenuAccess && !moduleSettings.module_assets_visible && (hasAssetMenuAccess || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/majetek-overview" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faList} fixedWidth style={{color: '#6366f1'}} /> Majetek <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    {hasBetaMenuAccess && !moduleSettings.module_contacts_visible && (hasPermission && hasPermission('PHONEBOOK_VIEW')) && (
+                      <MenuDropdownItem 
+                        to="/contacts" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faAddressBook} fixedWidth /> Kontakty <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    {hasBetaMenuAccess && !moduleSettings.module_stats_reports_visible && (
+                      <MenuDropdownItem 
+                        to="/stats-reports" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faChartBar} fixedWidth /> Statistika a reporty <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    {hasBetaMenuAccess && !moduleSettings.module_cerpani_visible && canAccessCerpani && (
+                      <MenuDropdownItem 
+                        to="/cerpani" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faMoneyBill} fixedWidth /> Čerpání <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     

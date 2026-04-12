@@ -503,6 +503,44 @@ function handle_orders_v3_detail($input, $config) {
 
         error_log("🎨 [V3 ORDER DETAIL] Enrichment completed");
 
+        // 6️⃣ ZASTUPOVÁNÍ BADGE - načti akce provedené v zastoupení na této objednávce
+        $order['zastupovani_akce'] = [];
+        try {
+            if (defined('TBL_ZASTUPOVANI_AKCE_LOG')) {
+                $sql_audit = "
+                    SELECT 
+                        zal.akce_typ,
+                        zal.popis_akce,
+                        zal.dt_akce,
+                        zal.zastupce_id,
+                        zal.zastupovany_id,
+                        u_zastupce.jmeno as zastupce_jmeno,
+                        u_zastupce.prijmeni as zastupce_prijmeni,
+                        u_zastupce.titul_pred as zastupce_titul_pred,
+                        u_zastupce.titul_za as zastupce_titul_za,
+                        u_zastupovany.jmeno as zastupovany_jmeno,
+                        u_zastupovany.prijmeni as zastupovany_prijmeni,
+                        u_zastupovany.titul_pred as zastupovany_titul_pred,
+                        u_zastupovany.titul_za as zastupovany_titul_za
+                    FROM `" . TBL_ZASTUPOVANI_AKCE_LOG . "` zal
+                    LEFT JOIN `" . TBL_UZIVATELE . "` u_zastupce ON zal.zastupce_id = u_zastupce.id
+                    LEFT JOIN `" . TBL_UZIVATELE . "` u_zastupovany ON zal.zastupovany_id = u_zastupovany.id
+                    WHERE zal.objekt_typ = 'OBJEDNAVKA'
+                      AND zal.objekt_id = :order_id
+                    ORDER BY zal.dt_akce DESC
+                ";
+                $stmt_audit = $db->prepare($sql_audit);
+                $stmt_audit->execute([':order_id' => $order_id]);
+                $order['zastupovani_akce'] = $stmt_audit->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (!empty($order['zastupovani_akce'])) {
+                    error_log("📝 [V3 ORDER DETAIL] Found " . count($order['zastupovani_akce']) . " substitution audit entries for order #$order_id");
+                }
+            }
+        } catch (Exception $audit_err) {
+            error_log("⚠️ [V3 ORDER DETAIL] Audit log load error (non-blocking): " . $audit_err->getMessage());
+        }
+
         // Vrátit detail
         api_ok(null, [
             'order' => $order,
@@ -1426,8 +1464,25 @@ function handle_orders_v3_update($input, $config) {
             $params[] = $value;
         }
 
-        // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu
-        if (isset($payload['stav_workflow_kod'])) {
+        // ✅ SPRÁVA dt_schvaleni - dva režimy:
+        // 1. Frontend poslal dt_schvaleni explicitně (i jako null) → použít jeho hodnotu
+        // 2. Fallback: automaticky nastavit při změně workflow stavu na schvalovací stavy
+        $dt_schvaleni_handled = false;
+
+        if (array_key_exists('dt_schvaleni', $payload)) {
+            $dt_schvaleni_handled = true;
+            if ($payload['dt_schvaleni'] === null || $payload['dt_schvaleni'] === '' || $payload['dt_schvaleni'] === 'null') {
+                // Reset - vymazat dt_schvaleni v DB (uživatel odemknul objednávku a uložil bez schválení)
+                $update_parts[] = "`dt_schvaleni` = NULL";
+                error_log("🔄 [V3 ORDER UPDATE] Clearing dt_schvaleni (approval state reset)");
+            } else {
+                $update_parts[] = "`dt_schvaleni` = ?";
+                $params[] = $payload['dt_schvaleni'];
+                error_log("✅ [V3 ORDER UPDATE] Setting dt_schvaleni from payload: " . $payload['dt_schvaleni']);
+            }
+        }
+
+        if (!$dt_schvaleni_handled && isset($payload['stav_workflow_kod'])) {
             $workflow_states = json_decode($payload['stav_workflow_kod'], true);
             if (is_array($workflow_states)) {
                 // Pokud workflow obsahuje SCHVALENA, ZAMITNUTA nebo CEKA_SE
@@ -1463,6 +1518,50 @@ function handle_orders_v3_update($input, $config) {
 
         if ($stmt->rowCount() > 0) {
             error_log("✅ [V3 ORDER UPDATE] Order #$order_id updated successfully");
+            
+            // 📝 AUDIT LOG - pokud akci provedl zástupce v zastoupení
+            if (function_exists('get_active_substitution_for_action') && function_exists('log_substitution_action')) {
+                try {
+                    $acting_user_id = $user['id'] ?? $user['user_id'] ?? 0;
+                    // Zjisti typ akce z workflow
+                    $akce_typ = 'EDIT';
+                    if (isset($payload['stav_workflow_kod'])) {
+                        $ws = json_decode($payload['stav_workflow_kod'], true);
+                        if (is_array($ws)) {
+                            if (in_array('SCHVALENA', $ws)) $akce_typ = 'APPROVE';
+                            elseif (in_array('ZAMITNUTA', $ws)) $akce_typ = 'REJECT';
+                            elseif (in_array('POTVRZENA', $ws)) $akce_typ = 'CONFIRM';
+                            elseif (in_array('CEKA_SE', $ws)) $akce_typ = 'CONFIRM';
+                            elseif (in_array('ODESLANA_KE_SCHVALENI', $ws)) $akce_typ = 'SUBMIT';
+                        }
+                    }
+                    
+                    // Zkontroluj zda je to zastupce - pro approve/confirm checkneme příslušný scope
+                    $check_perm = in_array($akce_typ, ['APPROVE', 'REJECT']) ? 'approve' : 'view';
+                    $substitution = get_active_substitution_for_action($db, $acting_user_id, $check_perm);
+                    
+                    if ($substitution) {
+                        $komentar = $payload['schvaleni_komentar'] ?? '';
+                        $popis = "$akce_typ objednávky #$order_id v zastoupení uživatele ID " . $substitution['zastupovany_id'];
+                        if ($komentar) {
+                            $popis .= " (komentář: $komentar)";
+                        }
+                        
+                        log_substitution_action(
+                            $db,
+                            $substitution['zastupovani_id'],
+                            $acting_user_id,
+                            $substitution['zastupovany_id'],
+                            $akce_typ,
+                            'OBJEDNAVKA',
+                            $order_id,
+                            $popis
+                        );
+                    }
+                } catch (Exception $audit_err) {
+                    error_log("⚠️ [V3 ORDER UPDATE] Audit log error (non-blocking): " . $audit_err->getMessage());
+                }
+            }
             
             // 🎯 PŘEPOČET LP A SMLUV - při schválení i při odeslání ke schválení
             if (isset($payload['stav_workflow_kod'])) {
