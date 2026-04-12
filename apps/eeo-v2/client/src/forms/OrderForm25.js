@@ -23950,7 +23950,7 @@ function OrderForm25() {
               </SectionControls>
             </SectionHeader>
             <SectionContent collapsed={sectionStates.dodaci_podminky}>
-              <FormRow style={{gridTemplateColumns: '2fr 3fr'}}>
+              <FormRow style={{gridTemplateColumns: '1fr 1fr'}}>
                 <FormGroup>
                   <Label>PŘEDPOKLÁDANÝ TERMÍN DODÁNÍ</Label>
                   <DatePicker

@@ -367,7 +367,15 @@ function handle_substitution_create($data, $pdo) {
         }
     }
 
-    $zastupovany_id = (int)$token_data['id']; // vždy aktuální uživatel
+    $zastupovany_id = (int)$token_data['id']; // default: aktuální uživatel
+    $admin_override = false;
+
+    // Admin override: může zadat jiného zastupovaného
+    if ($token_data['is_admin'] && isset($data['zastupovany_id']) && (int)$data['zastupovany_id'] > 0) {
+        $zastupovany_id = (int)$data['zastupovany_id'];
+        $admin_override = true;
+    }
+
     $zastupce_id = (int)$data['zastupce_id'];
     $dt_od = trim($data['dt_od']);
     $dt_do = trim($data['dt_do']);
@@ -402,9 +410,10 @@ function handle_substitution_create($data, $pdo) {
         TimezoneHelper::setMysqlTimezone($pdo);
         $pdo->beginTransaction();
 
-        // Ověření: zástupce musí mít právo USER_SUBSTITUTE a musí být aktivní
-        $stmt = $pdo->prepare("
-            SELECT COUNT(*) FROM " . TBL_UZIVATELE . " u
+        // Ověření: zástupce musí být aktivní; kontrola USER_SUBSTITUTE práva se přeskakuje při admin override
+        $check_right = $admin_override
+            ? "SELECT COUNT(*) FROM " . TBL_UZIVATELE . " u WHERE u.id = ? AND u.aktivni = 1"
+            : "SELECT COUNT(*) FROM " . TBL_UZIVATELE . " u
             WHERE u.id = ? AND u.aktivni = 1
             AND (
                 u.id IN (
@@ -418,8 +427,8 @@ function handle_substitution_create($data, $pdo) {
                     JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
                     WHERE p.kod_prava = 'USER_SUBSTITUTE' AND rp.user_id = -1 AND rp.aktivni = 1
                 )
-            )
-        ");
+            )";
+        $stmt = $pdo->prepare($check_right);
         $stmt->execute(array($zastupce_id));
         if ((int)$stmt->fetchColumn() === 0) {
             $pdo->rollBack();
@@ -666,6 +675,120 @@ function handle_substitution_candidates($data, $pdo) {
     } catch (PDOException $e) {
         error_log("substitution_candidates DB error: " . $e->getMessage());
         return array('status' => 'error', 'message' => 'Chyba při načítání kandidátů na zástupce');
+    }
+}
+
+/**
+ * POST substitution/admin-list
+ * Admin/Superadmin – seznam všech zastupování v systému
+ */
+function handle_substitution_admin_list($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    try {
+        TimezoneHelper::setMysqlTimezone($pdo);
+        $stmt = $pdo->query($queries['substitution_get_all']);
+
+        $rows = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $opravneni = is_string($row['opravneni']) ? json_decode($row['opravneni'], true) : $row['opravneni'];
+            $rows[] = array(
+                'id'                    => (int)$row['id'],
+                'zastupovany_id'        => (int)$row['zastupovany_id'],
+                'zastupce_id'           => (int)$row['zastupce_id'],
+                'dt_od'                 => $row['dt_od'],
+                'dt_do'                 => $row['dt_do'],
+                'opravneni'             => $opravneni,
+                'popis'                 => $row['popis'],
+                'aktivni'               => (bool)$row['aktivni'],
+                'dt_vytvoreni'          => $row['dt_vytvoreni'],
+                'zastupovany_username'  => $row['zastupovany_username'],
+                'zastupovany_jmeno'     => trim($row['zastupovany_jmeno'] . ' ' . $row['zastupovany_prijmeni']),
+                'zastupce_username'     => $row['zastupce_username'],
+                'zastupce_jmeno'        => trim($row['zastupce_jmeno'] . ' ' . $row['zastupce_prijmeni']),
+            );
+        }
+
+        return array('status' => 'ok', 'data' => $rows, 'count' => count($rows));
+
+    } catch (PDOException $e) {
+        error_log("substitution_admin_list DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání přehledu zastupování');
+    }
+}
+
+/**
+ * POST substitution/manageable-users
+ * Admin – seznam uživatelů, za které může admin nastavit zastupování
+ */
+function handle_substitution_manageable_users($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    try {
+        $current_user_id = (int)$token_data['id'];
+        $stmt = $pdo->prepare($queries['substitution_manageable_users']);
+        $stmt->bindParam(':current_user_id', $current_user_id, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $users = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $titul_pred = trim($row['titul_pred'] . ' ');
+            $titul_za   = trim(' ' . $row['titul_za']);
+            $users[] = array(
+                'id'         => (int)$row['id'],
+                'username'   => $row['username'],
+                'jmeno'      => $row['jmeno'],
+                'prijmeni'   => $row['prijmeni'],
+                'cele_jmeno' => trim($titul_pred . $row['jmeno'] . ' ' . $row['prijmeni'] . $titul_za),
+                'email'      => $row['email'],
+            );
+        }
+
+        return array('status' => 'ok', 'data' => $users, 'count' => count($users));
+
+    } catch (PDOException $e) {
+        error_log("substitution_manageable_users DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání spravovatelných uživatelů');
+    }
+}
+
+/**
+ * Helper: založí záznam do audit logu zastupování
+ */
+function log_zastupovani_akce($pdo, $zastupovani_id, $zastupce_id, $zastupovany_id, $akce_typ, $objekt_typ, $objekt_id, $popis_akce = null) {
+    global $queries;
+    try {
+        $stmt = $pdo->prepare($queries['substitution_log_action']);
+        $stmt->bindParam(':zastupovani_id', $zastupovani_id, PDO::PARAM_INT);
+        $stmt->bindParam(':zastupce_id',    $zastupce_id,    PDO::PARAM_INT);
+        $stmt->bindParam(':zastupovany_id', $zastupovany_id, PDO::PARAM_INT);
+        $stmt->bindParam(':akce_typ',       $akce_typ);
+        $stmt->bindParam(':objekt_typ',     $objekt_typ);
+        $stmt->bindParam(':objekt_id',      $objekt_id,      PDO::PARAM_INT);
+        $stmt->bindParam(':popis_akce',     $popis_akce);
+        $stmt->execute();
+        return true;
+    } catch (PDOException $e) {
+        error_log("log_zastupovani_akce DB error: " . $e->getMessage() . " | zastupovani_id=$zastupovani_id akce=$akce_typ");
+        return false;
     }
 }
 
