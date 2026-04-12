@@ -2693,6 +2693,7 @@ function FinanceWidget({ financeData, financeLoading, financeError, onRefresh, u
                     maintainAspectRatio: false,
                     plugins: {
                       legend: { display: false },
+                      datalabels: { display: false },
                       tooltip: {
                         backgroundColor: '#1e293b',
                         titleFont: { size: 10 },
