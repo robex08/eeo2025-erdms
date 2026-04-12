@@ -8,6 +8,7 @@ import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline, getRssFeed, getFinanceMarkets, getFinanceChart } from '../services/apiDashboard';
 import { getAdminMessagesUnreadCount } from '../services/notificationsApi';
 import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi';
+import { fetchMySubstitutions, fetchCurrentlySubstituting } from '../services/apiSubstitution';
 import { theme } from '../theme/theme';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
@@ -30,8 +31,8 @@ import {
   faSync, faEye, faEyeSlash, faGripVertical, faTimes,
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
   faFileContract, faComments, faComment, faHourglassHalf, faFileInvoice,
-  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers, faUser,
-  faExpand, faCompress,
+  faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers, faUser, faUserFriends,
+  faExpand, faCompress, faExchangeAlt,
   faCloud, faWind, faTint, faThermometerHalf, faMapMarkerAlt,
   faChevronLeft, faChevronRight, faPaperPlane, faEnvelope,
   faClipboardList, faCubes, faInfinity, faHistory, faReceipt, faAddressBook
@@ -2738,10 +2739,22 @@ const CAL_MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červ
 const CAL_DAYS   = ['Po','Út','St','Čt','Pá','So','Ne'];
 const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i);
 
-function CalendarWidget() {
+function CalendarWidget({ token, username, mySubstitutions, substituting }) {
   const today = new Date();
   const [viewYear, setViewYear]   = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+
+  // Zjisti, zda datum (rok, měsíc, den) spadá do rozsahu zastupování
+  const checkDay = (year, month, day) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const asZastupovany = mySubstitutions.filter(s =>
+      s.aktivni && dateStr >= s.dt_od && dateStr <= s.dt_do
+    );
+    const asZastupce = substituting.filter(s =>
+      s.aktivni && dateStr >= s.dt_od && dateStr <= s.dt_do
+    );
+    return { asZastupovany, asZastupce };
+  };
 
   const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
   const prevMonth = () => {
@@ -2763,7 +2776,23 @@ function CalendarWidget() {
     d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
   const isCurrentMonth = viewMonth === today.getMonth() && viewYear === today.getFullYear();
 
-  return (
+  // Header tlačítko "Zpět na dnešek"
+  const headerButton = (
+    <button onClick={goToToday} style={{
+      background: isCurrentMonth ? 'transparent' : 'transparent',
+      border: 'none', cursor: 'pointer',
+      color: '#0891b2', fontSize: '0.75rem', fontWeight: 600,
+      padding: '0.3rem 0.75rem', borderRadius: '6px',
+      transition: 'background 0.12s, opacity 0.12s',
+      opacity: isCurrentMonth ? 0.4 : 0.8
+    }}
+      onMouseEnter={e => { if (!isCurrentMonth) { e.currentTarget.style.background = '#f0fdfa'; e.currentTarget.style.opacity = '1'; } }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = isCurrentMonth ? '0.4' : '0.8'; }}
+      title={isCurrentMonth ? 'Již jste v aktuálním měsíci' : 'Zpět na dnešní měsíc'}
+    >Zpět na dnešek</button>
+  );
+
+  const calendarContent = (
     <div style={{
       display: 'flex', flexDirection: 'column',
       background: '#fff', borderRadius: '24px',
@@ -2838,20 +2867,77 @@ function CalendarWidget() {
         {blanks.map((_, i) => <div key={`b${i}`} />)}
         {days.map(d => {
           const today_ = isToday(d);
+          const { asZastupovany, asZastupce } = checkDay(viewYear, viewMonth, d);
+          const hasZastupovany = asZastupovany.length > 0;
+          const hasZastupce = asZastupce.length > 0;
+
+          // Sestavení tooltip textu
+          const formatCzDate = (dateStr) => {
+            if (!dateStr) return '';
+            const [y, m, d] = dateStr.split('-');
+            return `${d}.${m}.${y}`;
+          };
+          
+          let tooltipLines = [];
+          asZastupovany.forEach(s => {
+            const jmeno = s.zastupce?.jmeno
+              ? `${s.zastupce.jmeno} ${s.zastupce.prijmeni || ''}`.trim()
+              : `id#${s.zastupce?.id || s.zastupce_id || '?'}`;
+            const email = s.zastupce?.email || '';
+            const telefon = s.zastupce?.telefon || '';
+            let line = `Zástupce: ${jmeno}\nOd: ${formatCzDate(s.dt_od)} Do: ${formatCzDate(s.dt_do)}`;
+            if (email) line += `\nEmail: ${email}`;
+            if (telefon) line += `\nTelefon: ${telefon}`;
+            tooltipLines.push(line);
+          });
+          asZastupce.forEach(s => {
+            const jmeno = s.zastupovany_jmeno
+              ? `${s.zastupovany_jmeno} ${s.zastupovany_prijmeni || ''}`.trim()
+              : `id#${s.zastupovany_id || '?'}`;
+            const email = s.zastupovany_email || '';
+            const telefon = s.zastupovany_telefon || '';
+            let line = `Zastupuji: ${jmeno}\nOd: ${formatCzDate(s.dt_od)} Do: ${formatCzDate(s.dt_do)}`;
+            if (email) line += `\nEmail: ${email}`;
+            if (telefon) line += `\nTelefon: ${telefon}`;
+            tooltipLines.push(line);
+          });
+          const tooltipText = tooltipLines.join('\n');
+
+          // Barvy - dnes má přednost (modrá), pak zastupovany (tyrkys), pak zastupce (fialová)
+          let bg = 'transparent';
+          let color = '#374151';
+          let boxShadow = 'none';
+          let outline = 'none';
+
+          if (today_) {
+            bg = '#3b82f6'; color = '#fff';
+            boxShadow = '0 4px 12px rgba(59,130,246,0.35)';
+          } else if (hasZastupovany && hasZastupce) {
+            bg = 'linear-gradient(135deg, #0891b2 50%, #7c3aed 50%)'; color = '#fff';
+            boxShadow = '0 2px 8px rgba(8,145,178,0.3)';
+          } else if (hasZastupovany) {
+            bg = '#0891b2'; color = '#fff';
+            boxShadow = '0 2px 8px rgba(8,145,178,0.3)';
+          } else if (hasZastupce) {
+            bg = '#7c3aed'; color = '#fff';
+            boxShadow = '0 2px 8px rgba(124,58,237,0.3)';
+          }
+
           return (
-            <div key={d} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-              <button style={{
-                width: '2rem', height: '2rem',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                borderRadius: '50%', border: 'none', cursor: 'default',
-                fontSize: '0.82rem', fontWeight: today_ ? 700 : 500,
-                background: today_ ? '#3b82f6' : 'transparent',
-                color: today_ ? '#fff' : '#374151',
-                boxShadow: today_ ? '0 4px 12px rgba(59,130,246,0.35)' : 'none',
-                transition: 'background 0.12s, color 0.12s'
-              }}
-                onMouseEnter={e => { if (!today_) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#3b82f6'; } }}
-                onMouseLeave={e => { if (!today_) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151'; } }}
+            <div key={d} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+              <button
+                title={tooltipText || undefined}
+                style={{
+                  width: '2rem', height: '2rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '50%', border: 'none',
+                  cursor: (hasZastupovany || hasZastupce) ? 'help' : 'default',
+                  fontSize: '0.82rem', fontWeight: (today_ || hasZastupovany || hasZastupce) ? 700 : 500,
+                  background: bg, color, boxShadow,
+                  transition: 'background 0.12s, color 0.12s'
+                }}
+                onMouseEnter={e => { if (!today_ && !hasZastupovany && !hasZastupce) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#3b82f6'; } }}
+                onMouseLeave={e => { if (!today_ && !hasZastupovany && !hasZastupce) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151'; } }}
               >
                 {d}
               </button>
@@ -2860,32 +2946,89 @@ function CalendarWidget() {
         })}
       </div>
 
-      {/* Zpět na dnešek */}
-      <div style={{ borderTop: '1px solid #f1f5f9', marginTop: '0.75rem', paddingTop: '0.75rem', textAlign: 'center' }}>
-        <button onClick={goToToday} style={{
-          background: isCurrentMonth ? 'transparent' : 'transparent',
-          border: 'none', cursor: 'pointer',
-          color: '#3b82f6', fontSize: '0.8rem', fontWeight: 700,
-          padding: '0.3rem 1rem', borderRadius: '999px',
-          transition: 'background 0.12s',
-          opacity: isCurrentMonth ? 0.4 : 1
-        }}
-          onMouseEnter={e => { if (!isCurrentMonth) e.currentTarget.style.background = '#eff6ff'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-        >Zpět na dnešek</button>
-      </div>
+      {/* Legenda zastupování */}
+      {(mySubstitutions.some(s => s.aktivni) || substituting.some(s => s.aktivni)) && (
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: '0.6rem', paddingTop: '0.6rem', borderTop: '1px solid #f1f5f9', fontSize: '0.72rem', color: '#64748b' }}>
+          {mySubstitutions.some(s => s.aktivni) && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#0891b2', display: 'inline-block', flexShrink: 0 }} />
+              Můj zástupce
+            </span>
+          )}
+          {substituting.some(s => s.aktivni) && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#7c3aed', display: 'inline-block', flexShrink: 0 }} />
+              Zastupuji
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
+
+  return { content: calendarContent, headerExtra: headerButton };
 }
 
 // ── Vítejte ──────────────────────────────────────────────────────────────────
-function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, navigate }) {
+function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, navigate, substituting, mySubstitutions }) {
+  // Helper - formátování data do CZ formátu
+  const formatCzDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}.${m}.${y}`;
+  };
+
+  // Detekce capability-based rolí (jen pokud je admin nebo má speciální oprávnění)
   const roleLabels = [];
   if (rolesDetected?.is_admin) roleLabels.push('Administrátor');
   if (rolesDetected?.has_order_approve) roleLabels.push('Příkazce');
   if (rolesDetected?.has_spending) roleLabels.push('Správce rozpočtu');
   if (rolesDetected?.has_invoice_manage) roleLabels.push('Účetní');
-  if (rolesDetected?.has_registry) roleLabels.push('Veřejné zakázky');
+
+  // ✅ Pokud nemá žádné capability-based role, zobraz skutečné role z DB
+  let userRolesDisplay = null;
+  if (roleLabels.length === 0 && user?.roles && Array.isArray(user.roles) && user.roles.length > 0) {
+    userRolesDisplay = user.roles.map(r => r.nazev_role).join(' · ');
+  }
+
+  // ✅ Aktivní zastupování DNES - kde já zastupuji někoho (fialová)
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const activeSubstitutions = (substituting || []).filter(s => 
+    s.aktivni && todayStr >= s.dt_od && todayStr <= s.dt_do
+  );
+  const hasActiveSubstitution = activeSubstitutions.length > 0;
+
+  // ✅ Aktivní zastupování DNES - kde mne někdo zastupuje (tyrkysová)
+  const activeBeingSubstituted = (mySubstitutions || []).filter(s => 
+    s.aktivni && todayStr >= s.dt_od && todayStr <= s.dt_do
+  );
+  const hasBeingSubstituted = activeBeingSubstituted.length > 0;
+
+  // ✅ Tooltip pro zastupování (fialová) - koho já zastupuji
+  const substitutionTooltip = activeSubstitutions.map(s => {
+    const jmeno = s.zastupovany_jmeno
+      ? `${s.zastupovany_jmeno} ${s.zastupovany_prijmeni || ''}`.trim()
+      : `id#${s.zastupovany_id || '?'}`;
+    const email = s.zastupovany_email || '';
+    const telefon = s.zastupovany_telefon || '';
+    let line = `Zastupuji: ${jmeno}\nOd: ${formatCzDate(s.dt_od)} Do: ${formatCzDate(s.dt_do)}`;
+    if (email) line += `\nEmail: ${email}`;
+    if (telefon) line += `\nTelefon: ${telefon}`;
+    return line;
+  }).join('\n\n');
+
+  // ✅ Tooltip pro zastupovaného (tyrkysová) - kdo mne zastupuje
+  const beingSubstitutedTooltip = activeBeingSubstituted.map(s => {
+    const jmeno = s.zastupce?.jmeno
+      ? `${s.zastupce.jmeno} ${s.zastupce.prijmeni || ''}`.trim()
+      : `id#${s.zastupce?.id || s.zastupce_id || '?'}`;
+    const email = s.zastupce?.email || '';
+    const telefon = s.zastupce?.telefon || '';
+    let line = `Zástupce: ${jmeno}\nOd: ${formatCzDate(s.dt_od)} Do: ${formatCzDate(s.dt_do)}`;
+    if (email) line += `\nEmail: ${email}`;
+    if (telefon) line += `\nTelefon: ${telefon}`;
+    return line;
+  }).join('\n\n');
 
   const today = new Date();
   const dayNames = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
@@ -2913,9 +3056,40 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, 
           {getInitials(user?.jmeno, user?.prijmeni)}
         </AvatarCircle>
         <WelcomeInfo>
-          <WelcomeName>Dobrý den, {user?.jmeno} {user?.prijmeni}</WelcomeName>
+          <WelcomeName>
+            Dobrý den, {user?.jmeno} {user?.prijmeni}
+            {hasActiveSubstitution && (
+              <FontAwesomeIcon 
+                icon={faUserFriends} 
+                title={substitutionTooltip}
+                style={{ 
+                  marginLeft: '0.5rem', 
+                  color: '#a855f7', 
+                  fontSize: '0.9em',
+                  verticalAlign: 'middle',
+                  cursor: 'help'
+                }} 
+              />
+            )}
+            {hasBeingSubstituted && (
+              <FontAwesomeIcon 
+                icon={faUserFriends} 
+                title={beingSubstitutedTooltip}
+                style={{ 
+                  marginLeft: '0.5rem', 
+                  color: '#0891b2', 
+                  fontSize: '0.9em',
+                  verticalAlign: 'middle',
+                  cursor: 'help'
+                }} 
+              />
+            )}
+          </WelcomeName>
           <WelcomeRole>
-            {roleLabels.length > 0 ? roleLabels.join(' · ') : (user?.pozice || 'Uživatel')}
+            {roleLabels.length > 0 
+              ? roleLabels.join(' · ') 
+              : (userRolesDisplay || user?.pozice || 'Uživatel')
+            }
             {user?.oddeleni ? ` — ${user.oddeleni}` : ''}
           </WelcomeRole>
           <WelcomeDate>
@@ -3447,6 +3621,12 @@ function NotificationsWidget({ notifications, navigate }) {
       return;
     }
     
+    // ✅ Notifikace zastupování - proklik na profil (záložka Zastupování)
+    if (n.objekt_typ === 'zastupovani') {
+      navigate('/profile?tab=substitution');
+      return;
+    }
+    
     // Ostatní - na seznam notifikací
     navigate('/notifications');
   };
@@ -3461,9 +3641,9 @@ function NotificationsWidget({ notifications, navigate }) {
       const sender = (() => {
         try {
           const ph = typeof n.placeholder_data === 'string' ? JSON.parse(n.placeholder_data) : (n.placeholder_data || {});
-          return ph.sender_name || placeholders.sender_name || 'Administrátor';
+          return ph.sender_name || placeholders.sender_name || n.from_user_name || null;
         } catch (e) {
-          return placeholders.sender_name || 'Administrátor';
+          return placeholders.sender_name || n.from_user_name || null;
         }
       })();
       
@@ -3485,6 +3665,31 @@ function NotificationsWidget({ notifications, navigate }) {
         number: null, objekt_id: null, subject: null, usersLine: null,
         amount: null, statusText: null, statusColor: null, timeText: null,
         actionType: null, actionColor: null
+      };
+    }
+    
+    // ✅ ZASTUPOVÁNÍ - notifikace o nastavení/ukončení zástupce
+    if (n.objekt_typ === 'zastupovani' || n.typ === 'SUBSTITUTION_SET' || n.typ === 'SUBSTITUTION_CREATED' || n.typ === 'SUBSTITUTION_ENDED') {
+      const daysAge = getDaysAge(n.dt_created);
+      let timeText = '';
+      if (daysAge === 0) timeText = 'dnes';
+      else if (daysAge === 1) timeText = 'včera';
+      else if (daysAge !== null) timeText = `před ${daysAge} d`;
+      const zastupCreatedDate = n.dt_created || n.vytvoren_kdy;
+      const zastupTimeFormatted = zastupCreatedDate ? new Date(zastupCreatedDate).toLocaleString('cs-CZ', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      }) : '';
+      return {
+        type: 'ZASTUP',
+        nadpis: n.nadpis || 'Zastupování',
+        zprava: n.zprava || '',
+        timeText,
+        sender: n.from_user_name || null,
+        timeFormatted: zastupTimeFormatted,
+        number: null, objekt_id: null, subject: null, usersLine: null,
+        amount: null, statusText: null, statusColor: null,
+        actionType: n.typ === 'SUBSTITUTION_ENDED' ? 'Ukončeno' : 'Zastupování',
+        actionColor: n.typ === 'SUBSTITUTION_ENDED' ? '#64748b' : '#0891b2'
       };
     }
     
@@ -3521,11 +3726,18 @@ function NotificationsWidget({ notifications, navigate }) {
       if (daysAge === 0) timeText = 'dnes';
       else if (daysAge === 1) timeText = 'včera';
       else if (daysAge !== null) timeText = `před ${daysAge} d`;
+      // ✅ Formátovaný čas pro Řádek 3
+      const komCreatedDate = n.dt_created || n.vytvoren_kdy;
+      const komTimeFormatted = komCreatedDate ? new Date(komCreatedDate).toLocaleString('cs-CZ', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+      }) : '';
       return {
         type: 'KOM', number: numMatch, objekt_id: n.objekt_id,
         commentAuthor: authorMatch, commentQuote: quoteMatch, commentSubject: subjectMatch,
         actionType: actionLabel, actionColor: '#6366f1',
         timeText, subject: null, usersLine: null, amount: null, statusText: null, statusColor: null,
+        sender: authorMatch || n.from_user_name || null,
+        timeFormatted: komTimeFormatted
       };
     }
 
@@ -3756,7 +3968,7 @@ function NotificationsWidget({ notifications, navigate }) {
                 )}
                 {/* Řádek 3: Od: celé jméno + datum+čas */}
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                  Od: {details.sender || 'Administrátor'} • {details.timeFormatted}
+                  {details.sender && `Od: ${details.sender} • `}{details.timeFormatted}
                 </div>
               </div>
             ) : details.type === 'KOM' ? (
@@ -3807,13 +4019,38 @@ function NotificationsWidget({ notifications, navigate }) {
                     })()}
                   </div>
                 )}
-                {/* Řádek 3: Název obj menším písmem */}
-                {details.commentSubject && (
-                  <div style={{ fontSize: '0.72rem', color: '#94a3b8', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '100%' }}>
-                    {details.commentSubject}
-                  </div>
-                )}
+                {/* Řádek 3: Od: jméno autora • datum+čas */}
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                  {details.sender && `Od: ${details.sender} • `}{details.timeFormatted}
+                </div>
               </div>
+            ) : details.type === 'ZASTUP' ? (
+            /* ── ZASTUPOVÁNÍ ────────────────────────────────────────── */
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Řádek 1: Ikona + Nadpis + čas | vpravo badge ZASTUP */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.2rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.75rem', color: isRead ? '#94a3b8' : '#0891b2', flexShrink: 0 }}>👥</span>
+                <span style={{ color: isRead ? '#64748b' : '#1e293b', fontWeight: isRead ? 500 : 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>
+                  {details.nadpis}
+                </span>
+                {details.timeText && (
+                  <Badge $bg={dateBadgeBg} $color={dateBadgeColor}>{details.timeText}</Badge>
+                )}
+                <span style={{ marginLeft: 'auto' }}>
+                  <Badge $bg={isRead ? '#f1f5f9' : '#e0f2fe'} $color={isRead ? '#94a3b8' : '#0369a1'} style={{ fontWeight: 700, letterSpacing: '0.03em' }}>{details.actionType}</Badge>
+                </span>
+              </div>
+              {/* Řádek 2: Zpráva */}
+              {details.zprava && (
+                <div style={{ fontSize: '0.78rem', color: isRead ? '#94a3b8' : '#475569', lineHeight: 1.4, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                  {details.zprava}
+                </div>
+              )}
+              {/* Řádek 3: Od + datum+čas */}
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.15rem' }}>
+                {details.sender && `Od: ${details.sender} • `}{details.timeFormatted}
+              </div>
+            </div>
             ) : (
             /* ── OBJEDNÁVKY / FAKTURY – původní layout ────────────────── */
             <div style={{ flex: 1 }}>
@@ -5221,6 +5458,10 @@ export default function DashboardPage() {
   const financeRefreshRef = useRef(null);
   const financeCancelledRef = useRef(false);
 
+  // Zastupování state (pro Calendar + Welcome widget)
+  const [mySubstitutions, setMySubstitutions] = useState([]); // kde jsem zastupovaný
+  const [substituting, setSubstituting] = useState([]); // koho zastupuji já
+
   // Fullscreen graf
   const [fullscreenChart, setFullscreenChart] = useState(null);
   useEffect(() => {
@@ -5248,6 +5489,22 @@ export default function DashboardPage() {
     const iv = setInterval(fetchActive, 30000);
     return () => clearInterval(iv);
   }, [isSuperAdmin, token, username]);
+
+  // Fetch zastupování dat pro Calendar + Welcome widget
+  useEffect(() => {
+    if (!token || !username) return;
+    let cancelled = false;
+    Promise.all([
+      fetchMySubstitutions({ token, username }).catch(() => []),
+      fetchCurrentlySubstituting({ token, username }).catch(() => []),
+    ]).then(([my, cur]) => {
+      if (!cancelled) {
+        setMySubstitutions(my || []);
+        setSubstituting(cur || []);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [token, username]);
 
   // RSS Feed: načtení po přihlášení + auto-refresh dle intervalu z app settings
   const rssRefreshRef = useRef(null);
@@ -5920,7 +6177,7 @@ export default function DashboardPage() {
 
     switch (tileId) {
       case 'welcome':
-        content = <WelcomeWidget user={data?.user} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} myStats={data?.my_stats} navigate={navigate} />;
+        content = <WelcomeWidget user={data?.user} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} myStats={data?.my_stats} navigate={navigate} substituting={substituting} mySubstitutions={mySubstitutions} />;
         break;
       case 'orders_stats':
         content = <OrderStatsWidget stats={data?.orders_stats} navigate={navigate} />;
@@ -6142,9 +6399,12 @@ export default function DashboardPage() {
             <FinanceWidget financeData={financeData} financeLoading={financeLoading} financeError={financeError} onRefresh={() => fetchFinance(false)} userId={user?.id} token={token} username={username} />
           </WidgetCard>
         );
-      case 'calendar':
-        content = <CalendarWidget />;
+      case 'calendar': {
+        const { content: calContent, headerExtra: calHeaderExtra } = CalendarWidget({ token, username, mySubstitutions, substituting });
+        content = calContent;
+        headerExtra = calHeaderExtra;
         break;
+      }
       default:
         return null;
     }

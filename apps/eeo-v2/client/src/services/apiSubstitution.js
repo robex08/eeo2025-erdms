@@ -49,6 +49,23 @@ export async function createSubstitution({ token, username, zastupce_id, dt_od, 
 }
 
 /**
+ * Aktualizuje existující zastupování (pouze future záznamy – ještě nezačalo)
+ * @param {Object} params
+ * @param {string} params.token
+ * @param {string} params.username
+ * @param {number} params.id
+ * @param {number} params.zastupce_id
+ * @param {string} params.dt_od - YYYY-MM-DD
+ * @param {string} params.dt_do - YYYY-MM-DD
+ * @param {Object} params.opravneni
+ * @param {string} [params.popis]
+ */
+export async function updateSubstitution({ token, username, id, zastupce_id, dt_od, dt_do, opravneni, popis }) {
+  const data = await _post('substitution/update', { token, username, id, zastupce_id, dt_od, dt_do, opravneni, popis });
+  return data.data || {};
+}
+
+/**
  * Deaktivuje (zruší) zastupování
  * @param {Object} params
  * @param {string} params.token
