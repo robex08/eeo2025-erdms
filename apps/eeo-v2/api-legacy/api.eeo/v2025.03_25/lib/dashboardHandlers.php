@@ -570,12 +570,12 @@ function _dashboard_get_orders_for_approval($db, $user_id, $is_admin, $days, $us
     $params = [];
     
     if (!$is_admin) {
-        // Běžný user vidí jen objednávky kde je příkazce/schvalovatel nebo z úseku
+        // Běžný user vidí jen objednávky kde je příkazce/schvalovatel nebo z úseku (přes uživatele)
         $conditions = ["o.prikazce_id = :appr_user_id", "o.schvalovatel_id = :appr_schv_id"];
         $params[':appr_user_id'] = $user_id;
         $params[':appr_schv_id'] = $user_id;
         if ($usek_id) {
-            $conditions[] = "o.usek_id = :appr_usek_id";
+            $conditions[] = "EXISTS (SELECT 1 FROM `" . TBL_UZIVATELE . "` u_usek WHERE u_usek.id = o.uzivatel_id AND u_usek.usek_id = :appr_usek_id)";
             $params[':appr_usek_id'] = $usek_id;
         }
         $approval_filter = "AND (" . implode(' OR ', $conditions) . ")";

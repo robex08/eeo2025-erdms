@@ -1555,7 +1555,7 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
     '/orders25-list-v3': 'Objednávky',
     '/invoices': 'Faktury',
     '/invoices25': 'Faktury',
-    '/dashboard': 'Dashboard',
+    '/dashboard': 'Domovská stránka',
     '/users': 'Správa uživatelů',
     '/smlouvy': 'Smlouvy',
     '/lp': 'LP',
@@ -5215,7 +5215,7 @@ function DashboardConfigModal({ tiles, visibleTiles, onToggle, onReorder, onClos
       <ConfigPanel onClick={e => e.stopPropagation()}>
         <ConfigHeader>
           <ConfigTitle>
-            <FontAwesomeIcon icon={faCog} /> Konfigurace dashboardu
+            <FontAwesomeIcon icon={faCog} /> Konfigurace domovské stránky
           </ConfigTitle>
           <ConfigCloseBtn onClick={onClose}>
             <FontAwesomeIcon icon={faTimes} />
@@ -6534,7 +6534,7 @@ export default function DashboardPage() {
       <PageWrapper>
         <PageHeader>
           <PageTitle>
-            <FontAwesomeIcon icon={faHome} /> Dashboard <BetaBadge>BETA</BetaBadge>
+            <FontAwesomeIcon icon={faHome} /> Domovská stránka <BetaBadge>BETA</BetaBadge>
           </PageTitle>
         </PageHeader>
         <DashGrid>
@@ -6548,7 +6548,7 @@ export default function DashboardPage() {
     return (
       <PageWrapper>
         <PageHeader>
-          <PageTitle><FontAwesomeIcon icon={faHome} /> Dashboard <BetaBadge>BETA</BetaBadge></PageTitle>
+          <PageTitle><FontAwesomeIcon icon={faHome} /> Domovská stránka <BetaBadge>BETA</BetaBadge></PageTitle>
         </PageHeader>
         <WidgetCard $accent="#dc2626">
           <WidgetHeader>
@@ -6572,7 +6572,7 @@ export default function DashboardPage() {
     <PageWrapper>
       <PageHeader>
         <PageTitle>
-          <FontAwesomeIcon icon={faHome} /> Dashboard <BetaBadge>BETA</BetaBadge>
+          <FontAwesomeIcon icon={faHome} /> Domovská stránka <BetaBadge>BETA</BetaBadge>
         </PageTitle>
         
         {/* 🎯 RYCHLÉ ROLE-BASED DLAZDICE + MODULE SHORTCUTS */}

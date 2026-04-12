@@ -17,7 +17,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   );
 
   // 🏠 DASHBOARD - vždy dostupný pro všechny přihlášené
-  sections.push({ value: 'dashboard', label: 'Dashboard' });
+  sections.push({ value: 'dashboard', label: 'Domovská stránka' });
   
   // 🔒 KRITICKÉ: Načíst module visibility settings z localStorage cache
   let moduleSettings = {};
