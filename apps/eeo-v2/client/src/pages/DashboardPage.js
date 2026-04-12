@@ -2739,7 +2739,7 @@ const CAL_MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červ
 const CAL_DAYS   = ['Po','Út','St','Čt','Pá','So','Ne'];
 const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i);
 
-function CalendarWidget({ token, username, mySubstitutions, substituting }) {
+function CalendarWidget({ token, username, mySubstitutions, substituting, onHeaderButton }) {
   const today = new Date();
   const [viewYear, setViewYear]   = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -2776,23 +2776,28 @@ function CalendarWidget({ token, username, mySubstitutions, substituting }) {
     d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
   const isCurrentMonth = viewMonth === today.getMonth() && viewYear === today.getFullYear();
 
-  // Header tlačítko "Zpět na dnešek"
-  const headerButton = (
-    <button onClick={goToToday} style={{
-      background: isCurrentMonth ? 'transparent' : 'transparent',
-      border: 'none', cursor: 'pointer',
-      color: '#0891b2', fontSize: '0.75rem', fontWeight: 600,
-      padding: '0.3rem 0.75rem', borderRadius: '6px',
-      transition: 'background 0.12s, opacity 0.12s',
-      opacity: isCurrentMonth ? 0.4 : 0.8
-    }}
-      onMouseEnter={e => { if (!isCurrentMonth) { e.currentTarget.style.background = '#f0fdfa'; e.currentTarget.style.opacity = '1'; } }}
-      onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = isCurrentMonth ? '0.4' : '0.8'; }}
-      title={isCurrentMonth ? 'Již jste v aktuálním měsíci' : 'Zpět na dnešní měsíc'}
-    >Zpět na dnešek</button>
-  );
+  // Předej header tlačítko ven přes callback když se změní state
+  useEffect(() => {
+    if (onHeaderButton) {
+      const headerButton = (
+        <button onClick={goToToday} style={{
+          background: isCurrentMonth ? 'transparent' : 'transparent',
+          border: 'none', cursor: 'pointer',
+          color: '#0891b2', fontSize: '0.75rem', fontWeight: 600,
+          padding: '0.3rem 0.75rem', borderRadius: '6px',
+          transition: 'background 0.12s, opacity 0.12s',
+          opacity: isCurrentMonth ? 0.4 : 0.8
+        }}
+          onMouseEnter={e => { if (!isCurrentMonth) { e.currentTarget.style.background = '#f0fdfa'; e.currentTarget.style.opacity = '1'; } }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = isCurrentMonth ? '0.4' : '0.8'; }}
+          title={isCurrentMonth ? 'Již jste v aktuálním měsíci' : 'Zpět na dnešní měsíc'}
+        >Zpět na dnešek</button>
+      );
+      onHeaderButton(headerButton);
+    }
+  }, [viewMonth, viewYear, isCurrentMonth, onHeaderButton]);
 
-  const calendarContent = (
+  return (
     <div style={{
       display: 'flex', flexDirection: 'column',
       background: '#fff', borderRadius: '24px',
@@ -2965,8 +2970,6 @@ function CalendarWidget({ token, username, mySubstitutions, substituting }) {
       )}
     </div>
   );
-
-  return { content: calendarContent, headerExtra: headerButton };
 }
 
 // ── Vítejte ──────────────────────────────────────────────────────────────────
@@ -5462,6 +5465,9 @@ export default function DashboardPage() {
   const [mySubstitutions, setMySubstitutions] = useState([]); // kde jsem zastupovaný
   const [substituting, setSubstituting] = useState([]); // koho zastupuji já
 
+  // Widget header extras (pro předávání tlačítek z widgetů do headerů)
+  const [widgetHeaderExtras, setWidgetHeaderExtras] = useState({});
+
   // Fullscreen graf
   const [fullscreenChart, setFullscreenChart] = useState(null);
   useEffect(() => {
@@ -6399,12 +6405,18 @@ export default function DashboardPage() {
             <FinanceWidget financeData={financeData} financeLoading={financeLoading} financeError={financeError} onRefresh={() => fetchFinance(false)} userId={user?.id} token={token} username={username} />
           </WidgetCard>
         );
-      case 'calendar': {
-        const { content: calContent, headerExtra: calHeaderExtra } = CalendarWidget({ token, username, mySubstitutions, substituting });
-        content = calContent;
-        headerExtra = calHeaderExtra;
+      case 'calendar':
+        content = <CalendarWidget 
+          token={token} 
+          username={username} 
+          mySubstitutions={mySubstitutions} 
+          substituting={substituting}
+          onHeaderButton={(btn) => {
+            setWidgetHeaderExtras(prev => ({ ...prev, calendar: btn }));
+          }}
+        />;
+        headerExtra = widgetHeaderExtras.calendar;
         break;
-      }
       default:
         return null;
     }
