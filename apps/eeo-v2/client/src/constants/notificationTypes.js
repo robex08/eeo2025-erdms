@@ -67,6 +67,13 @@ export const NOTIFICATION_TYPES = {
   SYSTEM_STORAGE_WARNING: 'system_storage_warning', // ⚡ HIGH
 
   // ====================================================================
+  // ZASTUPOVÁNÍ
+  // ====================================================================
+  SUBSTITUTION_SET: 'SUBSTITUTION_SET',       // Zástupci: byl nastaven jako zástupce
+  SUBSTITUTION_CREATED: 'SUBSTITUTION_CREATED', // Zastupovanému: byl mu nastaven zástupce
+  SUBSTITUTION_ENDED: 'SUBSTITUTION_ENDED',   // Zástupci: zastupování ukončeno
+
+  // ====================================================================
   // OSTATNÍ NOTIFIKACE
   // ====================================================================
   USER_MENTION: 'user_mention',
@@ -129,6 +136,11 @@ export const getNotificationTypeName = (type) => {
     'system_user_login_alert': 'Neobvyklé přihlášení',
     'system_session_expired': 'Relace vypršela',
     'system_storage_warning': 'Málo místa na disku',
+
+    // ZASTUPOVÁNÍ
+    'SUBSTITUTION_SET': 'Nastaven jako zástupce',
+    'SUBSTITUTION_CREATED': 'Zástupce nastaven',
+    'SUBSTITUTION_ENDED': 'Zastupování ukončeno',
 
     // OSTATNÍ
     'user_mention': 'Zmínka v komentáři',
@@ -200,6 +212,11 @@ export const getNotificationIcon = (type) => {
     'system_session_expired': '⏰',
     'system_storage_warning': '💿',
 
+    // ZASTUPOVÁNÍ
+    'SUBSTITUTION_SET': '👥',
+    'SUBSTITUTION_CREATED': '👥',
+    'SUBSTITUTION_ENDED': '👤',
+
     // OSTATNÍ
     'user_mention': '💬',
     'deadline_reminder': '⏰',
@@ -251,6 +268,11 @@ export const getNotificationPriority = (type) => {
     'system_update_available': 'normal',
     'system_update_installed': 'normal',
     'system_session_expired': 'normal',
+
+    // ZASTUPOVÁNÍ
+    'SUBSTITUTION_SET': 'normal',
+    'SUBSTITUTION_CREATED': 'normal',
+    'SUBSTITUTION_ENDED': 'normal',
 
     // LOW (nízká priorita)
     'ORDER_CREATED': 'low',

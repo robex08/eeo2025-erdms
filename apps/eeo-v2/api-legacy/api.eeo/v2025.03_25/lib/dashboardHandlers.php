@@ -1536,11 +1536,14 @@ function _dashboard_get_my_stats($db, $user_id) {
 function _dashboard_get_notifications_unread($db, $user_id, $limit) {
     $stmt = $db->prepare("
         SELECT n.id, n.typ, n.nadpis, n.zprava, n.priorita, n.kategorie,
-               n.objekt_typ, n.objekt_id, n.dt_created,
-               nr.precteno, nr.skryto
+               n.objekt_typ, n.objekt_id, n.dt_created, n.od_uzivatele_id,
+               nr.precteno, nr.skryto,
+               from_user.jmeno as from_user_jmeno, from_user.prijmeni as from_user_prijmeni
         FROM `" . TBL_NOTIFIKACE . "` n
         INNER JOIN `" . TBL_NOTIFIKACE_PRECTENI . "` nr 
             ON n.id = nr.notifikace_id
+        LEFT JOIN `" . TBL_UZIVATELE . "` from_user
+            ON n.od_uzivatele_id = from_user.id
         WHERE n.aktivni = 1
           AND nr.uzivatel_id = ?
           AND nr.precteno = 0
@@ -1551,7 +1554,15 @@ function _dashboard_get_notifications_unread($db, $user_id, $limit) {
         LIMIT " . (int)$limit . "
     ");
     $stmt->execute([$user_id]);
-    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // Přidat from_user_name
+    return array_map(function($notif) {
+        if ($notif['from_user_jmeno']) {
+            $notif['from_user_name'] = trim($notif['from_user_jmeno'] . ' ' . ($notif['from_user_prijmeni'] ?? ''));
+        }
+        return $notif;
+    }, $notifications);
 }
 
 /**
@@ -1563,7 +1574,7 @@ function _dashboard_get_notifications_unread($db, $user_id, $limit) {
 function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 15) {
     $stmt = $db->prepare("
         SELECT n.id, n.typ, n.nadpis, n.zprava, n.priorita, n.kategorie,
-               n.objekt_typ, n.objekt_id, n.data_json, n.dt_created,
+               n.objekt_typ, n.objekt_id, n.data_json, n.dt_created, n.od_uzivatele_id,
                nr.precteno, nr.skryto, nr.dt_precteno,
                o.cislo_objednavky, o.predmet as objednavka_predmet, o.max_cena_s_dph as objednavka_cena,
                o.stav_objednavky,
@@ -1577,7 +1588,8 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
                prikazce.jmeno as prikazce_jmeno, prikazce.prijmeni as prikazce_prijmeni,
                schvalovatel.jmeno as schvalovatel_jmeno, schvalovatel.prijmeni as schvalovatel_prijmeni,
                vytvoril_fa.jmeno as vytvoril_fa_jmeno, vytvoril_fa.prijmeni as vytvoril_fa_prijmeni,
-               predano_komu.jmeno as predano_komu_jmeno, predano_komu.prijmeni as predano_komu_prijmeni
+               predano_komu.jmeno as predano_komu_jmeno, predano_komu.prijmeni as predano_komu_prijmeni,
+               from_user.jmeno as from_user_jmeno, from_user.prijmeni as from_user_prijmeni
         FROM `" . TBL_NOTIFIKACE . "` n
         INNER JOIN `" . TBL_NOTIFIKACE_PRECTENI . "` nr 
             ON n.id = nr.notifikace_id
@@ -1595,6 +1607,8 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
             ON f.vytvoril_uzivatel_id = vytvoril_fa.id
         LEFT JOIN `" . TBL_UZIVATELE . "` predano_komu
             ON f.fa_predana_zam_id = predano_komu.id
+        LEFT JOIN `" . TBL_UZIVATELE . "` from_user
+            ON n.od_uzivatele_id = from_user.id
         WHERE n.aktivni = 1
           AND nr.uzivatel_id = ?
           AND nr.smazano = 0
@@ -1643,6 +1657,12 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
             $placeholders['predano_komu_name'] = trim($notif['predano_komu_jmeno'] . ' ' . $notif['predano_komu_prijmeni']);
         }
         
+        // ✅ from_user_name (odesílatel notifikace)
+        $from_user_name = null;
+        if ($notif['from_user_jmeno']) {
+            $from_user_name = trim($notif['from_user_jmeno'] . ' ' . ($notif['from_user_prijmeni'] ?? ''));
+        }
+        
         // ✅ Doplň další detaily z DB
         if ($notif['objednavka_predmet']) {
             $placeholders['order_subject'] = $notif['objednavka_predmet'];
@@ -1680,7 +1700,8 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
             'data' => $data,
             'precteno' => $notif['precteno'],
             'dt_precteno' => $notif['dt_precteno'],
-            'dt_created' => $notif['dt_created']
+            'dt_created' => $notif['dt_created'],
+            'from_user_name' => $from_user_name
         ];
     }, $notifications);
 }

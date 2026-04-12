@@ -40,6 +40,7 @@ import {
   faFileInvoiceDollar,
   faCog,
   faUser,
+  faUsers,
   faEnvelope
 } from '@fortawesome/free-solid-svg-icons';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
@@ -100,6 +101,11 @@ function getNotificationTypeLabel(englishCode) {
     'system_maintenance': 'Údržba systému',
     'user_mention': 'Zmínka v komentáři',
     'deadline_reminder': 'Připomínka termínu',
+    
+    // ✅ ZASTUPOVÁNÍ
+    'SUBSTITUTION_SET': 'Nastaven jako zástupce',
+    'SUBSTITUTION_CREATED': 'Zástupce nastaven adminem',
+    'SUBSTITUTION_ENDED': 'Zastupování ukončeno',
     
     // ✅ TODO ALARMY
     'alarm_todo_normal': 'TODO alarm',
@@ -575,7 +581,6 @@ const DashboardLabel = styled.span`
   color: #94a3b8;
   font-weight: 500;
   padding-right: 1rem;
-  background: white;
   position: relative;
   z-index: 1;
 `;
@@ -1276,6 +1281,11 @@ export const NotificationsPage = () => {
       } else if (activeTypeFilter === 'SYS') {
         const isSys = typLower.includes('system') || typLower.includes('alarm') || objTyp === 'todo' || !objTyp;
         if (!isSys) return false;
+      } else if (activeTypeFilter === 'ZASTUP') {
+        const isZastup = objTyp === 'zastupovani' || typLower.includes('substitution');
+        if (!isZastup) return false;
+      } else if (activeTypeFilter === 'MSG') {
+        if (notification.typ !== 'ADMIN_MESSAGE') return false;
       }
     }
 
@@ -2320,6 +2330,15 @@ export const NotificationsPage = () => {
 
             {/* 🏷️ Filtry dle typu - barevné badge */}
             <TypeFilterBadge
+              $active={activeTypeFilter === 'MSG'}
+              $color="#f59e0b"
+              onClick={() => setActiveTypeFilter(activeTypeFilter === 'MSG' ? null : 'MSG')}
+              title="Zprávy správce systému"
+            >
+              <FontAwesomeIcon icon={faEnvelope} size="xs" />
+              MSG
+            </TypeFilterBadge>
+            <TypeFilterBadge
               $active={activeTypeFilter === 'OBJ'}
               $color="#3b82f6"
               onClick={() => setActiveTypeFilter(activeTypeFilter === 'OBJ' ? null : 'OBJ')}
@@ -2354,6 +2373,15 @@ export const NotificationsPage = () => {
             >
               <FontAwesomeIcon icon={faCog} size="xs" />
               SYS
+            </TypeFilterBadge>
+            <TypeFilterBadge
+              $active={activeTypeFilter === 'ZASTUP'}
+              $color="#0891b2"
+              onClick={() => setActiveTypeFilter(activeTypeFilter === 'ZASTUP' ? null : 'ZASTUP')}
+              title="Zastupování"
+            >
+              <FontAwesomeIcon icon={faUsers} size="xs" />
+              ZASTUP
             </TypeFilterBadge>
 
             {/* ✅ Globální tlačítka pro rozbalení/sbalení vláken - pouze v thread módu */}
@@ -2447,8 +2475,8 @@ export const NotificationsPage = () => {
                         borderLeft: threadCount > 0 ? '4px solid #3b82f6' : undefined
                       }}
                     >
-                      <NotificationContent style={(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order' || mainNotification.objekt_typ === 'invoices' || mainNotification.objekt_typ === 'invoice' || mainNotification.objekt_typ === 'objednavka') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
-                        {/* Badge OBJ/FAK/KOM přes celou výšku */}
+                      <NotificationContent style={(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order' || mainNotification.objekt_typ === 'invoices' || mainNotification.objekt_typ === 'invoice' || mainNotification.objekt_typ === 'objednavka' || mainNotification.objekt_typ === 'zastupovani') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
+                        {/* Badge OBJ/FAK/KOM/ZASTUP přes celou výšku */}
                         {(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order') && (
                           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #3b82f6, #2563eb)', color: '#fff', fontSize: '0.6em', fontWeight: '800', letterSpacing: '0.12em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(37,99,235,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>OBJ</span>
                         )}
@@ -2457,6 +2485,9 @@ export const NotificationsPage = () => {
                         )}
                         {mainNotification.objekt_typ === 'objednavka' && (
                           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #6366f1, #4f46e5)', color: '#fff', fontSize: '0.55em', fontWeight: '800', letterSpacing: '0.1em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(99,102,241,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>KOM</span>
+                        )}
+                        {mainNotification.objekt_typ === 'zastupovani' && (
+                          <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #0891b2, #0e7490)', color: '#fff', fontSize: '0.5em', fontWeight: '800', letterSpacing: '0.08em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(8,145,178,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>ZASTUP</span>
                         )}
                         <NotificationHeader>
                           <NotificationTitle $isUnread={isUnread}>
@@ -2574,6 +2605,17 @@ export const NotificationsPage = () => {
                                         {getTimeAgo(mainNotification.dt_created || mainNotification.created_at)}
                                       </span>
                                     )}
+                                  </>
+                                );
+                              }
+                              
+                              // ✅ ZASTUPOVÁNÍ - použij nadpis z DB (už je česky) + ikona
+                              if (mainNotification.objekt_typ === 'zastupovani') {
+                                const nadpisZastup = mainNotification.nadpis || getNotificationTypeLabel(mainNotification.typ || '');
+                                return (
+                                  <>
+                                    <span style={{ color: '#0891b2', fontWeight: '700', fontSize: '1.05em' }}>{nadpisZastup}</span>
+                                    <FontAwesomeIcon icon={faUsers} style={{ marginLeft: '0.6em', color: '#0891b2', fontSize: '0.9em', verticalAlign: 'middle' }} />
                                   </>
                                 );
                               }
@@ -2976,8 +3018,8 @@ export const NotificationsPage = () => {
                   $priority={priority}
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  <NotificationContent style={(notification.objekt_typ === 'orders' || notification.objekt_typ === 'order' || notification.objekt_typ === 'invoices' || notification.objekt_typ === 'invoice' || notification.objekt_typ === 'objednavka' || notification.typ === 'ADMIN_MESSAGE') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
-                    {/* Badge MSG/OBJ/FAK/KOM přes celou výšku */}
+                  <NotificationContent style={(notification.objekt_typ === 'orders' || notification.objekt_typ === 'order' || notification.objekt_typ === 'invoices' || notification.objekt_typ === 'invoice' || notification.objekt_typ === 'objednavka' || notification.objekt_typ === 'zastupovani' || notification.typ === 'ADMIN_MESSAGE') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
+                    {/* Badge MSG/OBJ/FAK/KOM/ZASTUP přes celou výšku */}
                     {notification.typ === 'ADMIN_MESSAGE' && (
                       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #f59e0b, #d97706)', color: '#fff', fontSize: '0.55em', fontWeight: '800', letterSpacing: '0.1em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(217,119,6,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>MSG</span>
                     )}
@@ -2989,6 +3031,9 @@ export const NotificationsPage = () => {
                     )}
                     {notification.objekt_typ === 'objednavka' && (
                       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #6366f1, #4f46e5)', color: '#fff', fontSize: '0.55em', fontWeight: '800', letterSpacing: '0.1em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(99,102,241,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>KOM</span>
+                    )}
+                    {notification.objekt_typ === 'zastupovani' && (
+                      <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #0891b2, #0e7490)', color: '#fff', fontSize: '0.5em', fontWeight: '800', letterSpacing: '0.08em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(8,145,178,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>ZASTUP</span>
                     )}
                     <NotificationHeader>
                       <NotificationTitle $isUnread={isUnread}>
@@ -3130,6 +3175,17 @@ export const NotificationsPage = () => {
                             );
                           }
 
+                          // ✅ ZASTUPOVÁNÍ - použij nadpis z DB (už je česky) + ikona
+                          if (notification.objekt_typ === 'zastupovani') {
+                            const nadpisZastup = notification.nadpis || getNotificationTypeLabel(notification.typ || '');
+                            return (
+                              <>
+                                <span style={{ color: '#0891b2', fontWeight: '700', fontSize: '1.05em' }}>{nadpisZastup}</span>
+                                <FontAwesomeIcon icon={faUsers} style={{ marginLeft: '0.6em', color: '#0891b2', fontSize: '0.9em', verticalAlign: 'middle' }} />
+                              </>
+                            );
+                          }
+
                           // ✅ FALLBACK - starý formát (ostatní typy notifikací)
                           return (
                             <>
@@ -3147,7 +3203,7 @@ export const NotificationsPage = () => {
                         })()}
                       </NotificationTitle>
                     </NotificationHeader>
-                    {/* Message body: zobrazí se pro detailMode NEBO pro ADMIN_MESSAGE vždy */}
+                    {/* Message body: zobrazí se pro detailMode NEBO pro ADMIN_MESSAGE/ZASTUPOVÁNÍ vždy */}
                     {detailMode && notification.objekt_typ && (notification.objekt_typ === 'orders' || notification.objekt_typ === 'order') && notification.data?.placeholders ? (
                       <NotificationMessage>
                         <strong>Předmět:</strong> {notification.data.placeholders.order_subject || notification.data.placeholders.predmet || 'N/A'} | <strong>Cena:</strong> {notification.data.placeholders.amount || notification.data.placeholders.max_price_with_dph || 'N/A'} | <strong>Objednatel:</strong> {notification.data.placeholders.creator_name || notification.data.placeholders.objednatel_name || 'N/A'} | <strong>Garant:</strong> {notification.data.placeholders.garant_name || 'N/A'} | <strong>Příkazce:</strong> {notification.data.placeholders.prikazce_name || notification.data.placeholders.schvalovatel_name || 'N/A'}
@@ -3156,7 +3212,7 @@ export const NotificationsPage = () => {
                       <NotificationMessage>
                         <strong>Částka:</strong> {notification.data.placeholders.invoice_amount || notification.data.placeholders.amount || 'N/A'} | <strong>Dodavatel:</strong> {notification.data.placeholders.supplier_name || notification.data.placeholders.dodavatel_nazev || 'N/A'} | <strong>Splatnost:</strong> {notification.data.placeholders.due_date || notification.data.placeholders.invoice_due_date || notification.data.placeholders.datum_splatnosti || 'N/A'} | <strong>Vytvořil:</strong> {notification.data.placeholders.creator_name || notification.data.placeholders.vytvoril_fa_name || 'N/A'}
                       </NotificationMessage>
-                    ) : (detailMode || notification.typ === 'ADMIN_MESSAGE') && notification.zprava ? (
+                    ) : (notification.objekt_typ === 'zastupovani' || detailMode || notification.typ === 'ADMIN_MESSAGE') && notification.zprava ? (
                       <NotificationMessage>
                         {formatZpravaWithBoldQuotes(notification.zprava)}
                       </NotificationMessage>
@@ -3180,20 +3236,14 @@ export const NotificationsPage = () => {
                     )}
 
                     <NotificationMeta>
-                      {detailMode && notification.typ !== 'ADMIN_MESSAGE' && (
-                        <MetaItem>
-                          <FontAwesomeIcon icon={faClock} style={{ fontSize: '12px' }} />
-                          {getTimeAgo(notification.dt_created || notification.created_at)}
-                        </MetaItem>
-                      )}
                       {/* ADMIN_MESSAGE: čas + celé jméno odesílatele */}
                       {detailMode && notification.typ === 'ADMIN_MESSAGE' && notification.dt_created && (
                         <TypeBadge style={{ background: '#dbeafe', color: '#1e40af' }}>
                           📅 {new Date(notification.dt_created).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                         </TypeBadge>
                       )}
-                      {detailMode && notification.typ === 'ADMIN_MESSAGE' && (() => {
-                        const senderName = notification.from_user_name || 'Administrátor';
+                      {detailMode && notification.typ === 'ADMIN_MESSAGE' && notification.from_user_name && (() => {
+                        const senderName = notification.from_user_name;
                         return (
                           <TypeBadge style={{ background: '#fef3c7', color: '#d97706', fontWeight: 600 }}>
                             👤 {senderName}
@@ -3210,6 +3260,17 @@ export const NotificationsPage = () => {
                       {detailMode && notification.typ !== 'ADMIN_MESSAGE' && (notification.data?.placeholders?.action_performed_by || notification.from_user_name) && (
                         <TypeBadge style={{ background: '#f3e8ff', color: '#6b21a8', fontWeight: 600 }}>
                           👤 {notification.data?.placeholders?.action_performed_by || notification.from_user_name}
+                        </TypeBadge>
+                      )}
+                      {/* ZASTUPOVÁNÍ: datum + odesílatel - vždy v non-detailMode */}
+                      {!detailMode && notification.objekt_typ === 'zastupovani' && notification.dt_created && (
+                        <TypeBadge style={{ background: '#dbeafe', color: '#1e40af' }}>
+                          📅 {new Date(notification.dt_created).toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </TypeBadge>
+                      )}
+                      {!detailMode && notification.objekt_typ === 'zastupovani' && (
+                        <TypeBadge style={{ background: '#e0f2fe', color: '#0369a1', fontWeight: 600 }}>
+                          👤 {notification.from_user_name}
                         </TypeBadge>
                       )}
                     </NotificationMeta>

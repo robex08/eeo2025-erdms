@@ -704,10 +704,10 @@ function App() {
           priorita: notification.priorita || 'high',
           dt_created: notification.vytvoren_kdy || notification.dt_created || new Date().toISOString(),
           typ: notification.typ || 'ADMIN_MESSAGE',
-          from_user_name: notification.from_user_name || placeholderData.sender_name || notifData.sender_name || 'Administrátor',
+          from_user_name: notification.from_user_name || placeholderData.sender_name || notifData.sender_name || null,
           data_json: {
             placeholder_data: {
-              sender_name: notification.from_user_name || placeholderData.sender_name || notifData.sender_name || 'Administrátor',
+              sender_name: notification.from_user_name || placeholderData.sender_name || notifData.sender_name || null,
               sender_username: placeholderData.sender_username || notifData.sender_username || null
             }
           }

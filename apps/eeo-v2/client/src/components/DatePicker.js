@@ -9,7 +9,7 @@ import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { Calendar } from 'lucide-react';
 
-function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard', highlight = false, limitToMonth, limitToYear }) {
+function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder = 'Vyberte datum', variant = 'standard', highlight = false, limitToMonth, limitToYear, minDate }) {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(''); // Lokální stav pro ruční zadání
   
@@ -220,6 +220,14 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
   };
 
   const handleDateSelect = (date) => {
+    // Zakázat výběr datumů před minDate
+    if (minDate) {
+      const minD = new Date(minDate);
+      minD.setHours(0, 0, 0, 0);
+      const sel = new Date(date);
+      sel.setHours(0, 0, 0, 0);
+      if (sel < minD) return;
+    }
     const formattedDate = formatInputDate(date);
     setInputValue(''); // Reset inputValue - použije se formátované datum
     onChange(formattedDate);
@@ -237,6 +245,17 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
     
     const today = new Date();
     let dateToSet = today;
+
+    // Pokud je minDate nastaveno a dnes je před minDate, použít minDate
+    if (minDate) {
+      const minD = new Date(minDate);
+      minD.setHours(0, 0, 0, 0);
+      const todayNorm = new Date(today);
+      todayNorm.setHours(0, 0, 0, 0);
+      if (todayNorm < minD) {
+        dateToSet = new Date(minDate);
+      }
+    }
     
     // Pokud je limitToMonth a limitToYear nastaveno, zkontroluj, zda dnešní datum je v tomto měsíci
     if (limitToMonth !== undefined && limitToYear !== undefined) {
@@ -271,16 +290,26 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
       e.preventDefault();
       e.stopPropagation();
     }
+
+    const newMonthDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1);
     
     // Pokud je limitToMonth nastaveno, zakázat navigaci mimo tento měsíc
     if (limitToMonth !== undefined && limitToYear !== undefined) {
-      const newMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1);
-      if (newMonth.getMonth() + 1 !== limitToMonth || newMonth.getFullYear() !== limitToYear) {
+      if (newMonthDate.getMonth() + 1 !== limitToMonth || newMonthDate.getFullYear() !== limitToYear) {
+        return; // Zakázat navigaci
+      }
+    }
+
+    // Pokud je minDate nastaveno, zakázat navigaci před měsícem minDate
+    if (minDate) {
+      const minD = new Date(minDate);
+      if (newMonthDate.getFullYear() < minD.getFullYear() ||
+          (newMonthDate.getFullYear() === minD.getFullYear() && newMonthDate.getMonth() < minD.getMonth())) {
         return; // Zakázat navigaci
       }
     }
     
-    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+    setCurrentMonth(newMonthDate);
   };
 
   const nextMonth = (e) => {
@@ -365,6 +394,13 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
         // Kontrola, zda je datum platné (např. 31.2. by bylo neplatné)
         if (date.getDate() === day) {
           const formattedDate = formatInputDate(date);
+          // Pokud je datum před minDate, nastavit minDate místo zadaného data
+          if (minDate && formattedDate < minDate) {
+            setInputValue('');
+            onChange(minDate);
+            if (onBlur) onBlur(minDate);
+            return;
+          }
           setInputValue(''); // Vyčistit lokální stav - použije se formátované datum
           onChange(formattedDate);
           if (onBlur) onBlur(formattedDate);
@@ -464,8 +500,15 @@ function DatePicker({ fieldName, value, onChange, onBlur, disabled, hasError, pl
               const isSelected = selectedDate && day.date.toDateString() === selectedDate.toDateString();
               
               // Zakázat dny mimo měsíc knihy (pokud je limitToMonth a limitToYear nastaveno)
-              const isDisabled = limitToMonth !== undefined && limitToYear !== undefined && 
+              const isOutOfBookMonth = limitToMonth !== undefined && limitToYear !== undefined &&
                 (day.date.getMonth() + 1 !== limitToMonth || day.date.getFullYear() !== limitToYear);
+              // Zakázat dny před minDate
+              const isBeforeMin = minDate ? (() => {
+                const d = new Date(day.date); d.setHours(0, 0, 0, 0);
+                const m = new Date(minDate); m.setHours(0, 0, 0, 0);
+                return d < m;
+              })() : false;
+              const isDisabled = isOutOfBookMonth || isBeforeMin;
 
               return (
                 <CalendarDate

@@ -1383,9 +1383,13 @@ $queries['substitution_get_by_user'] = "
         zu.username as zastupovany_username,
         zu.jmeno as zastupovany_jmeno,
         zu.prijmeni as zastupovany_prijmeni,
+        zu.email as zastupovany_email,
+        zu.telefon as zastupovany_telefon,
         zs.username as zastupce_username,
         zs.jmeno as zastupce_jmeno,
-        zs.prijmeni as zastupce_prijmeni
+        zs.prijmeni as zastupce_prijmeni,
+        zs.email as zastupce_email,
+        zs.telefon as zastupce_telefon
     FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
     JOIN " . TBL_UZIVATELE . " zu ON z.zastupovany_id = zu.id
     JOIN " . TBL_UZIVATELE . " zs ON z.zastupce_id = zs.id
@@ -1424,16 +1428,19 @@ $queries['substitution_check_current'] = "
         z.zastupovany_id,
         z.dt_od,
         z.dt_do,
+        z.aktivni,
         z.opravneni,
         z.popis,
         zu.username as zastupovany_username,
         zu.jmeno as zastupovany_jmeno,
-        zu.prijmeni as zastupovany_prijmeni
+        zu.prijmeni as zastupovany_prijmeni,
+        zu.email as zastupovany_email,
+        zu.telefon as zastupovany_telefon
     FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
     JOIN " . TBL_UZIVATELE . " zu ON z.zastupovany_id = zu.id
     WHERE z.zastupce_id = :zastupce_id
     AND z.aktivni = 1
-    AND CURDATE() BETWEEN z.dt_od AND z.dt_do
+    AND z.dt_do >= CURDATE()
     ORDER BY z.dt_od
 ";
 
@@ -1450,7 +1457,8 @@ $queries['substitution_my_active'] = "
         zs.username as zastupce_username,
         zs.jmeno as zastupce_jmeno,
         zs.prijmeni as zastupce_prijmeni,
-        zs.email as zastupce_email
+        zs.email as zastupce_email,
+        zs.telefon as zastupce_telefon
     FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
     JOIN " . TBL_UZIVATELE . " zs ON z.zastupce_id = zs.id
     WHERE z.zastupovany_id = :zastupovany_id
@@ -1467,7 +1475,9 @@ $queries['substitution_candidates'] = "
         u.prijmeni,
         u.titul_pred,
         u.titul_za,
-        u.email
+        u.email,
+        (SELECT COUNT(*) FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+         WHERE z.zastupce_id = u.id AND z.aktivni = 1 AND z.dt_do >= CURDATE()) AS active_substitutions_count
     FROM " . TBL_UZIVATELE . " u
     WHERE u.aktivni = 1
     AND u.id != :current_user_id
@@ -1499,9 +1509,13 @@ $queries['substitution_get_all'] = "
         zuov.username AS zastupovany_username,
         zuov.jmeno    AS zastupovany_jmeno,
         zuov.prijmeni AS zastupovany_prijmeni,
+        zuov.email    AS zastupovany_email,
+        zuov.telefon  AS zastupovany_telefon,
         zuce.username AS zastupce_username,
         zuce.jmeno    AS zastupce_jmeno,
-        zuce.prijmeni AS zastupce_prijmeni
+        zuce.prijmeni AS zastupce_prijmeni,
+        zuce.email    AS zastupce_email,
+        zuce.telefon  AS zastupce_telefon
     FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
     JOIN " . TBL_UZIVATELE . " zuov ON zuov.id = z.zastupovany_id
     JOIN " . TBL_UZIVATELE . " zuce ON zuce.id = z.zastupce_id

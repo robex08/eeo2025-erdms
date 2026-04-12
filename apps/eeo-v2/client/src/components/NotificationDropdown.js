@@ -17,7 +17,8 @@ import {
   faBolt,
   faExclamation,
   faExclamationTriangle,
-  faUserShield
+  faUserShield,
+  faUsers
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -630,6 +631,11 @@ export const NotificationDropdown = ({
         : faUserShield;  // Normální - štít správce
     }
     
+    // 🌟 SPECIÁLNÍ: SUBSTITUTION typy - ikona uživatelů
+    if (notificationType === 'SUBSTITUTION_SET' || notificationType === 'SUBSTITUTION_CREATED' || notificationType === 'SUBSTITUTION_ENDED') {
+      return faUsers;
+    }
+    
     // 🌟 SPECIÁLNÍ: Pro potvrzení věcné správnosti zobraz zelenou fajfku
     if (notificationType === 'invoice_material_check_approved' || 
         notificationType === 'INVOICE_MATERIAL_CHECK_APPROVED') {
@@ -788,9 +794,22 @@ export const NotificationDropdown = ({
                           👤 {notificationData?.placeholders?.action_performed_by || notificationData?.action_performed_by}
                         </span>
                       )}
+                      {/* Zobraz odesílatele pro ZASTUP notifikace */}
+                      {notification.objekt_typ === 'zastupovani' && notification.from_user_name && (
+                        <span style={{
+                          background: '#e0f2fe',
+                          color: '#0369a1',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: '600'
+                        }}>
+                          👤 {notification.from_user_name}
+                        </span>
+                      )}
                       {/* Zobraz odesílatele pro ADMIN zprávy - zvýrazněně */}
-                      {notification.typ === 'ADMIN_MESSAGE' && (() => {
-                        const senderName = notification.from_user_name || 'Administrátor';
+                      {notification.typ === 'ADMIN_MESSAGE' && notification.from_user_name && (() => {
+                        const senderName = notification.from_user_name;
                         return (
                           <span style={{
                             background: '#fef3c7',

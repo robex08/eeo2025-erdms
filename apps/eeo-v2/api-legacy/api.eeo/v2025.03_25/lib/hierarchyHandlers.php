@@ -316,13 +316,17 @@ function handle_substitution_list($data, $pdo) {
                     'id' => (int)$row['zastupovany_id'],
                     'username' => $row['zastupovany_username'],
                     'jmeno' => $row['zastupovany_jmeno'],
-                    'prijmeni' => $row['zastupovany_prijmeni']
+                    'prijmeni' => $row['zastupovany_prijmeni'],
+                    'email' => $row['zastupovany_email'],
+                    'telefon' => $row['zastupovany_telefon']
                 ),
                 'zastupce' => array(
                     'id' => (int)$row['zastupce_id'],
                     'username' => $row['zastupce_username'],
                     'jmeno' => $row['zastupce_jmeno'],
-                    'prijmeni' => $row['zastupce_prijmeni']
+                    'prijmeni' => $row['zastupce_prijmeni'],
+                    'email' => $row['zastupce_email'],
+                    'telefon' => $row['zastupce_telefon']
                 ),
                 'dt_od' => $row['dt_od'],
                 'dt_do' => $row['dt_do'],
@@ -448,6 +452,77 @@ function handle_substitution_create($data, $pdo) {
         $new_id = (int)$pdo->lastInsertId();
 
         $pdo->commit();
+
+        // ── NOTIFIKACE po commitu ──────────────────────────────────────────
+        try {
+            // Načti jména zástupce a zastupovaného pro notifikaci
+            $stmt_names = $pdo->prepare(
+                "SELECT id, jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id IN (?, ?) AND aktivni = 1"
+            );
+            $stmt_names->execute(array($zastupce_id, $zastupovany_id));
+            $names = array();
+            while ($r = $stmt_names->fetch(PDO::FETCH_ASSOC)) {
+                $names[(int)$r['id']] = trim($r['jmeno'] . ' ' . $r['prijmeni']);
+            }
+            $zastupce_jmeno   = isset($names[$zastupce_id])   ? $names[$zastupce_id]   : 'Zástupce';
+            $zastupovany_jmeno = isset($names[$zastupovany_id]) ? $names[$zastupovany_id] : 'Uživatel';
+            $dt_od_fmt = date('d.m.Y', strtotime($dt_od));
+            $dt_do_fmt = date('d.m.Y', strtotime($dt_do));
+
+            $notif_data_json = json_encode(array(
+                'substitution_id' => $new_id,
+                'placeholders' => array(
+                    'zastupce_jmeno'   => $zastupce_jmeno,
+                    'zastupovany_jmeno' => $zastupovany_jmeno,
+                    'dt_od' => $dt_od_fmt,
+                    'dt_do' => $dt_do_fmt,
+                )
+            ), JSON_UNESCAPED_UNICODE);
+
+            // Notifikace PRO ZÁSTUPCE – byl nastaven jako zástupce
+            createNotification($pdo, array(
+                ':typ'              => 'SUBSTITUTION_SET',
+                ':nadpis'           => 'Jste zástupcem pro ' . $zastupovany_jmeno,
+                ':zprava'           => 'Byli jste nastaveni jako zástupce pro ' . $zastupovany_jmeno . ' v období ' . $dt_od_fmt . ' – ' . $dt_do_fmt . '.',
+                ':data_json'        => $notif_data_json,
+                ':od_uzivatele_id'  => (int)$token_data['id'],
+                ':pro_uzivatele_id' => $zastupce_id,
+                ':prijemci_json'    => null,
+                ':pro_vsechny'      => 0,
+                ':priorita'         => 'normal',
+                ':kategorie'        => 'zastupovani',
+                ':odeslat_email'    => 0,
+                ':objekt_typ'       => 'zastupovani',
+                ':objekt_id'        => $new_id,
+                ':dt_expires'       => null,
+                ':aktivni'          => 1,
+            ));
+
+            // Notifikace PRO ZASTUPOVANÉHO – pouze pokud admin nastavoval zástupce za jiného
+            if ($admin_override && $zastupovany_id !== (int)$token_data['id']) {
+                createNotification($pdo, array(
+                    ':typ'              => 'SUBSTITUTION_CREATED',
+                    ':nadpis'           => 'Zástupce nastaven: ' . $zastupce_jmeno,
+                    ':zprava'           => 'Byl vám nastaven zástupce ' . $zastupce_jmeno . ' v období ' . $dt_od_fmt . ' – ' . $dt_do_fmt . '.',
+                    ':data_json'        => $notif_data_json,
+                    ':od_uzivatele_id'  => (int)$token_data['id'],
+                    ':pro_uzivatele_id' => $zastupovany_id,
+                    ':prijemci_json'    => null,
+                    ':pro_vsechny'      => 0,
+                    ':priorita'         => 'normal',
+                    ':kategorie'        => 'zastupovani',
+                    ':odeslat_email'    => 0,
+                    ':objekt_typ'       => 'zastupovani',
+                    ':objekt_id'        => $new_id,
+                    ':dt_expires'       => null,
+                    ':aktivni'          => 1,
+                ));
+            }
+        } catch (Exception $e_notif) {
+            error_log("substitution_create – notifikace selhaly: " . $e_notif->getMessage());
+            // Notifikace jsou nekritické – pokračujeme
+        }
+        // ─────────────────────────────────────────────────────────────────
 
         return array(
             'status' => 'ok',
@@ -577,12 +652,65 @@ function handle_substitution_deactivate($data, $pdo) {
     try {
         TimezoneHelper::setMysqlTimezone($pdo);
 
+        // Načti data zastupování PŘED deaktivací (pro notifikaci)
+        $stmt_info = $pdo->prepare(
+            "SELECT z.zastupce_id, z.zastupovany_id, z.dt_od, z.dt_do,
+                    uc.jmeno AS zastupce_jmeno, uc.prijmeni AS zastupce_prijmeni,
+                    uo.jmeno AS zastupovany_jmeno, uo.prijmeni AS zastupovany_prijmeni
+             FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+             LEFT JOIN " . TBL_UZIVATELE . " uc ON uc.id = z.zastupce_id
+             LEFT JOIN " . TBL_UZIVATELE . " uo ON uo.id = z.zastupovany_id
+             WHERE z.id = ? AND z.aktivni = 1"
+        );
+        $stmt_info->execute(array($substitution_id));
+        $sub_info = $stmt_info->fetch(PDO::FETCH_ASSOC);
+
         $stmt = $pdo->prepare($queries['substitution_deactivate']);
         $stmt->bindParam(':substitution_id', $substitution_id, PDO::PARAM_INT);
         $stmt->bindParam(':zastupovany_id', $zastupovany_id, PDO::PARAM_INT);
         $stmt->execute();
 
         if ($stmt->rowCount() > 0) {
+            // ── NOTIFIKACE: Zastupování ukončeno ───────────────────────────
+            if ($sub_info) {
+                try {
+                    $zastupce_jmeno_full   = trim($sub_info['zastupce_jmeno'] . ' ' . $sub_info['zastupce_prijmeni']);
+                    $zastupovany_jmeno_full = trim($sub_info['zastupovany_jmeno'] . ' ' . $sub_info['zastupovany_prijmeni']);
+                    $dt_od_fmt = $sub_info['dt_od'] ? date('d.m.Y', strtotime($sub_info['dt_od'])) : '?';
+                    $dt_do_fmt = $sub_info['dt_do'] ? date('d.m.Y', strtotime($sub_info['dt_do'])) : '?';
+
+                    $notif_data_json = json_encode(array(
+                        'substitution_id' => $substitution_id,
+                        'placeholders' => array(
+                            'zastupce_jmeno'   => $zastupce_jmeno_full,
+                            'zastupovany_jmeno' => $zastupovany_jmeno_full,
+                            'dt_od' => $dt_od_fmt,
+                            'dt_do' => $dt_do_fmt,
+                        )
+                    ), JSON_UNESCAPED_UNICODE);
+
+                    createNotification($pdo, array(
+                        ':typ'              => 'SUBSTITUTION_ENDED',
+                        ':nadpis'           => 'Zastupování ukončeno',
+                        ':zprava'           => 'Vaše zastupování za ' . $zastupovany_jmeno_full . ' (' . $dt_od_fmt . ' – ' . $dt_do_fmt . ') bylo ukončeno.',
+                        ':data_json'        => $notif_data_json,
+                        ':od_uzivatele_id'  => (int)$token_data['id'],
+                        ':pro_uzivatele_id' => (int)$sub_info['zastupce_id'],
+                        ':prijemci_json'    => null,
+                        ':pro_vsechny'      => 0,
+                        ':priorita'         => 'normal',
+                        ':kategorie'        => 'zastupovani',
+                        ':odeslat_email'    => 0,
+                        ':objekt_typ'       => 'zastupovani',
+                        ':objekt_id'        => $substitution_id,
+                        ':dt_expires'       => null,
+                        ':aktivni'          => 1,
+                    ));
+                } catch (Exception $e_notif) {
+                    error_log("substitution_deactivate – notifikace selhaly: " . $e_notif->getMessage());
+                }
+            }
+            // ───────────────────────────────────────────────────────────────
             return array('status' => 'ok', 'message' => 'Zastupování bylo úspěšně zrušeno');
         } else {
             return array('status' => 'error', 'message' => 'Zastupování nebylo nalezeno nebo nepatří vašemu účtu');
@@ -623,8 +751,11 @@ function handle_substitution_current($data, $pdo) {
                 'zastupovany_username' => $row['zastupovany_username'],
                 'zastupovany_jmeno' => $row['zastupovany_jmeno'],
                 'zastupovany_prijmeni' => $row['zastupovany_prijmeni'],
+                'zastupovany_email' => $row['zastupovany_email'],
+                'zastupovany_telefon' => $row['zastupovany_telefon'],
                 'dt_od' => $row['dt_od'],
                 'dt_do' => $row['dt_do'],
+                'aktivni' => (int)$row['aktivni'],
                 'opravneni' => _substitution_decode_opravneni($row['opravneni']),
                 'popis' => $row['popis']
             );
@@ -666,7 +797,8 @@ function handle_substitution_candidates($data, $pdo) {
                 'jmeno' => $row['jmeno'],
                 'prijmeni' => $row['prijmeni'],
                 'cele_jmeno' => trim($titul_pred . $row['jmeno'] . ' ' . $row['prijmeni'] . $titul_za),
-                'email' => $row['email']
+                'email' => $row['email'],
+                'active_substitutions_count' => (int)$row['active_substitutions_count']
             );
         }
 

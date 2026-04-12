@@ -3312,6 +3312,14 @@ const ProfilePage = () => {
               >
                 <UserCheck size={20} />
                 <span>Zastupování</span>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center',
+                  background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                  color: '#fff', fontSize: '0.55rem', fontWeight: 800,
+                  letterSpacing: '0.08em', padding: '2px 5px',
+                  borderRadius: '4px', marginLeft: '5px', verticalAlign: 'middle',
+                  lineHeight: 1.3, boxShadow: '0 1px 4px rgba(109,40,217,0.4)'
+                }}>BETA</span>
               </TabButton>
             )}
             <TabButton 

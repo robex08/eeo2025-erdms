@@ -248,7 +248,7 @@ export default function HighPriorityNotificationModal({ notification, onClose })
   }
 
   // ✅ Jméno odesílatele je přímo v notification.from_user_name
-  const senderName = notification.from_user_name || 'Administrátor';
+  const senderName = notification.from_user_name || null;
 
   const formatDateTime = (dateStr) => {
     if (!dateStr) return '';
@@ -285,9 +285,9 @@ export default function HighPriorityNotificationModal({ notification, onClose })
               )}
             </Title>
             <Subtitle>
-              <span>📨 Od: <strong>{senderName}</strong></span>
+              {senderName && <span>📨 Od: <strong>{senderName}</strong></span>}
               {notification.dt_created && (
-                <span>• {formatDateTime(notification.dt_created)}</span>
+                <span>{senderName && ' • '}{formatDateTime(notification.dt_created)}</span>
               )}
             </Subtitle>
           </HeaderContent>
