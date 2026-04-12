@@ -1250,7 +1250,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                   <FormField>
                     <FieldLabel $required><Users size={12} /> Zastupovaný uživatel</FieldLabel>
                     <CustomSelect
-                      fieldName="admin_zastupovany_id"
+                      field="admin_zastupovany_id"
                       value={adminForm.zastupovany_id}
                       options={manageableOptions}
                       placeholder="Vyberte zastupovaného…"
@@ -1271,7 +1271,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                   <FormField>
                     <FieldLabel $required><UserCheck size={12} /> Zástupce</FieldLabel>
                     <CustomSelect
-                      fieldName="admin_zastupce_id"
+                      field="admin_zastupce_id"
                       value={adminForm.zastupce_id}
                       options={candidateOptions}
                       placeholder="Vyberte zástupce…"
