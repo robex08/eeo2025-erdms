@@ -28,6 +28,7 @@ import { useTodoAlarms } from '../hooks/useTodoAlarms';
 import useActivityTracking from '../hooks/useActivityTracking'; // ✅ NOVÉ: Activity tracking
 import { FloatingAlarmManager } from './FloatingAlarmPopup';
 import { translateToCz } from '../utils/translate';
+import ConfirmDialog from './ConfirmDialog';
 import { useDebugPanel } from '../hooks/useDebugPanel';
 import { ASSETS } from '../config/assets';
 import FinancialCalculator from './FinancialCalculator';
@@ -1209,6 +1210,7 @@ const NotificationBellWrapper = ({ userId }) => {
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [draftConfirm, setDraftConfirm] = useState({ isOpen: false, message: '', onConfirm: null });
   const buttonRef = useRef(null);
   const dropdownRef = useRef(null);
   const containerRef = useRef(null);
@@ -1360,19 +1362,19 @@ const NotificationBellWrapper = ({ userId }) => {
             const draftTitle = formData.ev_cislo || formData.cislo_objednavky || formData.predmet || '★ KONCEPT ★';
             const hasNewConcept = isValidConcept(draftDataToStore);
 
-            const confirmResult = window.confirm(
-              `⚠️ POZOR - Máte rozpracovanou ${hasNewConcept ? 'novou objednávku' : 'editaci objednávky'} "${draftTitle}" s neuloženými změnami.\n\n` +
-              `Přepnutím na jinou objednávku přijdete o neuložené změny!\n\n` +
-              `Chcete pokračovat a zahodit neuložené změny?`
-            );
+            const draftMsg = `Máte rozpracovanou ${hasNewConcept ? 'novou objednávku' : 'editaci objednávky'} "${draftTitle}" s neuloženými změnami.\n\nPřepnutím na jinou objednávku přijdete o neuložené změny!`;
 
-            if (!confirmResult) {
-              // Uživatel zrušil - nezavírej dropdown, zůstaneme kde jsme
-              return;
-            }
-
-            // Uživatel potvrdil - vyčisti koncept a pokračuj
-            await draftManager.deleteDraft();
+            setDraftConfirm({
+              isOpen: true,
+              message: draftMsg,
+              onConfirm: async () => {
+                await draftManager.deleteDraft();
+                navigate(`/order-form-25?edit=${orderId}`);
+                setDropdownVisible(false);
+                setDraftConfirm({ isOpen: false, message: '', onConfirm: null });
+              }
+            });
+            return;
           }
         }
 
@@ -1426,17 +1428,19 @@ const NotificationBellWrapper = ({ userId }) => {
             const draftTitle = formData.ev_cislo || formData.cislo_objednavky || formData.predmet || '★ KONCEPT ★';
             const hasNewConcept = isValidConcept(draftDataToStore);
 
-            const confirmResult = window.confirm(
-              `⚠️ POZOR - Máte rozpracovanou ${hasNewConcept ? 'novou objednávku' : 'editaci objednávky'} "${draftTitle}" s neuloženými změnami.\n\n` +
-              `Přepnutím na jinou objednávku přijdete o neuložené změny!\n\n` +
-              `Chcete pokračovat a zahodit neuložené změny?`
-            );
+            const draftMsg = `Máte rozpracovanou ${hasNewConcept ? 'novou objednávku' : 'editaci objednávky'} "${draftTitle}" s neuloženými změnami.\n\nPřepnutím na jinou objednávku přijdete o neuložené změny!`;
 
-            if (!confirmResult) {
-              return;
-            }
-
-            await draftManager.deleteDraft();
+            setDraftConfirm({
+              isOpen: true,
+              message: draftMsg,
+              onConfirm: async () => {
+                await draftManager.deleteDraft();
+                navigate(`/order-form-25?edit=${orderId}`);
+                setDropdownVisible(false);
+                setDraftConfirm({ isOpen: false, message: '', onConfirm: null });
+              }
+            });
+            return;
           }
         }
 
@@ -1544,6 +1548,7 @@ const NotificationBellWrapper = ({ userId }) => {
   };
 
   return (
+    <>
     <SmartTooltip
       text={unreadCount > 0
         ? `Máte ${unreadCount} ${unreadCount === 1 ? 'nepřečtenou notifikaci' : unreadCount < 5 ? 'nepřečtené notifikace' : 'nepřečtených notifikací'}`
@@ -1596,6 +1601,23 @@ const NotificationBellWrapper = ({ userId }) => {
         )}
       </div>
     </SmartTooltip>
+
+    {/* Confirm dialog pro draft konflikty (místo window.confirm) */}
+    {draftConfirm.isOpen && (
+      <ConfirmDialog
+        isOpen={draftConfirm.isOpen}
+        title="Neuložené změny"
+        icon={faExclamationTriangle}
+        variant="warning"
+        confirmText="Zahodit a pokračovat"
+        cancelText="Zůstat"
+        onConfirm={draftConfirm.onConfirm}
+        onClose={() => setDraftConfirm({ isOpen: false, message: '', onConfirm: null })}
+      >
+        {draftConfirm.message}
+      </ConfirmDialog>
+    )}
+    </>
   );
 };
 

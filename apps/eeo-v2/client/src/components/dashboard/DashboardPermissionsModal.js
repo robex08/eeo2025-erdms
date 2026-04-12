@@ -13,7 +13,8 @@ import {
   getWidgetPermissions,
   saveWidgetPermissions,
   getUserWidgetPermissions,
-  saveUserWidgetPermissions
+  saveUserWidgetPermissions,
+  getUsersWithDirectPermissions
 } from '../../services/apiDashboard';
 import { fetchAllUsers } from '../../services/api2auth';
 
@@ -248,6 +249,8 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
   const [userSearch, setUserSearch] = useState('');
   const [userResults, setUserResults] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [directUsers, setDirectUsers] = useState([]); // uživatelé s přímými právy
+  const [directUsersLoading, setDirectUsersLoading] = useState(false);
   const [userPrava, setUserPrava] = useState([]);
   const [userInherited, setUserInherited] = useState([]);
   const [userDirect, setUserDirect] = useState([]);
@@ -306,6 +309,27 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
       setSaving(false);
     }
   }, [token, username, assignments, onSaved]);
+
+  // Load users with direct permissions when Users tab is activated
+  const loadDirectUsers = useCallback(async () => {
+    setDirectUsersLoading(true);
+    try {
+      const res = await getUsersWithDirectPermissions({ token, username });
+      if (res.status === 'success') {
+        setDirectUsers(res.data || []);
+      }
+    } catch (e) {
+      console.error('Error loading users with direct permissions:', e);
+    } finally {
+      setDirectUsersLoading(false);
+    }
+  }, [token, username]);
+
+  useEffect(() => {
+    if (activeTab === 'users' && directUsers.length === 0 && !directUsersLoading) {
+      loadDirectUsers();
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Search users – load full list once, then filter locally
   const searchUsers = useCallback(async (q) => {
@@ -372,6 +396,8 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
       });
       if (res.status === 'success') {
         setUserDirty(false);
+        // Refresh přehled uživatelů s přímými právy
+        loadDirectUsers();
       }
     } catch (e) {
       console.error('Error saving user widget permissions:', e);
@@ -495,6 +521,40 @@ export default function DashboardPermissionsModal({ token, username, onClose, on
                   autoFocus
                 />
               </SearchBox>
+
+              {/* Seznam uživatelů s přímými právy */}
+              {!selectedUser && !userSearch && (
+                <div style={{ marginBottom: '1rem' }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <FontAwesomeIcon icon={faUserShield} style={{ color: '#7c3aed', fontSize: '0.75rem' }} />
+                    Uživatelé s přímými právy ({directUsers.length})
+                  </div>
+                  {directUsersLoading ? (
+                    <div style={{ textAlign: 'center', padding: '1rem', color: '#6b7280', fontSize: '0.83rem' }}>
+                      <FontAwesomeIcon icon={faSpinner} spin /> Načítání...
+                    </div>
+                  ) : directUsers.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '1rem', color: '#9ca3af', fontSize: '0.83rem', background: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb' }}>
+                      Žádný uživatel nemá přiřazená přímá práva.
+                    </div>
+                  ) : (
+                    <UserList style={{ maxHeight: '260px' }}>
+                      {directUsers.map(u => (
+                        <UserItem key={u.id} onClick={() => loadUserPerms(u.id)} style={{ justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                            <FontAwesomeIcon icon={faUser} style={{ color: '#7c3aed', fontSize: '0.8rem' }} />
+                            <strong>{u.jmeno} {u.prijmeni}</strong>
+                            <span style={{ color: '#6b7280', fontSize: '0.78rem' }}>({u.username})</span>
+                          </div>
+                          <span style={{ fontSize: '0.7rem', color: '#7c3aed', background: '#f5f3ff', padding: '0.15rem 0.5rem', borderRadius: '4px', border: '1px solid #ede9fe', fontWeight: 600 }}>
+                            {u.pocet_prav} {u.pocet_prav === 1 ? 'právo' : u.pocet_prav < 5 ? 'práva' : 'práv'}
+                          </span>
+                        </UserItem>
+                      ))}
+                    </UserList>
+                  )}
+                </div>
+              )}
 
               {userResults.length > 0 && !selectedUser && (
                 <UserList>

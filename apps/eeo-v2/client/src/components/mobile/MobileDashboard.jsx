@@ -59,6 +59,7 @@ function MobileDashboard() {
   const [activityLogOpen, setActivityLogOpen] = useState(false);
   const [activityCount, setActivityCount] = useState(0);
   const [successAnimation, setSuccessAnimation] = useState({ show: false, type: 'approved', message: '' });
+  const [errorDialog, setErrorDialog] = useState({ isOpen: false, title: '', message: '' });
 
   // Načíst číselník stavů workflow z DB
   useEffect(() => {
@@ -296,7 +297,7 @@ function MobileDashboard() {
       // Načti aktuální objednávku
       const currentOrder = await getOrderV2(order.id, token, username, true);
       if (!currentOrder) {
-        alert('Objednávku se nepodařilo načíst');
+        setErrorDialog({ isOpen: true, title: 'Chyba', message: 'Objednávku se nepodařilo načíst' });
         return;
       }
 
@@ -357,7 +358,7 @@ function MobileDashboard() {
       loadPendingApprovals();
       loadActivityCount();
     } catch (error) {
-      alert(`Chyba: ${error.message || 'Nepodařilo se schválit objednávku'}`);
+      setErrorDialog({ isOpen: true, title: 'Chyba schválení', message: error.message || 'Nepodařilo se schválit objednávku' });
     }
   };
 
@@ -378,7 +379,7 @@ function MobileDashboard() {
       // Načti aktuální objednávku pro získání fresh dat
       const freshOrder = await getOrderV2(currentOrder.id, token, username, true);
       if (!freshOrder) {
-        alert('Objednávku se nepodařilo načíst');
+        setErrorDialog({ isOpen: true, title: 'Chyba', message: 'Objednávku se nepodařilo načíst' });
         setRejectDialogOpen(false);
         return;
       }
@@ -442,7 +443,7 @@ function MobileDashboard() {
       loadPendingApprovals();
       loadActivityCount();
     } catch (error) {
-      alert(`Chyba: ${error.message || 'Nepodařilo se zamítnout objednávku'}`);
+      setErrorDialog({ isOpen: true, title: 'Chyba zamítnutí', message: error.message || 'Nepodařilo se zamítnout objednávku' });
       setRejectDialogOpen(false);
     }
   };
@@ -464,7 +465,7 @@ function MobileDashboard() {
       // Načti aktuální objednávku pro získání fresh dat
       const freshOrder = await getOrderV2(currentOrder.id, token, username, true);
       if (!freshOrder) {
-        alert('Objednávku se nepodařilo načíst');
+        setErrorDialog({ isOpen: true, title: 'Chyba', message: 'Objednávku se nepodařilo načíst' });
         setWaitDialogOpen(false);
         return;
       }
@@ -525,7 +526,7 @@ function MobileDashboard() {
       loadPendingApprovals();
       loadActivityCount();
     } catch (error) {
-      alert(`Chyba: ${error.message || 'Nepodařilo se pozastavit objednávku'}`);
+      setErrorDialog({ isOpen: true, title: 'Chyba pozastavení', message: error.message || 'Nepodařilo se pozastavit objednávku' });
       setWaitDialogOpen(false);
     }
   };
@@ -1292,6 +1293,17 @@ function MobileDashboard() {
         type={successAnimation.type}
         message={successAnimation.message}
         onComplete={() => setSuccessAnimation({ show: false, type: 'approved', message: '' })}
+      />
+
+      {/* Error dialog místo nativního alert() */}
+      <MobileConfirmDialog
+        isOpen={errorDialog.isOpen}
+        onClose={() => setErrorDialog({ ...errorDialog, isOpen: false })}
+        onConfirm={() => setErrorDialog({ ...errorDialog, isOpen: false })}
+        title={errorDialog.title}
+        message={errorDialog.message}
+        confirmText="OK"
+        variant="danger"
       />
     </div>
   );

@@ -2277,6 +2277,68 @@ function handle_dashboard_admin_get_user_widget_permissions($input, $config) {
 }
 
 /**
+ * Vrátí seznam uživatelů, kteří mají přímá DASHBOARD_* práva
+ * POST /dashboard/admin/users-with-direct-permissions
+ * Body: { token, username }
+ */
+function handle_dashboard_admin_get_users_with_direct_permissions($input, $config) {
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí parametry']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        $token_data = verify_token_v2($username, $token, $db);
+        if (!$token_data || empty($token_data['is_admin'])) {
+            http_response_code(403);
+            echo json_encode(['status' => 'error', 'message' => 'Přístup odepřen']);
+            return;
+        }
+
+        // Uživatelé s přímými DASHBOARD_* právy (role_id = -1 = přímé přiřazení)
+        $stmt = $db->query("
+            SELECT u.id, u.jmeno, u.prijmeni, u.username,
+                   GROUP_CONCAT(p.kod_prava ORDER BY p.kod_prava SEPARATOR ',') as prava_kody,
+                   COUNT(rp.pravo_id) as pocet_prav
+            FROM `" . TBL_ROLE_PRAVA . "` rp
+            JOIN `" . TBL_PRAVA . "` p ON p.id = rp.pravo_id
+            JOIN `" . TBL_UZIVATELE . "` u ON u.id = rp.user_id
+            WHERE rp.role_id = -1
+              AND rp.aktivni = 1
+              AND p.kod_prava LIKE 'DASHBOARD_%'
+              AND u.aktivni = 1
+            GROUP BY u.id, u.jmeno, u.prijmeni, u.username
+            ORDER BY u.prijmeni, u.jmeno
+        ");
+        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Rozdělit prava_kody na array
+        foreach ($users as &$user) {
+            $user['direct_permissions'] = $user['prava_kody'] ? explode(',', $user['prava_kody']) : [];
+            $user['pocet_prav'] = (int)$user['pocet_prav'];
+            unset($user['prava_kody']);
+        }
+        unset($user);
+
+        echo json_encode([
+            'status' => 'success',
+            'data' => $users,
+            'count' => count($users)
+        ]);
+
+    } catch (Exception $e) {
+        error_log("Dashboard Admin Users With Direct Perms Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(['status' => 'error', 'message' => 'Chyba: ' . $e->getMessage()]);
+    }
+}
+
+/**
  * Uloží přímá DASHBOARD_* práva pro konkrétního uživatele
  * POST /dashboard/admin/save-user-widget-permissions
  * Body: { token, username, target_user_id, direct_permissions: ["DASHBOARD_XY", ...] }

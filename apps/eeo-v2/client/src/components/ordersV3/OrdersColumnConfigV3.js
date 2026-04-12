@@ -15,6 +15,7 @@ import {
   faUndo,
   faTimes,
 } from '@fortawesome/free-solid-svg-icons';
+import ConfirmDialog from '../ConfirmDialog';
 
 // ============================================================================
 // STYLED COMPONENTS
@@ -319,6 +320,7 @@ function OrdersColumnConfigV3({
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState(null);
+  const [resetConfirm, setResetConfirm] = useState({ isOpen: false, type: '' });
   
   // Ensure columnOrder is always an array
   const safeColumnOrder = Array.isArray(columnOrder) ? columnOrder : [];
@@ -399,17 +401,15 @@ function OrdersColumnConfigV3({
     onReset?.();
     setIsOpen(false);
     
-    // Reload stránky pro načtení výchozích hodnot
-    alert('Veškerá nastavení byla resetována na výchozí hodnoty. Stránka se obnoví.');
-    window.location.reload();
+    // Potvrdit reset a reload
+    setResetConfirm({ isOpen: true, type: 'all' });
   };
 
   const handleResetColumnWidths = () => {
     if (userId) {
       const storagePrefix = 'ordersV3_v3';
       localStorage.removeItem(`${storagePrefix}_columnSizing_${userId}`);
-      alert('Šířky sloupců byly resetovány. Stránka se obnoví.');
-      window.location.reload();
+      setResetConfirm({ isOpen: true, type: 'widths' });
     }
   };
 
@@ -505,6 +505,20 @@ function OrdersColumnConfigV3({
             </ModalFooter>
           </ModalContent>
         </ModalOverlay>
+      )}
+      {resetConfirm.isOpen && (
+        <ConfirmDialog
+          isOpen={resetConfirm.isOpen}
+          title="Reset dokončen"
+          message={resetConfirm.type === 'all'
+            ? 'Veškerá nastavení byla resetována na výchozí hodnoty. Stránka se obnoví.'
+            : 'Šířky sloupců byly resetovány. Stránka se obnoví.'}
+          variant="success"
+          showCancel={false}
+          confirmText="OK"
+          onConfirm={() => { setResetConfirm({ isOpen: false, type: '' }); window.location.reload(); }}
+          onClose={() => { setResetConfirm({ isOpen: false, type: '' }); window.location.reload(); }}
+        />
       )}
     </>
   );

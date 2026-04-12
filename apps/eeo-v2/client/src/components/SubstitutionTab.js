@@ -6,6 +6,7 @@ import {
   UserCheck, Plus, Trash2, Calendar, RefreshCw, AlertCircle, CheckCircle,
   X, Info, Users, Clock, Shield, Eye, Loader, Star, Bell, Edit2, ChevronRight, XCircle,
 } from 'lucide-react';
+import ConfirmDialog from './ConfirmDialog';
 import { CustomSelect } from './CustomSelect';
 import DatePicker from './DatePicker';
 import {
@@ -520,6 +521,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   const [candidates, setCandidates]       = useState([]);
   const [loading, setLoading]             = useState(true);
   const [deactivating, setDeactivating]   = useState(null);
+  const [deactivateConfirm, setDeactivateConfirm] = useState({ isOpen: false, sub: null, isAdmin: false });
 
   // Admin data
   const [adminSubstitutions, setAdminSubstitutions] = useState([]);
@@ -731,35 +733,39 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   // Deaktivace
   async function handleDeactivate(sub) {
-    const name = sub.zastupce?.jmeno
-      ? `${sub.zastupce.jmeno} ${sub.zastupce.prijmeni}`
-      : (sub.zastupce_jmeno || 'zástupce');
-    if (!window.confirm(`Opravdu zrušit zastupování uživatele ${name}?`)) return;
-    setDeactivating(sub.id);
-    try {
-      await deactivateSubstitution({ token, username, id: sub.id });
-      showToast && showToast('success', 'Zastupování bylo zrušeno.');
-      await load();
-    } catch (e) {
-      showToast && showToast('error', 'Chyba při rušení: ' + e.message);
-    } finally {
-      setDeactivating(null);
-    }
+    setDeactivateConfirm({ isOpen: true, sub, isAdmin: false });
   }
 
   // Admin deaktivace
   async function handleAdminDeactivate(sub) {
-    const name = sub.zastupce_jmeno || 'zástupce';
-    if (!window.confirm(`Admin: zrušit zastupování uživatele ${name}?`)) return;
-    setAdminDeactivating(sub.id);
+    setDeactivateConfirm({ isOpen: true, sub, isAdmin: true });
+  }
+
+  async function confirmDeactivate() {
+    const { sub, isAdmin } = deactivateConfirm;
+    if (!sub) return;
+    setDeactivateConfirm({ isOpen: false, sub: null, isAdmin: false });
+    if (isAdmin) {
+      setAdminDeactivating(sub.id);
+    } else {
+      setDeactivating(sub.id);
+    }
     try {
       await deactivateSubstitution({ token, username, id: sub.id });
       showToast && showToast('success', 'Zastupování bylo zrušeno.');
-      await loadAdmin();
+      if (isAdmin) {
+        await loadAdmin();
+      } else {
+        await load();
+      }
     } catch (e) {
       showToast && showToast('error', 'Chyba při rušení: ' + e.message);
     } finally {
-      setAdminDeactivating(null);
+      if (isAdmin) {
+        setAdminDeactivating(null);
+      } else {
+        setDeactivating(null);
+      }
     }
   }
 
@@ -1313,6 +1319,26 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
       {/* Modal */}
       {renderModal()}
+
+      {/* Confirm dialog pro deaktivaci */}
+      {deactivateConfirm.isOpen && (
+        <ConfirmDialog
+          isOpen={deactivateConfirm.isOpen}
+          title="Zrušit zastupování"
+          message={`Opravdu zrušit zastupování uživatele ${
+            deactivateConfirm.isAdmin
+              ? (deactivateConfirm.sub?.zastupce_jmeno || 'zástupce')
+              : (deactivateConfirm.sub?.zastupce?.jmeno
+                  ? `${deactivateConfirm.sub.zastupce.jmeno} ${deactivateConfirm.sub.zastupce.prijmeni}`
+                  : (deactivateConfirm.sub?.zastupce_jmeno || 'zástupce'))
+          }?`}
+          variant="danger"
+          confirmText="Zrušit zastupování"
+          cancelText="Zpět"
+          onConfirm={confirmDeactivate}
+          onClose={() => setDeactivateConfirm({ isOpen: false, sub: null, isAdmin: false })}
+        />
+      )}
     </Container>
   );
 }

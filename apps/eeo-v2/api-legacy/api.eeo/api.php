@@ -3841,6 +3841,15 @@ switch ($endpoint) {
         }
         break;
 
+    case 'dashboard/admin/users-with-direct-permissions':
+        if ($request_method === 'POST') {
+            handle_dashboard_admin_get_users_with_direct_permissions($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
     default:
         // === ORDER V2 - DYNAMIC ENDPOINTS ===
         

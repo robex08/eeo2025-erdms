@@ -113,6 +113,14 @@ export async function saveUserWidgetPermissions({ token, username, target_user_i
 }
 
 /**
+ * Admin: Načtení seznamu uživatelů s přímými DASHBOARD_* právy
+ */
+export async function getUsersWithDirectPermissions({ token, username }) {
+  const response = await api2.post('dashboard/admin/users-with-direct-permissions', { token, username });
+  return response.data;
+}
+
+/**
  * Načtení finančních dat (krypto + FX kurzy + akcie) přes backend proxy
  * Backend cachuje data na 15 minut
  * @param {Object} params

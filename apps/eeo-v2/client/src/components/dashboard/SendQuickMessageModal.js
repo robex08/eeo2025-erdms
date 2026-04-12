@@ -4,6 +4,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faTimes, faPaperPlane, faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
 import { createNotification, getAdminMessagesUnreadCount } from '../../services/notificationsApi';
 import { AuthContext } from '../../context/AuthContext';
+import ConfirmDialog from '../ConfirmDialog';
 
 const ModalOverlay = styled.div`
   position: fixed;
@@ -268,6 +269,7 @@ export default function SendQuickMessageModal({ user, onClose, onSuccess }) {
   const [isHighPriority, setIsHighPriority] = useState(false);
   const [sending, setSending] = useState(false);
   const [unreadCount, setUnreadCount] = useState(null);
+  const [dialogInfo, setDialogInfo] = useState({ isOpen: false, title: '', message: '', variant: 'warning' });
 
   // Načti počet nepřečtených zpráv při otevření
   useEffect(() => {
@@ -296,7 +298,7 @@ export default function SendQuickMessageModal({ user, onClose, onSuccess }) {
     e.preventDefault();
     
     if (!title.trim() || !message.trim()) {
-      alert('Vyplňte nadpis i zprávu');
+      setDialogInfo({ isOpen: true, title: 'Chybějící údaje', message: 'Vyplňte nadpis i zprávu', variant: 'warning' });
       return;
     }
 
@@ -328,13 +330,14 @@ export default function SendQuickMessageModal({ user, onClose, onSuccess }) {
       onClose();
     } catch (error) {
       console.error('Chyba při odesílání zprávy:', error);
-      alert('Chyba při odesílání zprávy. Zkuste to znovu.');
+      setDialogInfo({ isOpen: true, title: 'Chyba', message: 'Chyba při odesílání zprávy. Zkuste to znovu.', variant: 'danger' });
     } finally {
       setSending(false);
     }
   };
 
   return (
+    <>
     <ModalOverlay onClick={onClose}>
       <ModalBody onClick={e => e.stopPropagation()}>
         <ModalHeader>
@@ -449,5 +452,18 @@ export default function SendQuickMessageModal({ user, onClose, onSuccess }) {
         </form>
       </ModalBody>
     </ModalOverlay>
+    {dialogInfo.isOpen && (
+      <ConfirmDialog
+        isOpen={dialogInfo.isOpen}
+        title={dialogInfo.title}
+        message={dialogInfo.message}
+        variant={dialogInfo.variant}
+        showCancel={false}
+        confirmText="OK"
+        onConfirm={() => setDialogInfo({ ...dialogInfo, isOpen: false })}
+        onClose={() => setDialogInfo({ ...dialogInfo, isOpen: false })}
+      />
+    )}
+    </>
   );
 }

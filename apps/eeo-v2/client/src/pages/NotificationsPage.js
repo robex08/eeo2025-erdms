@@ -984,6 +984,7 @@ export const NotificationsPage = () => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorDialog, setErrorDialog] = useState({ isOpen: false, message: '' });
 
   // 🗄️ Search query s localStorage
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -1726,7 +1727,7 @@ export const NotificationsPage = () => {
         }
       }
     } catch (error) {
-      alert('Nepodařilo se označit notifikaci jako přečtenou.');
+      setErrorDialog({ isOpen: true, message: 'Nepodařilo se označit notifikaci jako přečtenou.' });
     }
   };
 
@@ -1745,7 +1746,7 @@ export const NotificationsPage = () => {
         bgTasks.handleUnreadCountChange(0);
       }
     } catch (error) {
-      alert('Nepodařilo se označit všechny notifikace jako přečtené.');
+      setErrorDialog({ isOpen: true, message: 'Nepodařilo se označit všechny notifikace jako přečtené.' });
     }
   };
 
@@ -1774,7 +1775,7 @@ export const NotificationsPage = () => {
         }
       }
     } catch (error) {
-      alert('Nepodařilo se smazat notifikaci.');
+      setErrorDialog({ isOpen: true, message: 'Nepodařilo se smazat notifikaci.' });
     }
   };
 
@@ -1791,7 +1792,7 @@ export const NotificationsPage = () => {
         prev.map(n => n.id === notificationId ? { ...n, is_dismissed: 0 } : n)
       );
     } catch (error) {
-      alert('Nepodařilo se obnovit notifikaci.');
+      setErrorDialog({ isOpen: true, message: 'Nepodařilo se obnovit notifikaci.' });
     }
   };
 
@@ -1811,7 +1812,7 @@ export const NotificationsPage = () => {
         bgTasks.handleUnreadCountChange(0);
       }
     } catch (error) {
-      alert('Nepodařilo se smazat všechny notifikace. Některé mohly být smazány.');
+      setErrorDialog({ isOpen: true, message: 'Nepodařilo se smazat všechny notifikace. Některé mohly být smazány.' });
       // Znovu načti pro sync se skutečným stavem
       loadNotifications();
     }
@@ -3504,6 +3505,20 @@ export const NotificationsPage = () => {
           Chcete pokračovat v editaci?
         </p>
       </ConfirmDialog>
+
+      {/* Error dialog místo nativního alert() */}
+      {errorDialog.isOpen && (
+        <ConfirmDialog
+          isOpen={errorDialog.isOpen}
+          title="Chyba"
+          message={errorDialog.message}
+          variant="danger"
+          showCancel={false}
+          confirmText="OK"
+          onConfirm={() => setErrorDialog({ isOpen: false, message: '' })}
+          onClose={() => setErrorDialog({ isOpen: false, message: '' })}
+        />
+      )}
     </PageContainer>
   );
 };
