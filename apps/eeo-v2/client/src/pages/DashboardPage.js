@@ -2784,8 +2784,11 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
   const isCurrentMonth = viewMonth === today.getMonth() && viewYear === today.getFullYear();
 
   // Předej header tlačítko ven přes callback když se změní state
+  const onHeaderButtonRef = React.useRef(onHeaderButton);
+  onHeaderButtonRef.current = onHeaderButton;
+  
   useEffect(() => {
-    if (onHeaderButton) {
+    if (onHeaderButtonRef.current) {
       const headerButton = (
         <button onClick={goToToday} style={{
           background: isCurrentMonth ? 'transparent' : 'transparent',
@@ -2800,9 +2803,9 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           title={isCurrentMonth ? 'Již jste v aktuálním měsíci' : 'Zpět na dnešní měsíc'}
         >Zpět na dnešek</button>
       );
-      onHeaderButton(headerButton);
+      onHeaderButtonRef.current(headerButton);
     }
-  }, [viewMonth, viewYear, isCurrentMonth, onHeaderButton]);
+  }, [viewMonth, viewYear, isCurrentMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{

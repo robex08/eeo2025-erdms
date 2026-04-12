@@ -2990,6 +2990,7 @@ const RoleTab = () => {
         title={dialogMode === 'create' ? 'Vytvořit novou roli' : 'Upravit roli'}
         icon={Shield}
         fields={[
+          { name: 'kod_role', label: 'Kód role', type: 'text', required: false, placeholder: 'Nevyplněno = automaticky z názvu' },
           { name: 'nazev_role', label: 'Název role', type: 'text', required: true },
           { name: 'popis', label: 'Popis', type: 'textarea', required: false },
           { name: 'aktivni', label: 'Aktivní', type: 'checkbox', required: false, default: true }

@@ -1895,16 +1895,39 @@ function handle_ciselniky_role_insert($input, $config, $queries) {
         $popis = isset($input['popis']) ? trim($input['popis']) : '';
         $aktivni = isset($input['aktivni']) ? (int)$input['aktivni'] : 1;
         
+        // kod_role - buď z inputu, nebo automaticky z nazev_role
+        $kod_role = isset($input['kod_role']) && !empty(trim($input['kod_role'])) 
+            ? strtoupper(trim($input['kod_role'])) 
+            : strtoupper(preg_replace('/[^A-Z0-9_]/', '', str_replace(' ', '_', 
+                iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $nazev_role)
+              )));
+        
+        if (empty($kod_role)) {
+            $kod_role = 'ROLE_' . time();
+        }
+        
         // Validace aktivni (0 nebo 1)
         if ($aktivni !== 0 && $aktivni !== 1) {
             $aktivni = 1;
         }
         
+        // Kontrola unikátnosti kod_role
+        $sql_check = "SELECT id FROM " . TBL_ROLE . " WHERE kod_role = :kod_role";
+        $stmt_check = $db->prepare($sql_check);
+        $stmt_check->bindParam(':kod_role', $kod_role, PDO::PARAM_STR);
+        $stmt_check->execute();
+        if ($stmt_check->fetch()) {
+            http_response_code(400);
+            echo json_encode(array('err' => 'Kód role "' . $kod_role . '" již existuje'));
+            return;
+        }
+        
         // INSERT do databáze
-        $sql = "INSERT INTO " . TBL_ROLE . " (nazev_role, popis, aktivni) 
-                VALUES (:nazev_role, :popis, :aktivni)";
+        $sql = "INSERT INTO " . TBL_ROLE . " (kod_role, nazev_role, popis, aktivni) 
+                VALUES (:kod_role, :nazev_role, :popis, :aktivni)";
         
         $stmt = $db->prepare($sql);
+        $stmt->bindParam(':kod_role', $kod_role, PDO::PARAM_STR);
         $stmt->bindParam(':nazev_role', $nazev_role, PDO::PARAM_STR);
         $stmt->bindParam(':popis', $popis, PDO::PARAM_STR);
         $stmt->bindParam(':aktivni', $aktivni, PDO::PARAM_INT);
@@ -1913,7 +1936,7 @@ function handle_ciselniky_role_insert($input, $config, $queries) {
         $new_id = (int)$db->lastInsertId();
         
         // Načtení vytvořené role pro response
-        $sql_select = "SELECT id, nazev_role, popis, aktivni 
+        $sql_select = "SELECT id, kod_role, nazev_role, popis, aktivni 
                        FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $new_id, PDO::PARAM_INT);
@@ -1980,6 +2003,11 @@ function handle_ciselniky_role_update($input, $config, $queries) {
         $updates = array();
         $params = array(':id' => $role_id);
         
+        if (isset($input['kod_role'])) {
+            $updates[] = 'kod_role = :kod_role';
+            $params[':kod_role'] = strtoupper(trim($input['kod_role']));
+        }
+        
         if (isset($input['nazev_role'])) {
             $updates[] = 'nazev_role = :nazev_role';
             $params[':nazev_role'] = trim($input['nazev_role']);
@@ -2011,7 +2039,7 @@ function handle_ciselniky_role_update($input, $config, $queries) {
         $stmt->execute($params);
         
         // Načtení aktualizované role pro response
-        $sql_select = "SELECT id, nazev_role, popis, aktivni 
+        $sql_select = "SELECT id, kod_role, nazev_role, popis, aktivni 
                        FROM " . TBL_ROLE . " WHERE id = :id";
         $stmt_select = $db->prepare($sql_select);
         $stmt_select->bindParam(':id', $role_id, PDO::PARAM_INT);

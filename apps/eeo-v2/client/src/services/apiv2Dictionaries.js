@@ -842,15 +842,18 @@ export async function deletePravo({ token, username, id }) {
 // 8B. ROLE - CRUD API
 // =============================================================================
 
-export async function createRole({ token, username, nazev_role, popis, aktivni }) {
+export async function createRole({ token, username, nazev_role, kod_role, popis, aktivni }) {
   try {
-    const response = await api.post('ciselniky/role/insert', {
+    const payload = {
       username,
       token,
       nazev_role,
       popis,
       aktivni: aktivni ? 1 : 0
-    });
+    };
+    if (kod_role) payload.kod_role = kod_role;
+
+    const response = await api.post('ciselniky/role/insert', payload);
 
     const data = checkResponse(response, 'Vytváření role');
     return data.data || null;
@@ -861,10 +864,11 @@ export async function createRole({ token, username, nazev_role, popis, aktivni }
   }
 }
 
-export async function updateRole({ token, username, id, nazev_role, popis, aktivni }) {
+export async function updateRole({ token, username, id, nazev_role, kod_role, popis, aktivni }) {
   try {
     const payload = { username, token, id };
     if (nazev_role !== undefined) payload.nazev_role = nazev_role;
+    if (kod_role !== undefined) payload.kod_role = kod_role;
     if (popis !== undefined) payload.popis = popis;
     if (aktivni !== undefined) payload.aktivni = aktivni ? 1 : 0;
 
