@@ -929,34 +929,32 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                     />
                   </FormField>
 
-                  {/* Datum od */}
-                  <FormField>
-                    <FieldLabel $required>
-                      <Calendar size={12} /> Zastupování od
-                    </FieldLabel>
-                    <DatePicker
-                      fieldName="subst_dt_od"
-                      value={form.dt_od}
-                      onChange={(val) => setFormField('dt_od', val)}
-                      placeholder="Datum začátku"
-                      hasError={!!(formError && !form.dt_od)}
-                      highlight={recentFields.has('dt_od')}
-                    />
-                  </FormField>
-
-                  {/* Datum do */}
-                  <FormField>
-                    <FieldLabel $required>
-                      <Calendar size={12} /> Zastupování do
-                    </FieldLabel>
-                    <DatePicker
-                      fieldName="subst_dt_do"
-                      value={form.dt_do}
-                      onChange={(val) => setFormField('dt_do', val)}
-                      placeholder="Datum konce"
-                      hasError={!!(formError && !form.dt_do)}
-                      highlight={recentFields.has('dt_do')}
-                    />
+                  {/* Datum od + do */}
+                  <FormField style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
+                        <FieldLabel $required><Calendar size={12} /> Zastupování od</FieldLabel>
+                        <DatePicker
+                          fieldName="subst_dt_od"
+                          value={form.dt_od}
+                          onChange={(val) => setFormField('dt_od', val)}
+                          placeholder="Datum začátku"
+                          hasError={!!(formError && !form.dt_od)}
+                          highlight={recentFields.has('dt_od')}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
+                        <FieldLabel $required><Calendar size={12} /> Zastupování do</FieldLabel>
+                        <DatePicker
+                          fieldName="subst_dt_do"
+                          value={form.dt_do}
+                          onChange={(val) => setFormField('dt_do', val)}
+                          placeholder="Datum konce"
+                          hasError={!!(formError && !form.dt_do)}
+                          highlight={recentFields.has('dt_do')}
+                        />
+                      </div>
+                    </div>
                   </FormField>
 
                   <FormDivider />
@@ -1288,27 +1286,30 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                       getOptionLabel={getOptionLabel}
                     />
                   </FormField>
-                  {/* Datum od */}
-                  <FormField>
-                    <FieldLabel $required><Calendar size={12} /> Zastupování od</FieldLabel>
-                    <DatePicker
-                      fieldName="admin_dt_od"
-                      value={adminForm.dt_od}
-                      onChange={val => setAdminForm(prev => ({ ...prev, dt_od: val }))}
-                      placeholder="Datum začátku"
-                      hasError={!!(adminFormError && !adminForm.dt_od)}
-                    />
-                  </FormField>
-                  {/* Datum do */}
-                  <FormField>
-                    <FieldLabel $required><Calendar size={12} /> Zastupování do</FieldLabel>
-                    <DatePicker
-                      fieldName="admin_dt_do"
-                      value={adminForm.dt_do}
-                      onChange={val => setAdminForm(prev => ({ ...prev, dt_do: val }))}
-                      placeholder="Datum konce"
-                      hasError={!!(adminFormError && !adminForm.dt_do)}
-                    />
+                  {/* Datum od + do */}
+                  <FormField style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
+                        <FieldLabel $required><Calendar size={12} /> Zastupování od</FieldLabel>
+                        <DatePicker
+                          fieldName="admin_dt_od"
+                          value={adminForm.dt_od}
+                          onChange={val => setAdminForm(prev => ({ ...prev, dt_od: val }))}
+                          placeholder="Datum začátku"
+                          hasError={!!(adminFormError && !adminForm.dt_od)}
+                        />
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
+                        <FieldLabel $required><Calendar size={12} /> Zastupování do</FieldLabel>
+                        <DatePicker
+                          fieldName="admin_dt_do"
+                          value={adminForm.dt_do}
+                          onChange={val => setAdminForm(prev => ({ ...prev, dt_do: val }))}
+                          placeholder="Datum konce"
+                          hasError={!!(adminFormError && !adminForm.dt_do)}
+                        />
+                      </div>
+                    </div>
                   </FormField>
                   {/* Oprávnění */}
                   <FormField style={{ gridColumn: '1 / -1' }}>
