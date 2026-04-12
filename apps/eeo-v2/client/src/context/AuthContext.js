@@ -147,8 +147,8 @@ export const AuthProvider = ({ children }) => {
         console.warn('⚠️ Chyba při startu token refresh timeru:', error);
       }
       
-      // �🔔 POST-LOGIN MODAL: Zkontrolovat a zobrazit modal po přihlášení
-      // Spustit až po dokončení login workflow (setTimeout)
+      // 🔔 POST-LOGIN MODAL: Zkontrolovat a zobrazit modal po přihlášení
+      // Spustit po prvním renderovacím cyklu (200ms stačí pro UI)
       setTimeout(async () => {
         try {
           const { checkPostLoginModal } = await import('../services/postLoginModalService');
@@ -170,7 +170,7 @@ export const AuthProvider = ({ children }) => {
           console.warn('⚠️ Chyba při kontrole post-login modal:', error);
           // Tiše ignorovat - modal není kritický pro přihlášení
         }
-      }, 1000); // 1 sekundu po přihlášení - dát čas na dokončení UI
+      }, 200); // 200ms po přihlášení - dát čas na dokončení renderování UI
       // 🌲 HIERARCHIE WORKFLOW: Načíst stav hierarchie po přihlášení
       try {
         const { getHierarchyConfig } = await import('../services/hierarchyService');

@@ -280,7 +280,7 @@ const o25lDashboardStatuses = {
     { status: 'uverejnena', label: 'Uveřejněná', color: '#7c3aed', desc: 'Zveřejněno v registru' },
     { status: 'dokoncena', label: 'Dokončená', color: '#15803d', desc: 'Kompletně dokončeno' },
     { status: 'ceka_potvrzeni', label: 'Čeká potvrzení', color: '#ea580c', desc: 'Čeká na potvrzení' },
-    { status: 'ceka_se', label: 'Čeká se', color: '#d97706', desc: 'Obecné čekání' },
+    { status: 'ceka_se', label: 'Odloženo', color: '#d97706', desc: 'Rozhodnutí odloženo' },
     { status: 'zrusena', label: 'Zrušená', color: '#991b1b', desc: 'Stornováno' },
     { status: 'archivovano', label: 'Archivováno', color: '#64748b', desc: 'V archivu' },
   ],

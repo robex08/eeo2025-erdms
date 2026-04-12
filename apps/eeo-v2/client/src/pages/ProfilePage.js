@@ -16,6 +16,7 @@ import { getAvailableSections, isSectionAvailable, getFirstAvailableSection } fr
 import ModernHelper from '../components/ModernHelper';
 import ContactManagement from '../components/ContactManagement';
 import SubstitutionTab from '../components/SubstitutionTab';
+import { getGlobalSettings } from '../services/globalSettingsApi';
 
 const slideInUp = keyframes`
   from {
@@ -2052,6 +2053,7 @@ const ProfilePage = () => {
   const [loading, setLoading] = useState(false);
   const [profileData, setProfileData] = useState(null);
   const loadingRef = React.useRef(false); // Prevent multiple simultaneous loads
+  const [isSubstitutionEnabled, setIsSubstitutionEnabled] = useState(false);
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const savedTab = localStorage.getItem(`profile_active_tab_${user_id || 'default'}`) || 'info';
@@ -2066,7 +2068,25 @@ const ProfilePage = () => {
     if (activeTab === 'lp') {
       setActiveTab('info');
     }
-  }, [activeTab]);
+    // Pokud je zastupování tab aktivní ale systém je vypnutý, přepni na info
+    if (activeTab === 'substitution' && !isSubstitutionEnabled) {
+      setActiveTab('info');
+    }
+  }, [activeTab, isSubstitutionEnabled]);
+
+  // Načíst globální nastavení pro kontrolu substitution_enabled
+  useEffect(() => {
+    const checkSubstitutionEnabled = async () => {
+      if (!token || !username) return;
+      try {
+        const settings = await getGlobalSettings(token, username);
+        setIsSubstitutionEnabled(!!settings?.substitution_enabled);
+      } catch (e) {
+        // Při chybě nechat výchozí false
+      }
+    };
+    checkSubstitutionEnabled();
+  }, [token, username]);
 
   // Uložit aktivní tab do localStorage
   useEffect(() => {
@@ -3305,7 +3325,7 @@ const ProfilePage = () => {
                 <span>Adresář dodavatelů</span>
               </TabButton>
             )}
-            {hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
+            {isSubstitutionEnabled && hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
               <TabButton
                 $active={activeTab === 'substitution'}
                 onClick={() => setActiveTab('substitution')}
@@ -3988,7 +4008,7 @@ const ProfilePage = () => {
           })()}
 
           {/* Tab Content - Zastupování */}
-          {hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
+          {isSubstitutionEnabled && hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
             <TabContent $active={activeTab === 'substitution'}>
               <SubstitutionTab
                 token={token}

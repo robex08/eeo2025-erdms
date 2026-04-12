@@ -782,6 +782,28 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                 </ValueText>
               </KeyValuePair>
             </DataGrid>
+            {/* 🔄 ZASTUPOVÁNÍ BADGE u schvalovatele */}
+            {orderData.zastupovani_akce && orderData.zastupovani_akce.filter(a => a.akce_typ === 'APPROVE' || a.akce_typ === 'REJECT').length > 0 && (
+              <div style={{ marginTop: '0.75rem' }}>
+                {orderData.zastupovani_akce.filter(a => a.akce_typ === 'APPROVE' || a.akce_typ === 'REJECT').map((akce, idx) => (
+                  <div key={idx} title={`${akce.akce_typ === 'APPROVE' ? 'Schváleno' : 'Zamítnuto'} v zastoupení uživatele ${akce.zastupovany_titul_pred ? akce.zastupovany_titul_pred + ' ' : ''}${akce.zastupovany_jmeno} ${akce.zastupovany_prijmeni}${akce.zastupovany_titul_za ? ', ' + akce.zastupovany_titul_za : ''}\nAkcí provedl: ${akce.zastupce_titul_pred ? akce.zastupce_titul_pred + ' ' : ''}${akce.zastupce_jmeno} ${akce.zastupce_prijmeni}\nDatum: ${akce.dt_akce}`} style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '0.35rem',
+                    padding: '0.3rem 0.75rem',
+                    background: '#fef3c7',
+                    border: '1px solid #f59e0b',
+                    borderRadius: '12px',
+                    fontSize: '0.8rem',
+                    fontWeight: '600',
+                    color: '#92400e',
+                    cursor: 'help'
+                  }}>
+                    🔄 {akce.akce_typ === 'APPROVE' ? 'Schváleno' : 'Zamítnuto'} v zastoupení • {akce.zastupce_jmeno} {akce.zastupce_prijmeni}
+                  </div>
+                ))}
+              </div>
+            )}
           </InfoCard>
 
           {/* Střediska */}
@@ -1867,6 +1889,25 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                         return '';
                       })()}
                     </div>
+                    {/* 🔄 ZASTUPOVÁNÍ BADGE */}
+                    {orderData.zastupovani_akce && orderData.zastupovani_akce.filter(a => a.akce_typ === 'APPROVE').map((akce, idx) => (
+                      <div key={idx} title={`Schváleno v zastoupení uživatele ${akce.zastupovany_titul_pred ? akce.zastupovany_titul_pred + ' ' : ''}${akce.zastupovany_jmeno} ${akce.zastupovany_prijmeni}${akce.zastupovany_titul_za ? ', ' + akce.zastupovany_titul_za : ''}\n${akce.dt_akce}`} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '0.35rem',
+                        marginTop: '0.35rem',
+                        padding: '0.2rem 0.6rem',
+                        background: '#fef3c7',
+                        border: '1px solid #f59e0b',
+                        borderRadius: '12px',
+                        fontSize: '0.75rem',
+                        fontWeight: '600',
+                        color: '#92400e',
+                        cursor: 'help'
+                      }}>
+                        🔄 V zastoupení ({akce.zastupce_titul_pred ? akce.zastupce_titul_pred + ' ' : ''}{akce.zastupce_jmeno} {akce.zastupce_prijmeni})
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

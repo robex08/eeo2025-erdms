@@ -150,6 +150,7 @@ function handle_get_settings($db, $forDisplay = false) {
             'hierarchy_enabled' => ($settings['hierarchy_enabled'] ?? '0') === '1',
             'hierarchy_profile_id' => isset($settings['hierarchy_profile_id']) && $settings['hierarchy_profile_id'] !== 'NULL' && $settings['hierarchy_profile_id'] !== null ? (int)$settings['hierarchy_profile_id'] : null,
             'hierarchy_logic' => $settings['hierarchy_logic'] ?? 'OR',
+            'substitution_enabled' => ($settings['substitution_enabled'] ?? '0') === '1',
             'maintenance_mode' => ($settings['maintenance_mode'] ?? '0') === '1',
             'maintenance_message' => $settings['maintenance_message'] ?? 'Systém je momentálně v údržbě.',
             
@@ -167,6 +168,10 @@ function handle_get_settings($db, $forDisplay = false) {
             'module_orders_v3_visible' => ($settings['module_orders_v3_visible'] ?? '0') === '1',
             'module_invoices_visible' => ($settings['module_invoices_visible'] ?? '1') === '1',
             'module_annual_fees_visible' => ($settings['module_annual_fees_visible'] ?? '1') === '1',
+            'module_assets_visible' => ($settings['module_assets_visible'] ?? '1') === '1',
+            'module_contacts_visible' => ($settings['module_contacts_visible'] ?? '1') === '1',
+            'module_stats_reports_visible' => ($settings['module_stats_reports_visible'] ?? '1') === '1',
+            'module_cerpani_visible' => ($settings['module_cerpani_visible'] ?? '1') === '1',
             
             // Default homepage
             'module_default_homepage' => $settings['module_default_homepage'] ?? 'orders25-list',
@@ -214,6 +219,7 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'hierarchy_enabled' => 'hierarchy_enabled',
             'hierarchy_profile_id' => 'hierarchy_profile_id',
             'hierarchy_logic' => 'hierarchy_logic',
+            'substitution_enabled' => 'substitution_enabled',
             'maintenance_mode' => 'maintenance_mode',
             'maintenance_message' => 'maintenance_message',
             // Post-login modal
@@ -229,6 +235,10 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'module_orders_v3_visible' => 'module_orders_v3_visible',
             'module_invoices_visible' => 'module_invoices_visible',
             'module_annual_fees_visible' => 'module_annual_fees_visible',
+            'module_assets_visible' => 'module_assets_visible',
+            'module_contacts_visible' => 'module_contacts_visible',
+            'module_stats_reports_visible' => 'module_stats_reports_visible',
+            'module_cerpani_visible' => 'module_cerpani_visible',
             // Default homepage
             'module_default_homepage' => 'module_default_homepage',
             // RSS Feed settings
@@ -447,6 +457,7 @@ function handle_global_settings_save($db, $token_user_id, $data) {
             'hierarchy_enabled' => 'boolean',
             'hierarchy_profile_id' => 'integer',
             'hierarchy_logic' => 'string',
+            'substitution_enabled' => 'boolean',
             'maintenance_mode' => 'boolean',
             'maintenance_message' => 'string'
         ];

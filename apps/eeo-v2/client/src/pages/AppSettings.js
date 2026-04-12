@@ -4,7 +4,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { 
   faCog, faBell, faEnvelope, faSitemap, faTools, 
   faToggleOn, faSave, faUndo, faExclamationTriangle,
-  faInfoCircle, faCodeBranch, faRss, faPlus, faTrash
+  faInfoCircle, faCodeBranch, faRss, faPlus, faTrash,
+  faUserClock, faEye
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -50,7 +51,7 @@ const PageSubtitle = styled.p`
 
 const SettingsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
+  grid-template-columns: repeat(2, 1fr);
   gap: 1.5rem;
   margin-bottom: 2rem;
 `;
@@ -62,6 +63,14 @@ const SettingCard = styled.div`
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   border: 2px solid ${props => props.$warning ? '#fbbf24' : 'transparent'};
   transition: all 0.2s ease;
+  
+  ${props => props.$fullWidth && `
+    grid-column: 1 / -1;
+  `}
+  
+  ${props => props.$spanRows && `
+    grid-row: span ${props.$spanRows};
+  `}
   
   &:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
@@ -371,6 +380,7 @@ const AppSettings = () => {
     notifications_email_enabled: true,
     hierarchy_enabled: false,
     hierarchy_profile_id: null,
+    substitution_enabled: false,
     maintenance_mode: false,
     maintenance_message: 'Systém je momentálně v údržbě. Omlouváme se za komplikace.',
     post_login_modal_enabled: false,
@@ -385,6 +395,10 @@ const AppSettings = () => {
     module_orders_v3_visible: false,
     module_invoices_visible: true,
     module_annual_fees_visible: true,
+    module_assets_visible: true,
+    module_contacts_visible: true,
+    module_stats_reports_visible: true,
+    module_cerpani_visible: true,
     // Default homepage
     module_default_homepage: 'orders25-list', // 'orders25-list' nebo 'orders25-list-v3'
     // RSS Feed settings
@@ -700,7 +714,7 @@ const AppSettings = () => {
           </SettingCard>
           
           {/* HIERARCHIE */}
-          <SettingCard>
+          <SettingCard $spanRows={2}>
             <CardHeader>
               <CardIcon>
                 <FontAwesomeIcon icon={faSitemap} />
@@ -797,6 +811,59 @@ const AppSettings = () => {
                 <FontAwesomeIcon icon={faInfoCircle} />
                 <div>
                   Hierarchie je vypnuta. Systém používá pouze standardní přístup na základě rolí a práv.
+                </div>
+              </WarningBox>
+            )}
+          </SettingCard>
+          
+          {/* ZASTUPOVÁNÍ */}
+          <SettingCard>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faUserClock} />
+              </CardIcon>
+              <div>
+                <CardTitle>Zastupování</CardTitle>
+                <StatusBadge $active={settings.substitution_enabled}>
+                  {settings.substitution_enabled ? 'Aktivní' : 'Vypnuto'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faToggleOn} />
+                  Povolit zastupování
+                </SettingLabel>
+                <SettingDescription>
+                  Zapnutí/vypnutí systému zastupování uživatelů. Pokud je aktivní, uživatelé mohou nastavit zastupce, kteří budou vidět jejich data a mohou je zastupovat v definovaném období.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.substitution_enabled}
+                onClick={() => toggleSetting('substitution_enabled')}
+              >
+                <ToggleThumb $active={settings.substitution_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {settings.substitution_enabled && (
+              <WarningBox $type="info">
+                <FontAwesomeIcon icon={faInfoCircle} />
+                <div>
+                  <strong>Systém zastupování je aktivní</strong><br />
+                  Uživatelé mohou nastavit zastupce v sekci Můj profil → Zastupování. Zastupce bude mít rozšířenou viditelnost na data zastupovaného uživatele podle přidělených oprávnění (prohlížení, schvalování, potvrzování).
+                </div>
+              </WarningBox>
+            )}
+            
+            {!settings.substitution_enabled && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <div>
+                  <strong>Zastupování je vypnuto!</strong><br />
+                  Uživatelé nemohou nastavovat zastupce a aktivní zastupování nebude fungovat. Dashboard a ostatní části systému zobrazují pouze vlastní data uživatele.
                 </div>
               </WarningBox>
             )}
@@ -1264,13 +1331,58 @@ const AppSettings = () => {
                         <div style={{
                           display: 'flex',
                           alignItems: 'center',
+                          justifyContent: 'space-between',
                           marginBottom: '0.5rem',
                           fontSize: '0.875rem',
                           fontWeight: '600',
                           color: '#374151'
                         }}>
-                          <FontAwesomeIcon icon={faInfoCircle} style={{marginRight: '0.5rem'}} />
-                          Náhled obsahu notifikace (ID: {settings.post_login_modal_message_id})
+                          <span>
+                            <FontAwesomeIcon icon={faInfoCircle} style={{marginRight: '0.5rem'}} />
+                            Náhled obsahu notifikace (ID: {settings.post_login_modal_message_id})
+                          </span>
+                          {!loadingPreview && selectedNotificationPreview && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const selected = availableNotifications.find(
+                                  n => String(n.id) === String(settings.post_login_modal_message_id)
+                                );
+                                window.dispatchEvent(new CustomEvent('show-post-login-modal', {
+                                  detail: {
+                                    enabled: true,
+                                    title: selected?.title || settings.post_login_modal_title || 'Informace',
+                                    htmlContent: selectedNotificationPreview,
+                                    validFrom: null,
+                                    validTo: null,
+                                    modalGuid: null,
+                                    messageId: settings.post_login_modal_message_id,
+                                    openedFrom: 'settings-preview'
+                                  }
+                                }));
+                              }}
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.4rem',
+                                padding: '0.35rem 0.75rem',
+                                fontSize: '0.8rem',
+                                fontWeight: '600',
+                                color: '#2563eb',
+                                background: '#eff6ff',
+                                border: '1px solid #93c5fd',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                transition: 'all 0.15s'
+                              }}
+                              onMouseOver={(e) => { e.currentTarget.style.background = '#dbeafe'; }}
+                              onMouseOut={(e) => { e.currentTarget.style.background = '#eff6ff'; }}
+                              title="Zobrazit notifikaci v modálním dialogu tak, jak ji uvidí uživatelé"
+                            >
+                              <FontAwesomeIcon icon={faEye} />
+                              Zobrazit v dialogu
+                            </button>
+                          )}
                         </div>
                         
                         {loadingPreview ? (
@@ -1412,6 +1524,74 @@ const AppSettings = () => {
                 onClick={() => toggleSetting('module_annual_fees_visible')}
               >
                 <ToggleThumb $active={settings.module_annual_fees_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  🏢 Majetek
+                </SettingLabel>
+                <SettingDescription>
+                  Modul správy majetku. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_assets_visible}
+                onClick={() => toggleSetting('module_assets_visible')}
+              >
+                <ToggleThumb $active={settings.module_assets_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  📇 Kontakty
+                </SettingLabel>
+                <SettingDescription>
+                  Modul kontaktů. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_contacts_visible}
+                onClick={() => toggleSetting('module_contacts_visible')}
+              >
+                <ToggleThumb $active={settings.module_contacts_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  📊 Statistiky a reporty
+                </SettingLabel>
+                <SettingDescription>
+                  Modul statistik a reportů. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_stats_reports_visible}
+                onClick={() => toggleSetting('module_stats_reports_visible')}
+              >
+                <ToggleThumb $active={settings.module_stats_reports_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  💰 Čerpání
+                </SettingLabel>
+                <SettingDescription>
+                  Modul čerpání rozpočtu. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_cerpani_visible}
+                onClick={() => toggleSetting('module_cerpani_visible')}
+              >
+                <ToggleThumb $active={settings.module_cerpani_visible} />
               </ToggleButton>
             </SettingRow>
             

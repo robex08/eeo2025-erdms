@@ -281,6 +281,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
+    'Odloženo': 'CEKA_SE',
     'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
     'Zkontrolovaná': 'ZKONTROLOVANA',
@@ -2064,6 +2065,7 @@ const TableRow = styled.tr`
           'Uveřejněná': 'UVEREJNENA',
           'Čeká na potvrzení': 'CEKA_POTVRZENI',
           'Čeká se': 'CEKA_SE',
+          'Odloženo': 'CEKA_SE',
           'Dokončená': 'DOKONCENA',
           'Zrušená': 'ZRUSENA',
           'Smazaná': 'SMAZANA',
@@ -10425,7 +10427,7 @@ const Orders25List = () => {
         case 'postpone':
           // Odložit - přidej CEKA_SE (také zaznamenat kdo a kdy)
           newWorkflowStates.push('CEKA_SE');
-          orderUpdate.stav_objednavky = 'Čeká se';
+          orderUpdate.stav_objednavky = 'Odloženo';
           orderUpdate.dt_schvaleni = timestamp;
           orderUpdate.schvalil_uzivatel_id = currentUserId;
           break;
@@ -11916,7 +11918,7 @@ const Orders25List = () => {
         'zamitnuta': 'Zamítnutá',
         'zrusena': 'Zrušená',
         'ceka_potvrzeni': 'Čeká na potvrzení',
-        'ceka_se': 'Čeká se',
+        'ceka_se': 'Odloženo',
         'smazana': 'Smazaná',
         'archivovano': 'Archivováno'
       };
@@ -15876,7 +15878,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <StatValue>{filteredStats.ceka_se}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_se')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Čeká se</StatLabel>
+                    <StatLabel>Odloženo</StatLabel>
                   </StatCard>
                 )}
 
@@ -16759,7 +16761,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       <StatValue>{filteredStats.ceka_se}</StatValue>
                       <StatIcon>{getStatusEmoji('ceka_se')}</StatIcon>
                     </StatHeader>
-                    <StatLabel>Čeká se</StatLabel>
+                    <StatLabel>Odloženo</StatLabel>
                   </StatCard>
                 )}
 

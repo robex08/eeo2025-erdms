@@ -293,7 +293,9 @@ export function prepareDataForAPI(data, isUpdate = false) {
     Object.keys(result).forEach(key => {
       const value = result[key];
       // Odstraň jen undefined a null (ne prázdné stringy!)
-      if (value === undefined || value === null) {
+      // ✅ Výjimka: schvalovatel_id a dt_schvaleni si ponechají null (pro reset v DB)
+      const NULLABLE_FIELDS = ['schvalovatel_id', 'dt_schvaleni'];
+      if (value === undefined || (value === null && !NULLABLE_FIELDS.includes(key))) {
         delete result[key];
       }
       // Odstraň prázdné objekty

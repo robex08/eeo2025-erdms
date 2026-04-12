@@ -1380,6 +1380,7 @@ $queries['substitution_get_by_user'] = "
         z.opravneni,
         z.popis,
         z.aktivni,
+        z.dt_ukonceni,
         zu.username as zastupovany_username,
         zu.jmeno as zastupovany_jmeno,
         zu.prijmeni as zastupovany_prijmeni,
@@ -1417,7 +1418,7 @@ $queries['substitution_update'] = "
 
 $queries['substitution_deactivate'] = "
     UPDATE " . TBL_UZIVATELE_ZASTUPOVANI . "
-    SET aktivni = 0, dt_aktualizace = NOW()
+    SET aktivni = 0, dt_aktualizace = NOW(), dt_ukonceni = NOW()
     WHERE id = :substitution_id
     AND zastupovany_id = :zastupovany_id
 ";
@@ -1505,7 +1506,7 @@ $queries['substitution_candidates'] = "
 $queries['substitution_get_all'] = "
     SELECT
         z.id, z.zastupovany_id, z.zastupce_id,
-        z.dt_od, z.dt_do, z.opravneni, z.popis, z.aktivni, z.dt_vytvoreni,
+        z.dt_od, z.dt_do, z.opravneni, z.popis, z.aktivni, z.dt_vytvoreni, z.dt_ukonceni,
         zuov.username AS zastupovany_username,
         zuov.jmeno    AS zastupovany_jmeno,
         zuov.prijmeni AS zastupovany_prijmeni,

@@ -313,8 +313,8 @@ function _dashboard_get_user_info($db, $user_id) {
  * kvůli zpětné kompatibilitě volání, ale oprávnění řeší applyOrderV3UserPermissions.
  */
 function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $permissions, $usek_id = null) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     // Rok filtr - stejný jako OrderV3 (dt_objednavky = datum objednávky)
     $where_sql = "o.aktivni = 1 AND o.id != 1 AND YEAR(o.dt_objednavky) = YEAR(CURDATE()) {$v3_filter['where']}";
@@ -382,8 +382,8 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
  * Moje objednávky čekající na akci
  */
 function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_approve = false, $is_admin = false, $usek_id = null, $permissions = []) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     $excluded_states = "('DOKONCENA', 'ZKONTROLOVANA', 'ZRUSENA', 'ZAMITNUTA', 'STORNOVANA')";
 
@@ -562,8 +562,8 @@ function _dashboard_get_invoices_pending_check($db, $user_id, $is_admin, $days, 
  * Objednávky ke schválení (pro příkazce)
  */
 function _dashboard_get_orders_for_approval($db, $user_id, $is_admin, $days, $usek_id = null, $permissions = []) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     // Dodatečný filtr pro ke schválení - pouze objednávky ve stavech ke schválení
     $approval_filter = "";
@@ -677,8 +677,8 @@ function _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days, $usek
  * Respektuje Order V3 viditelnost (12-role WHERE).
  */
 function _dashboard_get_orders_for_registry($db, $user_id, $is_admin, $permissions = []) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     $stmt = $db->prepare("
         SELECT o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph as celkova_cena_s_dph,
@@ -715,8 +715,8 @@ function _dashboard_get_orders_for_registry($db, $user_id, $is_admin, $permissio
  * Respektuje Order V3 viditelnost (12-role WHERE).
  */
 function _dashboard_get_orders_published($db, $user_id, $is_admin, $days, $permissions = []) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     $select = "
         SELECT o.id, o.cislo_objednavky, o.predmet, o.max_cena_s_dph as celkova_cena_s_dph,
@@ -769,8 +769,8 @@ function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
     $alerts = [];
 
     // 1. Objednávky v prodlení - ve fázi fakturace (POTVRZENA až VECNA_SPRAVNOST), bez akce >7 dní
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
 
     $stmt = $db->prepare("
         SELECT COUNT(*) as count
@@ -1710,8 +1710,8 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
  * Graf: denní počty objednávek za posledních N dní
  */
 function _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_read, $days, $permissions = []) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     // Určení způsobu agregace podle délky periody
     if ($days >= 181) {
         // Rok → agregace po měsících (12 bodů)
@@ -1769,8 +1769,8 @@ function _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_rea
  * Top dodavatelé (za aktuální rok)
  */
 function _dashboard_get_top_suppliers($db, $user_id, $is_admin, $has_order_read, $permissions = []) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
 
     $stmt = $db->prepare("
         SELECT o.dodavatel_nazev, 
@@ -1961,8 +1961,8 @@ function _dashboard_get_lp_critical($db, $user_id, $is_admin, $usek_id, $permiss
  * Nedávné komentáře k objednávkám, kde je uživatel účastník
  */
 function _dashboard_get_order_comments_recent($db, $user_id, $days = 7, $is_admin = false, $permissions = []) {
-    // Aplikovat Order V3 viditelnost (12-role WHERE)
-    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+    // Aplikovat Order V3 viditelnost (12-role WHERE) + zastupování
+    $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     $date_from = date('Y-m-d', strtotime("-{$days} days"));
 
@@ -2975,6 +2975,7 @@ function _dashboard_active_users_counts($db) {
  * @param int $user_id ID uživatele
  * @param bool $is_admin Je admin? (SUPERADMIN, ADMINISTRATOR nebo ORDER_*_ALL permissions)
  * @param array $permissions Pole permission kódů uživatele
+ * @param PDO|null $pdo PDO instance (pro zastupování) - OPTIONAL pro zpětnou kompatibilitu
  * @return array ['where' => string, 'params' => array] - WHERE podmínka a parametry pro PDO
  * 
  * Pravidla:
@@ -2984,15 +2985,20 @@ function _dashboard_active_users_counts($db) {
  *   5. prikazce_id, 6. uzivatel_akt_id, 7. odesilatel_id, 8. dodavatel_potvrdil_id,
  *   9. zverejnil_id, 10. fakturant_id, 11. dokoncil_id, 12. potvrdil_vecnou_spravnost_id
  * 
+ * ✨ NOVĚ: Podporuje ZASTUPOVÁNÍ - pokud je zapnuto v APP SETTING, rozšíří viditelnost o zastupované uživatele.
+ * 
  * Použití:
  * ```php
- * $filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions);
+ * $filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
  * $sql = "SELECT * FROM 25a_objednavky o WHERE o.aktivni = 1 {$filter['where']}";
  * $stmt = $db->prepare($sql);
  * $stmt->execute($filter['params']);
  * ```
  */
-function _dashboard_build_order_v3_where($user_id, $is_admin, $permissions = []) {
+function _dashboard_build_order_v3_where($user_id, $is_admin, $permissions = [], $pdo = null) {
+    error_log("🔍 _dashboard_build_order_v3_where: user_id=$user_id, is_admin=" . ($is_admin ? 'YES' : 'NO') . ", pdo=" . ($pdo ? 'YES' : 'NULL'));
+    error_log("🔍 permissions: " . json_encode($permissions));
+    
     // ADMIN nebo má ORDER_*_ALL permissions → vidí VŠECHNY objednávky
     $hasAdminPermissions = in_array('ORDER_MANAGE', $permissions) ||
                           in_array('ORDER_READ_ALL', $permissions) ||
@@ -3000,29 +3006,65 @@ function _dashboard_build_order_v3_where($user_id, $is_admin, $permissions = [])
                           in_array('ORDER_EDIT_ALL', $permissions) ||
                           in_array('ORDER_DELETE_ALL', $permissions);
     
+    error_log("🔍 hasAdminPermissions: " . ($hasAdminPermissions ? 'YES' : 'NO'));
+    
     if ($is_admin || $hasAdminPermissions) {
+        error_log("🔍 ADMIN → returning empty filter (all orders visible)");
         return ['where' => '', 'params' => []];
     }
     
-    // Běžný user → 12-role WHERE filtr
+    // ✨ NOVĚ: Zjistit všechna user_id (vlastní + zastupovaní s oprávněním 'view')
+    $user_ids = [(int)$user_id]; // Fallback pokud PDO není k dispozici
+    if ($pdo !== null) {
+        error_log("🔍 Calling get_user_ids_with_substitution() for user_id=$user_id");
+        $scope_info = null;
+        $user_ids = get_user_ids_with_substitution($pdo, $user_id, ['view'], $scope_info);
+        error_log("🔍 get_user_ids_with_substitution returned: " . json_encode($user_ids));
+        
+        // INHERIT scope: pokud zastupovaný je admin → zástupce vidí VŠE
+        if ($scope_info && !empty($scope_info['has_inherit_full_access'])) {
+            error_log("🔍 SUBSTITUTION INHERIT FULL ACCESS → returning empty filter (all orders visible)");
+            return ['where' => '', 'params' => []];
+        }
+        
+        // INHERIT subordinate IDs - přidej do user_ids
+        if ($scope_info && !empty($scope_info['inherit_subordinate_ids'])) {
+            $user_ids = array_unique(array_merge($user_ids, $scope_info['inherit_subordinate_ids']));
+            error_log("🔍 SUBSTITUTION INHERIT subordinates added: " . count($scope_info['inherit_subordinate_ids']));
+        }
+    } else {
+        error_log("⚠️ PDO is NULL - skipping substitution check");
+    }
+    
+    // ✨ NOVĚ: Připravit placeholders pro IN klauzuli
+    $placeholders = [];
+    $params = [];
+    foreach ($user_ids as $idx => $uid) {
+        $key = ':v3_uid_' . $idx;
+        $placeholders[] = $key;
+        $params[$key] = (int)$uid;
+    }
+    $in_clause = implode(', ', $placeholders);
+    
+    // ✨ ZMĚNA: Místo = použít IN - rozšíření viditelnosti o zastupované
     $where = " AND (
-        o.uzivatel_id = :v3_user_id
-        OR o.objednatel_id = :v3_user_id
-        OR o.garant_uzivatel_id = :v3_user_id
-        OR o.schvalovatel_id = :v3_user_id
-        OR o.prikazce_id = :v3_user_id
-        OR o.uzivatel_akt_id = :v3_user_id
-        OR o.odesilatel_id = :v3_user_id
-        OR o.dodavatel_potvrdil_id = :v3_user_id
-        OR o.zverejnil_id = :v3_user_id
-        OR o.fakturant_id = :v3_user_id
-        OR o.dokoncil_id = :v3_user_id
-        OR o.potvrdil_vecnou_spravnost_id = :v3_user_id
+        o.uzivatel_id IN ($in_clause)
+        OR o.objednatel_id IN ($in_clause)
+        OR o.garant_uzivatel_id IN ($in_clause)
+        OR o.schvalovatel_id IN ($in_clause)
+        OR o.prikazce_id IN ($in_clause)
+        OR o.uzivatel_akt_id IN ($in_clause)
+        OR o.odesilatel_id IN ($in_clause)
+        OR o.dodavatel_potvrdil_id IN ($in_clause)
+        OR o.zverejnil_id IN ($in_clause)
+        OR o.fakturant_id IN ($in_clause)
+        OR o.dokoncil_id IN ($in_clause)
+        OR o.potvrdil_vecnou_spravnost_id IN ($in_clause)
     )";
     
     return [
         'where' => $where,
-        'params' => [':v3_user_id' => (int)$user_id]
+        'params' => $params
     ];
 }
 
@@ -3033,6 +3075,8 @@ function _dashboard_build_order_v3_where($user_id, $is_admin, $permissions = [])
  * 2. User má přístup k objednávce faktury (12-role WHERE z objednávky)
  * 3. User je přímo na faktuře: fa_predana_zam_id, potvrdil_vecnou_spravnost_id, vytvoril_uzivatel_id
  * 4. Faktura je ke smlouvě úseku uživatele (pokud $usek_id zadáno)
+ * 
+ * ✨ NOVĚ: Podporuje ZASTUPOVÁNÍ - pokud je zapnuto v APP SETTING, rozšíří viditelnost o zastupované uživatele.
  * 
  * @param object $db PDO instance
  * @param int $user_id ID uživatele
@@ -3052,30 +3096,48 @@ function _dashboard_build_invoice_v3_where($db, $user_id, $is_admin, $permission
         return ['where' => '', 'params' => []];
     }
     
+    // ✨ NOVĚ: Zjistit všechna user_id (vlastní + zastupovaní s oprávněním 'view')
+    $scope_info = null;
+    $user_ids = get_user_ids_with_substitution($db, $user_id, ['view'], $scope_info);
+    
+    // INHERIT scope: pokud zastupovaný je admin → zástupce vidí VŠE
+    if ($scope_info && !empty($scope_info['has_inherit_full_access'])) {
+        error_log("Dashboard Invoice: ✅ SUBSTITUTION INHERIT FULL ACCESS → showing ALL invoices");
+        return ['where' => '', 'params' => []];
+    }
+    
+    // INHERIT subordinate IDs
+    if ($scope_info && !empty($scope_info['inherit_subordinate_ids'])) {
+        $user_ids = array_unique(array_merge($user_ids, $scope_info['inherit_subordinate_ids']));
+    }
+    
     // Běžný user → faktury k objednávkám kde má 12-role NEBO přímé role na faktuře
     $conditions = [];
     $params = [];
     
-    // 1️⃣ Faktury k objednávkám kde má user 12-role
+    // ✨ NOVĚ: Připravit IN klauzuli pro user_ids
+    $user_ids_placeholders = implode(',', array_map('intval', $user_ids));
+    
+    // 1️⃣ Faktury k objednávkám kde má user 12-role (✨ ZMĚNA: IN místo 12x stejný parametr)
     $stmt_orders = $db->prepare("
         SELECT DISTINCT o.id
         FROM `" . TBL_OBJEDNAVKY . "` o
         WHERE (
-            o.uzivatel_id = ?
-            OR o.objednatel_id = ?
-            OR o.garant_uzivatel_id = ?
-            OR o.schvalovatel_id = ?
-            OR o.prikazce_id = ?
-            OR o.uzivatel_akt_id = ?
-            OR o.odesilatel_id = ?
-            OR o.dodavatel_potvrdil_id = ?
-            OR o.zverejnil_id = ?
-            OR o.fakturant_id = ?
-            OR o.dokoncil_id = ?
-            OR o.potvrdil_vecnou_spravnost_id = ?
+            o.uzivatel_id IN ($user_ids_placeholders)
+            OR o.objednatel_id IN ($user_ids_placeholders)
+            OR o.garant_uzivatel_id IN ($user_ids_placeholders)
+            OR o.schvalovatel_id IN ($user_ids_placeholders)
+            OR o.prikazce_id IN ($user_ids_placeholders)
+            OR o.uzivatel_akt_id IN ($user_ids_placeholders)
+            OR o.odesilatel_id IN ($user_ids_placeholders)
+            OR o.dodavatel_potvrdil_id IN ($user_ids_placeholders)
+            OR o.zverejnil_id IN ($user_ids_placeholders)
+            OR o.fakturant_id IN ($user_ids_placeholders)
+            OR o.dokoncil_id IN ($user_ids_placeholders)
+            OR o.potvrdil_vecnou_spravnost_id IN ($user_ids_placeholders)
         )
     ");
-    $stmt_orders->execute(array_fill(0, 12, $user_id));
+    $stmt_orders->execute();
     $order_ids = $stmt_orders->fetchAll(PDO::FETCH_COLUMN);
     
     if (!empty($order_ids)) {
@@ -3083,15 +3145,10 @@ function _dashboard_build_invoice_v3_where($db, $user_id, $is_admin, $permission
         $conditions[] = "f.objednavka_id IN ({$placeholders})";
     }
     
-    // 2️⃣ Přímé role na faktuře
-    $conditions[] = 'f.fa_predana_zam_id = :v3_inv_user_1';
-    $params[':v3_inv_user_1'] = $user_id;
-    
-    $conditions[] = 'f.potvrdil_vecnou_spravnost_id = :v3_inv_user_2';
-    $params[':v3_inv_user_2'] = $user_id;
-    
-    $conditions[] = 'f.vytvoril_uzivatel_id = :v3_inv_user_3';
-    $params[':v3_inv_user_3'] = $user_id;
+    // 2️⃣ Přímé role na faktuře (✨ ZMĚNA: IN místo =)
+    $conditions[] = "f.fa_predana_zam_id IN ($user_ids_placeholders)";
+    $conditions[] = "f.potvrdil_vecnou_spravnost_id IN ($user_ids_placeholders)";
+    $conditions[] = "f.vytvoril_uzivatel_id IN ($user_ids_placeholders)";
     
     // 3️⃣ Faktury ke smlouvám úseku uživatele
     if ($usek_id) {

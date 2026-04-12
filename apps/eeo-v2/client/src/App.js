@@ -18,6 +18,7 @@ import { initSecurityMeasures } from './utils/securityImprovements';
 import ordersCacheService from './services/ordersCacheService';
 import { getCacheConfig } from './config/cacheConfig';
 import useDevice from './hooks/useDevice';
+import PostLoginModal from './components/PostLoginModal';
 import { getGlobalSettings } from './services/globalSettingsApi';
 const MobileLoginPage = lazy(() => import('./components/mobile/MobileLoginPage'));
 const MobileDashboard = lazy(() => import('./components/mobile/MobileDashboard'));
@@ -55,7 +56,7 @@ const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
-const PostLoginModal = lazy(() => import('./components/PostLoginModal'));
+// PostLoginModal je importován přímo (ne lazy) kvůli rychlému zobrazení po loginu
 const UpdateNotificationModal = lazy(() => import('./components/UpdateNotificationModal'));
 const HighPriorityNotificationModal = lazy(() => import('./components/HighPriorityNotificationModal'));
 const AccessDenied = lazy(() => import('./pages/AccessDenied'));
@@ -1137,18 +1138,16 @@ function App() {
         
         {/* 🔔 POST-LOGIN MODAL: Zobrazí se po přihlášení podle globální konfigurace */}
         {postLoginModal.isOpen && postLoginModal.config && (
-          <Suspense fallback={null}>
-            <PostLoginModal
-              isOpen={postLoginModal.isOpen}
-              onClose={handleClosePostLoginModal}
-              onDontShowAgain={handleDontShowAgainPostLoginModal}
-              title={postLoginModal.config.title}
-              htmlContent={postLoginModal.config.htmlContent}
-              validFrom={postLoginModal.config.validFrom}
-              validTo={postLoginModal.config.validTo}
-              modalGuid={postLoginModal.config.modalGuid}
-            />
-          </Suspense>
+          <PostLoginModal
+            isOpen={postLoginModal.isOpen}
+            onClose={handleClosePostLoginModal}
+            onDontShowAgain={handleDontShowAgainPostLoginModal}
+            title={postLoginModal.config.title}
+            htmlContent={postLoginModal.config.htmlContent}
+            validFrom={postLoginModal.config.validFrom}
+            validTo={postLoginModal.config.validTo}
+            modalGuid={postLoginModal.config.modalGuid}
+          />
         )}
 
         {/* � HIGH PRIORITY NOTIFICATION: Popup modal pro urgent/high priority notifikace */}

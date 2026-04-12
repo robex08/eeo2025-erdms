@@ -553,6 +553,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
+    'Odloženo': 'CEKA_SE',
     'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
     'Zkontrolovaná': 'ZKONTROLOVANA',
@@ -1568,9 +1569,16 @@ function Orders25ListV3() {
 
   // Handler pro editaci objednávky
   const handleEditOrder = async (order) => {
-    // 🔒 KONTROLA OPRÁVNĚNÍ - PRVNÍ VĚC!
+    // 🔒 KONTROLA OPRÁVNĚNÍ
+    // Pokud uživatel nemá editační práva (např. vidí objednávku přes zastupování),
+    // otevřeme formulář v režimu náhledu (viewOnly) - bez zamčení, Save neaktivní
     if (!canEdit(order)) {
-      showToast('Nemáte oprávnění editovat tuto objednávku', { type: 'warning' });
+      navigate(`/order-form-25?edit=${order.id}&viewOnly=1`, { 
+        state: { 
+          returnTo: '/orders25-list-v3',
+          highlightOrderId: order.id
+        } 
+      });
       return;
     }
 

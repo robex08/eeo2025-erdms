@@ -2,7 +2,8 @@ import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faInfoCircle, faEyeSlash, faCheck, faChevronDown } from '@fortawesome/free-solid-svg-icons';
+import { faInfoCircle, faEyeSlash, faCheck, faChevronDown, faHome } from '@fortawesome/free-solid-svg-icons';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * PostLoginModal - Modal dialog zobrazený po přihlášení
@@ -385,6 +386,24 @@ const OkButton = styled(Button)`
   }
 `;
 
+const DashboardButton = styled(Button)`
+  border: 2px solid #10b981;
+  background: #10b981;
+  color: white;
+  
+  &:hover {
+    background: #059669;
+    border-color: #059669;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  }
+
+  &:disabled {
+    background: #6ee7b7;
+    border-color: #6ee7b7;
+    color: #ffffff;
+  }
+`;
+
 const ValidityInfo = styled.div`
   background: #eff6ff;
   border: 1px solid #bfdbfe;
@@ -409,6 +428,7 @@ const PostLoginModal = ({
   modalGuid = null
 }) => {
 
+  const navigate = useNavigate();
   const contentRef = useRef(null);
   const [hasReachedEnd, setHasReachedEnd] = useState(false);
 
@@ -559,6 +579,12 @@ const PostLoginModal = ({
             <FontAwesomeIcon icon={primaryButtonIcon} />
             {primaryButtonLabel}
           </OkButton>
+          {hasReachedEnd && (
+            <DashboardButton onClick={() => { onClose?.(); navigate('/dashboard'); }} title="Zavřít a přejít na Dashboard">
+              <FontAwesomeIcon icon={faHome} />
+              Dashboard
+            </DashboardButton>
+          )}
         </Actions>
       </Dialog>
     </Overlay>,

@@ -1376,6 +1376,9 @@ function handle_order_v2_update($input, $config, $queries) {
         
         try {
             // ========== UPDATE HLAVNÍ OBJEDNÁVKY ==========
+            // 🔍 DEBUG: Log schvalovatel_id a dt_schvaleni v payloadu
+            error_log("Order V2 UPDATE [{$order_id}]: schvalovatel_id=" . var_export($dbData['schvalovatel_id'] ?? '(NOT SET)', true) . ", dt_schvaleni=" . var_export($dbData['dt_schvaleni'] ?? '(NOT SET)', true));
+            
             $setParts = array();
             $values = array();
             

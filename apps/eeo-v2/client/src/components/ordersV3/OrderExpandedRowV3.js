@@ -980,6 +980,7 @@ const mapUserStatusToSystemCode = (userStatus) => {
     'Uveřejněná': 'UVEREJNENA',
     'Čeká na potvrzení': 'CEKA_POTVRZENI',
     'Čeká se': 'CEKA_SE',
+    'Odloženo': 'CEKA_SE',
     'Fakturace': 'FAKTURACE',
     'Věcná správnost': 'VECNA_SPRAVNOST',
     'Zkontrolována': 'ZKONTROLOVANA',

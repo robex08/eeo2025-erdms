@@ -1639,6 +1639,85 @@ function handle_invoices25_list($input, $config, $queries) {
                 error_log("Invoices25 LIST: User $user_id - added access to contracts for usek_id: $user_usek_id");
             }
             
+            // 7️⃣ ZASTUPOVÁNÍ - faktury k objednávkám zastupovaného uživatele
+            if (function_exists('get_user_ids_with_substitution')) {
+                try {
+                    $scope_info = null;
+                    $substitution_ids = get_user_ids_with_substitution($db, $user_id, ['view'], $scope_info);
+                    
+                    // INHERIT scope: pokud zastupovaný je admin → zástupce vidí VŠE
+                    if ($scope_info && !empty($scope_info['has_inherit_full_access'])) {
+                        error_log("Invoices25 LIST: ✅ SUBSTITUTION INHERIT FULL ACCESS - user $user_id dědí admin přístup → showing ALL invoices");
+                        // Nahradíme user_access podmínky za prázdné - uživatel vidí vše
+                        $user_access_conditions = ['1=1'];
+                        $user_access_params = [];
+                    } elseif (count($substitution_ids) > 1) {
+                        // OWN scope: vidí záznamy kde je zastupovaný účastníkem
+                        $sub_ids_only = array_diff($substitution_ids, [$user_id]);
+                        $sub_placeholders = implode(',', array_map('intval', $sub_ids_only));
+                        
+                        $sub_orders_sql = "
+                            SELECT DISTINCT o.id 
+                            FROM `" . TBL_OBJEDNAVKY . "` o
+                            WHERE (
+                                o.uzivatel_id IN ($sub_placeholders)
+                                OR o.garant_uzivatel_id IN ($sub_placeholders)
+                                OR o.objednatel_id IN ($sub_placeholders)
+                                OR o.schvalovatel_id IN ($sub_placeholders)
+                                OR o.prikazce_id IN ($sub_placeholders)
+                                OR o.potvrdil_vecnou_spravnost_id IN ($sub_placeholders)
+                                OR o.fakturant_id IN ($sub_placeholders)
+                            )
+                        ";
+                        $sub_orders_stmt = $db->query($sub_orders_sql);
+                        $sub_order_ids = [];
+                        while ($row = $sub_orders_stmt->fetch(PDO::FETCH_ASSOC)) {
+                            $sub_order_ids[] = (int)$row['id'];
+                        }
+                        
+                        if (!empty($sub_order_ids)) {
+                            $user_access_conditions[] = 'f.objednavka_id IN (' . implode(',', $sub_order_ids) . ')';
+                            error_log("Invoices25 LIST: ✅ SUBSTITUTION - user $user_id sees invoices for " . count($sub_order_ids) . " orders of substituted users");
+                        }
+                        
+                        // Také faktury přímo vytvořené/předané zastupovaným
+                        $user_access_conditions[] = 'f.vytvoril_uzivatel_id IN (' . $sub_placeholders . ')';
+                        $user_access_conditions[] = 'f.fa_predana_zam_id IN (' . $sub_placeholders . ')';
+                        error_log("Invoices25 LIST: ✅ SUBSTITUTION - also added direct invoice access for substituted users: $sub_placeholders");
+                        
+                        // INHERIT subordinate IDs - přidej podřízené zastupovaného
+                        if ($scope_info && !empty($scope_info['inherit_subordinate_ids'])) {
+                            $inheritSubIds = implode(',', array_map('intval', $scope_info['inherit_subordinate_ids']));
+                            
+                            $inherit_sub_sql = "
+                                SELECT DISTINCT o.id 
+                                FROM `" . TBL_OBJEDNAVKY . "` o
+                                WHERE (
+                                    o.uzivatel_id IN ($inheritSubIds)
+                                    OR o.garant_uzivatel_id IN ($inheritSubIds)
+                                    OR o.objednatel_id IN ($inheritSubIds)
+                                    OR o.schvalovatel_id IN ($inheritSubIds)
+                                    OR o.prikazce_id IN ($inheritSubIds)
+                                    OR o.potvrdil_vecnou_spravnost_id IN ($inheritSubIds)
+                                    OR o.fakturant_id IN ($inheritSubIds)
+                                )
+                            ";
+                            $inherit_orders_stmt = $db->query($inherit_sub_sql);
+                            $inherit_order_ids = [];
+                            while ($row = $inherit_orders_stmt->fetch(PDO::FETCH_ASSOC)) {
+                                $inherit_order_ids[] = (int)$row['id'];
+                            }
+                            if (!empty($inherit_order_ids)) {
+                                $user_access_conditions[] = 'f.objednavka_id IN (' . implode(',', $inherit_order_ids) . ')';
+                                error_log("Invoices25 LIST: ✅ SUBSTITUTION INHERIT subordinates - " . count($inherit_order_ids) . " additional orders");
+                            }
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("Invoices25 LIST: ⚠️ SUBSTITUTION error (fail-safe): " . $e->getMessage());
+                }
+            }
+            
             // Sestavit finální podmínku
             if (empty($user_access_conditions)) {
                 // Uživatel nemá přístup k žádným fakturám

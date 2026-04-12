@@ -58,7 +58,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset, $user = null) {
         
         $hasFullAccess = $isAdmin || $hasAccountantRole || $hasAnnualFeesPermission;
         
-        // Pokud NEMÁ plný přístup → omezit na své + podřízené
+        // Pokud NEMÁ plný přístup → omezit na své + podřízené + zastupované
         if (!$hasFullAccess && isset($user['id'])) {
             // Získat ID podřízených z hierarchie
             $subordinateIds = [];
@@ -78,8 +78,36 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset, $user = null) {
             // Přidat sebe + podřízené
             $accessibleUserIds = array_merge([$user['id']], $subordinateIds);
             
-            // Filtr na vytvoril_uzivatel_id
-            if (!empty($accessibleUserIds)) {
+            // 🔄 ZASTUPOVÁNÍ - přidat zastupované uživatele
+            if (function_exists('get_user_ids_with_substitution')) {
+                try {
+                    $scope_info = null;
+                    $substitution_ids = get_user_ids_with_substitution($pdo, $user['id'], ['view'], $scope_info);
+                    
+                    // INHERIT scope: pokud zastupovaný je admin → zástupce vidí VŠE
+                    if ($scope_info && !empty($scope_info['has_inherit_full_access'])) {
+                        $hasFullAccess = true; // Přeskočí celý filtr
+                        error_log("AnnualFees: ✅ SUBSTITUTION INHERIT FULL ACCESS - user " . $user['id'] . " dědí admin přístup");
+                    } elseif (count($substitution_ids) > 1) {
+                        $accessibleUserIds = array_unique(array_merge($accessibleUserIds, $substitution_ids));
+                        error_log("AnnualFees: ✅ SUBSTITUTION - user " . $user['id'] . " sees annual fees of users: " . implode(',', $substitution_ids));
+                        
+                        // INHERIT subordinate IDs
+                        if ($scope_info && !empty($scope_info['inherit_subordinate_ids'])) {
+                            $accessibleUserIds = array_unique(array_merge($accessibleUserIds, $scope_info['inherit_subordinate_ids']));
+                            error_log("AnnualFees: ✅ SUBSTITUTION INHERIT subordinates - +" . count($scope_info['inherit_subordinate_ids']) . " users");
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("AnnualFees: ⚠️ SUBSTITUTION error (fail-safe): " . $e->getMessage());
+                }
+            }
+            
+            // Pokud inherit scope dal plný přístup, přeskočit filtr
+            if ($hasFullAccess) {
+                // Nepřidáváme WHERE filtr - uživatel vidí vše
+                error_log("AnnualFees: User " . $user['id'] . " has full access (via substitution inherit) - no filter applied");
+            } elseif (!empty($accessibleUserIds)) {
                 $placeholders = implode(',', array_fill(0, count($accessibleUserIds), '?'));
                 $where[] = "rp.vytvoril_uzivatel_id IN ($placeholders)";
                 foreach ($accessibleUserIds as $uid) {
