@@ -820,7 +820,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
           <p>Nastavte, kdo vás bude zastupovat po dobu nepřítomnosti. Zástupce získá přístup k vašim dokladům v&nbsp;rozsahu, který mu přidělíte.</p>
         </PageTitle>
         <HeaderActions>
-          <Btn $variant="secondary" $size="sm" onClick={load} title="Obnovit data">
+          <Btn $variant="secondary" $size="sm" onClick={() => { load(); loadAdmin(); }} title="Obnovit data">
             <RefreshCw size={14} />
           </Btn>
           {!showForm && (
@@ -831,47 +831,6 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
           )}
         </HeaderActions>
       </PageHeader>
-
-      {/* ── Kdo mě zastupuje NYNÍ ────────────────────────────────────────── */}
-      {currentlySub.length > 0 && (
-        <Card>
-          <CardHeader $gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)">
-            <CardTitle $light>
-              <UserCheck size={17} />
-              Kdo mě nyní zastupuje
-            </CardTitle>
-            <StatusPill $status="active" style={{ background: 'rgba(255,255,255,0.2)', color: 'white' }}>
-              {currentlySub.length} aktivní
-            </StatusPill>
-          </CardHeader>
-          <CardBody>
-            <SubstList>
-              {currentlySub.map(s => {
-                const perms = decodeOpravneni(s.opravneni);
-                return (
-                  <SubstItem key={s.id} $status="active">
-                    <SubstAvatar $status="active">
-                      {getInitials(s.zastupce_jmeno, s.zastupce_prijmeni)}
-                    </SubstAvatar>
-                    <SubstInfo>
-                      <SubstName>{s.zastupce_jmeno} {s.zastupce_prijmeni}</SubstName>
-                      <SubstMeta>
-                        <MetaItem><Calendar />  {formatDate(s.dt_od)} – {formatDate(s.dt_do)}</MetaItem>
-                        {Object.entries(perms).filter(([k,v]) => v && k !== 'notify_zastupce').map(([k]) => {
-                          const m = OPRAVNENI_META.find(x => x.key === k);
-                          return m ? <PermPill key={k}>{m.label}</PermPill> : null;
-                        })}
-                        {s.popis && <MetaItem style={{ fontStyle: 'italic' }}>„{s.popis}"</MetaItem>}
-                      </SubstMeta>
-                    </SubstInfo>
-                    <StatusPill $status="active">Aktivní</StatusPill>
-                  </SubstItem>
-                );
-              })}
-            </SubstList>
-          </CardBody>
-        </Card>
-      )}
 
       {/* ── Formulář pro nové zastupování ───────────────────────────────── */}
       {showForm && (
@@ -898,13 +857,12 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
               {candidates.length === 0 && (
                 <Alert $type="info">
                   <Info size={16} />
-                  Žádní uživatelé s oprávněním být zástupcem nejsou k dispozici. Kontaktujte administrátora.
+                  V systému nejsou žádní způsobilí zástupci (uživatelé s&nbsp;právem USER_SUBSTITUTE).
                 </Alert>
               )}
 
               <form onSubmit={handleCreate}>
                 <FormGrid>
-                  {/* Zástupce */}
                   <FormField style={{ gridColumn: '1 / -1' }}>
                     <FieldLabel $required>
                       <Users size={12} /> Zástupce
@@ -985,14 +943,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                                 <Icon />
                               </ToggleIcon>
                               <ToggleText>
-                                <span className="toggle-label">
-                                  {meta.label}
-                                  {meta.badge && (
-                                    <PermBadge $bg={meta.badge.bg} $color={meta.badge.color}>
-                                      {meta.badge.text}
-                                    </PermBadge>
-                                  )}
-                                </span>
+                                <span className="toggle-label">{meta.label}</span>
                                 <span className="toggle-desc">{meta.desc}</span>
                               </ToggleText>
                             </ToggleLeft>
@@ -1011,6 +962,8 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                       $on={form.send_notification}
                       $color="#bfdbfe"
                       $bg={form.send_notification ? '#eff6ff' : undefined}
+                      onClick={() => setFormField('send_notification', !form.send_notification)}
+                      style={{ cursor: 'pointer' }}
                     >
                       <input
                         type="checkbox"
@@ -1061,306 +1014,369 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
         </Card>
       )}
 
-      {/* ── Moje nastavená zastupování ───────────────────────────────────── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>
-            <UserCheck size={17} color="#6366f1" />
-            Moje zastupování
-          </CardTitle>
-          <StatusPill $status={activeAndFuture.length > 0 ? 'active' : 'past'}>
-            {activeAndFuture.length} nastaveno
-          </StatusPill>
-        </CardHeader>
-        <CardBody>
-          {activeAndFuture.length === 0 && !showForm ? (
-            <EmptyBox>
-              <EmptyIcon><UserCheck size={26} /></EmptyIcon>
-              <div style={{ fontWeight: 600, color: '#475569', marginBottom: '0.35rem' }}>Žádné zastupování</div>
-              <div style={{ fontSize: '0.82rem' }}>Klikněte na „Přidat zastupování" a nastavte svého zástupce.</div>
-            </EmptyBox>
-          ) : (
-            <SubstList>
-              {activeAndFuture.map(sub => {
-                const status = getSubstStatus(sub);
-                const perms = decodeOpravneni(sub.opravneni);
-                const initials = getInitials(sub.zastupce?.jmeno, sub.zastupce?.prijmeni);
-                return (
-                  <SubstItem key={sub.id} $status={status}>
-                    <SubstAvatar $status={status}>{initials}</SubstAvatar>
-                    <SubstInfo>
-                      <SubstName>
-                        {sub.zastupce?.jmeno} {sub.zastupce?.prijmeni}
-                        {sub.zastupce?.username && (
-                          <span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#64748b', marginLeft: 6 }}>
-                            ({sub.zastupce.username})
-                          </span>
-                        )}
-                      </SubstName>
-                      <SubstMeta>
-                        <MetaItem><Calendar /> {formatDate(sub.dt_od)} – {formatDate(sub.dt_do)}</MetaItem>
-                        {Object.entries(perms).filter(([k,v]) => v && k !== 'notify_zastupce').map(([k]) => {
-                          const m = OPRAVNENI_META.find(x => x.key === k);
-                          return m ? <PermPill key={k}>{m.label}</PermPill> : null;
-                        })}
-                        {sub.popis && <MetaItem style={{ fontStyle: 'italic' }}>„{sub.popis}"</MetaItem>}
-                      </SubstMeta>
-                    </SubstInfo>
-                    <SubstActions>
-                      <StatusPill $status={status}>{STATUS_LABELS[status] || status}</StatusPill>
-                      <Btn
-                        $variant="danger"
-                        $size="sm"
-                        onClick={() => handleDeactivate(sub)}
-                        disabled={deactivating === sub.id}
-                        title="Zrušit zastupování"
-                      >
-                        {deactivating === sub.id ? <SpinIcon size={13} /> : <Trash2 size={13} />}
-                      </Btn>
-                    </SubstActions>
-                  </SubstItem>
-                );
-              })}
-            </SubstList>
-          )}
+      {/* ── Formulář admin: přidat zastupování ─────────────────────────── */}
+      {isAdmin && adminTab === 'create' && (
+        <Card>
+          <CardHeader $gradient="linear-gradient(135deg, #ef4444 0%, #dc2626 100%)">
+            <CardTitle $light>
+              <Shield size={17} /> Nastavit zastupování <span style={{ opacity: 0.8, fontWeight: 400 }}>· Admin</span>
+            </CardTitle>
+            <Btn $variant="ghost" $size="sm" onClick={() => { setAdminTab('overview'); setAdminFormError(''); }}
+              style={{ color: 'rgba(255,255,255,0.8)', background: 'rgba(255,255,255,0.15)' }}>
+              <X size={15} />
+            </Btn>
+          </CardHeader>
+          <CardBody>
+            <form onSubmit={handleAdminCreate}>
+              <FormGrid>
+                <FormField>
+                  <FieldLabel $required><Users size={12} /> Zastupovaný uživatel</FieldLabel>
+                  <CustomSelect
+                    field="admin_zastupovany_id"
+                    value={adminForm.zastupovany_id}
+                    options={manageableOptions}
+                    placeholder="Vyberte zastupovaného…"
+                    onChange={val => setAdminForm(prev => ({ ...prev, zastupovany_id: val }))}
+                    hasError={!!(adminFormError && !adminForm.zastupovany_id)}
+                    selectStates={selectStates}
+                    setSelectStates={setSelectStates}
+                    searchStates={searchStates}
+                    setSearchStates={setSearchStates}
+                    touchedSelectFields={touchedSelectFields}
+                    setTouchedSelectFields={setTouchedSelectFields}
+                    toggleSelect={toggleSelect}
+                    filterOptions={filterOptions}
+                    getOptionLabel={getOptionLabel}
+                  />
+                </FormField>
+                <FormField>
+                  <FieldLabel $required><UserCheck size={12} /> Zástupce</FieldLabel>
+                  <CustomSelect
+                    field="admin_zastupce_id"
+                    value={adminForm.zastupce_id}
+                    options={candidateOptions}
+                    placeholder="Vyberte zástupce…"
+                    onChange={val => setAdminForm(prev => ({ ...prev, zastupce_id: val }))}
+                    hasError={!!(adminFormError && !adminForm.zastupce_id)}
+                    selectStates={selectStates}
+                    setSelectStates={setSelectStates}
+                    searchStates={searchStates}
+                    setSearchStates={setSearchStates}
+                    touchedSelectFields={touchedSelectFields}
+                    setTouchedSelectFields={setTouchedSelectFields}
+                    toggleSelect={toggleSelect}
+                    filterOptions={filterOptions}
+                    getOptionLabel={getOptionLabel}
+                  />
+                </FormField>
+                <FormField style={{ gridColumn: '1 / -1' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
+                      <FieldLabel $required><Calendar size={12} /> Zastupování od</FieldLabel>
+                      <DatePicker
+                        fieldName="admin_dt_od"
+                        value={adminForm.dt_od}
+                        onChange={val => setAdminForm(prev => ({ ...prev, dt_od: val }))}
+                        placeholder="Datum začátku"
+                        hasError={!!(adminFormError && !adminForm.dt_od)}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
+                      <FieldLabel $required><Calendar size={12} /> Zastupování do</FieldLabel>
+                      <DatePicker
+                        fieldName="admin_dt_do"
+                        value={adminForm.dt_do}
+                        onChange={val => setAdminForm(prev => ({ ...prev, dt_do: val }))}
+                        placeholder="Datum konce"
+                        hasError={!!(adminFormError && !adminForm.dt_do)}
+                      />
+                    </div>
+                  </div>
+                </FormField>
+                <FormField style={{ gridColumn: '1 / -1' }}>
+                  <FieldLabel $required><Shield size={12} /> Oprávnění zástupce</FieldLabel>
+                  <ToggleGrid>
+                    {OPRAVNENI_META.filter(m => m.visible(isAdmin, isSuperAdmin) && !['administrator','superadmin'].includes(m.key)).map(meta => {
+                      const Icon = meta.icon;
+                      const on = !!adminForm.opravneni[meta.key];
+                      return (
+                        <ToggleRow key={meta.key} $on={on} $color={meta.borderColor} $bg={on ? meta.bg : undefined}>
+                          <input type="checkbox" checked={on} onChange={e => setAdminForm(prev => ({ ...prev, opravneni: { ...prev.opravneni, [meta.key]: e.target.checked } }))} />
+                          <ToggleLeft>
+                            <ToggleIcon $on={on} $color={on ? meta.iconColor : undefined}><Icon /></ToggleIcon>
+                            <ToggleText><span className="toggle-label">{meta.label}</span><span className="toggle-desc">{meta.desc}</span></ToggleText>
+                          </ToggleLeft>
+                          <ToggleTrack $on={on} $color={meta.trackColor}><ToggleThumb $on={on} /></ToggleTrack>
+                        </ToggleRow>
+                      );
+                    })}
+                  </ToggleGrid>
+                </FormField>
+                <FormField style={{ gridColumn: '1 / -1' }}>
+                  <FieldLabel><Info size={12} /> Poznámka (volitelně)</FieldLabel>
+                  <Textarea rows={2} placeholder="Důvod zastupování, poznámky…"
+                    value={adminForm.popis} onChange={e => setAdminForm(prev => ({ ...prev, popis: e.target.value }))} />
+                </FormField>
+              </FormGrid>
+              {adminFormError && (
+                <Alert $type="error" style={{ marginTop: '0.75rem' }}>
+                  <AlertCircle size={15} />{adminFormError}
+                </Alert>
+              )}
+              <FormActions>
+                <Btn type="button" $variant="secondary" onClick={() => { setAdminTab('overview'); setAdminFormError(''); }}>
+                  <X size={15} /> Zrušit
+                </Btn>
+                <Btn type="submit" $variant="danger" disabled={adminFormSaving}>
+                  {adminFormSaving ? <SpinIcon size={15} /> : <CheckCircle size={15} />}
+                  Nastavit zastupování
+                </Btn>
+              </FormActions>
+            </form>
+          </CardBody>
+        </Card>
+      )}
 
-          {/* Historická zastupování */}
-          {past.length > 0 && (
-            <>
-              <SectionDivider>Ukončená zastupování</SectionDivider>
+      {/* ── Dvě karty vedle sebe: Moje zastupování + Admin přehled ────── */}
+      <div style={{ display: 'grid', gridTemplateColumns: isAdmin ? '1fr 1fr' : '1fr', gap: '1.25rem', alignItems: 'start' }}>
+
+        {/* ── Moje nastavená zastupování ─────────────────────────────── */}
+        <Card style={{ marginBottom: 0 }}>
+          <CardHeader>
+            <CardTitle>
+              <UserCheck size={17} color="#6366f1" />
+              Moje zastupování
+            </CardTitle>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <StatusPill $status={activeAndFuture.length > 0 ? 'active' : 'past'}>
+                {activeAndFuture.length} nastaveno
+              </StatusPill>
+              {!showForm && (
+                <Btn $variant="primary" $size="sm" onClick={() => setShowForm(true)} title="Přidat zastupování">
+                  <Plus size={13} />
+                </Btn>
+              )}
+            </div>
+          </CardHeader>
+          <CardBody>
+            {/* Kdo mě zastupuje nyní */}
+            {currentlySub.length > 0 && (
+              <>
+                <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <UserCheck size={11} /> Kdo mě nyní zastupuje
+                </div>
+                <SubstList style={{ marginBottom: '1rem' }}>
+                  {currentlySub.map(s => {
+                    const perms = decodeOpravneni(s.opravneni);
+                    return (
+                      <SubstItem key={s.id} $status="active">
+                        <SubstAvatar $status="active">{getInitials(s.zastupce_jmeno, s.zastupce_prijmeni)}</SubstAvatar>
+                        <SubstInfo>
+                          <SubstName>{s.zastupce_jmeno} {s.zastupce_prijmeni}</SubstName>
+                          <SubstMeta>
+                            <MetaItem><Calendar /> {formatDate(s.dt_od)} – {formatDate(s.dt_do)}</MetaItem>
+                            {Object.entries(perms).filter(([k,v]) => v && k !== 'notify_zastupce').map(([k]) => {
+                              const m = OPRAVNENI_META.find(x => x.key === k);
+                              return m ? <PermPill key={k}>{m.label}</PermPill> : null;
+                            })}
+                          </SubstMeta>
+                        </SubstInfo>
+                        <StatusPill $status="active">Aktivní</StatusPill>
+                      </SubstItem>
+                    );
+                  })}
+                </SubstList>
+              </>
+            )}
+
+            {activeAndFuture.length === 0 && !showForm ? (
+              <EmptyBox>
+                <EmptyIcon><UserCheck size={26} /></EmptyIcon>
+                <div style={{ fontWeight: 600, color: '#475569', marginBottom: '0.35rem' }}>Žádné zastupování</div>
+                <div style={{ fontSize: '0.82rem' }}>Klikněte na „+" a nastavte svého zástupce.</div>
+              </EmptyBox>
+            ) : (
               <SubstList>
-                {past.map(sub => {
+                {activeAndFuture.map(sub => {
+                  const status = getSubstStatus(sub);
+                  const perms = decodeOpravneni(sub.opravneni);
                   const initials = getInitials(sub.zastupce?.jmeno, sub.zastupce?.prijmeni);
                   return (
-                    <SubstItem key={sub.id} $status="past">
-                      <SubstAvatar $status="past">{initials}</SubstAvatar>
+                    <SubstItem key={sub.id} $status={status}>
+                      <SubstAvatar $status={status}>{initials}</SubstAvatar>
                       <SubstInfo>
-                        <SubstName style={{ color: '#64748b', fontWeight: 600 }}>
+                        <SubstName>
                           {sub.zastupce?.jmeno} {sub.zastupce?.prijmeni}
+                          {sub.zastupce?.username && (
+                            <span style={{ fontSize: '0.78rem', fontWeight: 400, color: '#64748b', marginLeft: 6 }}>
+                              ({sub.zastupce.username})
+                            </span>
+                          )}
                         </SubstName>
                         <SubstMeta>
                           <MetaItem><Calendar /> {formatDate(sub.dt_od)} – {formatDate(sub.dt_do)}</MetaItem>
-                          {sub.popis && <MetaItem style={{ fontStyle: 'italic' }}>„{sub.popis}"</MetaItem>}
+                          {Object.entries(perms).filter(([k,v]) => v && k !== 'notify_zastupce').map(([k]) => {
+                            const m = OPRAVNENI_META.find(x => x.key === k);
+                            return m ? <PermPill key={k}>{m.label}</PermPill> : null;
+                          })}
                         </SubstMeta>
                       </SubstInfo>
-                      <StatusPill $status="past">Ukončeno</StatusPill>
+                      <SubstActions>
+                        <StatusPill $status={status}>{STATUS_LABELS[status] || status}</StatusPill>
+                        <Btn $variant="danger" $size="sm" onClick={() => handleDeactivate(sub)} disabled={deactivating === sub.id} title="Zrušit">
+                          {deactivating === sub.id ? <SpinIcon size={13} /> : <Trash2 size={13} />}
+                        </Btn>
+                      </SubstActions>
                     </SubstItem>
                   );
                 })}
               </SubstList>
-            </>
-          )}
-        </CardBody>
-      </Card>
+            )}
 
-      {/* ─── ADMIN SEKCE ─────────────────────────────────────────────────────── */}
-      {isAdmin && (
+            {past.length > 0 && (
+              <>
+                <SectionDivider>Ukončená</SectionDivider>
+                <SubstList>
+                  {past.map(sub => {
+                    const initials = getInitials(sub.zastupce?.jmeno, sub.zastupce?.prijmeni);
+                    return (
+                      <SubstItem key={sub.id} $status="past">
+                        <SubstAvatar $status="past">{initials}</SubstAvatar>
+                        <SubstInfo>
+                          <SubstName style={{ color: '#64748b' }}>{sub.zastupce?.jmeno} {sub.zastupce?.prijmeni}</SubstName>
+                          <SubstMeta>
+                            <MetaItem><Calendar /> {formatDate(sub.dt_od)} – {formatDate(sub.dt_do)}</MetaItem>
+                          </SubstMeta>
+                        </SubstInfo>
+                        <StatusPill $status="past">Ukončeno</StatusPill>
+                      </SubstItem>
+                    );
+                  })}
+                </SubstList>
+              </>
+            )}
+          </CardBody>
+        </Card>
+
+        {/* ── Admin: rychlý přehled + tlačítko přidat ────────────────── */}
+        {isAdmin && (
+          <Card style={{ marginBottom: 0 }}>
+            <CardHeader>
+              <HeaderLeft>
+                <Shield size={16} style={{ color: '#dc2626' }} />
+                <CardTitle>Správa <span style={{ color: '#dc2626', fontWeight: 700 }}>· Admin</span></CardTitle>
+              </HeaderLeft>
+              <HeaderRight>
+                <ActionBtn onClick={loadAdmin} title="Obnovit" disabled={adminLoading}>
+                  <RefreshCw size={13} style={{ animation: adminLoading ? 'spin 1s linear infinite' : 'none' }} />
+                </ActionBtn>
+                <Btn $variant="danger" $size="sm" onClick={() => setAdminTab(adminTab === 'create' ? 'overview' : 'create')}>
+                  <Plus size={13} /> Přidat
+                </Btn>
+              </HeaderRight>
+            </CardHeader>
+            <CardBody>
+              {adminLoading ? (
+                <div style={{ textAlign: 'center', padding: '1.5rem', color: '#94a3b8' }}>
+                  <SpinIcon size={20} style={{ display: 'block', margin: '0 auto 0.4rem' }} /> Načítám…
+                </div>
+              ) : adminSubstitutions.length === 0 ? (
+                <EmptyBox>
+                  <EmptyIcon><Users size={24} /></EmptyIcon>
+                  <div style={{ fontSize: '0.82rem', color: '#94a3b8' }}>Žádná aktivní zastupování v systému</div>
+                </EmptyBox>
+              ) : (
+                <div style={{ fontSize: '0.82rem', color: '#475569' }}>
+                  {adminSubstitutions.slice(0, 5).map((s, i) => {
+                    const now = new Date().toISOString().split('T')[0];
+                    const status = s.aktivni ? (s.dt_od <= now && s.dt_do >= now ? 'active' : s.dt_od > now ? 'future' : 'past') : 'past';
+                    return (
+                      <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.45rem 0', borderBottom: i < Math.min(adminSubstitutions.length, 5) - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                        <StatusPill $status={status} style={{ minWidth: 20, fontSize: '0.62rem', flexShrink: 0 }}>{STATUS_LABELS[status]?.charAt(0)}</StatusPill>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {s.zastupovany_jmeno} <ChevronRight size={11} style={{ color: '#94a3b8' }} /> {s.zastupce_jmeno}
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{formatDate(s.dt_od)} – {formatDate(s.dt_do)}</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {adminSubstitutions.length > 5 && (
+                    <div style={{ textAlign: 'center', fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.5rem' }}>
+                      + {adminSubstitutions.length - 5} dalších…
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        )}
+      </div>
+
+      {/* ── Přehledná tabulka všech zastupování (admin) ─────────────────── */}
+      {isAdmin && adminSubstitutions.length > 0 && (
         <Card style={{ marginTop: '1.25rem' }}>
           <CardHeader>
             <HeaderLeft>
-              <Shield size={18} style={{ color: '#dc2626' }} />
-              <CardTitle>Správa zastupování <span style={{ color: '#dc2626', fontWeight: 700 }}>· Admin</span></CardTitle>
+              <Users size={16} color="#64748b" />
+              <CardTitle>Přehled zastupování v systému</CardTitle>
             </HeaderLeft>
-            <HeaderRight>
-              <TabButton $active={adminTab === 'overview'} onClick={() => setAdminTab('overview')} style={{ fontSize: '0.8rem' }}>
-                <Users size={14} /> Přehled
-              </TabButton>
-              <TabButton $active={adminTab === 'create'} onClick={() => setAdminTab('create')} style={{ fontSize: '0.8rem', color: adminTab === 'create' ? '#fff' : '#dc2626', background: adminTab === 'create' ? '#dc2626' : undefined, borderColor: '#dc2626' }}>
-                <Plus size={14} /> Přidat
-              </TabButton>
-              <ActionBtn onClick={loadAdmin} title="Obnovit" disabled={adminLoading}>
-                <SpinIcon size={14} style={{ animation: adminLoading ? 'spin 1s linear infinite' : 'none' }} />
-              </ActionBtn>
-            </HeaderRight>
+            <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontWeight: 500 }}>
+              {adminSubstitutions.length} záznamů
+            </div>
           </CardHeader>
-          <CardBody>
-            {adminTab === 'overview' && (
-              <>
-                {adminLoading ? (
-                  <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
-                    <SpinIcon size={22} style={{ display: 'block', margin: '0 auto 0.5rem' }} />
-                    Načítám&hellip;
-                  </div>
-                ) : adminSubstitutions.length === 0 ? (
-                  <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', fontSize: '0.875rem' }}>
-                    <Users size={32} style={{ display: 'block', margin: '0 auto 0.75rem', opacity: 0.4 }} />
-                    Žádná aktivní zastupování v systému
-                  </div>
-                ) : (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
-                      <thead>
-                        <tr style={{ background: '#f8fafc', color: '#64748b', textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em' }}>
-                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Zastupovaný</th>
-                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Zástupce</th>
-                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Od – Do</th>
-                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Oprávnění</th>
-                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Stav</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {adminSubstitutions.map((s, i) => {
-                          const now = new Date().toISOString().split('T')[0];
-                          const status = s.aktivni
-                            ? (s.dt_od <= now && s.dt_do >= now ? 'active' : s.dt_od > now ? 'future' : 'past')
-                            : 'past';
-                          const perms = s.opravneni || {};
-                          return (
-                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                              <td style={{ padding: '0.55rem 0.75rem' }}>
-                                <div style={{ fontWeight: 600, color: '#1e293b' }}>{s.zastupovany_jmeno}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{s.zastupovany_username}</div>
-                              </td>
-                              <td style={{ padding: '0.55rem 0.75rem' }}>
-                                <div style={{ fontWeight: 600, color: '#1e293b' }}>{s.zastupce_jmeno}</div>
-                                <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{s.zastupce_username}</div>
-                              </td>
-                              <td style={{ padding: '0.55rem 0.75rem', whiteSpace: 'nowrap', color: '#475569' }}>
-                                {formatDate(s.dt_od)} – {formatDate(s.dt_do)}
-                              </td>
-                              <td style={{ padding: '0.55rem 0.75rem' }}>
-                                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
-                                  {Object.entries(perms).filter(([k, v]) => v && k !== 'notify_zastupce').map(([k]) => (
-                                    <span key={k} style={{ fontSize: '0.65rem', background: '#e0f2fe', color: '#0369a1', borderRadius: 4, padding: '0.15rem 0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k}</span>
-                                  ))}
-                                </div>
-                              </td>
-                              <td style={{ padding: '0.55rem 0.75rem' }}>
-                                <StatusPill $status={status}>{STATUS_LABELS[status] || status}</StatusPill>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                    <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginTop: '0.5rem', textAlign: 'right' }}>
-                      Celkem: {adminSubstitutions.length} záznamů
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {adminTab === 'create' && (
-              <form onSubmit={handleAdminCreate}>
-                <FormGrid>
-                  {/* Zastupovaný */}
-                  <FormField>
-                    <FieldLabel $required><Users size={12} /> Zastupovaný uživatel</FieldLabel>
-                    <CustomSelect
-                      field="admin_zastupovany_id"
-                      value={adminForm.zastupovany_id}
-                      options={manageableOptions}
-                      placeholder="Vyberte zastupovaného…"
-                      onChange={val => setAdminForm(prev => ({ ...prev, zastupovany_id: val }))}
-                      hasError={!!(adminFormError && !adminForm.zastupovany_id)}
-                      selectStates={selectStates}
-                      setSelectStates={setSelectStates}
-                      searchStates={searchStates}
-                      setSearchStates={setSearchStates}
-                      touchedSelectFields={touchedSelectFields}
-                      setTouchedSelectFields={setTouchedSelectFields}
-                      toggleSelect={toggleSelect}
-                      filterOptions={filterOptions}
-                      getOptionLabel={getOptionLabel}
-                    />
-                  </FormField>
-                  {/* Zástupce */}
-                  <FormField>
-                    <FieldLabel $required><UserCheck size={12} /> Zástupce</FieldLabel>
-                    <CustomSelect
-                      field="admin_zastupce_id"
-                      value={adminForm.zastupce_id}
-                      options={candidateOptions}
-                      placeholder="Vyberte zástupce…"
-                      onChange={val => setAdminForm(prev => ({ ...prev, zastupce_id: val }))}
-                      hasError={!!(adminFormError && !adminForm.zastupce_id)}
-                      selectStates={selectStates}
-                      setSelectStates={setSelectStates}
-                      searchStates={searchStates}
-                      setSearchStates={setSearchStates}
-                      touchedSelectFields={touchedSelectFields}
-                      setTouchedSelectFields={setTouchedSelectFields}
-                      toggleSelect={toggleSelect}
-                      filterOptions={filterOptions}
-                      getOptionLabel={getOptionLabel}
-                    />
-                  </FormField>
-                  {/* Datum od + do */}
-                  <FormField style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
-                        <FieldLabel $required><Calendar size={12} /> Zastupování od</FieldLabel>
-                        <DatePicker
-                          fieldName="admin_dt_od"
-                          value={adminForm.dt_od}
-                          onChange={val => setAdminForm(prev => ({ ...prev, dt_od: val }))}
-                          placeholder="Datum začátku"
-                          hasError={!!(adminFormError && !adminForm.dt_od)}
-                        />
-                      </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '210px' }}>
-                        <FieldLabel $required><Calendar size={12} /> Zastupování do</FieldLabel>
-                        <DatePicker
-                          fieldName="admin_dt_do"
-                          value={adminForm.dt_do}
-                          onChange={val => setAdminForm(prev => ({ ...prev, dt_do: val }))}
-                          placeholder="Datum konce"
-                          hasError={!!(adminFormError && !adminForm.dt_do)}
-                        />
-                      </div>
-                    </div>
-                  </FormField>
-                  {/* Oprávnění */}
-                  <FormField style={{ gridColumn: '1 / -1' }}>
-                    <FieldLabel $required><Shield size={12} /> Oprávnění zástupce</FieldLabel>
-                    <ToggleGrid>
-                      {OPRAVNENI_META.filter(m => m.visible(isAdmin, isSuperAdmin) && !['administrator','superadmin'].includes(m.key)).map(meta => {
-                        const Icon = meta.icon;
-                        const on = !!adminForm.opravneni[meta.key];
-                        return (
-                          <ToggleRow key={meta.key} $on={on} $color={meta.borderColor} $bg={on ? meta.bg : undefined}>
-                            <input type="checkbox" checked={on} onChange={e => setAdminForm(prev => ({ ...prev, opravneni: { ...prev.opravneni, [meta.key]: e.target.checked } }))} />
-                            <ToggleLeft>
-                              <ToggleIcon $on={on} $color={on ? meta.iconColor : undefined}><Icon /></ToggleIcon>
-                              <ToggleText><span className="toggle-label">{meta.label}</span><span className="toggle-desc">{meta.desc}</span></ToggleText>
-                            </ToggleLeft>
-                            <ToggleTrack $on={on} $color={meta.trackColor}><ToggleThumb $on={on} /></ToggleTrack>
-                          </ToggleRow>
-                        );
-                      })}
-                    </ToggleGrid>
-                  </FormField>
-                  {/* Poznámka */}
-                  <FormField style={{ gridColumn: '1 / -1' }}>
-                    <FieldLabel><Info size={12} /> Poznámka (volitelně)</FieldLabel>
-                    <Textarea
-                      rows={2}
-                      placeholder="Důvod zastupování, poznámky…"
-                      value={adminForm.popis}
-                      onChange={e => setAdminForm(prev => ({ ...prev, popis: e.target.value }))}
-                    />
-                  </FormField>
-                </FormGrid>
-
-                {adminFormError && (
-                  <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, color: '#dc2626', fontSize: '0.82rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <AlertCircle size={15} />{adminFormError}
-                  </div>
-                )}
-
-                <div style={{ marginTop: '1.1rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                  <button type="button" onClick={() => { setAdminTab('overview'); setAdminFormError(''); }}
-                    style={{ padding: '0.55rem 1.1rem', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
-                    Zrušit
-                  </button>
-                  <button type="submit" disabled={adminFormSaving}
-                    style={{ padding: '0.55rem 1.4rem', border: 'none', borderRadius: 8, background: '#dc2626', color: '#fff', fontWeight: 700, cursor: adminFormSaving ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: adminFormSaving ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    {adminFormSaving ? <><SpinIcon size={14} /> Ukládám…</> : <><CheckCircle size={14} /> Nastavit zastupování</>}
-                  </button>
-                </div>
-              </form>
-            )}
+          <CardBody style={{ padding: 0 }}>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0' }}>
+                    <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>Zastupovaný</th>
+                    <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>Zástupce</th>
+                    <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>Období</th>
+                    <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Oprávnění</th>
+                    <th style={{ padding: '0.6rem 1rem', textAlign: 'left', fontWeight: 700, color: '#64748b', fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stav</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminSubstitutions.map((s, i) => {
+                    const now = new Date().toISOString().split('T')[0];
+                    const status = s.aktivni ? (s.dt_od <= now && s.dt_do >= now ? 'active' : s.dt_od > now ? 'future' : 'past') : 'past';
+                    const perms = s.opravneni || {};
+                    return (
+                      <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                        <td style={{ padding: '0.6rem 1rem' }}>
+                          <div style={{ fontWeight: 600, color: '#1e293b' }}>{s.zastupovany_jmeno}</div>
+                          <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{s.zastupovany_username}</div>
+                        </td>
+                        <td style={{ padding: '0.6rem 1rem' }}>
+                          <div style={{ fontWeight: 600, color: '#1e293b' }}>{s.zastupce_jmeno}</div>
+                          <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>{s.zastupce_username}</div>
+                        </td>
+                        <td style={{ padding: '0.6rem 1rem', whiteSpace: 'nowrap', color: '#475569' }}>
+                          {formatDate(s.dt_od)} – {formatDate(s.dt_do)}
+                        </td>
+                        <td style={{ padding: '0.6rem 1rem' }}>
+                          <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                            {Object.entries(perms).filter(([k, v]) => v && k !== 'notify_zastupce').map(([k]) => {
+                              const m = OPRAVNENI_META.find(x => x.key === k);
+                              return (
+                                <span key={k} style={{ fontSize: '0.65rem', background: m?.bg || '#e0f2fe', color: m?.iconColor || '#0369a1', borderRadius: 4, padding: '0.15rem 0.4rem', fontWeight: 600 }}>
+                                  {m?.label || k}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        </td>
+                        <td style={{ padding: '0.6rem 1rem' }}>
+                          <StatusPill $status={status}>{STATUS_LABELS[status] || status}</StatusPill>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </CardBody>
         </Card>
       )}
