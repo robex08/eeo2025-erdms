@@ -1491,8 +1491,75 @@ $queries['substitution_candidates'] = "
     ORDER BY u.prijmeni, u.jmeno
 ";
 
+// Admin: seznam VŠECH zastupování v systému
+$queries['substitution_get_all'] = "
+    SELECT
+        z.id, z.zastupovany_id, z.zastupce_id,
+        z.dt_od, z.dt_do, z.opravneni, z.popis, z.aktivni, z.dt_vytvoreni,
+        zuov.username AS zastupovany_username,
+        zuov.jmeno    AS zastupovany_jmeno,
+        zuov.prijmeni AS zastupovany_prijmeni,
+        zuce.username AS zastupce_username,
+        zuce.jmeno    AS zastupce_jmeno,
+        zuce.prijmeni AS zastupce_prijmeni
+    FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+    JOIN " . TBL_UZIVATELE . " zuov ON zuov.id = z.zastupovany_id
+    JOIN " . TBL_UZIVATELE . " zuce ON zuce.id = z.zastupce_id
+    ORDER BY z.aktivni DESC, z.dt_od DESC
+    LIMIT 200
+";
+
+// Admin: uživatelé, za které může admin nastavit zastupování (mají USER_SUBSTITUTE_SET)
+$queries['substitution_manageable_users'] = "
+    SELECT DISTINCT
+        u.id, u.username, u.jmeno, u.prijmeni, u.titul_pred, u.titul_za, u.email
+    FROM " . TBL_UZIVATELE . " u
+    WHERE u.aktivni = 1
+    AND u.id != :current_user_id
+    AND (
+        u.id IN (
+            SELECT rp.user_id FROM " . TBL_ROLE_PRAVA . " rp
+            JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+            WHERE p.kod_prava = 'USER_SUBSTITUTE_SET' AND rp.user_id > 0 AND rp.aktivni = 1
+        )
+        OR u.id IN (
+            SELECT ur.uzivatel_id FROM " . TBL_UZIVATELE_ROLE . " ur
+            JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id
+            JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+            WHERE p.kod_prava = 'USER_SUBSTITUTE_SET' AND rp.user_id = -1 AND rp.aktivni = 1
+        )
+    )
+    ORDER BY u.prijmeni, u.jmeno
+";
+
+// Audit log: zápis akce provedené v rámci zastupování
+$queries['substitution_log_action'] = "
+    INSERT INTO " . TBL_ZASTUPOVANI_AKCE_LOG . "
+        (zastupovani_id, zastupce_id, zastupovany_id, akce_typ, objekt_typ, objekt_id, popis_akce, dt_akce)
+    VALUES
+        (:zastupovani_id, :zastupce_id, :zastupovany_id, :akce_typ, :objekt_typ, :objekt_id, :popis_akce, NOW())
+";
+
+// Audit log: načtení logu pro konkrétní zastupování
+$queries['substitution_log_get'] = "
+    SELECT
+        l.*,
+        zuce.username AS zastupce_username,
+        zuce.jmeno    AS zastupce_jmeno,
+        zuce.prijmeni AS zastupce_prijmeni,
+        zuov.username AS zastupovany_username,
+        zuov.jmeno    AS zastupovany_jmeno,
+        zuov.prijmeni AS zastupovany_prijmeni
+    FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " l
+    JOIN " . TBL_UZIVATELE . " zuce ON zuce.id = l.zastupce_id
+    JOIN " . TBL_UZIVATELE . " zuov ON zuov.id = l.zastupovany_id
+    WHERE l.zastupovani_id = :zastupovani_id
+    ORDER BY l.dt_akce DESC
+";
+
 // ============ SCHVALOVACÍ PRAVOMOCI ============
 $queries['approval_get_user_permissions'] = "
+
     SELECT DISTINCT p.kod_prava, p.nazev
     FROM 25_prava p
     WHERE p.kod_prava LIKE 'ORDER_APPROVE%'

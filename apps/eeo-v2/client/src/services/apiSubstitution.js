@@ -75,3 +75,28 @@ export async function fetchCurrentlySubstituting({ token, username }) {
   const data = await _post('substitution/current', { token, username });
   return data.data || [];
 }
+
+/**
+ * Admin: seznam všech zastupování v systému
+ */
+export async function fetchAllSubstitutionsAdmin({ token, username }) {
+  const data = await _post('substitution/admin-list', { token, username });
+  return data.data || [];
+}
+
+/**
+ * Admin: seznam uživatelů, za které může admin spravovat zastupování
+ */
+export async function fetchManageableUsers({ token, username }) {
+  const data = await _post('substitution/manageable-users', { token, username });
+  return data.data || [];
+}
+
+/**
+ * Admin: vytvoří zastupování za jiného uživatele
+ * Navíc přijímá zastupovany_id (jiného uživatele)
+ */
+export async function createSubstitutionAdmin({ token, username, zastupovany_id, zastupce_id, dt_od, dt_do, opravneni, popis }) {
+  const data = await _post('substitution/create', { token, username, zastupovany_id, zastupce_id, dt_od, dt_do, opravneni, popis });
+  return data.data || {};
+}

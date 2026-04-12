@@ -194,6 +194,7 @@ define('TBL_STICKY_POZNAMKY_KOMENTARE', '25_sticky_poznamky_komentare');
 
 // DATABASE TABLE NAMES - UŽIVATELÉ (EXTENDED)
 define('TBL_UZIVATELE_ZASTUPOVANI', '25_uzivatele_zastupovani');
+define('TBL_ZASTUPOVANI_AKCE_LOG', '25_zastupovani_akce_log');
 define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
 
 // DATABASE TABLE NAMES - HIERARCHIE
@@ -1529,6 +1530,26 @@ switch ($endpoint) {
     case 'substitution/candidates':
         if ($request_method === 'POST') {
             $response = handle_substitution_candidates($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'substitution/admin-list':
+        if ($request_method === 'POST') {
+            $response = handle_substitution_admin_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'substitution/manageable-users':
+        if ($request_method === 'POST') {
+            $response = handle_substitution_manageable_users($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE);
         } else {

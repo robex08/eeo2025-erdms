@@ -7,9 +7,12 @@ import DatePicker from './DatePicker';
 import {
   fetchMySubstitutions,
   createSubstitution,
+  createSubstitutionAdmin,
   deactivateSubstitution,
   fetchSubstitutionCandidates,
   fetchCurrentlySubstituting,
+  fetchAllSubstitutionsAdmin,
+  fetchManageableUsers,
 } from '../services/apiSubstitution';
 
 // ─── Animace ──────────────────────────────────────────────────────────────────
@@ -85,6 +88,50 @@ const CardTitle = styled.div`
 
 const CardBody = styled.div`
   padding: 1.25rem 1.4rem;
+`;
+
+const HeaderLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const HeaderRight = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+`;
+
+const TabButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.8rem;
+  border: 1.5px solid ${({ $active }) => $active ? '#6366f1' : '#e2e8f0'};
+  border-radius: 6px;
+  background: ${({ $active }) => $active ? '#6366f1' : '#fff'};
+  color: ${({ $active }) => $active ? '#fff' : '#64748b'};
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s;
+  &:hover { border-color: #6366f1; color: ${({ $active }) => $active ? '#fff' : '#6366f1'}; }
+`;
+
+const ActionBtn = styled.button`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.18s;
+  &:hover { border-color: #6366f1; color: #6366f1; }
+  &:disabled { opacity: 0.5; cursor: default; }
 `;
 
 // ─── Formulář ─────────────────────────────────────────────────────────────────
@@ -543,6 +590,22 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   const [loading, setLoading]               = useState(true);
   const [deactivating, setDeactivating]     = useState(null);
 
+  // Admin stav
+  const [adminSubstitutions, setAdminSubstitutions] = useState([]);
+  const [manageableUsers, setManageableUsers]         = useState([]);
+  const [adminLoading, setAdminLoading]               = useState(false);
+  const [adminTab, setAdminTab]                       = useState('overview'); // 'overview' | 'create'
+  const [adminForm, setAdminForm] = useState({
+    zastupovany_id: '',
+    zastupce_id: '',
+    dt_od: today(),
+    dt_do: '',
+    opravneni: { view: true, approve: false, confirm: false },
+    popis: '',
+  });
+  const [adminFormSaving, setAdminFormSaving] = useState(false);
+  const [adminFormError, setAdminFormError]   = useState('');
+
   // Formulář
   const [showForm, setShowForm]     = useState(false);
   const [formSaving, setFormSaving] = useState(false);
@@ -581,6 +644,23 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   const getOptionLabel = useCallback((option) => option?.label || option?.nazev || '', []);
 
   // Load
+  const loadAdmin = useCallback(async () => {
+    if (!isAdmin) return;
+    setAdminLoading(true);
+    try {
+      const [allSubs, users] = await Promise.all([
+        fetchAllSubstitutionsAdmin({ token, username }),
+        fetchManageableUsers({ token, username }),
+      ]);
+      setAdminSubstitutions(allSubs);
+      setManageableUsers(users);
+    } catch (e) {
+      showToast && showToast('error', 'Nepodařilo se načíst admin data zastupování');
+    } finally {
+      setAdminLoading(false);
+    }
+  }, [token, username, showToast, isAdmin]);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -600,6 +680,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   }, [token, username, showToast]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadAdmin(); }, [loadAdmin]);
 
   // Zvýraznění změněných polí
   const [recentFields, setRecentFields] = useState(new Set());
@@ -673,6 +754,46 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     label: `${c.jmeno} ${c.prijmeni}` + (c.username ? ` (${c.username})` : ''),
     nazev: `${c.jmeno} ${c.prijmeni}` + (c.username ? ` (${c.username})` : ''),
   }));
+
+  const manageableOptions = manageableUsers.map(u => ({
+    value: String(u.id),
+    label: `${u.jmeno} ${u.prijmeni}` + (u.username ? ` (${u.username})` : ''),
+    nazev: `${u.jmeno} ${u.prijmeni}` + (u.username ? ` (${u.username})` : ''),
+  }));
+
+  async function handleAdminCreate(e) {
+    e.preventDefault();
+    setAdminFormError('');
+    if (!adminForm.zastupovany_id) { setAdminFormError('Vyberte zastupovaného uživatele.'); return; }
+    if (!adminForm.zastupce_id) { setAdminFormError('Vyberte zástupce.'); return; }
+    if (adminForm.zastupovany_id === adminForm.zastupce_id) { setAdminFormError('Zastupovaný a zástupce nesmí být stejný uživatel.'); return; }
+    if (!adminForm.dt_od || !adminForm.dt_do) { setAdminFormError('Vyplňte datum začátku i konce zastupování.'); return; }
+    if (adminForm.dt_od >= adminForm.dt_do) { setAdminFormError('Datum začátku musí být před datem konce.'); return; }
+    const opravneni = {};
+    Object.keys(adminForm.opravneni).forEach(k => { opravneni[k] = adminForm.opravneni[k] ? 1 : 0; });
+    setAdminFormSaving(true);
+    try {
+      await createSubstitutionAdmin({
+        token, username,
+        zastupovany_id: parseInt(adminForm.zastupovany_id, 10),
+        zastupce_id: parseInt(adminForm.zastupce_id, 10),
+        dt_od: adminForm.dt_od,
+        dt_do: adminForm.dt_do,
+        opravneni,
+        popis: adminForm.popis || null,
+      });
+      showToast && showToast('success', 'Zastupování bylo úspěšně nastaveno adminem.');
+      setAdminForm({ zastupovany_id: '', zastupce_id: '', dt_od: today(), dt_do: '', opravneni: { view: true, approve: false, confirm: false }, popis: '' });
+      setAdminFormError('');
+      setAdminTab('overview');
+      await loadAdmin();
+    } catch (e) {
+      setAdminFormError(e.message || 'Nepodařilo se uložit zastupování.');
+    } finally {
+      setAdminFormSaving(false);
+    }
+  }
+
 
   const activeAndFuture = substitutions.filter(s => s.aktivni === 1);
   const past = substitutions.filter(s => s.aktivni === 0);
@@ -1033,6 +1154,215 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
           )}
         </CardBody>
       </Card>
+
+      {/* ─── ADMIN SEKCE ─────────────────────────────────────────────────────── */}
+      {isAdmin && (
+        <Card style={{ marginTop: '1.25rem' }}>
+          <CardHeader>
+            <HeaderLeft>
+              <Shield size={18} style={{ color: '#dc2626' }} />
+              <CardTitle>Správa zastupování <span style={{ color: '#dc2626', fontWeight: 700 }}>· Admin</span></CardTitle>
+            </HeaderLeft>
+            <HeaderRight>
+              <TabButton $active={adminTab === 'overview'} onClick={() => setAdminTab('overview')} style={{ fontSize: '0.8rem' }}>
+                <Users size={14} /> Přehled
+              </TabButton>
+              <TabButton $active={adminTab === 'create'} onClick={() => setAdminTab('create')} style={{ fontSize: '0.8rem', color: adminTab === 'create' ? '#fff' : '#dc2626', background: adminTab === 'create' ? '#dc2626' : undefined, borderColor: '#dc2626' }}>
+                <Plus size={14} /> Přidat
+              </TabButton>
+              <ActionBtn onClick={loadAdmin} title="Obnovit" disabled={adminLoading}>
+                <SpinIcon size={14} style={{ animation: adminLoading ? 'spin 1s linear infinite' : 'none' }} />
+              </ActionBtn>
+            </HeaderRight>
+          </CardHeader>
+          <CardBody>
+            {adminTab === 'overview' && (
+              <>
+                {adminLoading ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                    <SpinIcon size={22} style={{ display: 'block', margin: '0 auto 0.5rem' }} />
+                    Načítám&hellip;
+                  </div>
+                ) : adminSubstitutions.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8', fontSize: '0.875rem' }}>
+                    <Users size={32} style={{ display: 'block', margin: '0 auto 0.75rem', opacity: 0.4 }} />
+                    Žádná aktivní zastupování v systému
+                  </div>
+                ) : (
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc', color: '#64748b', textTransform: 'uppercase', fontSize: '0.7rem', letterSpacing: '0.05em' }}>
+                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Zastupovaný</th>
+                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Zástupce</th>
+                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Od – Do</th>
+                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Oprávnění</th>
+                          <th style={{ padding: '0.5rem 0.75rem', textAlign: 'left', fontWeight: 700 }}>Stav</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {adminSubstitutions.map((s, i) => {
+                          const now = new Date().toISOString().split('T')[0];
+                          const status = s.aktivni
+                            ? (s.dt_od <= now && s.dt_do >= now ? 'active' : s.dt_od > now ? 'future' : 'past')
+                            : 'past';
+                          const perms = s.opravneni || {};
+                          return (
+                            <tr key={s.id} style={{ borderBottom: '1px solid #f1f5f9', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                              <td style={{ padding: '0.55rem 0.75rem' }}>
+                                <div style={{ fontWeight: 600, color: '#1e293b' }}>{s.zastupovany_jmeno}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{s.zastupovany_username}</div>
+                              </td>
+                              <td style={{ padding: '0.55rem 0.75rem' }}>
+                                <div style={{ fontWeight: 600, color: '#1e293b' }}>{s.zastupce_jmeno}</div>
+                                <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>{s.zastupce_username}</div>
+                              </td>
+                              <td style={{ padding: '0.55rem 0.75rem', whiteSpace: 'nowrap', color: '#475569' }}>
+                                {formatDate(s.dt_od)} – {formatDate(s.dt_do)}
+                              </td>
+                              <td style={{ padding: '0.55rem 0.75rem' }}>
+                                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                                  {Object.entries(perms).filter(([k, v]) => v && k !== 'notify_zastupce').map(([k]) => (
+                                    <span key={k} style={{ fontSize: '0.65rem', background: '#e0f2fe', color: '#0369a1', borderRadius: 4, padding: '0.15rem 0.4rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{k}</span>
+                                  ))}
+                                </div>
+                              </td>
+                              <td style={{ padding: '0.55rem 0.75rem' }}>
+                                <StatusPill $status={status}>{STATUS_LABELS[status] || status}</StatusPill>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <div style={{ color: '#94a3b8', fontSize: '0.72rem', marginTop: '0.5rem', textAlign: 'right' }}>
+                      Celkem: {adminSubstitutions.length} záznamů
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {adminTab === 'create' && (
+              <form onSubmit={handleAdminCreate}>
+                <FormGrid>
+                  {/* Zastupovaný */}
+                  <FormField>
+                    <FieldLabel $required><Users size={12} /> Zastupovaný uživatel</FieldLabel>
+                    <CustomSelect
+                      fieldName="admin_zastupovany_id"
+                      value={adminForm.zastupovany_id}
+                      options={manageableOptions}
+                      placeholder="Vyberte zastupovaného…"
+                      onChange={val => setAdminForm(prev => ({ ...prev, zastupovany_id: val }))}
+                      hasError={!!(adminFormError && !adminForm.zastupovany_id)}
+                      selectStates={selectStates}
+                      setSelectStates={setSelectStates}
+                      searchStates={searchStates}
+                      setSearchStates={setSearchStates}
+                      touchedSelectFields={touchedSelectFields}
+                      setTouchedSelectFields={setTouchedSelectFields}
+                      toggleSelect={toggleSelect}
+                      filterOptions={filterOptions}
+                      getOptionLabel={getOptionLabel}
+                    />
+                  </FormField>
+                  {/* Zástupce */}
+                  <FormField>
+                    <FieldLabel $required><UserCheck size={12} /> Zástupce</FieldLabel>
+                    <CustomSelect
+                      fieldName="admin_zastupce_id"
+                      value={adminForm.zastupce_id}
+                      options={candidateOptions}
+                      placeholder="Vyberte zástupce…"
+                      onChange={val => setAdminForm(prev => ({ ...prev, zastupce_id: val }))}
+                      hasError={!!(adminFormError && !adminForm.zastupce_id)}
+                      selectStates={selectStates}
+                      setSelectStates={setSelectStates}
+                      searchStates={searchStates}
+                      setSearchStates={setSearchStates}
+                      touchedSelectFields={touchedSelectFields}
+                      setTouchedSelectFields={setTouchedSelectFields}
+                      toggleSelect={toggleSelect}
+                      filterOptions={filterOptions}
+                      getOptionLabel={getOptionLabel}
+                    />
+                  </FormField>
+                  {/* Datum od */}
+                  <FormField>
+                    <FieldLabel $required><Calendar size={12} /> Zastupování od</FieldLabel>
+                    <DatePicker
+                      fieldName="admin_dt_od"
+                      value={adminForm.dt_od}
+                      onChange={val => setAdminForm(prev => ({ ...prev, dt_od: val }))}
+                      placeholder="Datum začátku"
+                      hasError={!!(adminFormError && !adminForm.dt_od)}
+                    />
+                  </FormField>
+                  {/* Datum do */}
+                  <FormField>
+                    <FieldLabel $required><Calendar size={12} /> Zastupování do</FieldLabel>
+                    <DatePicker
+                      fieldName="admin_dt_do"
+                      value={adminForm.dt_do}
+                      onChange={val => setAdminForm(prev => ({ ...prev, dt_do: val }))}
+                      placeholder="Datum konce"
+                      hasError={!!(adminFormError && !adminForm.dt_do)}
+                    />
+                  </FormField>
+                  {/* Oprávnění */}
+                  <FormField style={{ gridColumn: '1 / -1' }}>
+                    <FieldLabel $required><Shield size={12} /> Oprávnění zástupce</FieldLabel>
+                    <ToggleGrid>
+                      {OPRAVNENI_META.filter(m => m.visible(isAdmin, isSuperAdmin) && !['administrator','superadmin'].includes(m.key)).map(meta => {
+                        const Icon = meta.icon;
+                        const on = !!adminForm.opravneni[meta.key];
+                        return (
+                          <ToggleRow key={meta.key} $on={on} $color={meta.borderColor} $bg={on ? meta.bg : undefined}>
+                            <input type="checkbox" checked={on} onChange={e => setAdminForm(prev => ({ ...prev, opravneni: { ...prev.opravneni, [meta.key]: e.target.checked } }))} />
+                            <ToggleLeft>
+                              <ToggleIcon $on={on} $color={on ? meta.iconColor : undefined}><Icon /></ToggleIcon>
+                              <ToggleText><span className="toggle-label">{meta.label}</span><span className="toggle-desc">{meta.desc}</span></ToggleText>
+                            </ToggleLeft>
+                            <ToggleTrack $on={on} $color={meta.trackColor}><ToggleThumb $on={on} /></ToggleTrack>
+                          </ToggleRow>
+                        );
+                      })}
+                    </ToggleGrid>
+                  </FormField>
+                  {/* Poznámka */}
+                  <FormField style={{ gridColumn: '1 / -1' }}>
+                    <FieldLabel><Info size={12} /> Poznámka (volitelně)</FieldLabel>
+                    <Textarea
+                      rows={2}
+                      placeholder="Důvod zastupování, poznámky…"
+                      value={adminForm.popis}
+                      onChange={e => setAdminForm(prev => ({ ...prev, popis: e.target.value }))}
+                    />
+                  </FormField>
+                </FormGrid>
+
+                {adminFormError && (
+                  <div style={{ marginTop: '0.75rem', padding: '0.6rem 0.9rem', background: '#fff1f2', border: '1px solid #fecdd3', borderRadius: 8, color: '#dc2626', fontSize: '0.82rem', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <AlertCircle size={15} />{adminFormError}
+                  </div>
+                )}
+
+                <div style={{ marginTop: '1.1rem', display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                  <button type="button" onClick={() => { setAdminTab('overview'); setAdminFormError(''); }}
+                    style={{ padding: '0.55rem 1.1rem', border: '1.5px solid #e2e8f0', borderRadius: 8, background: '#fff', color: '#64748b', fontWeight: 600, cursor: 'pointer', fontSize: '0.85rem' }}>
+                    Zrušit
+                  </button>
+                  <button type="submit" disabled={adminFormSaving}
+                    style={{ padding: '0.55rem 1.4rem', border: 'none', borderRadius: 8, background: '#dc2626', color: '#fff', fontWeight: 700, cursor: adminFormSaving ? 'not-allowed' : 'pointer', fontSize: '0.85rem', opacity: adminFormSaving ? 0.7 : 1, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    {adminFormSaving ? <><SpinIcon size={14} /> Ukládám…</> : <><CheckCircle size={14} /> Nastavit zastupování</>}
+                  </button>
+                </div>
+              </form>
+            )}
+          </CardBody>
+        </Card>
+      )}
     </Container>
   );
 }
