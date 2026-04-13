@@ -1734,6 +1734,9 @@ $queries['user_direct_rights'] = "
     FROM " . TBL_ROLE_PRAVA . " rp
     JOIN " . TBL_PRAVA . " p ON rp.pravo_id = p.id
     WHERE rp.user_id = :user_id
+    AND rp.role_id = -1
+    AND rp.aktivni = 1
+    AND p.aktivni = 1
     ORDER BY p.kod_prava
 ";
 

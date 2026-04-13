@@ -1088,7 +1088,9 @@ function App() {
                       hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
                       hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
                       hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
-                      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE')
+                      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE') ||
+                      hasPermission('CASHBOOK_REPORTS_VIEW') || hasPermission('CASHBOOK_REPORTS_MANAGE') || hasPermission('CASHBOOK_REPORTS_EXPORT') ||
+                      hasPermission('DEFERRALS_VIEW') || hasPermission('DEFERRALS_EDIT') || hasPermission('DEFERRALS_MANAGE')
                     ))
                   ) && <Route path="/stats-reports" element={<StatsReportsPage />} />}
                   {isLoggedIn && (

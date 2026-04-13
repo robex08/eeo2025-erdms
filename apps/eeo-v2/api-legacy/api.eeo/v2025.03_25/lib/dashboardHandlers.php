@@ -2829,12 +2829,13 @@ function handle_dashboard_cashbook_summary($input, $config, $queries) {
 }
 
 // ============================================================================
-// AKTIVNÍ UŽIVATELÉ – pouze SUPERADMIN
+// AKTIVNÍ UŽIVATELÉ – SUPERADMIN nebo DASHBOARD_ACTIVE_USERS
 // ============================================================================
 
 /**
  * POST dashboard/active-users
- * Vrátí aktivní uživatele s rozšířenými informacemi (pouze SUPERADMIN).
+ * Vrátí aktivní uživatele s rozšířenými informacemi.
+ * Vyžaduje: SUPERADMIN role NEBO DASHBOARD_ACTIVE_USERS oprávnění
  */
 function handle_dashboard_active_users($input, $config) {
     $token    = $input['token']    ?? '';
@@ -2859,10 +2860,18 @@ function handle_dashboard_active_users($input, $config) {
             return;
         }
 
+        // Kontrola oprávnění: SUPERADMIN role NEBO DASHBOARD_ACTIVE_USERS permission
+        // verify_token_v2 již načetl všechna práva (z rolí i přímá) do $token_data['permissions']
         $roles = $token_data['roles'] ?? [];
-        if (!in_array('SUPERADMIN', $roles)) {
+        $permissions = $token_data['permissions'] ?? [];
+        $perm_codes = array_column($permissions, 'kod_prava');
+        
+        $is_superadmin = in_array('SUPERADMIN', $roles);
+        $has_permission = in_array('DASHBOARD_ACTIVE_USERS', $perm_codes);
+        
+        if (!$is_superadmin && !$has_permission) {
             http_response_code(403);
-            echo json_encode(['status' => 'error', 'message' => 'Přístup odepřen – pouze SUPERADMIN']);
+            echo json_encode(['status' => 'error', 'message' => 'Přístup odepřen – vyžaduje oprávnění DASHBOARD_ACTIVE_USERS']);
             return;
         }
 
@@ -2922,20 +2931,22 @@ function _dashboard_get_active_users($db, $period = '5min') {
                    AND YEAR(dt_objednavky) = YEAR(NOW())
                 ) AS pocet_objednavek_objednatel,
 
-                /* Počet schválených objednávek (příkazce nebo schvalovatel) */
+                /* Počet schválených objednávek (příkazce nebo schvalovatel) - V3: stav v JSON poli stav_workflow_kod */
                 (SELECT COUNT(*)
                  FROM `" . TBL_OBJEDNAVKY . "`
                  WHERE (prikazce_id = u.id OR schvalovatel_id = u.id)
-                   AND stav_objednavky IN ('SCHVALENA','ODESLANA','ODESLANA_DODAVATELI','POTVRZENA','FAKTURACE','VECNA_SPRAVNOST','UVEREJNIT','DOKONCENA')
+                   AND JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')))
+                       IN ('SCHVALENA','ODESLANA','ODESLANA_DODAVATELI','POTVRZENA','FAKTURACE','VECNA_SPRAVNOST','UVEREJNIT','DOKONCENA')
                    AND aktivni = 1
                    AND YEAR(dt_objednavky) = YEAR(NOW())
                 ) AS pocet_schvalenych,
 
-                /* Počet objednávek čekajících na schválení (příkazce nebo schvalovatel) */
+                /* Počet objednávek čekajících na schválení (příkazce nebo schvalovatel) - V3: stav v JSON poli stav_workflow_kod */
                 (SELECT COUNT(*)
                  FROM `" . TBL_OBJEDNAVKY . "`
                  WHERE (prikazce_id = u.id OR schvalovatel_id = u.id)
-                   AND stav_objednavky IN ('KE_SCHVALENI','ODESLANA_KE_SCHVALENI')
+                   AND JSON_UNQUOTE(JSON_EXTRACT(stav_workflow_kod, CONCAT('$[', JSON_LENGTH(stav_workflow_kod) - 1, ']')))
+                       IN ('KE_SCHVALENI','ODESLANA_KE_SCHVALENI')
                    AND aktivni = 1
                 ) AS pocet_ke_schvaleni,
 
@@ -2991,10 +3002,11 @@ function _dashboard_get_active_users($db, $period = '5min') {
         }
 
         return [
-            'items'  => $result,
-            'count'  => count($result),
-            'period' => $period,
-            'counts' => _dashboard_active_users_counts($db),
+            'items'       => $result,
+            'count'       => count($result),
+            'period'      => $period,
+            'counts'      => _dashboard_active_users_counts($db),
+            'total_users' => _dashboard_total_active_accounts($db), // Celkový počet aktivních účtů v systému
         ];
 
     } catch (Exception $e) {
@@ -3008,6 +3020,10 @@ function _dashboard_get_active_users($db, $period = '5min') {
  */
 function _dashboard_active_users_counts($db) {
     try {
+        // Celkový počet aktivních účtů v systému
+        $stmt_total = $db->query("SELECT COUNT(*) FROM `" . TBL_UZIVATELE . "` WHERE aktivni = 1");
+        $total = (int)$stmt_total->fetchColumn();
+        
         $stmt = $db->query("
             SELECT
                 SUM(dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL 5    MINUTE)) AS `5min`,
@@ -3018,15 +3034,39 @@ function _dashboard_active_users_counts($db) {
             WHERE dt_posledni_aktivita IS NOT NULL AND aktivni = 1
         ");
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        $min5  = (int)($row['5min'] ?? 0);
+        $h12   = (int)($row['12h']  ?? 0);
+        $h24   = (int)($row['24h']  ?? 0);
+        $d7    = (int)($row['7d']   ?? 0);
+        
         return [
-            '5min' => (int)($row['5min'] ?? 0),
-            '12h'  => (int)($row['12h']  ?? 0),
-            '24h'  => (int)($row['24h']  ?? 0),
-            '7d'   => (int)($row['7d']   ?? 0),
+            '5min' => $min5,
+            '12h'  => $h12,
+            '24h'  => $h24,
+            '7d'   => $d7,
+            // Offline = celkem minus aktivní v dané periodě
+            '5min_offline' => $total - $min5,
+            '12h_offline'  => $total - $h12,
+            '24h_offline'  => $total - $h24,
+            '7d_offline'   => $total - $d7,
         ];
     } catch (Exception $e) {
         error_log('_dashboard_active_users_counts error: ' . $e->getMessage());
-        return ['5min'=>0,'12h'=>0,'24h'=>0,'7d'=>0];
+        return ['5min'=>0,'12h'=>0,'24h'=>0,'7d'=>0,'5min_offline'=>0,'12h_offline'=>0,'24h_offline'=>0,'7d_offline'=>0];
+    }
+}
+
+/**
+ * Vrátí celkový počet aktivních účtů v systému (aktivni=1).
+ */
+function _dashboard_total_active_accounts($db) {
+    try {
+        $stmt = $db->query("SELECT COUNT(*) FROM `" . TBL_UZIVATELE . "` WHERE aktivni = 1");
+        return (int)$stmt->fetchColumn();
+    } catch (Exception $e) {
+        error_log('_dashboard_total_active_accounts error: ' . $e->getMessage());
+        return 0;
     }
 }
 

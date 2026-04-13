@@ -136,7 +136,7 @@ const WIDGET_REGISTRY = {
   weather:             { title: 'Počasí',                      icon: faCloud,              color: '#1e40af', requires: 'DASHBOARD_WEATHER' },
   finance_markets:     { title: 'Finanční trhy',               icon: faChartLine,          color: '#059669', requires: 'DASHBOARD_FINANCE_MARKETS' },
   calendar:            { title: 'Kalendář',                    icon: faCalendarAlt,        color: '#0891b2', requires: 'DASHBOARD_CALENDAR' },
-  active_users_admin:  { title: 'Přehled aktivit uživatelů',    icon: faUsers,              color: '#1d4ed8', requiresSuperAdmin: true, alwaysOn: true, alwaysLast: true }
+  active_users_admin:  { title: 'Přehled aktivit uživatelů',   icon: faUsers,              color: '#1d4ed8', requires: 'DASHBOARD_ACTIVE_USERS', alwaysOn: true, alwaysLast: true }
 };
 
 const DEFAULT_TILES = Object.keys(WIDGET_REGISTRY);
@@ -549,6 +549,12 @@ const WidgetCard = styled.div`
   animation: ${fadeInUp} 0.4s ease-out both;
   animation-delay: ${p => (p.$index || 0) * 0.06}s;
   transition: transform 0.2s, box-shadow 0.2s;
+  min-height: 280px;
+  
+  @media (max-width: 768px) {
+    min-height: 240px;
+  }
+  
   &:hover { transform: translateY(-3px); box-shadow: 0 8px 28px rgba(15, 23, 42, 0.11); }
   ${p => p.$span2 && `grid-column: span 2; @media (max-width: 900px) { grid-column: span 1; }`}
   ${p => p.$spanFull && `grid-column: 1 / -1;`}
@@ -1256,9 +1262,26 @@ const getFaStatusLabel = (stav) => FA_STATUS_LABELS[stav] || stav || '—';
 
 // ── RSS Zprávy ──────────────────────────────────────────────────────────────
 function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
-  const [hiddenFeeds, setHiddenFeeds] = useState([]);
+  // Načíst skryté kanály z localStorage při inicializaci
+  const [hiddenFeeds, setHiddenFeeds] = useState(() => {
+    try {
+      const saved = localStorage.getItem('rss_hidden_feeds');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      return [];
+    }
+  });
 
   const okFeeds = (feedStatuses || []).filter(f => f.status === 'ok');
+
+  // Uložit změny do localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('rss_hidden_feeds', JSON.stringify(hiddenFeeds));
+    } catch (e) {
+      console.error('Chyba při ukládání RSS nastavení:', e);
+    }
+  }, [hiddenFeeds]);
 
   const toggleFeed = (name) => {
     setHiddenFeeds(prev => {
@@ -1295,9 +1318,26 @@ function RssNewsWidget({ items, loading, error, feedStatuses, maxItems = 15 }) {
     });
 
     // Seřadit dle data a oříznout na maxItems
+    // Pro položky bez data (např. Finanční správa) použít stabilní pseudo-náhodné datum
     picked.sort((a, b) => {
-      const da = a.pub_date_raw ? new Date(a.pub_date_raw).getTime() : 0;
-      const db = b.pub_date_raw ? new Date(b.pub_date_raw).getTime() : 0;
+      let da = a.pub_date_raw ? new Date(a.pub_date_raw).getTime() : 0;
+      let db = b.pub_date_raw ? new Date(b.pub_date_raw).getTime() : 0;
+      
+      const now = Date.now();
+      const twoWeeksAgo = now - (14 * 24 * 60 * 60 * 1000);
+      
+      // Pro položky bez data: stabilní pseudo-náhodné datum z poslední doby (hash z GUID/title)
+      if (da === 0 || da > now) {
+        const seed = a.guid || a.title || '';
+        const hash = seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        da = twoWeeksAgo + (hash % (now - twoWeeksAgo));
+      }
+      if (db === 0 || db > now) {
+        const seed = b.guid || b.title || '';
+        const hash = seed.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+        db = twoWeeksAgo + (hash % (now - twoWeeksAgo));
+      }
+      
       return db - da;
     });
     return picked.slice(0, maxItems);
@@ -1432,7 +1472,7 @@ function nextSortPhase(cur, field, activeField) {
   return { field: null, dir: null };
 }
 
-function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessageUser }) {
+function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessageUser, onPeriodChange }) {
   const [period, setPeriod]         = useState(() => {
     try { return localStorage.getItem(LS_PERIOD_KEY) || '5min'; } catch { return '5min'; }
   });
@@ -1489,6 +1529,7 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
     if (p === period) return;
     try { localStorage.setItem(LS_PERIOD_KEY, p); } catch { /* ignore */ }
     setPeriod(p); // useEffect výše se spustí s novou periodou
+    if (onPeriodChange) onPeriodChange(p); // Notifikuj parent o změně
     setLoading(true);
     try {
       const d = await getActiveUsersAdmin({ token, username, period: p });
@@ -1496,7 +1537,7 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
     } finally {
       setLoading(false);
     }
-  }, [period, token, username]);
+  }, [period, token, username, onPeriodChange]);
 
   // Sort state (3 fáze: null → asc → desc → null)
   const [sort, setSort] = useState(() => {
@@ -1697,7 +1738,9 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
           <tbody>
             {items.map((u, i) => {
               const modulLabel = getModuleLabel(u.modul, u.cesta);
-              const isPrikazce = (u.role_kody || []).some(r => r.startsWith('PRIKAZCE') || r === 'SPRAVCE_ROZPOCTU');
+              const isPrikazce = (u.role_kody || []).some(r =>
+                r.startsWith('PRIKAZCE') || r === 'SPRAVCE_ROZPOCTU' || r === 'SUPERADMIN' || r === 'ADMINISTRATOR'
+              );
               const isOnline = u.dt_posledni_aktivita &&
                 (Date.now() - new Date(u.dt_posledni_aktivita).getTime()) < 5 * 60 * 1000;
               return (
@@ -5433,6 +5476,9 @@ export default function DashboardPage() {
   const [cashbookData, setCashbookData] = useState(null);
   const [cashbookLoading, setCashbookLoading] = useState(false);
   const [activeUsersData, setActiveUsersData] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState(() => {
+    try { return localStorage.getItem('dashboard_active_users_period') || '5min'; } catch { return '5min'; }
+  });
   const activeUsersRef = useRef(null);
   const widgetRefs = useRef({});
   const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => {
@@ -5495,9 +5541,10 @@ export default function DashboardPage() {
     return (userDetail?.roles || []).some(r => r.kod_role === 'SUPERADMIN');
   }, [userDetail]);
 
-  // Auto-refresh aktivních uživatelů každých 30s (pouze SUPERADMIN) – jen pro quick-tile badge count
+  // Auto-refresh aktivních uživatelů každých 30s (SUPERADMIN nebo DASHBOARD_ACTIVE_USERS) – jen pro quick-tile badge count
   useEffect(() => {
-    if (!isSuperAdmin || !token || !username) return;
+    const hasAccess = isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS'));
+    if (!hasAccess || !token || !username) return;
     const fetchActive = async () => {
       const d = await getActiveUsersAdmin({ token, username, period: '5min' });
       if (d) setActiveUsersData(d);
@@ -5505,7 +5552,7 @@ export default function DashboardPage() {
     fetchActive();
     const iv = setInterval(fetchActive, 30000);
     return () => clearInterval(iv);
-  }, [isSuperAdmin, token, username]);
+  }, [isSuperAdmin, hasPermission, token, username]);
 
   // Fetch zastupování dat pro Calendar + Welcome widget
   useEffect(() => {
@@ -6348,9 +6395,21 @@ export default function DashboardPage() {
         );
         break;
       case 'cashbook_summary': {
-        // ⚠️ KRITICKÁ KONTROLA: Zobrazit POUZE pokud má přiřazenou alespoň 1 pokladnu
-        if (!cashbookData?.pokladny || cashbookData.pokladny.length === 0) {
-          return null; // Nemá přiřazenou pokladnu → NEZOBRAZIT widget
+        // ✅ KONTROLA VIDITELNOSTI (pouze CASH_BOOK_* práva, CASHBOOK_REPORTS_* patří jen do Stats & Reports):
+        // 1. Má CASH_BOOK_MANAGE nebo CASH_BOOK_*_ALL → vidí všechny pokladny (i bez přiřazení)
+        // 2. Má jen CASH_BOOK_*_OWN → vidí JEN své přiřazené pokladny (pokud má alespoň 1)
+        
+        const hasCashbookAllAccess = hasPermission('CASH_BOOK_MANAGE') || 
+                                     hasPermission('CASH_BOOK_READ_ALL') || 
+                                     hasPermission('CASH_BOOK_EDIT_ALL');
+        
+        // Pokud má *_ALL práva → zobrazit vždy (backend vrací data podle práv)
+        // Pokud má jen *_OWN práva → zobrazit jen pokud má přiřazené pokladny
+        if (!hasCashbookAllAccess) {
+          // Má jen _OWN práva → kontrolovat přiřazení
+          if (!cashbookData?.pokladny || cashbookData.pokladny.length === 0) {
+            return null; // Nemá přiřazenou pokladnu → NEZOBRAZIT widget
+          }
         }
         
         const cbMonthNames = ['Leden','\u00danor','B\u0159ezen','Duben','Kv\u011bten','\u010cerven','\u010cervenec','Srpen','Z\u00e1\u0159\u00ed','\u0158\u00edjen','Listopad','Prosinec'];
@@ -6395,7 +6454,7 @@ export default function DashboardPage() {
         );
         break;
       case 'active_users_admin':
-        content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} token={token} username={username} setQuickMessageUser={setQuickMessageUser} />;
+        content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} token={token} username={username} setQuickMessageUser={setQuickMessageUser} onPeriodChange={setSelectedPeriod} />;
         badgeCount = activeUsersData?.counts?.['5min'] ?? activeUsersData?.count ?? 0;
         break;
       case 'weather':
@@ -6448,7 +6507,18 @@ export default function DashboardPage() {
           </WidgetTitle>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             {headerExtra}
-            {badgeCount > 0 && (
+            {/* Speciální badge pro active_users_admin: formát "online teď (5min) / celkem v vybrané periodě" */}
+            {tileId === 'active_users_admin' && activeUsersData?.counts && (() => {
+              const onlineNow = activeUsersData.counts['5min'] ?? 0;
+              const totalInPeriod = activeUsersData.counts[selectedPeriod] ?? 0;
+              return (
+                <WidgetBadge $bg={cfg.color + '18'} $color={cfg.color}>
+                  {onlineNow} / {totalInPeriod}
+                </WidgetBadge>
+              );
+            })()}
+            {/* Standardní badge pro ostatní widgety */}
+            {tileId !== 'active_users_admin' && badgeCount > 0 && (
               <WidgetBadge $bg={cfg.color + '18'} $color={cfg.color}>
                 {badgeCount}
               </WidgetBadge>
@@ -6463,9 +6533,10 @@ export default function DashboardPage() {
   // Order tiles: active_users_admin vždy poslední (alwaysLast), ostatní dle uložené konfigurace
   const orderedTiles = useMemo(() => {
     const base = allTiles.filter(t => availableWidgets.includes(t) && t !== 'active_users_admin');
-    if (isSuperAdmin) return [...base, 'active_users_admin'];
+    // active_users_admin se přidá automaticky pokud je v availableWidgets (kontroluje právo DASHBOARD_ACTIVE_USERS)
+    if (availableWidgets.includes('active_users_admin')) return [...base, 'active_users_admin'];
     return base;
-  }, [allTiles, availableWidgets, isSuperAdmin]);
+  }, [allTiles, availableWidgets]);
 
   // Dispatch dashNavItems pro floating navigator v Layout.js
   useEffect(() => {
@@ -6603,11 +6674,11 @@ export default function DashboardPage() {
             ))}
 
             {/* Oddělovač + Superadmin uživatelé + Module shortcuts */}
-            {quickTilesConfig.showModuleShortcuts && (getModuleShortcuts.length > 0 || isSuperAdmin) && quickTilesConfig.showStatusTiles && getQuickTiles.length > 0 && (
+            {quickTilesConfig.showModuleShortcuts && (getModuleShortcuts.length > 0 || isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS'))) && quickTilesConfig.showStatusTiles && getQuickTiles.length > 0 && (
               <QuickTileSeparator />
             )}
-            {/* Superadmin: aktivní uživatelé - vedle module shortcuts */}
-            {quickTilesConfig.showModuleShortcuts && isSuperAdmin && (
+            {/* Superadmin nebo DASHBOARD_ACTIVE_USERS: aktivní uživatelé - vedle module shortcuts */}
+            {quickTilesConfig.showModuleShortcuts && (isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS'))) && (
               <SmartTooltip
                 text={`Přehled aktivit uživatelů${activeUsersData?.count > 0 ? ` (${activeUsersData.count})` : ''}`}
                 icon="none"
