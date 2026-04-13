@@ -287,6 +287,14 @@ function handle_user_detail_with_statistics($input, $config, $queries) {
         
         $response['statistiky_objednavek'] = $stats;
         
+        // 🔍 DEBUG: Log direct_rights pro debugging DASHBOARD_ACTIVE_USERS
+        error_log("🔍 USER_DETAIL DEBUG - user_id: " . $user_id . ", direct_rights count: " . count($direct_rights));
+        if (count($direct_rights) > 0) {
+            foreach ($direct_rights as $dr) {
+                error_log("  - " . $dr['kod_prava'] . " (id: " . $dr['id'] . ")");
+            }
+        }
+        
         // Finální response
         echo json_encode(array(
             'status' => 'ok',
