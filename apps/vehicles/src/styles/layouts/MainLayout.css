@@ -1,0 +1,193 @@
+
+.logout-icon {
+  width: 24px;
+  height: 24px;
+  display: block;
+  stroke: #2d3a4b;
+  fill: none;
+}
+/* Responsive MainLayout */
+
+html, body {
+  width: 100vw;
+  max-width: 100vw;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.main-layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f3f6fb;
+  width: 100vw;
+  max-width: 100vw;
+  box-sizing: border-box;
+  overflow-x: hidden;
+}
+
+  
+.main-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #2563eb;
+  color: #fff;
+  padding: 1rem 40px 1rem 2rem;
+  box-shadow: 0 2px 8px rgba(31, 38, 135, 0.07);
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+@media (max-width: 600px) {
+  .main-header {
+    padding: 0.7rem 1.25em 0.7rem 1.25em;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    width: 100vw;
+    min-width: 0;
+    max-width: 100vw;
+    gap: 0.7rem;
+  }
+  .app-title {
+    font-size: 1.15rem;
+    margin: 0 0.7rem 0 0;
+    text-align: left;
+    word-break: break-word;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .user-section {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.3rem;
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .user-name {
+    font-size: 1rem;
+    margin-right: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex: 1 1 0;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .logout-btn {
+    margin-left: 0.25rem;
+  }
+}
+
+
+.app-title {
+  font-size: 1.5rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+
+.user-section {
+  display: flex;
+  align-items: center;
+  gap: 0em;
+}
+
+.user-name {
+  font-size: 1.1rem;
+  font-weight: 500;
+  width: 10vw;
+}
+
+.logout-btn {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  width: 2.2rem;
+  height: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  padding: 0;
+}
+
+.back-btn {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  width: 2.2rem;
+  height: 2.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+  padding: 0;
+  margin-right: 0.1em;
+}
+.back-btn:hover {
+  background: #f3f6fb;
+}
+
+.logout-btn:hover {
+  background: #f3f6fb;
+}
+
+
+.main-content {
+  flex: 1;
+  padding: 2.5rem 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  margin-top: 80px;
+  min-height: calc(100vh - 80px);
+  box-sizing: border-box;
+  overflow-y: auto;
+  width: 100vw;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+@media (max-width: 600px) {
+  .main-content {
+    padding: 0.7rem 1.1em 0.7rem 1.1em;
+    align-items: stretch;
+    width: 100vw;
+    max-width: 100vw;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+  .dashboard-tile, .tile, .vehicle-tile {
+    margin-left: 0.1em;
+    margin-right: 0.1em;
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: 0.7em;
+    padding-right: 0.7em;
+  }
+}
+
+@media (min-width: 601px) {
+  .dashboard-tile, .tile, .vehicle-tile {
+    max-width: 480px;
+    width: 100%;
+    margin-left: auto;
+    margin-right: auto;
+    box-sizing: border-box;
+  }
+}

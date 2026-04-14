@@ -1,0 +1,118 @@
+/* Dropdown menu v combu - z-index fix */
+.vehicles-filter-box [style*="position: absolute"] {
+  z-index: 9999 !important;
+}
+.vehicles-nav {
+  margin-bottom: 1.2rem;
+}
+.vehicles-back {
+  background: #e0eafc;
+  color: #2563eb;
+  border: none;
+  border-radius: 8px;
+  padding: 0.5rem 1.2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.vehicles-back:hover {
+  background: #2563eb;
+  color: #fff;
+}
+.vehicles-page {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 2rem 2vw 2rem 2vw;
+  box-sizing: border-box;
+}
+
+.vehicles-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.vehicles-header h2 {
+  color: #2563eb;
+  font-size: 1.6rem;
+  font-weight: 700;
+  margin: 0;
+}
+
+.vehicles-search {
+  padding: 0.6rem 1.2rem;
+  border-radius: 8px;
+  border: 1px solid #dbeafe;
+  font-size: 1rem;
+  min-width: 220px;
+  outline: none;
+  transition: border 0.2s;
+}
+.vehicles-search:focus {
+  border: 1.5px solid #2563eb;
+}
+
+.vehicles-table-wrapper {
+  overflow-x: auto;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px 0 rgba(31, 38, 135, 0.07);
+  scrollbar-width: none; /* Firefox */
+}
+.vehicles-table-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+.vehicles-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+.vehicles-table th, .vehicles-table td {
+  padding: 0.7rem 0.6rem;
+  text-align: left;
+}
+.vehicles-table th {
+  background: #e0eafc;
+  color: #2563eb;
+  font-weight: 700;
+  font-size: 1rem;
+}
+.vehicles-table tr:nth-child(even) {
+  background: #f3f6fb;
+}
+.vehicles-table tr:hover {
+  background: #e0eafc;
+}
+
+.vehicles-paging {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  margin-top: 1.2rem;
+  font-size: 1rem;
+}
+.vehicles-paging select, .vehicles-paging button {
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  border: 1px solid #dbeafe;
+  background: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border 0.2s;
+}
+.vehicles-paging button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+
+

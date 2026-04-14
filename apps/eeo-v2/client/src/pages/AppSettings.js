@@ -5,7 +5,7 @@ import {
   faCog, faBell, faEnvelope, faSitemap, faTools, 
   faToggleOn, faSave, faUndo, faExclamationTriangle,
   faInfoCircle, faCodeBranch, faRss, faPlus, faTrash,
-  faUserClock, faEye
+  faUserClock, faEye, faShieldAlt, faKey
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -405,7 +405,10 @@ const AppSettings = () => {
     rss_enabled: false,
     rss_feeds: '[]',
     rss_max_items: 10,
-    rss_refresh_interval: 15
+    rss_refresh_interval: 15,
+    // EntraID Authentication
+    entra_enabled: '0',
+    auth_mode: 'local_only'
   });
   
   const [loading, setLoading] = useState(true);
@@ -630,6 +633,100 @@ const AppSettings = () => {
             Správa celoplošných nastavení systému EEO - notifikace, hierarchie workflow, údržba systému
           </PageSubtitle>
         </PageHeader>
+        
+        {/* ENTRA ID AUTENTIZACE - FULL WIDTH */}
+        <SettingCard $fullWidth style={{marginBottom: '1.5rem'}}>
+          <CardHeader>
+            <CardIcon>
+              <FontAwesomeIcon icon={faShieldAlt} />
+            </CardIcon>
+            <div>
+              <CardTitle>Microsoft EntraID Autentizace</CardTitle>
+              <StatusBadge $active={settings.entra_enabled === '1'}>
+                {settings.entra_enabled === '1' ? 'Aktivní' : 'Vypnuto'}
+              </StatusBadge>
+            </div>
+          </CardHeader>
+          
+          <SettingRow>
+            <SettingInfo>
+              <SettingLabel>
+                <FontAwesomeIcon icon={faKey} />
+                Povolit EntraID přihlášení
+              </SettingLabel>
+              <SettingDescription>
+                Zapnutí/vypnutí možnosti přihlášení přes Microsoft EntraID (Azure AD). Při zapnutí se na přihlašovací stránce zobrazí tlačítko pro Microsoft přihlášení. Lokální přihlášení zůstává vždy dostupné.
+              </SettingDescription>
+            </SettingInfo>
+            <ToggleButton
+              $active={settings.entra_enabled === '1'}
+              onClick={() => setSettings(prev => ({
+                ...prev,
+                entra_enabled: prev.entra_enabled === '1' ? '0' : '1'
+              }))}
+              disabled={!isSuperAdmin}
+            >
+              <ToggleThumb $active={settings.entra_enabled === '1'} />
+            </ToggleButton>
+          </SettingRow>
+          
+          <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+            <SettingInfo>
+              <SettingLabel>
+                <FontAwesomeIcon icon={faCog} />
+                Režim autentizace
+              </SettingLabel>
+              <SettingDescription>
+                <strong>Pouze lokální:</strong> EntraID zakázáno, standardní přihlášení (výchozí).<br />
+                <strong>EntraID + lokální pro všechny:</strong> Všichni uživatelé mohou použít obě metody (pilotní režim).<br />
+                <strong>EntraID uživatelé / lokální admini:</strong> Běžní uživatelé pouze EntraID, administratoři obě metody (finální režim).
+              </SettingDescription>
+              <Select
+                value={settings.auth_mode || 'local_only'}
+                onChange={(e) => setSettings(prev => ({
+                  ...prev,
+                  auth_mode: e.target.value
+                }))}
+                disabled={!isSuperAdmin || settings.entra_enabled !== '1'}
+                style={{marginTop: '0.75rem'}}
+              >
+                <option value="local_only">Pouze lokální přihlášení</option>
+                <option value="entra_all">EntraID + lokální pro všechny (pilot)</option>
+                <option value="entra_admin_local">EntraID uživatelé / lokální admini (produkce)</option>
+              </Select>
+            </SettingInfo>
+          </SettingRow>
+          
+          {settings.entra_enabled !== '1' && (
+            <WarningBox $type="info">
+              <FontAwesomeIcon icon={faInfoCircle} />
+              <div>
+                <strong>EntraID přihlášení je vypnuto</strong><br />
+                Všichni uživatelé se musí přihlásit pomocí lokálního hesla. Tlačítko pro Microsoft přihlášení se nezobrazuje.
+              </div>
+            </WarningBox>
+          )}
+          
+          {settings.entra_enabled === '1' && settings.auth_mode === 'entra_admin_local' && (
+            <WarningBox $type="warning">
+              <FontAwesomeIcon icon={faExclamationTriangle} />
+              <div>
+                <strong>Produkční režim aktivní!</strong><br />
+                Běžní uživatelé se musí přihlásit přes Microsoft EntraID. Lokální přihlášení je dostupné pouze pro administrátory (SUPERADMIN, ADMINISTRATOR). Nově přihlášení uživatelé z EntraID se skupinou "eeoUser" budou automaticky vytvořeni s rolí THP/PES.
+              </div>
+            </WarningBox>
+          )}
+          
+          {settings.entra_enabled === '1' && settings.auth_mode === 'entra_all' && (
+            <WarningBox $type="info">
+              <FontAwesomeIcon icon={faInfoCircle} />
+              <div>
+                <strong>Pilotní režim aktivní</strong><br />
+                Všichni uživatelé mohou použít lokální heslo i Microsoft EntraID přihlášení. Tento režim je vhodný pro testování a postupný přechod.
+              </div>
+            </WarningBox>
+          )}
+        </SettingCard>
         
         <SettingsGrid>
           {/* NOTIFIKACE */}

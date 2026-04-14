@@ -180,7 +180,11 @@ function handle_get_settings($db, $forDisplay = false) {
             'rss_enabled' => ($settings['rss_enabled'] ?? '0') === '1',
             'rss_feeds' => $settings['rss_feeds'] ?? '[]',
             'rss_max_items' => (int)($settings['rss_max_items'] ?? 10),
-            'rss_refresh_interval' => (int)($settings['rss_refresh_interval'] ?? 15)
+            'rss_refresh_interval' => (int)($settings['rss_refresh_interval'] ?? 15),
+            
+            // EntraID Authentication
+            'entra_enabled' => $settings['entra_enabled'] ?? '0',
+            'auth_mode' => $settings['auth_mode'] ?? 'local_only'
         );
         
         http_response_code(200);
@@ -245,7 +249,10 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'rss_enabled' => 'rss_enabled',
             'rss_feeds' => 'rss_feeds',
             'rss_max_items' => 'rss_max_items',
-            'rss_refresh_interval' => 'rss_refresh_interval'
+            'rss_refresh_interval' => 'rss_refresh_interval',
+            // EntraID Authentication
+            'entra_enabled' => 'entra_enabled',
+            'auth_mode' => 'auth_mode'
         );
         
         $db->beginTransaction();

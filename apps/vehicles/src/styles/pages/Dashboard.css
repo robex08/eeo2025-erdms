@@ -1,0 +1,206 @@
+/* Zarovnání wrapperu pro ikonu a text Dashboard */
+.dashboard-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+}
+@media (max-width: 600px) {
+  .dashboard-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+  }
+  .dashboard {
+    margin: 0;
+    padding: 0;
+    overflow-x: hidden;
+    width: 100%;
+  }
+  .dashboard-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.2rem 0.6rem 0.2rem;
+  }
+  .dashboard-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    padding: 0.6rem 0.2rem 0.6rem 0.2rem;
+    flex-wrap: nowrap;
+    margin-top: 2em;
+    line-height: 1.2;
+    word-break: break-word;
+  }
+  .dashboard-header-icon {
+    width: 28px;
+    height: 28px;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .dashboard-tiles {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.8rem;
+    padding: 0 0.2rem;
+    width: 100%;
+    max-width: 100vw;
+  }
+  .dashboard-tile {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    padding: 0.9rem 0.7rem 0.9rem 1.1rem;
+    font-size: 0.98rem;
+    border-radius: 12px;
+  }
+  .tile-content {
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    padding-left: 0.2em;
+    padding-right: 0.2em;
+    align-items: center;
+  }
+  .tile-icon {
+    font-size: 1.5rem;
+    margin-bottom: 0;
+    min-width: 1.5rem;
+  }
+  .tile-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+  }
+  .dashboard-footer {
+    position: static;
+    box-shadow: none;
+    padding: 0.5rem 0 0.5rem 0;
+  }
+}
+/* Dashboard.css */
+.dashboard {
+  width: 100%;
+  margin: 0;
+  text-align: center;
+}
+
+/* Desktop styles */
+.dashboard-header {
+  display: flex;
+  align-items: center;
+  gap: 1.8rem;
+  margin-bottom: 2.2rem;
+  padding: 0 1.5rem;
+  justify-content: center;
+  width: 100%;
+  text-align: center;
+}
+.dashboard-header-icon {
+  display: block;
+  width: 38px;
+  height: 38px;
+}
+.dashboard-header h1 {
+  color: #2563eb;
+  font-size: 2.2rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  margin: 0;
+  background: linear-gradient(90deg, #2563eb 0%, #60a5fa 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  /* text-fill-color: transparent; */
+  padding: 0 0.5em;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.dashboard-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  justify-items: center;
+  width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  max-width: 1100px;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 1.5rem;
+}
+
+.dashboard-tile {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 16px 0 rgba(31, 38, 135, 0.08);
+  padding: 1.5rem 2.5rem 1.5rem 2rem;
+  min-width: 0;
+  min-height: 90px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  cursor: pointer;
+  transition: box-shadow 0.2s, transform 0.2s;
+  flex: 1 1 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.dashboard-tile:hover {
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+  transform: translateY(-4px) scale(1.03);
+}
+
+.tile-content {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  width: 100%;
+  justify-content: flex-start;
+}
+.tile-icon {
+  font-size: 2.2rem;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tile-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2d3a4b;
+  text-align: left;
+}
+.dashboard-footer {
+  position: fixed;
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  background: #f9fafb;
+  padding: 8px 0;
+  text-align: center;
+  z-index: 100;
+  box-shadow: 0 -1px 6px rgba(0,0,0,0.04);
+}
+
+.dashboard-version {
+  color: #b0b6be;
+  font-size: 0.95em;
+  letter-spacing: 0.02em;
+}
+@media (max-width: 900px) {
+  .dashboard-tiles {
+    grid-template-columns: 1fr;
+    gap: 1.2rem;
+    justify-items: stretch;
+  }
+  .dashboard-tile {
+    max-width: 100%;
+    min-width: 0;
+  }
+}

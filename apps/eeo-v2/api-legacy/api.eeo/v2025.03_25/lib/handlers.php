@@ -560,6 +560,7 @@ function handle_login($input, $config, $queries) {
         $token = base64_encode($user['username'] . '|' . time());
         unset($user['password_hash']);
         $user['token'] = $token;
+        $user['auth_method'] = 'local'; // 🔐 EntraID: Mark local authentication
         echo json_encode($user);
         exit;
 
@@ -879,6 +880,15 @@ function handle_user_detail($input, $config, $queries) {
         }
         
         $user_detail['statistiky_objednavek'] = $stats;
+        
+        // 🔐 EntraID: Transform auth_source to auth_method for frontend consistency
+        if (isset($user_detail['auth_source'])) {
+            $user_detail['auth_method'] = $user_detail['auth_source'];
+            unset($user_detail['auth_source']); // Remove duplicate field
+        } else {
+            // Default to 'local' for old users without auth_source
+            $user_detail['auth_method'] = 'local';
+        }
 
         echo json_encode($user_detail);
         exit;

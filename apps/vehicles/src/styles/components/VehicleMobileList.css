@@ -1,0 +1,21 @@
+/* Styly pro wrapper gridu mobilních karet vozidel */
+.vehicle-mobile-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.2rem;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+@media (min-width: 600px) {
+  .vehicle-mobile-list {
+     padding: 0 0.7rem;
+  }
+}
+
+.vehicle-mobile-list-empty {
+  text-align: center;
+  color: #888;
+  font-size: 1.05rem;
+  margin: 1.5em 0;
+}

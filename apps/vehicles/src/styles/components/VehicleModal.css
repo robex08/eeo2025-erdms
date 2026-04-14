@@ -1,0 +1,43 @@
+.vehicle-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.32);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.vehicle-modal-content {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.18);
+  padding: 0;
+  max-width: 98vw;
+  max-height: 98vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.vehicle-modal-close {
+  position: absolute;
+  top: 12px;
+  right: 18px;
+  background: rgba(255,255,255,0.85);
+  border: none;
+  font-size: 2.4rem;
+  color: #222;
+  cursor: pointer;
+  z-index: 10001;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  padding: 0 10px;
+  transition: background 0.18s, color 0.18s;
+  outline: none;
+  text-shadow: 0 2px 8px #fff, 0 0 2px #fff;
+}
+.vehicle-modal-close:hover, .vehicle-modal-close:focus {
+  background: #2563eb;
+  color: #fff;
+  text-shadow: none;
+}

@@ -247,6 +247,11 @@ function Dashboard() {
     return filtered;
   };
 
+  // Normalizace textu - odstraní diakritiku a převede na lowercase
+  const normalizeText = (text) => {
+    return (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  };
+
   const handleSearch = (query) => {
     setSearchQuery(query);
     
@@ -256,23 +261,27 @@ function Dashboard() {
     }
     
     // Vyhledávání lokálně v již načtených zaměstnancích (1500)
-    const searchTerm = query.toLowerCase().trim();
+    const searchTerm = normalizeText(query.trim());
     console.log('🔍 Lokální hledání:', searchTerm, 'v', employees.length, 'zaměstnancích');
     
     const filtered = employees.filter(emp => {
-      const displayName = (emp.displayName || '').toLowerCase();
-      const givenName = (emp.givenName || '').toLowerCase();
-      const surname = (emp.surname || '').toLowerCase();
-      const email = (emp.mail || emp.userPrincipalName || '').toLowerCase();
-      const jobTitle = (emp.jobTitle || '').toLowerCase();
-      const department = (emp.department || '').toLowerCase();
+      const fields = [
+        emp.displayName,
+        emp.givenName,
+        emp.surname,
+        emp.mail,
+        emp.userPrincipalName,
+        emp.jobTitle,
+        emp.department,
+        emp.employeeId,
+        emp.id,
+      ];
       
-      return displayName.includes(searchTerm) ||
-             givenName.includes(searchTerm) ||
-             surname.includes(searchTerm) ||
-             email.includes(searchTerm) ||
-             jobTitle.includes(searchTerm) ||
-             department.includes(searchTerm);
+      // Prohledej i názvy skupin (pokud jsou načtené)
+      const groups = (employeeDetails[emp.id]?.groups || []).map(g => g.displayName || '');
+      
+      return fields.some(f => normalizeText(f).includes(searchTerm)) ||
+             groups.some(g => normalizeText(g).includes(searchTerm));
     });
     
     console.log('📊 Nalezeno:', filtered.length, 'zaměstnanců');
@@ -859,7 +868,7 @@ function Dashboard() {
         <div className="header-left">
           <img src="/logo-ZZS.png" alt="ZZS Logo" className="header-logo" />
           <div className="header-title">
-            <h1>ERDMS Portál <span className="version-badge">v1.84</span></h1>
+            <h1>ERDMS Portál <span className="version-badge">v1.90</span></h1>
             <span className="header-subtitle">Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</span>
           </div>
         </div>
@@ -1030,9 +1039,9 @@ function Dashboard() {
           <>
             {/* Organizační aplikace */}
             <div className="apps-section">
-              <h2 className="section-title">📋 Organizační aplikace</h2>
+              <h2 className="section-title">📋 Interní aplikace organizace</h2>
               <div className="apps-grid">
-                <a href="https://erdms.zachranka.cz/eeo-v2/" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://erdms.zachranka.cz/eeo-v2/?sso=auto" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1052,6 +1061,31 @@ function Dashboard() {
                     </svg>
                   </div>
                 </a>
+
+                {(user?.username?.toLowerCase() === 'u03924' || user?.upn?.toLowerCase()?.startsWith('u03924@') ||
+                  user?.username?.toLowerCase() === 'u09694' || user?.upn?.toLowerCase()?.startsWith('u09694@')) && (
+                <a href="https://erdms.zachranka.cz/dev/eeo-v2/?sso=auto" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <div className="app-badges">
+                      <span className="app-badge" style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}>DEV</span>
+                      <span className="app-badge ms365-badge">M365</span>
+                    </div>
+                  </div>
+                  <h3 className="app-title">EEO v2 DEV</h3>
+                  <p className="app-description">Development verze EEO – testování nových funkcí</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+                )}
 
                 <a href="https://szm.zachranka.cz" className="app-card szm-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
@@ -1106,7 +1140,7 @@ function Dashboard() {
                     </div>
                     <div className="app-badges">
                       <span className="app-badge" style={{ background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)" }}>DEV</span>
-                      <span className="app-badge ms365-badge">MS365</span>
+                      <span className="app-badge ms365-badge">M365</span>
                     </div>
                   </div>
                   <h3 className="app-title">Intranet 2026</h3>

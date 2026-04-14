@@ -43,6 +43,7 @@ export const AuthProvider = ({ children }) => {
   const [user_id, setUserId] = useState(null); // Ensure user_id is part of the context
   const [userDetail, setUserDetail] = useState(null); // Ulož detail uživatele
   const [userPermissions, setUserPermissions] = useState([]); // array of normalized permission codes
+  const [authMethod, setAuthMethod] = useState(null); // 🔐 EntraID: Authentication method ('local' or 'entra_id')
   const [needsPasswordChange, setNeedsPasswordChange] = useState(false); // 🔑 Vynucená změna hesla
   const [temporaryPassword, setTemporaryPassword] = useState(''); // 🔑 Dočasné heslo pro vynucenou změnu
   const [tempToken, setTempToken] = useState(null); // 🔑 Dočasný token pro změnu hesla
@@ -116,6 +117,7 @@ export const AuthProvider = ({ children }) => {
       } catch (err) {
         console.error('❌ Chyba při extrakci oprávnění:', err);
       }
+      setAuthMethod(userDetail.auth_method || null); // 🔐 EntraID: Set authentication method
       setFullName(`${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}`.trim());
       await saveAuthData.userDetail(userDetail);
 
@@ -297,6 +299,7 @@ export const AuthProvider = ({ children }) => {
     try {
       const fresh = await getUserDetailApi2(user.username, token, user.id);
       setUserDetail(fresh);
+      setAuthMethod(fresh.auth_method || null); // 🔐 EntraID: Update authentication method
       setFullName(`${fresh.jmeno || ''} ${fresh.prijmeni || ''}`.trim());
       // Aktivní účet kontrola i při refreshi
       try {
@@ -413,6 +416,7 @@ export const AuthProvider = ({ children }) => {
     setUserDetail(null);
     setUserPermissions([]);
     setExpandedPermissions([]); // 🔐 Vyčistit i rozšířená práva
+    setAuthMethod(null); // 🔐 EntraID: Reset authentication method
     setNeedsPasswordChange(false); // 🔑 Reset vynucené změny hesla
     setHierarchyStatus({
       hierarchyEnabled: false,
@@ -548,19 +552,26 @@ export const AuthProvider = ({ children }) => {
 
           // Zkus validovat token na backendu
           // Pokud selže (401, network error, ...), použij cached data níže v catch bloku
-          await getUserDetailApi2(storedUser.username, storedToken, storedUser.id);
+          const freshDetailResult = await getUserDetailApi2(storedUser.username, storedToken, storedUser.id);
+          
+          // Použij čerstvá data z API (mají usek, lokalita z JOINů), fallback na cached
+          const activeDetail = freshDetailResult || storedDetail;
+          if (freshDetailResult) {
+            await saveAuthData.userDetail(freshDetailResult); // Aktualizuj cache
+          }
 
-          // Pokud je userDetail v localStorage, použij ho
-          if (storedDetail) {
-            setUserDetail(storedDetail);
-            setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
+          // Pokud je userDetail dostupný, použij ho
+          if (activeDetail) {
+            setUserDetail(activeDetail);
+            setAuthMethod(activeDetail.auth_method || null); // 🔐 EntraID: Set auth method from stored detail
+            setFullName(`${activeDetail.jmeno || ''} ${activeDetail.prijmeni || ''}`.trim());
 
             if (storedPerms && storedPerms.length > 0) {
               setUserPermissions(storedPerms);
               // 🔐 Inicializovat expandedPermissions (hierarchie se načte níže)
               setExpandedPermissions(storedPerms);
             } else {
-              const perms = extractPermissionCodes(storedDetail);
+              const perms = extractPermissionCodes(activeDetail);
               setUserPermissions(perms);
               setExpandedPermissions(perms);
               await saveAuthData.userPermissions(perms);
@@ -607,6 +618,7 @@ export const AuthProvider = ({ children }) => {
             // fallback: načti detail
             const userDetail = await getUserDetailApi2(storedUser.username, storedToken, storedUser.id);
             setUserDetail(userDetail);
+            setAuthMethod(userDetail.auth_method || null); // 🔐 EntraID: Set auth method
             setFullName(`${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}`.trim());
             await saveAuthData.userDetail(userDetail);
 
@@ -666,9 +678,10 @@ export const AuthProvider = ({ children }) => {
 
           if (isAuthError) {
             // 401/403 během page load - může být false positive
-            // Pokud máme CACHED data, použij je a NEODHLA��UJ okamžitě
+            // Pokud máme CACHED data, použij je a NEODHLAŠUJ okamžitě
             if (hasCachedData) {
               setUserDetail(storedDetail);
+              setAuthMethod(storedDetail.auth_method || null); // 🔐 EntraID: Set auth method
               setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
               if (storedPerms && storedPerms.length > 0) {
                 setUserPermissions(storedPerms);
@@ -689,6 +702,7 @@ export const AuthProvider = ({ children }) => {
             // Network/server error - použij cached data, NEODHLAŠUJ
             if (hasCachedData) {
               setUserDetail(storedDetail);
+              setAuthMethod(storedDetail.auth_method || null); // 🔐 EntraID: Set auth method
               setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
               if (storedPerms && storedPerms.length > 0) {
                 setUserPermissions(storedPerms);
@@ -702,6 +716,7 @@ export const AuthProvider = ({ children }) => {
             // Jiná chyba - použij cached data pokud existují, jinak odhlásit
             if (hasCachedData) {
               setUserDetail(storedDetail);
+              setAuthMethod(storedDetail.auth_method || null); // 🔐 EntraID: Set auth method
               setFullName(`${storedDetail.jmeno || ''} ${storedDetail.prijmeni || ''}`.trim());
               if (storedPerms && storedPerms.length > 0) {
                 setUserPermissions(storedPerms);
@@ -1079,6 +1094,7 @@ export const AuthProvider = ({ children }) => {
       userDetail, 
       userPermissions,
       expandedPermissions, // 🔐 HIERARCHIE: Rozšířená práva
+      authMethod, // 🔐 EntraID: Authentication method ('local' or 'entra_id')
       hasPermission, 
       hasAdminRole, 
       refreshUserDetail,

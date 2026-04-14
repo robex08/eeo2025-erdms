@@ -327,6 +327,12 @@ require_once __DIR__ . '/v2025.03_25/lib/manualsHandlers.php';
 // DASHBOARD - Uživatelský dashboard s widgety
 require_once __DIR__ . '/v2025.03_25/lib/dashboardHandlers.php';
 
+// SYSTEM AUTH - EntraID authentication configuration
+require_once __DIR__ . '/v2025.03_25/lib/systemAuthHandlers.php';
+
+// ENTRA AUTH - EntraID OAuth callback and provisioning
+require_once __DIR__ . '/v2025.03_25/lib/entraAuthHandlers.php';
+
 // === CORS PREFLIGHT HANDLER - Handle OPTIONS requests first ===
 // This allows localhost:3000 development to work properly
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -771,6 +777,30 @@ switch ($endpoint) {
         } else {
             http_response_code(405);
             echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+    
+    // === SYSTEM AUTH CONFIG - EntraID authentication settings ===
+    case 'v2.0/system/auth-config':
+    case 'system/auth-config':
+        if ($request_method === 'GET') {
+            handle_system_auth_config_get($input, $config);
+        } elseif ($request_method === 'POST') {
+            handle_system_auth_config_post($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    // === ENTRA AUTH CALLBACK - EntraID OAuth callback ===
+    case 'v2.0/auth/entra-callback':
+    case 'auth/entra-callback':
+        if ($request_method === 'POST') {
+            handle_entra_callback($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
         }
         break;
         

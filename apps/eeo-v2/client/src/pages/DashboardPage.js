@@ -1739,7 +1739,7 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
             {items.map((u, i) => {
               const modulLabel = getModuleLabel(u.modul, u.cesta);
               const isPrikazce = (u.role_kody || []).some(r =>
-                r.startsWith('PRIKAZCE') || r === 'SPRAVCE_ROZPOCTU' || r === 'SUPERADMIN' || r === 'ADMINISTRATOR'
+                r && (r.startsWith('PRIKAZCE') || r === 'SPRAVCE_ROZPOCTU' || r === 'SUPERADMIN' || r === 'ADMINISTRATOR')
               );
               const isOnline = u.dt_posledni_aktivita &&
                 (Date.now() - new Date(u.dt_posledni_aktivita).getTime()) < 5 * 60 * 1000;
@@ -5455,9 +5455,21 @@ function FocusAlertsBanner({ items, navigate: nav, lastRefreshed, isFlashing }) 
 // ============================================================================
 
 export default function DashboardPage() {
-  const { token, user, userDetail, hasPermission, hasAdminRole, userPermissions } = useContext(AuthContext);
+  const { token, user, userDetail, hasPermission, hasAdminRole, userPermissions, loading: authLoading } = useContext(AuthContext);
   const bgTasksContext = useBackgroundTasks();
   const navigate = useNavigate();
+  
+  // 🔐 DEBUG: Log auth state for troubleshooting
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🎛️ DashboardPage auth state:', {
+        token: token ? 'present' : 'missing',
+        user: user || 'null',
+        username: user?.username || 'null',
+        authLoading
+      });
+    }
+  }, [token, user, authLoading]);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -5924,7 +5936,17 @@ export default function DashboardPage() {
 
   // Fetch data (silent = tichý refresh bez loading spinneru / blikání)
   const fetchData = useCallback(async (silent = false) => {
-    if (!token || !username) return;
+    // 🔐 Wait for AuthContext to finish loading before fetching dashboard data
+    if (authLoading) {
+      console.log('🔐 DashboardPage: Waiting for AuthContext to finish loading...');
+      return;
+    }
+    
+    if (!token || !username) {
+      console.warn('🔐 DashboardPage: Missing token or username', { token: !!token, username });
+      return;
+    }
+    
     if (!silent) setLoading(true);
     setError(null);
     try {
@@ -5946,7 +5968,7 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [token, username]);
+  }, [token, username, authLoading]);
 
   useEffect(() => {
     fetchData();
@@ -6062,7 +6084,7 @@ export default function DashboardPage() {
   const getQuickTiles = useMemo(() => {
     if (!data?.orders_stats) return [];
 
-    const roles = (userDetail?.roles || []).map(r => r.kod_role);
+    const roles = (userDetail?.roles || []).map(r => r?.kod_role).filter(Boolean);
     const stats = data.orders_stats;
     const isAdmin = hasAdminRole();
     const tiles = [];
@@ -6081,7 +6103,7 @@ export default function DashboardPage() {
     };
 
     // Helper: role check (podporuje THP_PES, PRIKAZCE_OPERACE atd.)
-    const hasRole = (r) => roles.some(k => k === r || k.startsWith(r + '_') || k.startsWith(r));
+    const hasRole = (r) => roles.some(k => k && (k === r || k.startsWith(r + '_') || k.startsWith(r)));
     const hasAnyRole = (...rs) => rs.some(r => hasRole(r));
 
     // Admin vidí všechny

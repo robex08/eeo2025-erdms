@@ -476,6 +476,7 @@ $queries['uzivatele_detail'] = "
         u.vynucena_zmena_hesla,
         u.dt_vytvoreni,
         u.dt_aktualizace,
+        u.auth_source,
         
         -- FRONTEND CRITICAL IDs for form prefilling
         u.pozice_id,

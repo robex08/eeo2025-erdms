@@ -58,4 +58,18 @@ module.exports = function(app) {
       secure: false
     })
   );
+
+  // Proxy pro centrální Auth API (EntraID)
+  app.use(
+    '/auth',
+    createProxyMiddleware({
+      target: 'https://erdms.zachranka.cz',
+      changeOrigin: true,
+      secure: false, // Pro self-signed certifikáty DEV
+      logLevel: 'debug',
+      onProxyReq: (proxyReq, req, res) => {
+        console.log(`[AUTH PROXY] ${req.method} ${req.path} -> https://erdms.zachranka.cz${req.path}`);
+      }
+    })
+  );
 };
