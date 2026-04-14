@@ -447,6 +447,7 @@ export async function getUserDetailApi2(username, token, user_id) {
     nadrizeny_cely_jmeno: first('nadrizeny_cely_jmeno', 'manager_full_name', 'supervisor_name') || '',
     roles: mapRoles(first('roles', 'role_list', 'roles_list', 'roles') || raw.roles),
     statistiky_objednavek: processStatistiky(raw.statistiky_objednavek || first('statistiky_objednavek', 'order_statistics', 'stats')),
+    auth_method: first('auth_method', 'auth_source') || 'local',
     // preserve original payload for callers that still expect raw keys
     raw
   };

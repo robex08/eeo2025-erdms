@@ -50,7 +50,8 @@ app.use(cors({
 const authRoutes = require('./routes/auth');
 const entraRoutes = require('./routes/entra');
 
-app.use('/api/auth', authRoutes);
+app.use('/auth', authRoutes);
+app.use('/api/auth', authRoutes); // Legacy support
 app.use('/api/entra', entraRoutes);
 
 // Health check

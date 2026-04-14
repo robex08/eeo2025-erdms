@@ -1,0 +1,170 @@
+/* Moderní sekce pro GPS, kontakty, aktualizaci */
+.vehicle-mobile-card-section {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.vehicle-mobile-card-gps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25em;
+  font-size: 1.01rem;
+  color: #444;
+  line-height: 1.35;
+  margin-bottom: 0.2em;
+}
+
+.vehicle-mobile-card-gps-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  font-weight: bold;
+  color: #1976d2;
+}
+
+.vehicle-mobile-card-address {
+  color: #888;
+  font-size: 0.98em;
+  margin-top: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+}
+
+.vehicle-mobile-card-contact {
+  display: flex;
+  flex-direction: row;
+  gap: 2.2rem;
+  margin-top: 0.5em;
+}
+.vehicle-mobile-card-contact-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.18em;
+  font-size: 0.98rem;
+  color: #444;
+}
+.vehicle-mobile-card-contact-title {
+  font-weight: bold;
+  color: #555;
+  margin-bottom: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+}
+.vehicle-mobile-card-contact-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3em;
+  line-height: 1.2;
+}
+
+.vehicle-mobile-card-update {
+  font-size: 0.95rem;
+  color: #888;
+  margin-top: 0.5em;
+  text-align: right;
+}
+/* Styly pro mobilní kartu vozidla */
+.vehicle-mobile-card {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.09);
+  padding: 0.7rem 1.1rem 1.1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin-top: 0;
+  width: 100%;
+  max-width: 500px;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
+}
+.vehicle-mobile-card.error {
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+.vehicle-mobile-card-row {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  font-weight: 600;
+  font-size: 1.13rem;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.vehicle-mobile-card-row-secondary {
+  display: flex;
+  align-items: center;
+  gap: 1.1rem;
+  font-size: 1.05rem;
+  color: #555;
+  width: 100%;
+  flex-wrap: wrap;
+}
+.vehicle-mobile-card-km {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  font-size: 1.02rem;
+  color: #444;
+  opacity: 0.85;
+  font-weight: bold;
+  min-height: 1.5em;
+  width: 100%;
+}
+.vehicle-mobile-card-label-popis {
+  background: #fffde7;
+  color: #d84315;
+  border-radius: 6px;
+  padding: 0.13em 0.7em;
+  font-weight: 700;
+  font-size: 1.09rem;
+  letter-spacing: 0.04em;
+}
+.vehicle-mobile-card-label-spz {
+  background: #e3f2fd;
+  color: #1976d2;
+  border-radius: 6px;
+  padding: 0.13em 0.7em;
+  font-weight: 700;
+  font-size: 1.08rem;
+  letter-spacing: 0.04em;
+}
+.vehicle-mobile-card-label-typ {
+  background: #e8f5e9;
+  color: #388e3c;
+  border-radius: 6px;
+  padding: 0.13em 0.7em;
+  font-weight: 500;
+  font-size: 1.05rem;
+  margin-left: auto;
+}
+.vehicle-mobile-card-label-skupina {
+  background: #e8f5e9;
+  border-radius: 6px;
+  padding: 0.13em 0.7em;
+  font-weight: 500;
+  color: #388e3c;
+}
+.vehicle-mobile-card-label-okres {
+  background: #f7f7f7;
+  border-radius: 6px;
+  padding: 0.13em 0.7em;
+  font-weight: 500;
+}
+.vehicle-mobile-card-error-title {
+  color: #d84315;
+  font-weight: 700;
+  font-size: 1.13rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+.vehicle-mobile-card-error-desc {
+  color: #888;
+  font-size: 0.98rem;
+  margin-top: 0.7em;
+  text-align: center;
+}

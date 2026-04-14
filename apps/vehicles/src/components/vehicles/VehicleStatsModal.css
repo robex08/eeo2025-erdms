@@ -1,0 +1,94 @@
+
+.vehicle-stats-modal-main {
+  padding: 1.2em 1.7em 1.7em 1.7em;
+  background: #fff;
+  border-radius: 18px;
+  box-shadow: 0 4px 24px rgba(30,64,175,0.10);
+  min-width: 340px;
+}
+.vehicle-stats-header {
+  display: flex;
+  align-items: center;
+  gap: 1.2em;
+  margin-bottom: 1.1em;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+.vehicle-stats-badge {
+  font-size: 1.22em;
+  font-weight: bold;
+  border-radius: 8px;
+  padding: 0.22em 1.1em;
+  margin-right: 0.2em;
+  display: inline-block;
+  box-shadow: 0 2px 8px rgba(30,64,175,0.10);
+  letter-spacing: 0.04em;
+  border: none;
+}
+.vehicle-stats-volaciznak {
+  background: #fff4f0;
+  color: #e53935;
+}
+.vehicle-stats-spz {
+  background: #e3f0ff;
+  color: #2563eb;
+}
+.vehicle-stats-typ {
+  background: #e7fbe7;
+  color: #43a047;
+}
+.vehicle-stats-popis {
+  background: #f3f3f3;
+  color: #444;
+  font-size: 1.08em;
+  font-weight: 500;
+}
+.vehicle-stats-stan {
+  background: #e7fbe7;
+  color: #43a047;
+  font-size: 1.08em;
+  font-weight: 500;
+}
+.vehicle-stats-najezd {
+  font-size: 1.18em;
+  color: #222;
+  margin-top: 0.7em;
+  font-weight: bold;
+  text-align: left;
+}
+.vehicle-stats-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-top: 1.5em;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(30,64,175,0.07);
+}
+.vehicle-stats-table th {
+  background: #f7f7f7;
+  color: #222;
+  font-size: 1.08em;
+  font-weight: bold;
+  padding: 0.7em 0.9em;
+  border-bottom: 2px solid #2563eb;
+  text-align: left;
+}
+.vehicle-stats-table td {
+  padding: 0.55em 0.9em;
+  font-size: 1.08em;
+  color: #444;
+  border-bottom: 1px solid #eee;
+}
+.vehicle-stats-table tr:last-child td {
+  border-bottom: none;
+}
+.vehicle-stats-title {
+  text-align: center;
+  font-size: 1.18em;
+  font-weight: bold;
+  margin: 1.2em 0 0.7em 0;
+  color: #2563eb;
+  letter-spacing: 0.01em;
+}

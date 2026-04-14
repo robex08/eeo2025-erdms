@@ -109,6 +109,12 @@ function LogoutRedirectListener({ isLoggedIn }) {
   return null;
 }
 
+// 🔄 Redirect na /login se zachováním query parametrů (zejména ?sso=auto)
+function NavigateToLoginWithQuery() {
+  const location = useLocation();
+  return <Navigate to={`/login${location.search}`} replace />;
+}
+
 // 🛠️ Maintenance mode wrapper - zobrazí MaintenancePage PŘED layoutem
 function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
   const [maintenanceMode, setMaintenanceMode] = React.useState(false);
@@ -1000,7 +1006,7 @@ function App() {
               <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} hasPermission={hasPermission} userDetail={userDetail} moduleSettings={moduleSettings} moduleSettingsLoaded={moduleSettingsLoaded} />
               <Suspense fallback={<RouteLoadingFallback />}>
                 <Routes>
-                  {!isLoggedIn && <Route path="*" element={<Navigate to="/login" replace />} />}
+                  {!isLoggedIn && <Route path="*" element={<NavigateToLoginWithQuery />} />}
                   <Route
                     path="/login"
                     element={isLoggedIn ? <Navigate to="/" replace /> : <Login />}

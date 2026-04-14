@@ -726,6 +726,56 @@ const LogoutButton = styled.button(({theme}) => `
   }
 `);
 
+// 🔐 EntraID: Logout menu dropdown components
+const LogoutMenuContainer = styled.div`
+  position: relative;
+  display: inline-block;
+`;
+
+const LogoutDropdown = styled.div`
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 220px;
+  z-index: 10000;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+`;
+
+const LogoutMenuItem = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 14px;
+  color: #333;
+  text-align: left;
+  transition: background 0.2s ease;
+  
+  &:hover {
+    background: rgba(32, 45, 101, 0.08);
+  }
+  
+  &:active {
+    background: rgba(32, 45, 101, 0.12);
+  }
+  
+  svg {
+    font-size: 16px;
+    color: ${props => props.$danger ? '#dc2626' : '#374151'};
+  }
+  
+  ${props => props.$danger && css`
+    color: #dc2626;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+  `}
+`;
+
 // Generic menu icon button for consistency
 const MenuIconButton = styled.button(({theme}) => `
   display: flex;
@@ -1788,13 +1838,18 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
   // Change password dialog state (menu)
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
   const [pwdError, setPwdError] = useState('');
+  // 🔐 EntraID: Logout menu dropdown state
+  const [logoutMenuOpen, setLogoutMenuOpen] = useState(false);
+  const logoutMenuRef = useRef(null);
+  const logoutBtnRef = useRef(null);
+  const [logoutDropdownPos, setLogoutDropdownPos] = useState({ top: 0, right: 0 });
   const { progress, active, failed, transitionMs, visible, hiding, reset: resetProgress } = useContext(ProgressContext) || { progress: 0, active: false, failed: false, transitionMs: 250, visible:false, hiding:false, reset: () => {} };
   const { debugMessage, logEntries, clearDebug, addDebugEntry } = useContext(DebugContext); // Use DebugContext
   // Floating panels consolidated in custom hook
@@ -2896,39 +2951,81 @@ const Layout = ({ children }) => {
 
   // ✅ ODSTRANĚNO: currentDateTime state přesunut do LiveDateTime komponenty
 
-  const handleLogoutClick = async () => {
-    // Zavřít všechny panely před odhlášením
+  // 🔐 Společný cleanup před jakýmkoli odhlášením
+  const performLogoutCleanup = async () => {
     setTodoOpen(false);
     setNotesOpen(false);
     setNotifOpen(false);
     setDebugOpen(false);
+    setLogoutMenuOpen(false);
 
-    // Uložit současnou pozici pro obnovení po přihlášení
-    try {
-      saveCurrentLocation();
-    } catch (error) {
-    }
-
-    // Uložit poznámky a TODO před odhlášením
-    try {
-      if (flushNotesSave) {
-        flushNotesSave();
-      }
-    } catch (error) {
-    }
-    try {
-      if (flushTasksSave) {
-        await flushTasksSave();
-      }
-    } catch (error) {
-    }
-
-    // Krátká pauza pro dokončení ukládání
-    setTimeout(() => {
-      logout();
-      navigate('/login');
-    }, 100);
+    try { saveCurrentLocation(); } catch (error) {}
+    try { if (flushNotesSave) flushNotesSave(); } catch (error) {}
+    try { if (flushTasksSave) await flushTasksSave(); } catch (error) {}
   };
+
+  // 🔐 Lokální přihlášení: odhlášení z aplikace → login page
+  const handleLogoutClick = async () => {
+    await performLogoutCleanup();
+    await logout();
+    navigate('/login');
+  };
+
+  // 🔐 EntraID: Odejít z aplikace na ERDMS Dashboard (BEZ odhlášení z Entra)
+  const handleGoToDashboard = async () => {
+    await performLogoutCleanup();
+    await logout();
+    window.location.href = 'https://erdms.zachranka.cz/dashboard';
+  };
+
+  // 🔐 EntraID: Plné odhlášení z Entra ID (zruší i Microsoft session)
+  const handleEntraLogout = async () => {
+    let microsoftLogoutUrl = null;
+    try {
+      const currentOrigin = window.location.origin;
+      const response = await fetch('/auth/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ origin: currentOrigin })
+      });
+      if (response.ok) {
+        const data = await response.json();
+        microsoftLogoutUrl = data.logoutUrl;
+        console.log('🔐 EntraID session destroyed, MS logout URL:', microsoftLogoutUrl);
+      } else {
+        console.error('🔐 EntraID logout failed:', response.status);
+      }
+    } catch (error) {
+      console.error('🔐 EntraID logout error:', error);
+    }
+
+    await performLogoutCleanup();
+    await logout();
+    if (microsoftLogoutUrl) {
+      window.location.href = microsoftLogoutUrl;
+    } else {
+      navigate('/login');
+    }
+  };
+  
+  // 🔐 EntraID: Close logout menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (!logoutMenuOpen) return;
+      // Zavřít pokud klik není na dropdown ani na button
+      const isInsideDropdown = logoutMenuRef.current && logoutMenuRef.current.contains(event.target);
+      const isInsideButton = logoutBtnRef.current && logoutBtnRef.current.contains(event.target);
+      if (!isInsideDropdown && !isInsideButton) {
+        setLogoutMenuOpen(false);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [logoutMenuOpen]);
 
   // Pokud se změní uživatel, přepočítej dostupnost draftu, aby se neukazovala cizí "Rozpracovaná".
   useEffect(() => {
@@ -4082,11 +4179,52 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faInfoCircle} />
               </MenuIconLink>
             </SmartTooltip>
-            <SmartTooltip text="Odhlásit se z aplikace" icon="error" preferredPosition="bottom">
-              <LogoutButton type="button" onClick={handleLogoutClick} title="">
-                <FontAwesomeIcon icon={faSignOutAlt} />
-              </LogoutButton>
-            </SmartTooltip>
+            
+            {/* 🔐 Logout – EntraID: dropdown přes portál, Lokální: přímý button */}
+            {authMethod === 'entra_id' ? (
+              <>
+                <SmartTooltip text="Odchod z aplikace" icon="info" preferredPosition="bottom">
+                  <LogoutMenuContainer>
+                    <LogoutButton 
+                      ref={logoutBtnRef}
+                      type="button" 
+                      onClick={() => {
+                        if (!logoutMenuOpen && logoutBtnRef.current) {
+                          const rect = logoutBtnRef.current.getBoundingClientRect();
+                          setLogoutDropdownPos({
+                            top: rect.bottom + 8,
+                            right: window.innerWidth - rect.right
+                          });
+                        }
+                        setLogoutMenuOpen(prev => !prev);
+                      }} 
+                      title=""
+                    >
+                      <FontAwesomeIcon icon={faSignOutAlt} />
+                    </LogoutButton>
+                  </LogoutMenuContainer>
+                </SmartTooltip>
+                {logoutMenuOpen && ReactDOM.createPortal(
+                  <LogoutDropdown ref={logoutMenuRef} $open={true} style={{ position: 'fixed', top: `${logoutDropdownPos.top}px`, right: `${logoutDropdownPos.right}px`, left: 'auto' }}>
+                    <LogoutMenuItem onClick={handleEntraLogout} $danger>
+                      <FontAwesomeIcon icon={faSignOutAlt} />
+                      <span>Odhlásit se z Microsoft 365</span>
+                    </LogoutMenuItem>
+                    <LogoutMenuItem onClick={handleGoToDashboard}>
+                      <FontAwesomeIcon icon={faHome} />
+                      <span>Zpět na ERDMS rozcestník</span>
+                    </LogoutMenuItem>
+                  </LogoutDropdown>,
+                  document.body
+                )}
+              </>
+            ) : (
+              <SmartTooltip text="Odhlásit se" icon="info" preferredPosition="bottom">
+                <LogoutButton type="button" onClick={handleLogoutClick} title="">
+                  <FontAwesomeIcon icon={faSignOutAlt} />
+                </LogoutButton>
+              </SmartTooltip>
+            )}
           </MenuRight>
         </MenuBar>
       )}

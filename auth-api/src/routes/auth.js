@@ -23,6 +23,14 @@ const msalClient = new msal.ConfidentialClientApplication(msalConfig);
 router.get('/login', async (req, res) => {
   console.log('🟢 SERVER: /auth/login endpoint CALLED');
   try {
+    // Získej redirect URL z parametrů (fallback na dashboard)
+    const redirectUrl = req.query.redirect || '/dashboard';
+    console.log('🟢 SERVER: Redirect URL:', redirectUrl);
+    
+    // Zjisti původní origin z query parametru nebo fallback na CLIENT_URL
+    const origin = req.query.origin || process.env.CLIENT_URL;
+    console.log('🟢 SERVER: Origin:', origin);
+    
     // Generuj PKCE code verifier a challenge
     const codeVerifier = crypto.randomBytes(32).toString('base64url');
     const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
@@ -32,8 +40,8 @@ router.get('/login', async (req, res) => {
     const state = crypto.randomBytes(16).toString('base64url');
     console.log('🟢 SERVER: State generated:', state);
     
-    // Ulož code verifier pro pozdější použití
-    pkceStore.set(state, codeVerifier);
+    // Ulož code verifier + redirect URL + origin pro pozdější použití
+    pkceStore.set(state, { codeVerifier, redirectUrl, origin });
     
     // Vyčisti staré verifiery (starší než 10 minut)
     setTimeout(() => pkceStore.delete(state), 10 * 60 * 1000);
@@ -88,12 +96,16 @@ router.get('/callback', async (req, res) => {
 
   try {
     console.log('🟣 SERVER: Looking for PKCE verifier for state:', state);
-    // Získej code verifier ze store
-    const codeVerifier = pkceStore.get(state);
-    if (!codeVerifier) {
+    // Získej code verifier, redirect URL a origin ze store
+    const storeData = pkceStore.get(state);
+    if (!storeData) {
       console.error('🔴 PKCE verifier not found or expired for state:', state);
       return res.redirect(`${process.env.CLIENT_URL}/login?error=invalid_state`);
     }
+    
+    const { codeVerifier, redirectUrl, origin } = storeData;
+    console.log('🟣 SERVER: Retrieved redirect URL:', redirectUrl);
+    console.log('🟣 SERVER: Retrieved origin:', origin);
     
     // Smaž použitý verifier
     pkceStore.delete(state);
@@ -173,10 +185,12 @@ router.get('/callback', async (req, res) => {
     });
     console.log('🟣 SERVER: ✅ Cookie set');
 
-    // Redirect zpět na klienta
-    const redirectUrl = `${process.env.CLIENT_URL}/dashboard`;
-    console.log('🟣 SERVER: 🚀 Redirecting to:', redirectUrl);
-    res.redirect(redirectUrl);
+    // Redirect zpět na klienta - použij uložený origin a redirect URL
+    const finalRedirectUrl = redirectUrl.startsWith('http') 
+      ? redirectUrl 
+      : `${origin}${redirectUrl}`;
+    console.log('🟣 SERVER: 🚀 Redirecting to:', finalRedirectUrl);
+    res.redirect(finalRedirectUrl);
   } catch (error) {
     console.error('Callback error:', error);
     res.redirect(`${process.env.CLIENT_URL}/login?error=auth_failed`);
@@ -190,6 +204,7 @@ router.get('/callback', async (req, res) => {
 router.post('/logout', async (req, res) => {
   try {
     const sessionId = req.cookies.erdms_session;
+    const origin = req.body.origin || POST_LOGOUT_REDIRECT_URI; // Use origin from request or default
     
     if (sessionId) {
       const session = await authService.findSession(sessionId);
@@ -214,8 +229,9 @@ router.post('/logout', async (req, res) => {
     res.clearCookie('erdms_session');
 
     // Microsoft Entra logout URL
-    // Použijeme GET s parametrem post_logout_redirect_uri
-    const logoutUrl = `${msalConfig.auth.authority}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(POST_LOGOUT_REDIRECT_URI)}`;
+    // Použijeme origin + /login jako post_logout_redirect_uri
+    const postLogoutUri = origin.endsWith('/login') ? origin : `${origin}/login`;
+    const logoutUrl = `${msalConfig.auth.authority}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(postLogoutUri)}`;
     
     res.json({ success: true, logoutUrl });
   } catch (error) {
