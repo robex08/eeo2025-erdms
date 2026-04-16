@@ -1516,6 +1516,7 @@ function handle_order_v2_update($input, $config, $queries) {
                             fa_dorucena,
                             fa_castka,
                             fa_cislo_vema,
+                            fa_vema_kod,
                             fa_datum_vystaveni,
                             fa_datum_splatnosti,
                             fa_datum_doruceni,
@@ -1530,7 +1531,10 @@ function handle_order_v2_update($input, $config, $queries) {
                             vytvoril_uzivatel_id,
                             dt_vytvoreni,
                             aktivni
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                        
+                        // 🔍 DEBUG fa_vema_kod
+                        error_log("🔍 [INVOICE CREATE] fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
                         
                         $stmt_insert = $db->prepare($sql_insert);
                         $stmt_insert->execute(array(
@@ -1538,6 +1542,7 @@ function handle_order_v2_update($input, $config, $queries) {
                             isset($faktura['fa_dorucena']) ? (int)$faktura['fa_dorucena'] : 0,
                             $fa_castka,
                             $fa_cislo_vema,
+                            isset($faktura['fa_vema_kod']) ? trim($faktura['fa_vema_kod']) : null,
                             isset($faktura['fa_datum_vystaveni']) ? $faktura['fa_datum_vystaveni'] : null,
                             isset($faktura['fa_datum_splatnosti']) ? $faktura['fa_datum_splatnosti'] : null,
                             isset($faktura['fa_datum_doruceni']) ? $faktura['fa_datum_doruceni'] : null,
@@ -1579,6 +1584,10 @@ function handle_order_v2_update($input, $config, $queries) {
                         
                     } else {
                         // ========== UPDATE existující faktura ==========
+                        
+                        // 🔍 DEBUG fa_vema_kod
+                        error_log("🔍 [INVOICE UPDATE] invoice_id={$faktura['id']}, fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
+                        
                         $update_fields = array();
                         $update_values = array();
                         
@@ -1590,6 +1599,10 @@ function handle_order_v2_update($input, $config, $queries) {
                         if (isset($faktura['fa_cislo_vema'])) {
                             $update_fields[] = 'fa_cislo_vema = ?';
                             $update_values[] = trim($faktura['fa_cislo_vema']);
+                        }
+                        if (isset($faktura['fa_vema_kod'])) {
+                            $update_fields[] = 'fa_vema_kod = ?';
+                            $update_values[] = trim($faktura['fa_vema_kod']);
                         }
                         if (isset($faktura['fa_dorucena'])) {
                             $update_fields[] = 'fa_dorucena = ?';

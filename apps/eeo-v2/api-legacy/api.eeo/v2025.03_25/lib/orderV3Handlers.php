@@ -1985,6 +1985,7 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr WHERE pr.objednavka_id = o.id) as pocet_priloh,
                     NULL as cislo_smlouvy,
                     NULL as fa_cislo_vema,
+                    NULL as fa_vema_kod,
                     'ORDER' as source_type,
                     us_ord.usek_zkr as usek_zkr,
                     COALESCE(u_obj.prijmeni, '') as objednatel_prijmeni,
@@ -2018,6 +2019,7 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
                     0 as pocet_priloh,
                     s.cislo_smlouvy,
                     f.fa_cislo_vema,
+                    f.fa_vema_kod,
                     'INVOICE' as source_type,
                     NULL as usek_zkr,
                     COALESCE(u_fvyt.prijmeni, '') as objednatel_prijmeni,
@@ -3380,7 +3382,7 @@ function handle_orderV3_lp_expand($input, $config) {
             
             // Faktury
             $sql_fa = "
-                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_castka, f.stav, 
+                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_castka, f.stav, 
                        f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
                 FROM " . TBL_FAKTURY . " f
                 WHERE f.objednavka_id IN ($placeholders) AND f.aktivni = 1
@@ -3394,6 +3396,7 @@ function handle_orderV3_lp_expand($input, $config) {
                 $faktury_map[(int)$fa['objednavka_id']][] = [
                     'id' => (int)$fa['id'],
                     'fa_cislo_vema' => $fa['fa_cislo_vema'],
+                    'fa_vema_kod' => $fa['fa_vema_kod'],
                     'fa_castka' => (float)$fa['fa_castka'],
                     'stav' => $fa['stav'],
                     'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
@@ -3580,7 +3583,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
         if (!empty($order_ids)) {
             $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
             $sql_fa = "
-                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_castka, f.stav,
+                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_castka, f.stav,
                        f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
                 FROM " . TBL_FAKTURY . " f
                 WHERE f.objednavka_id IN ($placeholders) AND f.aktivni = 1
@@ -3592,6 +3595,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
                 $faktury_obj_map[(int)$fa['objednavka_id']][] = [
                     'id' => (int)$fa['id'],
                     'fa_cislo_vema' => $fa['fa_cislo_vema'],
+                    'fa_vema_kod' => $fa['fa_vema_kod'],
                     'fa_castka' => (float)$fa['fa_castka'],
                     'stav' => $fa['stav'],
                     'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
@@ -3621,7 +3625,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
 
         // 2) Přímé faktury na smlouvu (bez objednávky)
         $sql_direct = "
-            SELECT f.id, f.fa_cislo_vema, f.fa_castka, f.stav,
+            SELECT f.id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_castka, f.stav,
                    f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
             FROM " . TBL_FAKTURY . " f
             WHERE f.smlouva_id = ? AND f.objednavka_id IS NULL AND f.aktivni = 1
@@ -3634,6 +3638,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
             $direct_faktury[] = [
                 'id' => (int)$fa['id'],
                 'fa_cislo_vema' => $fa['fa_cislo_vema'],
+                'fa_vema_kod' => $fa['fa_vema_kod'],
                 'fa_castka' => (float)$fa['fa_castka'],
                 'stav' => $fa['stav'],
                 'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
