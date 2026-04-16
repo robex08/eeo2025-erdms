@@ -30,6 +30,8 @@ select:hover {
   appearance: none !important;
   -webkit-box-shadow: none !important;
   -moz-box-shadow: none !important;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-size: 0.875rem !important;
 }
 
 /* Speciálně pro vyhledávací pole v tabulce */

@@ -113,7 +113,113 @@ const NotePreview = ({ text }) => {
   );
 };
 
-// 💰 Roční poplatky badge
+// � Scroll indikátor komponenty
+const TableWrapperOuter = styled.div`
+  position: relative;
+`;
+
+const TableWrapperInner = styled.div`
+  overflow-x: auto;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
+  
+  /* Custom scrollbar */
+  &::-webkit-scrollbar { height: 8px; }
+  &::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; min-width: 40px; }
+  &::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
+`;
+
+const ScrollFade = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 8px;
+  width: 36px;
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.35s ease;
+  opacity: ${props => props.$visible ? 1 : 0};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  ${props => props.$side === 'left' ? `
+    left: 0;
+    background: linear-gradient(to left, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  ` : `
+    right: 0;
+    background: linear-gradient(to right, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  `}
+`;
+
+const ScrollChevron = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(51,65,85,0.12);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  ${props => props.$side === 'left' ? `
+    animation: pulseLeft 1.8s ease-in-out infinite;
+    @keyframes pulseLeft {
+      0%, 100% { transform: translateX(0); opacity: 0.7; }
+      50% { transform: translateX(-3px); opacity: 1; }
+    }
+  ` : `
+    animation: pulseRight 1.8s ease-in-out infinite;
+    @keyframes pulseRight {
+      0%, 100% { transform: translateX(0); opacity: 0.7; }
+      50% { transform: translateX(3px); opacity: 1; }
+    }
+  `}
+`;
+
+/* eslint-disable react/display-name */
+const TableScrollWrapper = React.memo(({ children, className }) => {
+  const scrollRef = React.useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf;
+    const check = () => {
+      raf = requestAnimationFrame(() => {
+        const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+        const atStart = el.scrollLeft <= 4;
+        const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+        setCanScrollLeft(hasOverflow && !atStart);
+        setCanScrollRight(hasOverflow && !atEnd);
+      });
+    };
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', check);
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return (
+    <TableWrapperOuter className={className}>
+      <TableWrapperInner ref={scrollRef}>{children}</TableWrapperInner>
+      <ScrollFade $side="left" $visible={canScrollLeft}><ScrollChevron $side="left">‹</ScrollChevron></ScrollFade>
+      <ScrollFade $side="right" $visible={canScrollRight}><ScrollChevron $side="right">›</ScrollChevron></ScrollFade>
+    </TableWrapperOuter>
+  );
+});
+/* eslint-enable react/display-name */
+
+// �💰 Roční poplatky badge
 const InfoIconBadge = styled.span`
   display: inline-flex;
   align-items: center;
@@ -382,14 +488,15 @@ const SearchInput = styled.input`
   padding: 0.875rem 3rem 0.875rem 3rem;
   border: 2px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 0.95rem;
+  font-size: 0.95rem !important;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
   transition: all 0.2s ease;
   background: white;
   
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #94a3b8;
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.1);
   }
   
   &::placeholder {
@@ -707,62 +814,10 @@ const SummaryValue = styled.div`
 `;
 
 // Table styles
-const TableScrollWrapper = styled.div`
-  position: relative;
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-
-  /* Shadow indikátory na okrajích když je možné scrollovat */
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 40px;
-    pointer-events: none;
-    z-index: 10;
-    transition: opacity 0.3s ease;
-  }
-
-  /* Levý shadow - když není na začátku */
-  &::before {
-    left: 0;
-    background: linear-gradient(to right, rgba(0, 0, 0, 0.1), transparent);
-    opacity: ${props => props.$showLeftShadow ? 1 : 0};
-    border-radius: 8px 0 0 8px;
-  }
-
-  /* Pravý shadow - když není na konci */
-  &::after {
-    right: 0;
-    background: linear-gradient(to left, rgba(0, 0, 0, 0.1), transparent);
-    opacity: ${props => props.$showRightShadow ? 1 : 0};
-    border-radius: 0 8px 8px 0;
-  }
-`;
-
 const TableContainer = styled.div`
-  /* Horizontální scrollování když se tabulka nevejde */
-  overflow-x: auto;
-  overflow-y: visible;
+  /* TableScrollWrapper se postará o scrollování */
   position: relative;
-
-  /* Smooth scrolling pro lepší UX */
-  scroll-behavior: smooth;
-
-  /* Skrýt scrollbar - zabránit blikání */
-  &::-webkit-scrollbar {
-    display: none;
-  }
-
-  /* Firefox scrollbar - skrýt */
-  scrollbar-width: none;
-  
-  /* IE a Edge - skrýt */
-  -ms-overflow-style: none;
+  width: 100%;
 `;
 
 const Table = styled.table`
@@ -774,7 +829,7 @@ const Table = styled.table`
 `;
 
 const TableHead = styled.thead`
-  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
 `;
 
 const TableRow = styled.tr`
@@ -821,14 +876,27 @@ const TableHeader = styled.th`
   padding: 0.5rem 0.375rem;
   text-align: center;
   font-weight: 600;
-  color: white;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  color: #334155;
+  border-bottom: 2px solid #cbd5e1;
   cursor: pointer;
   user-select: none;
   position: relative;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  position: sticky;
+  top: 0;
 
   &:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background-color: #e2e8f0;
+  }
+
+  /* Ikona třídění */
+  .sort-icon {
+    margin-left: 0.2rem;
+    font-size: 0.65rem;
   }
 `;
 
@@ -857,15 +925,14 @@ const FloatingHeaderPanel = styled.div`
   z-index: 9999; /* Vysoký z-index pro jistotu viditelnosti */
   transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
   border-top: 2px solid #cbd5e1; /* Světle šedý top border pro oddělení od menu baru */
-  border-bottom: 3px solid #3b82f6;
+  border-bottom: 2px solid #cbd5e1;
   opacity: ${props => props.$visible ? 1 : 0};
   transform: translateY(${props => props.$visible ? '0' : '-10px'});
   pointer-events: ${props => props.$visible ? 'auto' : 'none'};
 `;
 
 const FloatingTableWrapper = styled.div`
-  overflow-x: auto;
-  max-width: 100%;
+  width: 100%;
   padding: 0 1rem; /* Stejný padding jako Container */
   box-sizing: border-box;
   
@@ -899,6 +966,7 @@ const ColumnFilterSelect = styled.select`
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 0.75rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   background: white;
   color: #1e293b;
   transition: all 0.2s ease;
@@ -911,8 +979,8 @@ const ColumnFilterSelect = styled.select`
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #94a3b8;
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.1);
   }
 
   &:disabled {
@@ -953,8 +1021,9 @@ const ColumnFilterInput = styled.input`
   padding: 0.75rem 1rem 0.75rem 2.5rem;
   border: 2px solid #e2e8f0;
   border-radius: 8px;
-  font-size: 0.875rem;
+  font-size: 0.875rem !important;
   font-weight: 500;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
   background: white;
   color: #1e293b;
   transition: all 0.2s ease;
@@ -964,12 +1033,12 @@ const ColumnFilterInput = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #4285f4;
-    box-shadow: 0 0 0 3px rgba(66, 133, 244, 0.1);
+    border-color: #94a3b8;
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.1);
   }
 
   &:hover {
-    border-color: #4285f4;
+    border-color: #94a3b8;
   }
 
   &::placeholder {
@@ -1581,6 +1650,7 @@ const Invoices25List = () => {
   const [selectStates, setSelectStates] = useState({
     fa_typ: false,
     stav: false,
+    floating_stav: false,
     vecna_kontrola: false,
     ma_prilohy: false,
     ma_prilohy_floating: false,
@@ -1590,6 +1660,7 @@ const Invoices25List = () => {
   const [searchStates, setSearchStates] = useState({
     fa_typ: '',
     stav: '',
+    floating_stav: '',
     vecna_kontrola: '',
     ma_prilohy: '',
     ma_prilohy_floating: '',
@@ -1620,6 +1691,13 @@ const Invoices25List = () => {
   // �📊 Sorting state (client-side)
   const [sortField, setSortField] = useState(savedState?.sortField || null);
   const [sortDirection, setSortDirection] = useState(savedState?.sortDirection || 'asc'); // 'asc' nebo 'desc'
+
+  // Sort ikona jako ve StatsReportsPage
+  const sortIcon = (field) => (
+    <span style={{ marginLeft: '0.2rem', fontSize: '0.65rem', opacity: sortField === field ? 1 : 0.3, color: sortField === field ? '#2563eb' : 'inherit' }}>
+      {sortField !== field ? '⇅' : sortDirection === 'asc' ? '↑' : '↓'}
+    </span>
+  );
   
   // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
   const isAdmin = hasPermission && (hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR'));
@@ -2159,6 +2237,7 @@ const Invoices25List = () => {
       const newState = {
         fa_typ: false,
         stav: false,
+        floating_stav: false,
         vecna_kontrola: false,
         ma_prilohy: false,
         ma_prilohy_floating: false,
@@ -2173,6 +2252,7 @@ const Invoices25List = () => {
     setSelectStates({
       fa_typ: false,
       stav: false,
+      floating_stav: false,
       vecna_kontrola: false,
       ma_prilohy: false,
       ma_prilohy_floating: false,
@@ -2408,9 +2488,11 @@ const Invoices25List = () => {
         apiParams.filter_datum_splatnosti = debouncedColumnFilters.datum_splatnosti.trim();
       }
       
-      // Stav faktury - pouze pokud není "Všechny stavy"
-      const stavValue = typeof debouncedColumnFilters.stav === 'object' ? debouncedColumnFilters.stav?.value : debouncedColumnFilters.stav;
-      if (stavValue && stavValue.toString().trim() !== '') {
+      // Stav faktury - multi-select (pole hodnot nebo string)
+      const stavValue = debouncedColumnFilters.stav;
+      if (Array.isArray(stavValue) && stavValue.length > 0) {
+        apiParams.filter_stav = stavValue.join(',');
+      } else if (typeof stavValue === 'string' && stavValue.trim() !== '') {
         apiParams.filter_stav = stavValue;
       }
       
@@ -2862,20 +2944,16 @@ const Invoices25List = () => {
     return [{ value: '', label: 'Vše', nazev: 'Vše' }, ...types];
   }, [invoiceTypes]);
   
-  const stavOptions = useMemo(() => {
-    const options = [
-      { value: '', label: 'Vše' },
-      { value: 'ZAEVIDOVANA', label: 'Zaevidovaná' },
-      { value: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
-      { value: 'V_RESENI', label: 'V řešení' },
-      { value: 'PREDANA_PO', label: 'Předaná PO' },
-      { value: 'K_ZAPLACENI', label: 'K zaplacení' },
-      { value: 'ZAPLACENO', label: 'Zaplaceno' },
-      { value: 'DOKONCENA', label: 'Dokončená' },
-      { value: 'STORNO', label: 'Storno' },
-    ];
-    return options;
-  }, []);
+  const stavOptions = useMemo(() => [
+    { value: 'ZAEVIDOVANA', label: 'Zaevidovaná' },
+    { value: 'VECNA_SPRAVNOST', label: 'Věcná správnost' },
+    { value: 'V_RESENI', label: 'V řešení' },
+    { value: 'PREDANA_PO', label: 'Předaná PO' },
+    { value: 'K_ZAPLACENI', label: 'K zaplacení' },
+    { value: 'ZAPLACENO', label: 'Zaplaceno' },
+    { value: 'DOKONCENA', label: 'Dokončená' },
+    { value: 'STORNO', label: 'Storno' },
+  ], []);
   
   const vecnaKontrolaOptions = useMemo(() => [
     { value: '', label: 'Vše' },
@@ -3931,11 +4009,7 @@ const Invoices25List = () => {
                     onClick={() => handleSort('dt_aktualizace')}
                   >
                     Aktualizováno
-                    {sortField === 'dt_aktualizace' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('dt_aktualizace')}
                   </TableHeader>
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
@@ -3943,69 +4017,42 @@ const Invoices25List = () => {
                     style={{ textAlign: 'center' }}
                   >
                     FA VS/VEMA/pozn.
-                    {sortField === 'cislo_faktury' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('cislo_faktury')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
                     onClick={() => handleSort('fa_typ')}
                   >
                     Typ
-                    {sortField === 'fa_typ' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('fa_typ')}
                   </TableHeader>
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_objednavky')}
-                    style={{ whiteSpace: 'nowrap', textAlign: 'center' }}
+                    style={{ textAlign: 'center' }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <span>Obj/SML/Dodavatel</span>
-                    </div>
-                    {sortField === 'cislo_objednavky' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    Obj/SML/Dodavatel{sortIcon('cislo_objednavky')}
                   </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_doruceni' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_doruceni')}
                   >
                     Doručení
-                    {sortField === 'datum_doruceni' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('datum_doruceni')}
                   </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_vystaveni' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_vystaveni')}
                   >
                     Vystavení
-                    {sortField === 'datum_vystaveni' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('datum_vystaveni')}
                   </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_splatnosti' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_splatnosti')}
                   >
                     Splatnost
-                    {sortField === 'datum_splatnosti' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('datum_splatnosti')}
                   </TableHeader>
                   <TableHeader 
                     className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
@@ -4013,11 +4060,7 @@ const Invoices25List = () => {
                     style={{ textAlign: 'center', minWidth: '180px', width: '180px' }}
                   >
                     Částka
-                    {sortField === 'castka' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('castka')}
                   </TableHeader>
                   <TableHeader 
                     className={`status-column sortable ${sortField === 'status' ? 'active' : ''}`}
@@ -4025,22 +4068,14 @@ const Invoices25List = () => {
                     style={{ textAlign: 'center' }}
                   >
                     Stav
-                    {sortField === 'status' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('status')}
                   </TableHeader>
                   <TableHeader 
                     className={`narrow-column sortable ${sortField === 'vytvoril_uzivatel' ? 'active' : ''}`}
                     onClick={() => handleSort('vytvoril_uzivatel')}
                   >
                     Zaevidoval
-                    {sortField === 'vytvoril_uzivatel' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('vytvoril_uzivatel')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'fa_predana_zam_jmeno' ? 'active' : ''}`}
@@ -4048,22 +4083,14 @@ const Invoices25List = () => {
                     style={{ minWidth: '120px' }}
                   >
                     Předáno
-                    {sortField === 'fa_predana_zam_jmeno' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('fa_predana_zam_jmeno')}
                   </TableHeader>
                   <TableHeader 
                     className={`narrow-column sortable ${sortField === 'potvrdil_vecnou_spravnost_jmeno' ? 'active' : ''}`}
                     onClick={() => handleSort('potvrdil_vecnou_spravnost_jmeno')}
                   >
                     Věcnou provedl
-                    {sortField === 'potvrdil_vecnou_spravnost_jmeno' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('potvrdil_vecnou_spravnost_jmeno')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'vecna_spravnost_potvrzeno' ? 'active' : ''}`}
@@ -4071,22 +4098,14 @@ const Invoices25List = () => {
                     title="Věcná kontrola"
                   >
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
-                    {sortField === 'vecna_spravnost_potvrzeno' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('vecna_spravnost_potvrzeno')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'pocet_priloh' ? 'active' : ''}`}
                     onClick={() => handleSort('pocet_priloh')}
                   >
                     <FontAwesomeIcon icon={faPaperclip} style={{ color: '#64748b' }} />
-                    {sortField === 'pocet_priloh' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('pocet_priloh')}
                   </TableHeader>
                   <TableHeader>
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
@@ -4298,7 +4317,9 @@ const Invoices25List = () => {
                   <TableHeader className="filter-cell">
                     <div className="select-filter-wrapper">
                       <CustomSelect
-                        value={columnFilters.stav || ''}
+                        multiple={true}
+                        isClearable={true}
+                        value={columnFilters.stav || []}
                         onChange={(value) => {
                           setColumnFilters({...columnFilters, stav: value});
                         }}
@@ -7289,7 +7310,8 @@ const Invoices25List = () => {
       {/* 🎯 Floating Header Panel - zobrazí se při rolování dolů - renderuje se přes Portal */}
       {ReactDOM.createPortal(
         <FloatingHeaderPanel $visible={showFloatingHeader}>
-          <FloatingTableWrapper>
+          <TableScrollWrapper>
+            <FloatingTableWrapper>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               {/* Definice šířek sloupců */}
               {columnWidths.length > 0 && (
@@ -7311,113 +7333,70 @@ const Invoices25List = () => {
                     onClick={() => handleSort('dt_aktualizace')}
                   >
                     Aktualizováno
-                    {sortField === 'dt_aktualizace' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('dt_aktualizace')}
                   </TableHeader>
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_faktury')}
                   >
                     FA VS/VEMA/pozn.
-                    {sortField === 'cislo_faktury' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('cislo_faktury')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'fa_typ' ? 'active' : ''}`}
                     onClick={() => handleSort('fa_typ')}
                   >
                     Typ
-                    {sortField === 'fa_typ' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('fa_typ')}
                   </TableHeader>
                   <TableHeader 
                     className={`wide-column sortable ${sortField === 'cislo_objednavky' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_objednavky')}
                     style={{ textAlign: 'center' }}
                   >
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                      <span>Obj/SML/Dodavatel</span>
-                    </div>
-                    {sortField === 'cislo_objednavky' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    Obj/SML/Dodavatel{sortIcon('cislo_objednavky')}
                   </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_doruceni' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_doruceni')}
                   >
                     Doručení
-                    {sortField === 'datum_doruceni' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('datum_doruceni')}
                   </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_vystaveni' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_vystaveni')}
                   >
                     Vystavení
-                    {sortField === 'datum_vystaveni' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('datum_vystaveni')}
                   </TableHeader>
                   <TableHeader 
                     className={`date-column sortable ${sortField === 'datum_splatnosti' ? 'active' : ''}`}
                     onClick={() => handleSort('datum_splatnosti')}
                   >
                     Splatnost
-                    {sortField === 'datum_splatnosti' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('datum_splatnosti')}
                   </TableHeader>
                   <TableHeader 
                     className={`amount-column sortable ${sortField === 'castka' ? 'active' : ''}`}
                     onClick={() => handleSort('castka')}
                   >
                     Částka
-                    {sortField === 'castka' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('castka')}
                   </TableHeader>
                   <TableHeader 
                     className={`status-column sortable ${sortField === 'status' ? 'active' : ''}`}
                     onClick={() => handleSort('status')}
                   >
                     Stav
-                    {sortField === 'status' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('status')}
                   </TableHeader>
                   <TableHeader 
                     className={`narrow-column sortable ${sortField === 'vytvoril_uzivatel' ? 'active' : ''}`}
                     onClick={() => handleSort('vytvoril_uzivatel')}
                   >
                     Zaevidoval
-                    {sortField === 'vytvoril_uzivatel' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('vytvoril_uzivatel')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'fa_predana_zam_jmeno' ? 'active' : ''}`}
@@ -7425,22 +7404,14 @@ const Invoices25List = () => {
                     style={{ minWidth: '120px' }}
                   >
                     Předáno
-                    {sortField === 'fa_predana_zam_jmeno' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('fa_predana_zam_jmeno')}
                   </TableHeader>
                   <TableHeader 
                     className={`narrow-column sortable ${sortField === 'potvrdil_vecnou_spravnost_jmeno' ? 'active' : ''}`}
                     onClick={() => handleSort('potvrdil_vecnou_spravnost_jmeno')}
                   >
                     Věcnou provedl
-                    {sortField === 'potvrdil_vecnou_spravnost_jmeno' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('potvrdil_vecnou_spravnost_jmeno')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'vecna_spravnost_potvrzeno' ? 'active' : ''}`}
@@ -7448,22 +7419,14 @@ const Invoices25List = () => {
                     title="Věcná kontrola"
                   >
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
-                    {sortField === 'vecna_spravnost_potvrzeno' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('vecna_spravnost_potvrzeno')}
                   </TableHeader>
                   <TableHeader 
                     className={`sortable ${sortField === 'pocet_priloh' ? 'active' : ''}`}
                     onClick={() => handleSort('pocet_priloh')}
                   >
                     <FontAwesomeIcon icon={faPaperclip} style={{ color: '#64748b' }} />
-                    {sortField === 'pocet_priloh' && (
-                      <span className="sort-icon">
-                        <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
-                      </span>
-                    )}
+                    {sortIcon('pocet_priloh')}
                   </TableHeader>
                   <TableHeader>
                     <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
@@ -7671,7 +7634,9 @@ const Invoices25List = () => {
                   <TableHeader className="filter-cell">
                     <div className="select-filter-wrapper">
                       <CustomSelect
-                        value={columnFilters.stav || ''}
+                        multiple={true}
+                        isClearable={true}
+                        value={columnFilters.stav || []}
                         onChange={(value) => {
                           setColumnFilters({...columnFilters, stav: value});
                         }}
@@ -7836,6 +7801,7 @@ const Invoices25List = () => {
               </TableHead>
             </table>
           </FloatingTableWrapper>
+          </TableScrollWrapper>
         </FloatingHeaderPanel>,
         document.body
       )}

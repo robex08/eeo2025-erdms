@@ -41,6 +41,7 @@ const CustomSelectButton = styled.div`
   border: 2px solid ${props => props.hasError ? '#dc2626' : props.$active ? '#f59e0b' : '#e2e8f0'};
   border-radius: 8px;
   font-size: 0.95rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   background: ${props => props.hasError ? '#fee2e2' : (props.disabled ? '#f9fafb' : (props.$active ? '#fffbeb' : '#ffffff'))};
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
   color: ${props => {
@@ -115,6 +116,7 @@ const CustomSelectDropdown = styled.div`
   max-height: 300px;
   overflow-y: auto;
   min-width: 200px;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Prevent text selection while scrolling */
   user-select: none;
@@ -153,6 +155,7 @@ const CustomSelectOption = styled.div`
   padding: 0.75rem;
   cursor: pointer;
   font-size: 0.875rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   border-bottom: 1px solid #f3f4f6;
   color: #1f2937;
   font-weight: 400; /* Normal font pro všechny možnosti */
@@ -237,11 +240,15 @@ const SelectedValue = styled.span`
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-transform: none;
+  letter-spacing: normal;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-size: inherit;
   color: ${props => {
     if (props.disabled) return '#6b7280';
     return props.isEmpty ? '#9ca3af' : '#1f2937';
   }};
-  font-weight: ${props => props.disabled ? '400' : (props.isEmpty ? '400' : '700')};
+  font-weight: ${props => props.disabled ? '400' : (props.isEmpty ? '400' : '600')};
 `;
 
 const TwoLineLabel = styled.div`
@@ -476,12 +483,13 @@ const CustomSelect = ({
 
   const displayValue = multiple
     ? (Array.isArray(value) && value.length > 0
-        ? value.map(val => {
-            const option = options.find(opt => (opt.id || opt.kod) === val);
-            // Pro zobrazení v zavřeném selectu nechceme nové řádky → nahradit za mezeru
-            const rawLabel = option ? (option.label || option.cislo_lp || option.nazev || val) : val;
-            return typeof rawLabel === 'string' ? rawLabel.replace(/\s*\n\s*/g, ' ') : String(rawLabel);
-          }).join(', ')
+        ? (value.length === 1
+            ? (() => {
+                const option = options.find(opt => (opt.id || opt.kod || opt.value) === value[0]);
+                const rawLabel = option ? (option.label || option.cislo_lp || option.nazev || value[0]) : value[0];
+                return typeof rawLabel === 'string' ? rawLabel.replace(/\s*\n\s*/g, ' ') : String(rawLabel);
+              })()
+            : `Vybráno: ${value.length}`)
         : placeholder)
     : (selectedOption ? getOptionLabel(selectedOption, field) : placeholder);
 
@@ -848,7 +856,14 @@ const CustomSelect = ({
         }}>
           {React.cloneElement(icon, { size: 16 })}
         </span>}
-        <SelectedValue isEmpty={multiple ? !hasValue : !selectedOption} disabled={disabled}>
+        <SelectedValue isEmpty={multiple ? !hasValue : !selectedOption} disabled={disabled} title={
+          multiple && Array.isArray(value) && value.length > 1
+            ? value.map(val => {
+                const opt = options.find(o => (o.id || o.user_id || o.value || o.kod) === val);
+                return opt ? (opt.label || opt.nazev || opt.cislo_lp || String(val)) : String(val);
+              }).join('\n')
+            : undefined
+        }>
           {displayValue}
         </SelectedValue>
         {isClearable && !disabled && hasValue && (
@@ -998,7 +1013,7 @@ const CustomSelect = ({
               }
 
               const isSelected = multiple
-                ? (Array.isArray(value) ? value.includes(option.id || option.kod || option) : false)
+                ? (Array.isArray(value) ? value.includes(option.id || option.user_id || option.value || option.kod || option) : false)
                 : field === 'statusFilter'
                 ? ((option.kod_stavu || option.kod) === value || option === value)
                 : field === 'pageSize'
