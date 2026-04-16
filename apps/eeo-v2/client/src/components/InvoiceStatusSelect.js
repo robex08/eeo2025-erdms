@@ -51,6 +51,7 @@ const StatusButton = styled.button`
   padding: 0.375rem 0.75rem;
   font-size: 0.9rem;
   font-weight: 400;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: -0.01em;
   border: 1px solid;
   border-radius: 6px;
@@ -111,6 +112,7 @@ const Dropdown = styled.div`
   box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   outline: none;
   animation: fadeIn 0.1s;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   
   /* Pozice se nastaví dynamicky pomocí inline style */
   
@@ -162,6 +164,7 @@ const DropdownHeader = styled.div`
   padding: 0.5rem 0.75rem;
   font-size: 0.75rem;
   font-weight: 600;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   color: #9ca3af;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -184,6 +187,7 @@ const StatusOption = styled.button`
   margin-top: ${props => props.$hasBorder ? '0.25rem' : '0'};
   font-size: 0.9rem;
   font-weight: 400;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: -0.01em;
   
   &:hover {
@@ -205,6 +209,7 @@ const StatusOptionContent = styled.div`
 const StatusOptionLabel = styled.p`
   font-size: 0.9rem;
   font-weight: 400;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   color: ${props => props.$cancelled ? '#6b7280' : '#111827'};
   text-decoration: ${props => props.$cancelled ? 'line-through' : 'none'};
   margin: 0;
@@ -214,6 +219,7 @@ const StatusOptionLabel = styled.p`
 const StatusOptionDesc = styled.p`
   font-size: 0.8rem;
   font-weight: 400;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   color: #6b7280;
   margin: 0.125rem 0 0 0;
   line-height: 1.25;

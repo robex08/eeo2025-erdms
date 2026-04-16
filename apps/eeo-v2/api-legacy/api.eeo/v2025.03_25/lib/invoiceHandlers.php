@@ -1884,11 +1884,29 @@ function handle_invoices25_list($input, $config, $queries) {
         // Filtr: filter_stav (sloupcový filtr stavu workflow)
         // POZNÁMKA: Toto je sloupcový filtr, ne dashboard filter_status!
         // Podporuje nové workflow stavy: ZAEVIDOVANA, VECNA_SPRAVNOST, V_RESENI, PREDANA_PO, K_ZAPLACENI, ZAPLACENO, DOKONCENA, STORNO
+        // Podporuje multi-value: comma-separated hodnoty (např. "ZAPLACENO,STORNO")
         if (isset($filters['filter_stav']) && !empty($filters['filter_stav'])) {
-            $filter_stav = strtoupper(trim($filters['filter_stav']));
+            $filter_stav_raw = strtoupper(trim($filters['filter_stav']));
             
             // Workflow stavy - přesná shoda ENUM hodnoty
             $valid_workflow_states = array('ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI', 'ZAPLACENO', 'DOKONCENA', 'STORNO');
+
+            // Podpora multi-value: comma-separated
+            if (strpos($filter_stav_raw, ',') !== false) {
+                $stav_arr = array_filter(array_map('trim', explode(',', $filter_stav_raw)));
+                $valid_arr = array_filter($stav_arr, function($s) use ($valid_workflow_states) {
+                    return in_array($s, $valid_workflow_states);
+                });
+                if (!empty($valid_arr)) {
+                    $placeholders = implode(',', array_fill(0, count($valid_arr), '?'));
+                    $where_conditions[] = "f.stav IN ($placeholders)";
+                    foreach ($valid_arr as $s) {
+                        $params[] = $s;
+                    }
+                    error_log("Invoices25 LIST: Applying filter_stav multi = " . implode(',', $valid_arr));
+                }
+            } else {
+            $filter_stav = $filter_stav_raw;
             if (in_array($filter_stav, $valid_workflow_states)) {
                 $where_conditions[] = 'f.stav = ?';
                 $params[] = $filter_stav;
@@ -1922,6 +1940,7 @@ function handle_invoices25_list($input, $config, $queries) {
                         break;
                 }
             }
+            } // end else (single value)
         }
         
         // Filtr: filter_vytvoril_uzivatel (uživatel který fakturu vytvořil - hledá v celém jméně)

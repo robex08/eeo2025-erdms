@@ -1002,10 +1002,8 @@ const TableWrapperOuter = styled.div`
 const ScrollFade = styled.div`
   position: absolute;
   top: 0;
-  right: 0;
   bottom: 8px;
   width: 36px;
-  background: linear-gradient(to right, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
   pointer-events: none;
   z-index: 5;
   transition: opacity 0.35s ease;
@@ -1013,6 +1011,13 @@ const ScrollFade = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
+  ${props => props.$side === 'left' ? `
+    left: 0;
+    background: linear-gradient(to left, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  ` : `
+    right: 0;
+    background: linear-gradient(to right, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  `}
 `;
 
 const ScrollChevron = styled.span`
@@ -1026,17 +1031,26 @@ const ScrollChevron = styled.span`
   color: #475569;
   font-size: 13px;
   font-weight: 700;
-  animation: pulseRight 1.8s ease-in-out infinite;
-  @keyframes pulseRight {
-    0%, 100% { transform: translateX(0); opacity: 0.7; }
-    50% { transform: translateX(3px); opacity: 1; }
-  }
+  ${props => props.$side === 'left' ? `
+    animation: pulseLeft 1.8s ease-in-out infinite;
+    @keyframes pulseLeft {
+      0%, 100% { transform: translateX(0); opacity: 0.7; }
+      50% { transform: translateX(-3px); opacity: 1; }
+    }
+  ` : `
+    animation: pulseRight 1.8s ease-in-out infinite;
+    @keyframes pulseRight {
+      0%, 100% { transform: translateX(0); opacity: 0.7; }
+      50% { transform: translateX(3px); opacity: 1; }
+    }
+  `}
 `;
 
 /* eslint-disable react/display-name */
 const TableWrapper = React.memo(({ children, style, className }) => {
   const scrollRef = React.useRef(null);
-  const [hint, setHint] = React.useState(false);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
 
   React.useEffect(() => {
     const el = scrollRef.current;
@@ -1045,8 +1059,10 @@ const TableWrapper = React.memo(({ children, style, className }) => {
     const check = () => {
       raf = requestAnimationFrame(() => {
         const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+        const atStart = el.scrollLeft <= 4;
         const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
-        setHint(hasOverflow && !atEnd);
+        setCanScrollLeft(hasOverflow && !atStart);
+        setCanScrollRight(hasOverflow && !atEnd);
       });
     };
     check();
@@ -1063,7 +1079,8 @@ const TableWrapper = React.memo(({ children, style, className }) => {
   return (
     <TableWrapperOuter className={className}>
       <TableWrapperInner ref={scrollRef} style={style}>{children}</TableWrapperInner>
-      <ScrollFade $visible={hint}><ScrollChevron>›</ScrollChevron></ScrollFade>
+      <ScrollFade $side="left" $visible={canScrollLeft}><ScrollChevron $side="left">‹</ScrollChevron></ScrollFade>
+      <ScrollFade $side="right" $visible={canScrollRight}><ScrollChevron $side="right">›</ScrollChevron></ScrollFade>
     </TableWrapperOuter>
   );
 });
