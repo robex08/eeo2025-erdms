@@ -1776,7 +1776,7 @@ function handle_invoices25_list($input, $config, $queries) {
             $params[] = (int)$filters['fa_dorucena'];
         }
 
-        // Filtr: fa_cislo_vema + fa_poznamka (partial match, bez diakritiky, case-insensitive)
+        // Filtr: fa_cislo_vema + fa_vema_kod + fa_poznamka (partial match, bez diakritiky, case-insensitive)
         if (isset($filters['fa_cislo_vema']) && trim($filters['fa_cislo_vema']) !== '') {
             $search_raw = trim($filters['fa_cislo_vema']);
             $search_norm = mb_strtolower(removeDiacritics($search_raw), 'UTF-8');
@@ -1786,8 +1786,11 @@ function handle_invoices25_list($input, $config, $queries) {
                 "  LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\n" .
                 "    f.fa_cislo_vema, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s')) LIKE ? OR\n" .
                 "  LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\n" .
+                "    f.fa_vema_kod, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s')) LIKE ? OR\n" .
+                "  LOWER(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(\n" .
                 "    f.fa_poznamka, 'á','a'), 'č','c'), 'ď','d'), 'é','e'), 'í','i'), 'ň','n'), 'ó','o'), 'ř','r'), 'š','s')) LIKE ?\n" .
                 ")";
+            $params[] = $search_like;
             $params[] = $search_like;
             $params[] = $search_like;
         }
