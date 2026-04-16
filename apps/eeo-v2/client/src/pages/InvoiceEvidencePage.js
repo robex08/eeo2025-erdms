@@ -1988,6 +1988,7 @@ export default function InvoiceEvidencePage() {
     order_id: orderId || '',
     smlouva_id: null,
     fa_cislo_vema: '',
+    fa_vema_kod: '',
     fa_typ: 'BEZNA',
     fa_datum_doruceni: formatDateForPicker(new Date()),
     fa_datum_vystaveni: '',
@@ -2612,6 +2613,7 @@ export default function InvoiceEvidencePage() {
             order_id: invoiceData.objednavka_id || '',
             smlouva_id: invoiceData.smlouva_id || null,
             fa_cislo_vema: invoiceData.fa_cislo_vema || '',
+            fa_vema_kod: invoiceData.fa_vema_kod || '',
             fa_typ: invoiceData.fa_typ || 'BEZNA',
             fa_datum_doruceni: formatDateForPicker(invoiceData.fa_datum_doruceni),
             fa_datum_vystaveni: formatDateForPicker(invoiceData.fa_datum_vystaveni),
@@ -3359,12 +3361,12 @@ export default function InvoiceEvidencePage() {
       order_id: faktura.objednavka_id || '',
       smlouva_id: faktura.smlouva_id || null,
       fa_cislo_vema: faktura.fa_cislo_vema || '',
+      fa_vema_kod: faktura.fa_vema_kod || '',
       fa_typ: faktura.fa_typ || 'BEZNA',
       fa_datum_vystaveni: formatDateForPicker(faktura.fa_datum_vystaveni),
       fa_datum_splatnosti: formatDateForPicker(faktura.fa_datum_splatnosti),
       fa_datum_doruceni: formatDateForPicker(faktura.fa_datum_doruceni),
       fa_castka: faktura.fa_castka || '',
-      fa_variabilni_symbol: faktura.fa_variabilni_symbol || '',
       fa_poznamka: faktura.fa_poznamka || '',
       fa_predana_zam_id: faktura.fa_predana_zam_id || null,
       fa_datum_predani_zam: formatDateForPicker(faktura.fa_datum_predani_zam),
@@ -3798,6 +3800,7 @@ export default function InvoiceEvidencePage() {
         order_id: formData.order_id || null,
         smlouva_id: formData.smlouva_id || null,
         fa_cislo_vema: formData.fa_cislo_vema,
+        fa_vema_kod: formData.fa_vema_kod || '',
         fa_typ: formData.fa_typ || 'BEZNA',
         fa_datum_vystaveni: formData.fa_datum_vystaveni,
         fa_datum_splatnosti: formData.fa_datum_splatnosti || null,
@@ -4614,6 +4617,7 @@ export default function InvoiceEvidencePage() {
           objednavka_id: formData.order_id || null,
           smlouva_id: formData.smlouva_id || null,
           fa_cislo_vema: formData.fa_cislo_vema,
+          fa_vema_kod: formData.fa_vema_kod || '',
           fa_typ: formData.fa_typ || 'BEZNA',
           fa_datum_vystaveni: formData.fa_datum_vystaveni,
           fa_datum_splatnosti: formData.fa_datum_splatnosti || null,
@@ -5098,6 +5102,7 @@ export default function InvoiceEvidencePage() {
         order_id: '',
         smlouva_id: null,
         fa_cislo_vema: '',
+        fa_vema_kod: '',
         fa_typ: 'BEZNA',
         fa_datum_doruceni: formatDateForPicker(new Date()),
         fa_datum_vystaveni: '',
@@ -5816,6 +5821,7 @@ export default function InvoiceEvidencePage() {
                         order_id: '',
                         smlouva_id: null,
                         fa_cislo_vema: '',
+                        fa_vema_kod: '',
                         fa_typ: 'BEZNA',
                         fa_datum_doruceni: formatDateForPicker(new Date()),
                         fa_datum_vystaveni: '',
@@ -6316,8 +6322,8 @@ export default function InvoiceEvidencePage() {
               </FieldGroup>
             </FieldRow>
 
-            {/* GRID 3x - ŘÁDEK 3: Typ faktury | Variabilní symbol | Částka vč. DPH */}
-            <FieldRow $columns="minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)" $gap="1rem">
+            {/* GRID 4x - ŘÁDEK 3: Typ faktury | Variabilní symbol | VEMA číslo | Částka vč. DPH */}
+            <FieldRow $columns="minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)" $gap="1rem">
               <FieldGroup>
                 <FieldLabel>
                   Typ faktury <RequiredStar>*</RequiredStar>
@@ -6454,6 +6460,21 @@ export default function InvoiceEvidencePage() {
                     </div>
                   </div>
                 )}
+              </FieldGroup>
+
+              <FieldGroup>
+                <FieldLabel>
+                  <span>VEMA číslo</span>
+                </FieldLabel>
+                <Input
+                  type="text"
+                  name="fa_vema_kod"
+                  value={formData.fa_vema_kod}
+                  onChange={handleInputChange}
+                  disabled={!isInvoiceEditable || loading}
+                  placeholder="volitelné"
+                  style={{ fontWeight: formData.fa_vema_kod ? '600' : '400' }}
+                />
               </FieldGroup>
 
               <FieldGroup>
@@ -8186,6 +8207,7 @@ export default function InvoiceEvidencePage() {
                     setFormData({
                       order_id: shouldResetEntity ? '' : currentOrderId,
                       smlouva_id: shouldResetEntity ? null : currentSmlouvaId,
+                      fa_vema_kod: '',
                       fa_cislo_vema: '',
                       fa_typ: 'BEZNA',
                       fa_datum_doruceni: formatDateForPicker(new Date()),

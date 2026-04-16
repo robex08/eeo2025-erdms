@@ -1128,6 +1128,7 @@ export async function createInvoiceWithAttachmentV2({
   file,
   klasifikace = null, // Klasifikace přílohy (FAKTURA_TYP)
   fa_cislo_vema,
+  fa_vema_kod = null,
   fa_typ = 'BEZNA',
   fa_datum_vystaveni,
   fa_castka,
@@ -1183,6 +1184,10 @@ export async function createInvoiceWithAttachmentV2({
     formData.append('fa_castka', String(fa_castka));
 
     // Volitelné fieldy
+    if (fa_vema_kod) {
+      formData.append('fa_vema_kod', String(fa_vema_kod));
+    }
+    
     if (fa_datum_splatnosti) {
       formData.append('fa_datum_splatnosti', fa_datum_splatnosti);
     }
@@ -1325,6 +1330,7 @@ export async function createInvoiceV2({
   order_id,
   smlouva_id = null,
   fa_cislo_vema,
+  fa_vema_kod = null,
   fa_typ = 'BEZNA',
   fa_datum_vystaveni,
   fa_castka,
@@ -1374,6 +1380,10 @@ export async function createInvoiceV2({
     };
 
     // Volitelné fieldy
+    if (fa_vema_kod) {
+      payload.fa_vema_kod = String(fa_vema_kod);
+    }
+    
     if (fa_datum_splatnosti) {
       payload.fa_datum_splatnosti = fa_datum_splatnosti;
     }

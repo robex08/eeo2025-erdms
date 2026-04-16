@@ -4342,7 +4342,7 @@ function OrderForm25() {
     const referrer = document.referrer;
     if (referrer) {
       if (referrer.includes('/orders25-list-v3')) return '/orders25-list-v3';
-      if (referrer.includes('/faktury') || referrer.includes('/invoices')) return '/faktury';
+      if (referrer.includes('/invoices25-list') || referrer.includes('/faktury') || referrer.includes('/invoices')) return '/invoices25-list';
       if (referrer.includes('/orders25-list')) return '/orders25-list';
     }
     
@@ -5432,6 +5432,7 @@ function OrderForm25() {
       fa_typ: 'BEZNA', // ✅ Výchozí typ faktury
       fa_castka: '',
       fa_cislo_vema: '',
+      fa_vema_kod: '',
       fa_strediska_kod: [], // ✅ Správný název pole pro střediska
       fa_poznamka: '',
       fa_splatnost: ''
@@ -7506,7 +7507,7 @@ function OrderForm25() {
   const shouldLockPhase4to6Sections = isFieldDisabled(potvrzeniState);
 
   const fakturaceState = allSectionStates.fakturace;
-  const isFakturaceLockedPhase7 = !fakturaceState.enabled && (currentPhase >= 8 || hasWorkflowState(formData.stav_workflow_kod, 'FAKTURACE'));
+  const isFakturaceLockedPhase7 = !fakturaceState.enabled && currentPhase >= 7;
   const shouldLockFaktury = !fakturaceState.enabled;
 
   // ❌ ODSTRANĚNO: vecnaSpravnostState - refaktorováno na per-invoice
@@ -8686,6 +8687,7 @@ function OrderForm25() {
         fa_dorucena: 1,
         fa_castka: '',
         fa_cislo_vema: '',
+        fa_vema_kod: '',
         fa_strediska_kod: formData.strediska_kod || [],
         fa_splatnost: '',
         fa_poznamka: '',
@@ -8821,6 +8823,7 @@ function OrderForm25() {
       fa_typ: 'BEZNA',
       fa_castka: '', // 🔥 Prázdné - uživatel vyplní sám
       fa_cislo_vema: '',
+      fa_vema_kod: '',
       fa_strediska_kod: formData.strediska_kod || [],
       fa_poznamka: '',
       fa_splatnost: '',
@@ -9058,6 +9061,7 @@ function OrderForm25() {
       // Připrav data pro API update
       const updateData = {
         fa_cislo_vema: fakturaFormData.fa_cislo_vema,
+        fa_vema_kod: fakturaFormData.fa_vema_kod || '',
         fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || fakturaFormData.fa_datum_doruceni,
         fa_castka: fakturaFormData.fa_castka,
         fa_datum_splatnosti: fakturaFormData.fa_splatnost,
@@ -9116,6 +9120,7 @@ function OrderForm25() {
         fa_typ: 'BEZNA',
         fa_castka: '',
         fa_cislo_vema: '',
+        fa_vema_kod: '',
         fa_strediska_kod: formData.strediska_kod || [],
         fa_poznamka: '',
         fa_splatnost: '',
@@ -9430,6 +9435,7 @@ function OrderForm25() {
       fa_typ: faktura.fa_typ || 'BEZNA',
       fa_castka: faktura.fa_castka || '', // 🔥 Neauto-vyplňovat při editaci
       fa_cislo_vema: faktura.fa_cislo_vema || '',
+      fa_vema_kod: faktura.fa_vema_kod || '',
       fa_strediska_kod: strediskaArray,
       fa_poznamka: faktura.fa_poznamka || '',
       fa_splatnost: faktura.fa_splatnost || (faktura.fa_datum_splatnosti ? faktura.fa_datum_splatnosti.split(' ')[0] : ''), // ✅ DB -> FE: fa_datum_splatnosti -> fa_splatnost
@@ -9452,6 +9458,7 @@ function OrderForm25() {
       fa_typ: 'BEZNA',
       fa_castka: '', // 🔥 Prázdné - uživatel vyplní sám
       fa_cislo_vema: '',
+      fa_vema_kod: '',
       fa_strediska_kod: formData.strediska_kod || [],
       fa_poznamka: '',
       fa_splatnost: '',
@@ -9657,6 +9664,7 @@ function OrderForm25() {
         order_id: orderId,
         fa_typ: faktura.fa_typ || faktura.fa_typ_faktury || 'BEZNA', // ✅ Typ faktury (správný název sloupce)
         fa_cislo_vema: faktura.fa_cislo_vema,
+        fa_vema_kod: faktura.fa_vema_kod || '',
         fa_datum_vystaveni: faktura.fa_datum_doruceni,
         fa_castka: faktura.fa_castka,
         fa_datum_splatnosti: faktura.fa_splatnost || null,
@@ -9756,6 +9764,7 @@ function OrderForm25() {
         fa_dorucena: 1, // ✅ Boolean flag
         fa_castka: '', // 🔥 Prázdné - uživatel vyplní sám
         fa_cislo_vema: '',
+        fa_vema_kod: '',
         fa_strediska_kod: formData.strediska_kod || [],
         fa_poznamka: '',
         fa_splatnost: '',
@@ -9801,6 +9810,7 @@ function OrderForm25() {
         fa_dorucena: 1,
         fa_castka: '',
         fa_cislo_vema: '',
+        fa_vema_kod: '',
         fa_strediska_kod: Array.isArray(formData.strediska_kod) ? formData.strediska_kod : [],
         fa_poznamka: '',
         fa_splatnost: '',
@@ -9830,6 +9840,7 @@ function OrderForm25() {
         fa_dorucena: 1,
         fa_castka: '',
         fa_cislo_vema: '',
+        fa_vema_kod: '',
         fa_strediska_kod: formData.strediska_kod || [],
         fa_poznamka: '',
         fa_splatnost: '',
@@ -11330,6 +11341,7 @@ function OrderForm25() {
             id: fakturaId,                                                    // ✅ POSLAT ID - pokud je NULL, BE vytvoří novou, jinak UPDATE
             fa_castka: String(parseFloat(faktura.fa_castka) || 0),           // ✅ V2 API: VŽDY STRING pro přesnost!
             fa_cislo_vema: faktura.fa_cislo_vema || '',                       // POVINNÉ - číslo faktury (může být '')
+            fa_vema_kod: faktura.fa_vema_kod || '',                             // VEMA číslo
             fa_dorucena: 1,                                                   // POVINNÉ - 0 nebo 1 (boolean)
             // 🔥 FIX: Použít lokální české datum místo UTC
             fa_datum_vystaveni: faktura.fa_datum_vystaveni || (() => {
@@ -25224,7 +25236,7 @@ function OrderForm25() {
 
                     <SectionControls>
                       {/* ❌ Nezobrazovat tlačítko odemknutí když je globální lock (shouldLockAllSections) */}
-                      {isFakturaceLockedPhase7 && !shouldLockAllSections && canManageInvoices && (
+                      {isFakturaceLockedPhase7 && !shouldLockAllSections && (canManageInvoices || canUnlockAnything) && (
                         <UnlockButton
                           onClick={(e) => {
                             e.stopPropagation();
@@ -25262,6 +25274,7 @@ function OrderForm25() {
                                 fa_dorucena: 1,
                                 fa_castka: null, // Nepovinné pro pokladnu
                                 fa_cislo_vema: '', // Nepovinné pro pokladnu
+                                fa_vema_kod: '',
                                 fa_strediska_kod: formData.strediska_kod || [],
                                 fa_splatnost: null, // Nepovinné pro pokladnu
                                 fa_poznamka: '',
@@ -25409,6 +25422,7 @@ function OrderForm25() {
                             fa_dorucena: 1,
                             fa_castka: '',
                             fa_cislo_vema: '',
+                            fa_vema_kod: '',
                             fa_strediska_kod: formData.strediska_kod || [],
                             fa_splatnost: '',
                             fa_poznamka: '',
@@ -25718,6 +25732,7 @@ function OrderForm25() {
                                             fa_dorucena: 1, // Boolean flag
                                             fa_castka: predpokladanaCastka,
                                             fa_cislo_vema: '',
+                                            fa_vema_kod: '',
                                             fa_strediska_kod: formData.strediska_kod || [],
                                             fa_poznamka: '',
                                             fa_splatnost: ''
@@ -25826,8 +25841,8 @@ function OrderForm25() {
                                 </FormGroup>
                               </FormRow>
 
-                              {/* Řádek 2: Typ faktury | Variabilní symbol | Částka */}
-                              <FormRow style={{gridTemplateColumns: '1fr 1fr 1fr'}}>
+                              {/* Řádek 2: Typ faktury | Variabilní symbol | VEMA číslo | Částka */}
+                              <FormRow style={{gridTemplateColumns: '1fr 1fr 1fr 1fr'}}>
                                 <FormGroup data-custom-select>
                                   <LabelWithClear>
                                     <LabelText required>Typ faktury</LabelText>
@@ -25895,6 +25910,29 @@ function OrderForm25() {
                                       required
                                       placeholder="12345678"
                                       hasIcon
+                                    />
+                                  </InputWithIcon>
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label>VEMA číslo</Label>
+                                  <InputWithIcon hasIcon>
+                                    <FontAwesomeIcon icon={faHashtag} />
+                                    <Input
+                                      type="text"
+                                      value={faktura.fa_vema_kod || ''}
+                                      disabled={shouldLockFaktury}
+                                      onChange={(e) => {
+                                        const updatedFaktury = formData.faktury.map(f =>
+                                          f.id === faktura.id
+                                            ? { ...f, fa_vema_kod: e.target.value, _isNew: false }
+                                            : f
+                                        );
+                                        updateFaktury(updatedFaktury);
+                                      }}
+                                      placeholder="volitelné"
+                                      hasIcon
+                                      style={{ fontWeight: faktura.fa_vema_kod ? '600' : '400' }}
                                     />
                                   </InputWithIcon>
                                 </FormGroup>
@@ -26496,6 +26534,7 @@ function OrderForm25() {
                                   fa_dorucena: 1,
                                   fa_castka: '',
                                   fa_cislo_vema: '',
+                                  fa_vema_kod: '',
                                   fa_strediska_kod: Array.isArray(formData.strediska_kod) ? formData.strediska_kod : [],
                                   fa_poznamka: '',
                                   fa_splatnost: '',
@@ -26526,6 +26565,7 @@ function OrderForm25() {
                                   fa_dorucena: 1,
                                   fa_castka: '',
                                   fa_cislo_vema: '',
+                                  fa_vema_kod: '',
                                   fa_strediska_kod: formData.strediska_kod || [],
                                   fa_poznamka: '',
                                   fa_splatnost: '',

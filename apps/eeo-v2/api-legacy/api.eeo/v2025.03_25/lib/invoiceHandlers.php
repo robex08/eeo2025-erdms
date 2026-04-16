@@ -263,6 +263,7 @@ function handle_invoices25_create($input, $config, $queries) {
             fa_zaplacena,
             fa_castka,
             fa_cislo_vema,
+            fa_vema_kod,
             fa_typ,
             fa_datum_vystaveni,
             fa_datum_splatnosti,
@@ -284,7 +285,7 @@ function handle_invoices25_create($input, $config, $queries) {
             dt_aktualizace,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -349,6 +350,7 @@ function handle_invoices25_create($input, $config, $queries) {
         $vecna_spravnost_poznamka = isset($input['vecna_spravnost_poznamka']) ? $input['vecna_spravnost_poznamka'] : null;
         $vecna_spravnost_potvrzeno = isset($input['vecna_spravnost_potvrzeno']) ? (int)$input['vecna_spravnost_potvrzeno'] : 0;
         
+        $fa_vema_kod = isset($input['fa_vema_kod']) ? trim($input['fa_vema_kod']) : null;
         $rozsirujici_data = isset($input['rozsirujici_data']) ? json_encode($input['rozsirujici_data']) : null;
         $smlouva_id = isset($input['smlouva_id']) && !empty($input['smlouva_id']) ? (int)$input['smlouva_id'] : null;
         
@@ -362,6 +364,7 @@ function handle_invoices25_create($input, $config, $queries) {
             $fa_zaplacena,
             $fa_castka,
             $fa_cislo_vema,
+            $fa_vema_kod,
             $fa_typ,
             $fa_datum_vystaveni,
             $fa_datum_splatnosti,
@@ -513,6 +516,10 @@ function handle_invoices25_update($input, $config, $queries) {
         if (isset($input['fa_cislo_vema'])) {
             $fields[] = 'fa_cislo_vema = ?';
             $values[] = $input['fa_cislo_vema'];
+        }
+        if (isset($input['fa_vema_kod'])) {
+            $fields[] = 'fa_vema_kod = ?';
+            $values[] = trim($input['fa_vema_kod']);
         }
         if (isset($input['fa_typ'])) {
             $fields[] = 'fa_typ = ?';
@@ -1208,6 +1215,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             fa_dorucena,
             fa_castka,
             fa_cislo_vema,
+            fa_vema_kod,
             fa_datum_vystaveni,
             fa_datum_splatnosti,
             fa_datum_doruceni,
@@ -1218,11 +1226,12 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             dt_vytvoreni,
             dt_aktualizace,
             aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
 
         $stmt_faktura = $db->prepare($sql_faktura);
         
         $fa_dorucena = isset($_POST['fa_dorucena']) ? (int)$_POST['fa_dorucena'] : 0;
+        $fa_vema_kod = isset($_POST['fa_vema_kod']) ? trim($_POST['fa_vema_kod']) : null;
         $fa_datum_vystaveni = isset($_POST['fa_datum_vystaveni']) ? $_POST['fa_datum_vystaveni'] : null;
         $fa_datum_splatnosti = isset($_POST['fa_datum_splatnosti']) ? $_POST['fa_datum_splatnosti'] : null;
         $fa_datum_doruceni = isset($_POST['fa_datum_doruceni']) ? $_POST['fa_datum_doruceni'] : null;
@@ -1235,6 +1244,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             $fa_dorucena,
             $fa_castka,
             $fa_cislo_vema,
+            $fa_vema_kod,
             $fa_datum_vystaveni,
             $fa_datum_splatnosti,
             $fa_datum_doruceni,
