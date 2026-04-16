@@ -98,51 +98,17 @@ const ContactItem = styled.div`
 `;
 
 const NotePreview = ({ text }) => {
-  const textRef = useRef(null);
-  const [isOverflow, setIsOverflow] = useState(false);
-
-  useEffect(() => {
-    const updateOverflow = () => {
-      if (!textRef.current) return;
-      setIsOverflow(textRef.current.scrollWidth > textRef.current.clientWidth);
-    };
-
-    updateOverflow();
-    window.addEventListener('resize', updateOverflow);
-    return () => window.removeEventListener('resize', updateOverflow);
-  }, [text]);
-
   return (
     <div style={{
-      position: 'relative',
+      fontSize: '0.75rem',
+      color: '#64748b',
+      whiteSpace: 'nowrap',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
       marginTop: '0.25rem',
       maxWidth: '180px'
     }}>
-      <div
-        ref={textRef}
-        style={{
-          fontSize: '0.75rem',
-          color: '#64748b',
-          whiteSpace: 'nowrap',
-          overflow: 'hidden',
-          paddingRight: '12px'
-        }}
-      >
-        {text}
-      </div>
-      {isOverflow && (
-        <span style={{
-          position: 'absolute',
-          right: 0,
-          top: 0,
-          background: '#ffffff',
-          paddingLeft: '4px',
-          fontSize: '0.75rem',
-          color: '#64748b'
-        }}>
-          ...
-        </span>
-      )}
+      {text}
     </div>
   );
 };
@@ -2565,6 +2531,7 @@ const Invoices25List = () => {
         
         // Fakturační data
         cislo_faktury: invoice.fa_cislo_vema || '',
+        fa_vema_kod: invoice.fa_vema_kod || '',
         castka: parseFloat(invoice.fa_castka) || 0,
         datum_vystaveni: invoice.fa_datum_vystaveni,
         datum_splatnosti: invoice.fa_datum_splatnosti,
@@ -3975,7 +3942,7 @@ const Invoices25List = () => {
                     onClick={() => handleSort('cislo_faktury')}
                     style={{ textAlign: 'center' }}
                   >
-                    Faktura VS/pozn.
+                    FA VS/VEMA/pozn.
                     {sortField === 'cislo_faktury' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -4210,9 +4177,10 @@ const Invoices25List = () => {
                       <input
                         type="text"
                         className="filter-input"
-                        placeholder="Číslo faktury..."
+                        placeholder="FA VS/VEMA/pozn..."
                         value={columnFilters.cislo_faktury || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
+                        title="Hledá v číslu VS, VEMA kódu a poznámce"
                       />
                       {columnFilters.cislo_faktury && (
                         <button
@@ -4674,10 +4642,19 @@ const Invoices25List = () => {
                         ) : '—'}
                       </span>
                     </TableCell>
-                    <TableCell className="center">
+                    <TableCell>
                       <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                          <strong>{invoice.cislo_faktury}</strong>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '500' }}>FA VS:</span>
+                            <strong>{invoice.cislo_faktury}</strong>
+                          </div>
+                          {invoice.fa_vema_kod && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: '500' }}>VEMA:</span>
+                              <span style={{ fontSize: '0.85rem', color: '#3b82f6', fontWeight: '500' }}>{invoice.fa_vema_kod}</span>
+                            </div>
+                          )}
                           {(invoice.fa_poznamka || invoice.poznamka) && (() => {
                             const fullNote = invoice.fa_poznamka || invoice.poznamka;
                             return (
@@ -7344,7 +7321,7 @@ const Invoices25List = () => {
                     className={`wide-column sortable ${sortField === 'cislo_faktury' ? 'active' : ''}`}
                     onClick={() => handleSort('cislo_faktury')}
                   >
-                    Faktura VS/pozn.
+                    FA VS/VEMA/pozn.
                     {sortField === 'cislo_faktury' && (
                       <span className="sort-icon">
                         <FontAwesomeIcon icon={sortDirection === 'asc' ? faChevronUp : faChevronDown} />
@@ -7574,7 +7551,7 @@ const Invoices25List = () => {
                       <input
                         type="text"
                         className="filter-input"
-                        placeholder="Číslo faktury..."
+                        placeholder="FA VS/VEMA/pozn..."
                         value={columnFilters.cislo_faktury || ''}
                         onChange={(e) => setColumnFilters({...columnFilters, cislo_faktury: e.target.value})}
                       />
