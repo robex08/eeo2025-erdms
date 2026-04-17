@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar, faSort, faSortUp, faSortDown, faPaperclip, faExternalLinkAlt, faFile, faFilePdf, faFileWord, faFileExcel, faFileImage, faFileArchive, faFileAlt } from '@fortawesome/free-solid-svg-icons';
+import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar, faSort, faSortUp, faSortDown, faPaperclip, faExternalLinkAlt, faFile, faFilePdf, faFileWord, faFileExcel, faFileImage, faFileArchive, faFileAlt, faCalendarAlt } from '@fortawesome/free-solid-svg-icons';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
@@ -233,13 +233,13 @@ const Header = styled.div`
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1.75rem;
-  padding: 1.5rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-  border-radius: 12px;
+  border-radius: 8px;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
   flex-wrap: wrap;
-  gap: 1.5rem;
+  gap: 1rem;
   color: white;
 `;
 
@@ -255,14 +255,14 @@ const TitleSection = styled.div`
   }
 `;
 
-const Title = styled.h1`
-  font-size: 2rem;
+const Title = styled.h2`
+  font-size: calc(1.5rem + 3px);
   font-weight: 700;
   color: white;
   margin: 0;
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 `;
 
@@ -360,12 +360,28 @@ const SearchInput = styled.input`
   }
 `;
 
+const PeriodWrapper = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const PeriodLabel = styled.label`
+  font-weight: 600;
+  font-size: 1rem;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+`;
+
 const PeriodSelector = styled.select`
   padding: 0.75rem 1rem;
   background: rgba(255, 255, 255, 0.15);
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 8px;
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 600;
   color: white;
   cursor: pointer;
@@ -499,20 +515,118 @@ const SummaryValue = styled.div`
   text-align: right;
 `;
 
-const TableWrapper = styled.div`
-  width: 100%;
+const TableWrapperInner = styled.div`
   overflow-x: auto;
   max-width: 100%;
   -webkit-overflow-scrolling: touch;
-  border-radius: 12px;
-  border: 1px solid #e2e8f0;
+  &::-webkit-scrollbar { height: 8px; }
+  &::-webkit-scrollbar-track { background: #f1f5f9; border-radius: 4px; }
+  &::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 4px; min-width: 40px; }
+  &::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #f1f5f9;
 `;
 
+const TableWrapperOuter = styled.div`
+  position: relative;
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+`;
+
+const ScrollFade = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 8px;
+  width: 36px;
+  pointer-events: none;
+  z-index: 5;
+  transition: opacity 0.35s ease;
+  opacity: ${props => props.$visible ? 1 : 0};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  ${props => props.$side === 'left' ? `
+    left: 0;
+    background: linear-gradient(to left, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  ` : `
+    right: 0;
+    background: linear-gradient(to right, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  `}
+`;
+
+const ScrollChevron = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(51,65,85,0.12);
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  ${props => props.$side === 'left' ? `
+    animation: pulseLeft 1.8s ease-in-out infinite;
+    @keyframes pulseLeft {
+      0%, 100% { transform: translateX(0); opacity: 0.7; }
+      50% { transform: translateX(-3px); opacity: 1; }
+    }
+  ` : `
+    animation: pulseRight 1.8s ease-in-out infinite;
+    @keyframes pulseRight {
+      0%, 100% { transform: translateX(0); opacity: 0.7; }
+      50% { transform: translateX(3px); opacity: 1; }
+    }
+  `}
+`;
+
+/* eslint-disable react/display-name */
+const TableWrapper = React.memo(({ children, style, className }) => {
+  const scrollRef = React.useRef(null);
+  const [canScrollLeft, setCanScrollLeft] = React.useState(false);
+  const [canScrollRight, setCanScrollRight] = React.useState(false);
+
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    let raf;
+    const check = () => {
+      raf = requestAnimationFrame(() => {
+        const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+        const atStart = el.scrollLeft <= 4;
+        const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+        setCanScrollLeft(hasOverflow && !atStart);
+        setCanScrollRight(hasOverflow && !atEnd);
+      });
+    };
+    check();
+    el.addEventListener('scroll', check, { passive: true });
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => {
+      el.removeEventListener('scroll', check);
+      ro.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, []);
+
+  return (
+    <TableWrapperOuter className={className}>
+      <TableWrapperInner ref={scrollRef} style={style}>{children}</TableWrapperInner>
+      <ScrollFade $side="left" $visible={canScrollLeft}><ScrollChevron $side="left">‹</ScrollChevron></ScrollFade>
+      <ScrollFade $side="right" $visible={canScrollRight}><ScrollChevron $side="right">›</ScrollChevron></ScrollFade>
+    </TableWrapperOuter>
+  );
+});
+/* eslint-enable react/display-name */
+
 const Table = styled.table`
-  width: 100%;
-  table-layout: fixed;
+  min-width: 100%;
+  width: max-content;
+  table-layout: auto;
   border-collapse: collapse;
-  min-width: 900px;
   font-size: 0.88rem;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: -0.01em;
@@ -545,9 +659,14 @@ const Table = styled.table`
   td {
     padding: 0.6rem 0.8rem;
     border-bottom: 1px solid #f1f5f9;
+    white-space: nowrap;
+    vertical-align: top;
+  }
+
+  td.td-wrap {
     white-space: normal;
     word-break: break-word;
-    overflow-wrap: break-word;
+    vertical-align: top;
   }
 
   tbody tr {
@@ -1433,23 +1552,26 @@ export default function MajetekOverviewPage() {
       header: 'Inv. úsek',
       enableSorting: true,
       size: 70,
-      meta: { style: { width: '70px', minWidth: '60px', maxWidth: '80px' } },
+      meta: { style: { width: '70px', minWidth: '65px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.3' }, tdClass: 'td-wrap' },
+      cell: info => <span style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{info.getValue() || ''}</span>,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('budova_kod', {
       header: 'Budova',
       enableSorting: true,
-      size: 65,
-      meta: { style: { width: '65px', minWidth: '55px', maxWidth: '75px' } },
+      size: 70,
+      meta: { style: { width: '70px', minWidth: '65px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.3' }, tdClass: 'td-wrap' },
+      cell: info => <span style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{info.getValue() || ''}</span>,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('mistnost_kod', {
       header: 'Místnost',
       enableSorting: true,
-      size: 75,
-      meta: { style: { width: '75px', minWidth: '60px', maxWidth: '90px' } },
+      size: 70,
+      meta: { style: { width: '70px', minWidth: '65px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.3' }, tdClass: 'td-wrap' },
+      cell: info => <span style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{info.getValue() || ''}</span>,
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
@@ -1481,8 +1603,8 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('cislo_objednavky', {
       header: 'Ev. číslo / Smlouva',
       enableSorting: true,
-      size: 110,
-      meta: { style: { width: '110px', minWidth: '90px', maxWidth: '130px' } },
+      size: 180,
+      meta: { style: { width: '180px', minWidth: '170px', whiteSpace: 'nowrap' } },
       cell: info => {
         const row = info.row.original;
         const cislo = info.getValue();
@@ -1520,8 +1642,8 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('predmet', {
       header: 'Předmět',
       enableSorting: true,
-      size: 150,
-      meta: { style: { width: '150px', minWidth: '120px', maxWidth: '200px', overflow: 'hidden' } },
+      size: 160,
+      meta: { style: { width: '160px', minWidth: '140px' }, tdClass: 'td-wrap' },
       cell: info => (
         <span style={{
           display: '-webkit-box',
@@ -1529,8 +1651,9 @@ export default function MajetekOverviewPage() {
           WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
           wordBreak: 'break-word',
-          lineHeight: '1.3'
-        }}>{info.getValue()}</span>
+          lineHeight: '1.3',
+          whiteSpace: 'normal'
+        }} title={info.getValue()}>{info.getValue()}</span>
       ),
       aggregationFn: () => null,
       aggregatedCell: () => ''
@@ -1560,8 +1683,8 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('druh_objednavky_nazev', {
       header: 'Druh obj. / FA VS',
       enableSorting: true,
-      size: 130,
-      meta: { style: { width: '130px', minWidth: '110px', maxWidth: '150px' } },
+      size: 160,
+      meta: { style: { width: '160px', minWidth: '150px', whiteSpace: 'nowrap' } },
       cell: info => {
         const row = info.row.original;
         const nazev = info.getValue();
@@ -1570,12 +1693,12 @@ export default function MajetekOverviewPage() {
         if (isInvoice) {
           // Pro faktury: zobrazit "Faktura VS:" + číslo faktury
           const faCislo = row.fa_cislo_vema || '';
-          return <span>Faktura VS: {faCislo}</span>;
+          return <span style={{ whiteSpace: 'nowrap' }}>Faktura VS: {faCislo}</span>;
         }
         
         // Pro objednávky: zobrazit druh + MAJ badge
         return (
-          <span>
+          <span style={{ whiteSpace: 'nowrap' }}>
             {nazev || '-'}
             <sup style={{ 
               fontSize: '0.7em', 
@@ -1602,10 +1725,10 @@ export default function MajetekOverviewPage() {
     }),
     columnHelper.display({
       id: 'objednatel_schvalovatel',
-      header: 'Objednatel / Schvalovatel',
+      header: 'Objednatel / Schválil',
       enableSorting: false,
-      size: 140,
-      meta: { style: { width: '140px', minWidth: '120px', maxWidth: '160px' } },
+      size: 130,
+      meta: { style: { width: '130px', minWidth: '110px' }, tdClass: 'td-wrap' },
       cell: info => {
         if (info.row.getIsGrouped()) return null;
         const row = info.row.original;
@@ -1640,8 +1763,13 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('strediska_nazvy', {
       header: 'Střediska',
       enableSorting: true,
-      size: 130,
-      meta: { style: { width: '130px', minWidth: '100px', maxWidth: '160px' } },
+      size: 150,
+      meta: { style: { width: '150px', minWidth: '140px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35' } },
+      cell: info => (
+        <span style={{ whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.35', display: 'block' }}>
+          {info.getValue() || ''}
+        </span>
+      ),
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
@@ -1959,19 +2087,23 @@ export default function MajetekOverviewPage() {
         <Header>
           <TitleSection>
             <Title>
-              <FontAwesomeIcon icon={faList} /> Přehled majetku
+              Přehled majetku
+              <FontAwesomeIcon icon={faList} />
             </Title>
           </TitleSection>
 
           <HeaderActions>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <span style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', fontWeight: 600, whiteSpace: 'nowrap' }}>Období:</span>
+            <PeriodWrapper>
+              <PeriodLabel>
+                <FontAwesomeIcon icon={faCalendarAlt} />
+                Období:
+              </PeriodLabel>
               <PeriodSelector value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading}>
                 {periodOptions.map(option => (
                   <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
               </PeriodSelector>
-            </div>
+            </PeriodWrapper>
             <ReloadButton
               onClick={() => fetchData(1)}
               disabled={loading}
@@ -2256,7 +2388,7 @@ export default function MajetekOverviewPage() {
                             }
                             // Normální datový řádek
                             return (
-                              <td key={cell.id} style={cell.column.columnDef.meta?.style || {}}>
+                              <td key={cell.id} style={cell.column.columnDef.meta?.style || {}} className={cell.column.columnDef.meta?.tdClass || undefined}>
                                 {cell.getIsPlaceholder() ? null : flexRender(cell.column.columnDef.cell, cell.getContext())}
                               </td>
                             );
