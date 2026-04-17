@@ -1688,13 +1688,40 @@ const Invoices25List = () => {
   // Refs pro sticky header - synchronizace horizontálního scrollu
   const stickyHeaderRef = useRef(null);
   const tableBodyScrollRef = useRef(null);
+  // Refs pro scroll shadow - přímá DOM manipulace (bez re-renderu!)
+  const scrollFadeLeftRef = useRef(null);
+  const scrollFadeRightRef = useRef(null);
+
+  // Přímá DOM aktualizace scroll shadow opacity (bez useState = bez re-renderu)
+  const updateScrollShadows = useCallback(() => {
+    const el = tableBodyScrollRef.current;
+    const left = scrollFadeLeftRef.current;
+    const right = scrollFadeRightRef.current;
+    if (!el || !left || !right) return;
+    const hasOverflow = el.scrollWidth > el.clientWidth + 4;
+    const atStart = el.scrollLeft <= 4;
+    const atEnd = el.scrollLeft + el.clientWidth >= el.scrollWidth - 4;
+    left.style.opacity = (hasOverflow && !atStart) ? '1' : '0';
+    right.style.opacity = (hasOverflow && !atEnd) ? '1' : '0';
+  }, []);
 
   // Synchronizace horizontálního scrollu mezi sticky hlavičkou a tělem tabulky
   const handleBodyScroll = useCallback((e) => {
     if (stickyHeaderRef.current) {
       stickyHeaderRef.current.scrollLeft = e.target.scrollLeft;
     }
-  }, []);
+    updateScrollShadows();
+  }, [updateScrollShadows]);
+
+  // Inicializace scroll shadow + resize observer
+  useEffect(() => {
+    const el = tableBodyScrollRef.current;
+    if (!el) return;
+    updateScrollShadows();
+    const ro = new ResizeObserver(updateScrollShadows);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [updateScrollShadows]);
 
   // Synchronizace šířek sloupců z body tabulky do sticky header tabulky
   const syncColumnWidths = useCallback(() => {
@@ -4540,6 +4567,8 @@ const Invoices25List = () => {
 
         {/* Table - vždy zobrazená s hlavičkou */}
         <TableContainer>
+          <ScrollFade ref={scrollFadeLeftRef} $side="left" $visible={false} />
+          <ScrollFade ref={scrollFadeRightRef} $side="right" $visible={false} />
           {/* STICKY ZÁHLAVÍ - ukotvené pod horní navigací */}
           <StickyHeaderContainer
             ref={stickyHeaderRef}
