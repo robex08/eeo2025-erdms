@@ -1551,27 +1551,24 @@ export default function MajetekOverviewPage() {
     columnHelper.accessor('usek_kod', {
       header: 'Inv. úsek',
       enableSorting: true,
-      size: 70,
-      meta: { style: { width: '70px', minWidth: '65px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.3' }, tdClass: 'td-wrap' },
-      cell: info => <span style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{info.getValue() || ''}</span>,
+      meta: { style: { maxWidth: '120px', wordBreak: 'break-word', whiteSpace: 'normal' } },
+      cell: info => info.getValue() || '',
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('budova_kod', {
       header: 'Budova',
       enableSorting: true,
-      size: 70,
-      meta: { style: { width: '70px', minWidth: '65px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.3' }, tdClass: 'td-wrap' },
-      cell: info => <span style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{info.getValue() || ''}</span>,
+      meta: { style: { maxWidth: '120px', wordBreak: 'break-word', whiteSpace: 'normal' } },
+      cell: info => info.getValue() || '',
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
     columnHelper.accessor('mistnost_kod', {
       header: 'Místnost',
       enableSorting: true,
-      size: 70,
-      meta: { style: { width: '70px', minWidth: '65px', whiteSpace: 'normal', wordBreak: 'break-word', lineHeight: '1.3' }, tdClass: 'td-wrap' },
-      cell: info => <span style={{ display: 'block', whiteSpace: 'normal', wordBreak: 'break-word' }}>{info.getValue() || ''}</span>,
+      meta: { style: { maxWidth: '120px', wordBreak: 'break-word', whiteSpace: 'normal' } },
+      cell: info => info.getValue() || '',
       aggregationFn: () => null,
       aggregatedCell: () => ''
     }),
@@ -2289,22 +2286,25 @@ export default function MajetekOverviewPage() {
                           <th
                             key={header.id}
                             onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
-                            style={{ cursor: header.column.getCanSort() ? 'pointer' : 'default', ...(header.column.columnDef.meta?.style || {}) }}
+                            style={{
+                              cursor: header.column.getCanSort() ? 'pointer' : 'default',
+                              whiteSpace: 'nowrap',
+                              width: header.column.columnDef.meta?.style?.width,
+                              minWidth: header.column.columnDef.meta?.style?.minWidth,
+                              textAlign: header.column.columnDef.meta?.style?.textAlign,
+                            }}
                           >
                             {header.isPlaceholder ? null : (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: header.column.columnDef.meta?.style?.textAlign === 'center' ? 'center' : header.column.columnDef.meta?.style?.textAlign === 'right' ? 'flex-end' : undefined }}>
                                 {flexRender(header.column.columnDef.header, header.getContext())}
-                                {header.column.getCanSort() && (
-                                  <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                                    {header.column.getIsSorted() === 'asc' ? (
-                                      <FontAwesomeIcon icon={faSortUp} />
-                                    ) : header.column.getIsSorted() === 'desc' ? (
-                                      <FontAwesomeIcon icon={faSortDown} />
-                                    ) : (
-                                      <FontAwesomeIcon icon={faSort} />
-                                    )}
-                                  </span>
-                                )}
+                                {header.column.getCanSort() && (() => {
+                                  const sortDir = header.column.getIsSorted();
+                                  return (
+                                    <span style={{ marginLeft: '0.2rem', fontSize: '0.65rem', opacity: sortDir ? 1 : 0.3, color: sortDir ? '#2563eb' : 'inherit' }}>
+                                      {!sortDir ? '⇅' : sortDir === 'asc' ? '↑' : '↓'}
+                                    </span>
+                                  );
+                                })()}
                               </div>
                             )}
                           </th>
