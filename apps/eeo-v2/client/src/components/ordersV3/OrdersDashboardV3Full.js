@@ -32,6 +32,7 @@ import {
   faClock,
   faComment,
   faCommentDots,
+  faChartBar,
 } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 
@@ -399,7 +400,8 @@ const OrdersDashboardV3Full = ({
       <DashboardPanel>
         <DashboardHeader>
           <h3>
-            📊 Dashboard (kompaktní)
+            <FontAwesomeIcon icon={faChartBar} />
+            Dashboard (kompaktní)
           </h3>
           <DashboardActions>
             <SmartTooltip text="Zobrazit všechny statistické karty" icon="info" preferredPosition="bottom">
@@ -598,7 +600,8 @@ const OrdersDashboardV3Full = ({
     <DashboardPanel>
       <DashboardHeader>
         <h3>
-          📊 Dashboard {dashboardMode === 'full' ? '(plný)' : '(dynamický)'}
+          <FontAwesomeIcon icon={faChartBar} />
+          Dashboard {dashboardMode === 'full' ? '(plný)' : '(dynamický)'}
         </h3>
         <DashboardActions>
           <SmartTooltip text="Zobrazit všechny statistické karty" icon="info" preferredPosition="bottom">
