@@ -10,7 +10,7 @@ import {
   faDownload, faSyncAlt, faChevronDown, faChevronUp, faEraser,
   faCalendarAlt, faCalendarCheck, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
-  faDatabase, faCheck, faTimesCircle, faDashboard, faMoneyBill, faIdCard, faFileContract,
+  faDatabase, faCheck, faTimesCircle, faChartBar, faMoneyBill, faIdCard, faFileContract,
   faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash, faCoins
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
@@ -848,6 +848,7 @@ const Table = styled.table`
   thead th:nth-of-type(1),
   tbody td:nth-of-type(1) { width: 44px; min-width: 44px; max-width: 44px; }
 
+  /* Datum akt., Doručení, Vystavení, Splatnost */
   thead th:nth-of-type(2),
   tbody td:nth-of-type(2),
   thead th:nth-of-type(6),
@@ -855,23 +856,27 @@ const Table = styled.table`
   thead th:nth-of-type(7),
   tbody td:nth-of-type(7),
   thead th:nth-of-type(8),
-  tbody td:nth-of-type(8) { width: 92px; min-width: 92px; max-width: 92px; white-space: nowrap; }
+  tbody td:nth-of-type(8) { width: 100px; min-width: 100px; max-width: 105px; white-space: nowrap; }
 
+  /* Typ */
   thead th:nth-of-type(4),
-  tbody td:nth-of-type(4) { width: 90px; min-width: 90px; max-width: 110px; }
+  tbody td:nth-of-type(4) { width: 80px; min-width: 80px; max-width: 100px; }
 
+  /* Částka */
   thead th:nth-of-type(9),
-  tbody td:nth-of-type(9) { width: 120px; min-width: 120px; max-width: 140px; }
+  tbody td:nth-of-type(9) { width: 115px; min-width: 115px; max-width: 135px; }
 
+  /* Stav */
   thead th:nth-of-type(10),
-  tbody td:nth-of-type(10) { width: 140px; min-width: 140px; max-width: 180px; }
+  tbody td:nth-of-type(10) { width: 130px; min-width: 130px; max-width: 160px; }
 
+  /* Zaevidoval, Předáno, Věcnou provedl */
   thead th:nth-of-type(11),
   tbody td:nth-of-type(11),
   thead th:nth-of-type(12),
   tbody td:nth-of-type(12),
   thead th:nth-of-type(13),
-  tbody td:nth-of-type(13) { width: 140px; min-width: 140px; max-width: 170px; }
+  tbody td:nth-of-type(13) { width: 120px; min-width: 120px; max-width: 150px; }
 
   thead th:nth-of-type(14),
   tbody td:nth-of-type(14) { width: 70px; min-width: 70px; max-width: 80px; }
@@ -882,12 +887,13 @@ const Table = styled.table`
   thead th:nth-of-type(16),
   tbody td:nth-of-type(16) { width: 100px; min-width: 100px; max-width: 120px; }
 
-  /* Textové sloupce - zúžené */
+  /* FA VS/VEMA/pozn. - zúženo */
   thead th:nth-of-type(3),
-  tbody td:nth-of-type(3) { min-width: 160px; max-width: 220px; }
+  tbody td:nth-of-type(3) { min-width: 140px; max-width: 190px; }
 
+  /* Obj/SML/Dodavatel - zúženo */
   thead th:nth-of-type(5),
-  tbody td:nth-of-type(5) { min-width: 200px; max-width: 280px; }
+  tbody td:nth-of-type(5) { min-width: 170px; max-width: 240px; }
 `;
 
 const TableHead = styled.thead`
@@ -4234,7 +4240,7 @@ const Invoices25List = () => {
           {!showDashboard && (
             <TooltipWrapper text="Zobrazit přehledový dashboard s grafy" preferredPosition="bottom">
               <ActionButton onClick={handleToggleDashboard}>
-                <FontAwesomeIcon icon={faDashboard} />
+                <FontAwesomeIcon icon={faFileInvoice} />
                 Dashboard
               </ActionButton>
             </TooltipWrapper>
@@ -4253,8 +4259,8 @@ const Invoices25List = () => {
         {showDashboard && (
           <DashboardPanel>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <FontAwesomeIcon icon={faDashboard} style={{ color: '#3b82f6' }} />
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.3rem', fontWeight: 700, color: '#0f172a' }}>
+                <FontAwesomeIcon icon={faFileInvoice} style={{ color: '#3b82f6' }} />
                 Dashboard faktur
               </h3>
               <TooltipWrapper text="Skrýt dashboard a zobrazit pouze tabulku faktur" preferredPosition="bottom">

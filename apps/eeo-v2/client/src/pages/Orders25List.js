@@ -44,7 +44,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faSearch, faFilter, faTimes, faPlus, faEdit, faEye, faTrash, faFileWord,
   faDownload, faSyncAlt, faChevronDown, faChevronUp,
-  faFileInvoice, faDashboard, faTableColumns, faFileExport,
+  faFileInvoice, faChartBar, faTableColumns, faFileExport,
   faBolt, faCalendarAlt, faUser, faBuilding, faMoneyBillWave,
   faCheckCircle, faTimesCircle, faHourglassHalf, faExclamationTriangle,
   faFilePen, faShield, faTruck, faXmark, faClock, faCircleNotch,
@@ -14675,7 +14675,7 @@ const Orders25List = () => {
           {!showDashboard && (
             <SmartTooltip text="Zobrazit přehledový dashboard s grafy" icon="info" preferredPosition="bottom">
               <ActionButton onClick={handleToggleDashboard}>
-                <FontAwesomeIcon icon={faDashboard} />
+                <FontAwesomeIcon icon={faChartBar} />
                 Dashboard
               </ActionButton>
             </SmartTooltip>
@@ -15546,8 +15546,8 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
       {showDashboard && (
         <DashboardPanel>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <FontAwesomeIcon icon={faDashboard} style={{ color: '#3b82f6' }} />
+            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.3rem', fontWeight: 700, color: '#0f172a' }}>
+              <FontAwesomeIcon icon={faChartBar} style={{ color: '#3b82f6' }} />
               Dashboard objednávek {
                 dashboardMode === 'custom' ? '(vlastní rozložení)' : 
                 (dashboardCompact ? '(kompaktní)' : '(plný)')
