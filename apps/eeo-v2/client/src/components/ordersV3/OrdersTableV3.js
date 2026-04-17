@@ -681,27 +681,50 @@ const TableWrapper = styled.div`
   width: 100%;
 `;
 
+const ScrollFade = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 36px;
+  pointer-events: none;
+  z-index: 15;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  ${props => props.$side === 'left' ? `
+    left: 0;
+    background: linear-gradient(to left, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  ` : `
+    right: 0;
+    background: linear-gradient(to right, transparent, rgba(241,245,249,0.85) 70%, #f1f5f9);
+  `}
+`;
+
 const TableContainer = styled.div`
+  position: relative;
   width: 100%;
-  border-radius: 8px;
-  background: #ffffff;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+`;
+
+// Sticky header kontejner - drží záhlaví tabulky ukotvené pod navigací
+const StickyHeaderContainer = styled.div`
+  position: sticky;
+  top: -16px;
+  z-index: 50;
+  overflow: hidden;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 2px solid #cbd5e1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+`;
+
+// Scrollovatelné tělo tabulky
+const TableBodyScrollContainer = styled.div`
   overflow-x: auto;
-  overflow-y: hidden;
+  overflow-y: visible;
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 
-  /* Optimalizace pro širokoúhlé monitory */
-  @media (min-width: 1920px) {
-    font-size: 0.95rem;
-  }
-
-  @media (min-width: 2560px) {
-    font-size: 1rem;
-  }
   /* Skrýt normální scrollbar */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE/Edge */
-  
   &::-webkit-scrollbar {
     display: none; /* Chrome/Safari */
   }
@@ -765,9 +788,6 @@ const Table = styled.table`
 
 const TableHead = styled.thead`
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  
-  /* Sticky nefunguje kvůli Layout overflow structure - vypnuto */
 `;
 
 const TableHeaderCell = styled.th`
@@ -2537,7 +2557,12 @@ const OrdersTableV3 = ({
   
   // Refs pro fixed scrollbar synchronizaci
   const tableContainerRef = useRef(null);
+  const tableWrapperRef = useRef(null);
   const fixedScrollbarRef = useRef(null);
+  const scrollFadeLeftRef = useRef(null);
+  const scrollFadeRightRef = useRef(null);
+  const stickyHeaderRef = useRef(null);
+  const tableBodyScrollRef = useRef(null);
   const [showFixedScrollbar, setShowFixedScrollbar] = useState(false);
 
   const handleTableMouseDownCapture = useCallback((e) => {
@@ -2778,60 +2803,115 @@ const OrdersTableV3 = ({
     };
   }, []);
   
-  // Synchronizace fixed scrollbar s hlavní tabulkou
+  // Synchronizace fixed scrollbar, sticky header a side shadows
   useEffect(() => {
-    const tableContainer = tableContainerRef.current;
+    const bodyScroll = tableBodyScrollRef.current;
     const fixedScrollbar = fixedScrollbarRef.current;
+    const stickyHeader = stickyHeaderRef.current;
     
-    if (!tableContainer || !fixedScrollbar) return;
+    if (!bodyScroll) return;
     
     // Zjistit, zda je potřeba scrollbar (obsah je širší než container)
     const checkScrollbarNeeded = () => {
-      const isNeeded = tableContainer.scrollWidth > tableContainer.clientWidth;
+      const isNeeded = bodyScroll.scrollWidth > bodyScroll.clientWidth;
       setShowFixedScrollbar(isNeeded);
       
       // Nastavit šířku obsahu fixed scrollbaru na šířku tabulky
-      if (isNeeded) {
+      if (isNeeded && fixedScrollbar) {
         const fixedContent = fixedScrollbar.querySelector('div');
         if (fixedContent) {
-          fixedContent.style.width = `${tableContainer.scrollWidth}px`;
+          fixedContent.style.width = `${bodyScroll.scrollWidth}px`;
         }
       }
     };
     
-    // Synchronizace scroll pozice: hlavní tabulka -> fixed scrollbar
-    const syncFromTable = () => {
-      if (fixedScrollbar && tableContainer) {
-        fixedScrollbar.scrollLeft = tableContainer.scrollLeft;
-      }
+    // Aktualizace side scroll shadows
+    const updateScrollShadows = () => {
+      const left = scrollFadeLeftRef.current;
+      const right = scrollFadeRightRef.current;
+      if (!left || !right || !bodyScroll) return;
+      const hasOverflow = bodyScroll.scrollWidth > bodyScroll.clientWidth + 4;
+      const atStart = bodyScroll.scrollLeft <= 4;
+      const atEnd = bodyScroll.scrollLeft + bodyScroll.clientWidth >= bodyScroll.scrollWidth - 4;
+      left.style.opacity = (hasOverflow && !atStart) ? '1' : '0';
+      right.style.opacity = (hasOverflow && !atEnd) ? '1' : '0';
     };
     
-    // Synchronizace scroll pozice: fixed scrollbar -> hlavní tabulka
-    const syncFromScrollbar = () => {
-      if (tableContainer && fixedScrollbar) {
-        tableContainer.scrollLeft = fixedScrollbar.scrollLeft;
+    // Synchronizace scroll pozice: body tabulka -> sticky header + fixed scrollbar
+    const syncFromBody = () => {
+      if (stickyHeader) {
+        stickyHeader.scrollLeft = bodyScroll.scrollLeft;
       }
+      if (fixedScrollbar) {
+        fixedScrollbar.scrollLeft = bodyScroll.scrollLeft;
+      }
+      updateScrollShadows();
+    };
+    
+    // Synchronizace scroll pozice: fixed scrollbar -> body tabulka
+    const syncFromScrollbar = () => {
+      if (bodyScroll && fixedScrollbar) {
+        bodyScroll.scrollLeft = fixedScrollbar.scrollLeft;
+        if (stickyHeader) {
+          stickyHeader.scrollLeft = fixedScrollbar.scrollLeft;
+        }
+      }
+    };
+
+    // Synchronizace šířek sloupců z body tabulky do sticky header tabulky
+    const syncColumnWidths = () => {
+      if (!stickyHeader) return;
+      const bodyTable = bodyScroll.querySelector('table');
+      const headerTable = stickyHeader.querySelector('table');
+      if (!bodyTable || !headerTable) return;
+
+      const bodyWidth = bodyTable.getBoundingClientRect().width;
+      headerTable.style.width = `${bodyWidth}px`;
+      headerTable.style.minWidth = `${bodyWidth}px`;
+
+      const firstRow = bodyTable.querySelector('tbody tr');
+      if (!firstRow) return;
+
+      const bodyCols = firstRow.children;
+      const headerRows = headerTable.querySelectorAll('thead tr');
+      headerRows.forEach(row => {
+        const cells = row.children;
+        for (let i = 0; i < Math.min(cells.length, bodyCols.length); i++) {
+          const w = bodyCols[i].getBoundingClientRect().width;
+          cells[i].style.width = `${w}px`;
+          cells[i].style.minWidth = `${w}px`;
+          cells[i].style.maxWidth = `${w}px`;
+        }
+      });
     };
     
     // Observer pro změny velikosti (resize, nová data)
     const resizeObserver = new ResizeObserver(() => {
       checkScrollbarNeeded();
+      syncColumnWidths();
     });
     
-    resizeObserver.observe(tableContainer);
+    resizeObserver.observe(bodyScroll);
     
     // Event listeners
-    tableContainer.addEventListener('scroll', syncFromTable);
-    fixedScrollbar.addEventListener('scroll', syncFromScrollbar);
+    bodyScroll.addEventListener('scroll', syncFromBody);
+    if (fixedScrollbar) {
+      fixedScrollbar.addEventListener('scroll', syncFromScrollbar);
+    }
     
     // Počáteční kontrola při načtení
     checkScrollbarNeeded();
+    updateScrollShadows();
+    // Sync šířek sloupců po renderování
+    requestAnimationFrame(syncColumnWidths);
     
     // Cleanup
     return () => {
       resizeObserver.disconnect();
-      tableContainer.removeEventListener('scroll', syncFromTable);
-      fixedScrollbar.removeEventListener('scroll', syncFromScrollbar);
+      bodyScroll.removeEventListener('scroll', syncFromBody);
+      if (fixedScrollbar) {
+        fixedScrollbar.removeEventListener('scroll', syncFromScrollbar);
+      }
     };
   }, [data]); // Re-run když se změní data
   
@@ -4837,13 +4917,16 @@ const OrdersTableV3 = ({
       </ConfirmDialog>
     )}
 
-    <TableWrapper>
+    <TableWrapper ref={tableWrapperRef}>
+    <ScrollFade ref={scrollFadeLeftRef} $side="left" />
+    <ScrollFade ref={scrollFadeRightRef} $side="right" />
     <TableContainer
-      ref={tableContainerRef}
       data-orders-v3-table="true"
       onMouseDownCapture={handleTableMouseDownCapture}
     >
-      <Table>
+      {/* STICKY ZÁHLAVÍ - ukotvené pod horní navigací */}
+      <StickyHeaderContainer ref={stickyHeaderRef}>
+      <Table style={{ tableLayout: 'fixed' }}>
         <TableHead>
           {table.getHeaderGroups().map(headerGroup => (
             <tr key={headerGroup.id}>
@@ -5063,6 +5146,12 @@ const OrdersTableV3 = ({
             </tr>
           ))}
         </TableHead>
+      </Table>
+      </StickyHeaderContainer>
+
+      {/* TĚLO TABULKY - scrollovatelné horizontálně */}
+      <TableBodyScrollContainer ref={tableBodyScrollRef}>
+      <Table>
         <TableBody>
           {error ? (
             <ErrorRow>
@@ -5215,6 +5304,7 @@ const OrdersTableV3 = ({
           )}
         </TableBody>
       </Table>
+      </TableBodyScrollContainer>
     </TableContainer>
     </TableWrapper>
     
