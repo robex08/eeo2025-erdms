@@ -46,6 +46,7 @@ const DashboardPanel = styled.div`
   padding: 1.5rem;
   margin-bottom: 2rem;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 `;
 
 const DashboardHeader = styled.div`
@@ -158,7 +159,7 @@ const LargeStatValue = styled.div`
   font-weight: 800;
   color: #0f172a;
   margin-bottom: 0.5rem;
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: -0.02em;
 `;
 
@@ -210,7 +211,7 @@ const SummaryValue = styled.div`
   font-size: 1rem;
   font-weight: 700;
   color: #0f172a;
-  font-family: 'Courier New', monospace;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 `;
 
 const StatCard = styled.div`
@@ -255,7 +256,7 @@ const StatValue = styled.div`
   font-size: 1.75rem;
   font-weight: 800;
   color: #0f172a;
-  font-family: 'Inter', -apple-system, sans-serif;
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   min-height: 42px;
   display: flex;
   align-items: center;
