@@ -868,7 +868,7 @@ function Dashboard() {
         <div className="header-left">
           <img src="/logo-ZZS.png" alt="ZZS Logo" className="header-logo" />
           <div className="header-title">
-            <h1>ERDMS Portál <span className="version-badge">v1.90</span></h1>
+            <h1>ERDMS portál aplikaci <span className="version-badge">v1.91</span></h1>
             <span className="header-subtitle">Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</span>
           </div>
         </div>
@@ -1041,7 +1041,7 @@ function Dashboard() {
             <div className="apps-section">
               <h2 className="section-title">📋 Interní aplikace organizace</h2>
               <div className="apps-grid">
-                <a href="https://erdms.zachranka.cz/eeo-v2/?sso=auto" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://erdms.zachranka.cz/eeo-v2/?sso=auto&v=1.91" className="app-card eeo-card" target="_self">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1050,6 +1050,7 @@ function Dashboard() {
                     </div>
                     <div className="app-badges">
                       <span className="app-badge">Aktivní</span>
+                      <span className="app-badge ms365-badge">M365</span>
                     </div>
                   </div>
                   <h3 className="app-title">EEO v2</h3>
@@ -1064,7 +1065,7 @@ function Dashboard() {
 
                 {(user?.username?.toLowerCase() === 'u03924' || user?.upn?.toLowerCase()?.startsWith('u03924@') ||
                   user?.username?.toLowerCase() === 'u09694' || user?.upn?.toLowerCase()?.startsWith('u09694@')) && (
-                <a href="https://erdms.zachranka.cz/dev/eeo-v2/?sso=auto" className="app-card eeo-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://erdms.zachranka.cz/dev/eeo-v2/?sso=auto&v=1.91" className="app-card eeo-card" target="_self">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1130,7 +1131,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://erdms.zachranka.cz/dev/intranet-v26" className="app-card intranet-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://erdms.zachranka.cz/dev/intranet-v26/?sso=auto&v=1.91" className="app-card intranet-card" target="_self">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

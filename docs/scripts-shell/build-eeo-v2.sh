@@ -143,10 +143,10 @@ if [ "$COMPONENT" = "frontend" ] || [ "$COMPONENT" = "all" ]; then
         
         # Deploy frontend - IMPORTANT: Frontend files go to ROOT, not client/ subdirectory!
         echo "📁 Copying frontend build to production ROOT (not client/)..."
-        echo "   Using rsync to preserve api/ and api-legacy/ folders..."
+        echo "   Using rsync WITHOUT --delete to preserve api/ and api-legacy/ folders..."
         
-        # Use rsync to deploy only frontend files, excluding API folders
-        rsync -av --delete \
+        # Use rsync to deploy only frontend files, WITHOUT --delete (safer!)
+        rsync -av \
             --exclude='api/' \
             --exclude='api-legacy/' \
             --exclude='client/' \
@@ -211,8 +211,8 @@ if [ "$COMPONENT" = "backend" ] || [ "$COMPONENT" = "all" ]; then
         mkdir -p /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo
         
         # Copy PHP files (excluding data folders)
-        echo "📁 Copying PHP API files (excluding data folders)..."
-        rsync -av --delete \
+        echo "📁 Copying PHP API files (excluding data folders, WITHOUT --delete for safety)..."
+        rsync -av \
             --exclude='cache/' \
             --exclude='logs/' \
             --exclude='uploads/' \

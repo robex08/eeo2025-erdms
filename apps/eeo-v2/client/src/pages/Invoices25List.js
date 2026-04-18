@@ -11,7 +11,8 @@ import {
   faCalendarAlt, faCalendarCheck, faUser, faBuilding, faMoneyBillWave, faPaperclip, 
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
   faDatabase, faCheck, faTimesCircle, faChartBar, faMoneyBill, faIdCard, faFileContract,
-  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash, faCoins
+  faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash, faCoins,
+  faBolt
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -862,21 +863,25 @@ const Table = styled.table`
   thead th:nth-of-type(4),
   tbody td:nth-of-type(4) { width: 80px; min-width: 80px; max-width: 100px; }
 
-  /* Částka */
+  /* Částka - dynamicky rozšiřitelná */
   thead th:nth-of-type(9),
-  tbody td:nth-of-type(9) { width: 115px; min-width: 115px; max-width: 135px; }
+  tbody td:nth-of-type(9) { width: 115px; min-width: 115px; max-width: 165px; }
 
-  /* Stav */
+  /* Stav - dynamicky rozšiřitelný (extra široký) */
   thead th:nth-of-type(10),
-  tbody td:nth-of-type(10) { width: 130px; min-width: 130px; max-width: 160px; }
+  tbody td:nth-of-type(10) { width: 130px; min-width: 130px; max-width: 240px; }
 
-  /* Zaevidoval, Předáno, Věcnou provedl */
+  /* Zaevidoval - dynamicky rozšiřitelný */
   thead th:nth-of-type(11),
-  tbody td:nth-of-type(11),
+  tbody td:nth-of-type(11) { width: 120px; min-width: 120px; max-width: 185px; }
+
+  /* Předáno - dynamicky rozšiřitelný (extra široký) */
   thead th:nth-of-type(12),
-  tbody td:nth-of-type(12),
+  tbody td:nth-of-type(12) { width: 150px; min-width: 150px; max-width: 250px; }
+
+  /* Věcnou provedl - dynamicky rozšiřitelný */
   thead th:nth-of-type(13),
-  tbody td:nth-of-type(13) { width: 120px; min-width: 120px; max-width: 150px; }
+  tbody td:nth-of-type(13) { width: 135px; min-width: 135px; max-width: 200px; }
 
   thead th:nth-of-type(14),
   tbody td:nth-of-type(14) { width: 70px; min-width: 70px; max-width: 80px; }
@@ -3795,7 +3800,7 @@ const Invoices25List = () => {
           {sortIcon('pocet_priloh')}
         </TableHeader>
         <TableHeader>
-          <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#64748b' }} />
+          <FontAwesomeIcon icon={faBolt} style={{ color: '#f59e0b', fontSize: '0.95rem' }} />
         </TableHeader>
       </tr>
       {/* NOVÝ KONZISTENTNÍ FILTROVACÍ ŘÁDEK */}
@@ -4162,8 +4167,18 @@ const Invoices25List = () => {
               className="clear-all-button"
               onClick={() => setColumnFilters({})}
               title="Vymazat všechny filtry"
+              style={{
+                color: '#dc2626',
+                background: 'transparent',
+                border: '1px solid #dc2626',
+                padding: '4px 6px',
+                borderRadius: '3px'
+              }}
             >
-              <FontAwesomeIcon icon={faEraser} />
+              <FontAwesomeIcon 
+                icon={faEraser} 
+                style={{ fontSize: '0.9rem' }} 
+              />
             </button>
           </div>
         </TableHeader>

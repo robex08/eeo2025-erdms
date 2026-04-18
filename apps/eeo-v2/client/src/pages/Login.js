@@ -40,74 +40,179 @@ const Wrapper = styled.div`
   justify-content: center;
   padding: 1rem;
   box-sizing: border-box;
-  overflow: hidden; /* no outer scrollbars for login */
+  overflow-y: auto; /* povolit scrollování pro malé obrazovky */
+  overflow-x: hidden;
 
   @media (max-width: 768px) {
     padding: 0.75rem;
+  }
+
+  @media (max-height: 768px) {
+    padding: 0.5rem;
+    align-items: flex-start;
+    padding-top: 1rem;
   }
 `;
 
 const Container = styled.div`
   background: white;
-  border-radius: 15px; /* změnšeno z 20px */
-  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1); /* změnšeno z 20px 40px */
+  border-radius: 15px;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.1);
   overflow: hidden;
-  /* Zmenšeno o 25% */
-  width: min(378px, 50vw); /* změnšeno z 504px */
-  min-height: 155px; /* změnšeno z 206px */
+  width: min(378px, 50vw);
+  min-height: 155px;
+  max-height: 95vh;
   animation: ${slideInUp} 0.6s ease-out;
   border: 1px solid #e2e8f0;
+  display: flex;
+  flex-direction: column;
 
   @media (max-width: 768px) {
     width: 64vw;
-    min-height: 191px; /* změnšeno z 255px */
+    min-height: 191px;
+  }
+
+  @media (max-height: 768px) {
+    max-height: calc(100vh - 2rem);
+    width: min(360px, 90vw);
   }
 `;
 
 const CardHeader = styled.div`
   background: linear-gradient(135deg, #1f2a57 0%, #2563eb 70%, #1d4ed8 100%);
   color: white;
-  padding: 0.94rem 1.13rem; /* změnšeno o 25% z 1.25rem 1.5rem */
+  padding: 0.94rem 1.13rem;
   text-align: center;
+  flex-shrink: 0;
+  position: relative;
+
+  @media (max-height: 768px) {
+    padding: 0.65rem 1rem;
+  }
 `;
 
+const HomeButton = styled.a`
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: white;
+  text-decoration: none;
+  transition: all 0.2s ease;
+  cursor: pointer !important;
+  z-index: 100;
+  pointer-events: all !important;
+  
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-50%) scale(1.1);
+    cursor: pointer !important;
+  }
+  
+  &:active {
+    transform: translateY(-50%) scale(0.95);
+  }
+
+  .home-icon-circle {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+    pointer-events: none;
+  }
+
+  @media (max-height: 768px) {
+    padding: 5px;
+    right: 0.8rem;
+    
+    .home-icon-circle {
+      width: 28px;
+      height: 28px;
+    }
+  }
+`;
+
+const HomeIconCircle = () => (
+  <svg className="home-icon-circle" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="16" cy="16" r="14.5" stroke="white" strokeWidth="2" fill="none" opacity="0.9"/>
+    <path 
+      d="M16 10L10 15V22H14V18H18V22H22V15L16 10Z" 
+      fill="white" 
+      opacity="0.95"
+    />
+  </svg>
+);
+
 const Title = styled.h1`
-  margin: 0 0 0.26rem 0; /* změnšeno z 0.35rem */
-  font-size: 1.4rem; /* mírně změnšeno z 1.65rem pro čitelnost */
+  margin: 0 0 0.26rem 0;
+  font-size: 1.4rem;
   font-weight: 700;
   position: relative;
   z-index: 1;
+
+  @media (max-height: 768px) {
+    font-size: 1.25rem;
+    margin-bottom: 0.15rem;
+  }
 `;
 
 const Subtitle = styled.p`
   margin: 0;
   opacity: 0.9;
-  font-size: 0.85rem; /* mírně změnšeno z 0.95rem */
+  font-size: 0.85rem;
   position: relative;
   z-index: 1;
+
+  @media (max-height: 768px) {
+    font-size: 0.75rem;
+  }
 `;
 
 const CardBody = styled.div`
-  padding: 0.94rem 1.13rem 1.13rem; /* změnšeno o 25% */
+  padding: 0.94rem 1.13rem 1.13rem;
+  overflow-y: auto;
+  flex: 1;
+
+  @media (max-height: 768px) {
+    padding: 0.5rem 0.85rem 0.65rem;
+  }
 `;
 
 const Form = styled.form`
   display: flex;
   flex-direction: column;
-  gap: 1.13rem; /* změnšeno z 1.5rem */
+  gap: 1.13rem;
+
+  @media (max-height: 768px) {
+    gap: 0.75rem;
+  }
 `;
 
 const InputGroup = styled.div`
-  margin-bottom: 0.75rem; /* změnšeno z 1rem */
+  margin-bottom: 0.75rem;
   position: relative;
+
+  @media (max-height: 768px) {
+    margin-bottom: 0.4rem;
+  }
 `;
 
 const InputLabel = styled.label`
   display: block;
-  margin-bottom: 0.3rem; /* změnšeno z 0.4rem */
+  margin-bottom: 0.3rem;
   font-weight: 600;
   color: #374151;
-  font-size: 0.8rem; /* mírně změnšeno z 0.85rem */
+  font-size: 0.8rem;
+
+  @media (max-height: 768px) {
+    margin-bottom: 0.2rem;
+    font-size: 0.75rem;
+  }
 `;
 
 const InputWrapper = styled.div`
@@ -151,10 +256,10 @@ const PasswordToggle = styled.button`
 
 const Input = styled.input`
   width: 100%;
-  padding: 0.59rem 0.68rem 0.59rem 2.5rem; /* sladeno s OrderForm25.js - zvětšen padding-left */
+  padding: 0.59rem 0.68rem 0.59rem 2.5rem;
   border: 2px solid #e5e7eb;
-  border-radius: 8px; /* změnšeno z 10px */
-  font-size: 0.95rem; /* mírně změnšeno z 1rem pro čitelnost */
+  border-radius: 8px;
+  font-size: 0.95rem;
   transition: all 0.2s ease;
   background: #ffffff;
   box-sizing: border-box;
@@ -168,6 +273,11 @@ const Input = styled.input`
   &::placeholder {
     color: #9ca3af;
   }
+
+  @media (max-height: 768px) {
+    padding: 0.5rem 0.6rem 0.5rem 2.25rem;
+    font-size: 0.875rem;
+  }
 `;
 
 const PasswordInput = styled(Input)`
@@ -176,20 +286,20 @@ const PasswordInput = styled(Input)`
 
 const Button = styled.button`
   width: 100%;
-  padding: 0.94rem; /* změnšeno z 1.25rem */
+  padding: 0.94rem;
   background: linear-gradient(135deg, #1f2a57 0%, #2563eb 70%, #1d4ed8 100%);
   color: white;
   border: none;
-  border-radius: 9px; /* změnšeno z 12px */
-  font-size: 1.05rem; /* mírně změnšeno z 1.1rem */
+  border-radius: 9px;
+  font-size: 1.05rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.38rem; /* změnšeno z 0.5rem */
-  margin-top: 1.5rem; /* změnšeno z 2rem */
+  gap: 0.38rem;
+  margin-top: 1.5rem;
 
   &:hover {
     transform: translateY(-2px);
@@ -205,6 +315,12 @@ const Button = styled.button`
     cursor: not-allowed;
     transform: none;
   }
+
+  @media (max-height: 768px) {
+    padding: 0.6rem;
+    font-size: 0.95rem;
+    margin-top: 0.5rem;
+  }
 `;
 
 const LoadingSpinner = styled.div`
@@ -214,19 +330,30 @@ const LoadingSpinner = styled.div`
   border-top: 2px solid white;
   border-radius: 50%;
   ${css`animation: ${spinAnimation} 1s linear infinite;`}
+
+  @media (max-height: 768px) {
+    width: 18px;
+    height: 18px;
+  }
 `;
 
 const ErrorMessage = styled.div`
   background: #fef2f2;
   border: 1px solid #fecaca;
   color: #dc2626;
-  padding: 0.75rem; /* zmenšeno z 1rem */
-  border-radius: 6px; /* zmenšeno z 8px */
-  margin-top: 0.75rem; /* zmenšeno z 1rem */
+  padding: 0.75rem;
+  border-radius: 6px;
+  margin-top: 0.75rem;
   display: flex;
   align-items: center;
-  gap: 0.38rem; /* zmenšeno z 0.5rem */
-  font-size: 0.8rem; /* mírně zmenšeno z 0.875rem */
+  gap: 0.38rem;
+  font-size: 0.8rem;
+
+  @media (max-height: 768px) {
+    padding: 0.5rem;
+    margin-top: 0.5rem;
+    font-size: 0.75rem;
+  }
 `;
 
 // === AccessDenied stránka - znovupoužívá styly login karty ===
@@ -364,6 +491,11 @@ const Divider = styled.div`
   &::after {
     margin-left: 0.75rem;
   }
+
+  @media (max-height: 768px) {
+    margin: 0.5rem 0 0.35rem 0;
+    font-size: 0.7rem;
+  }
 `;
 
 const EntraButton = styled.button`
@@ -404,6 +536,17 @@ const EntraButton = styled.button`
     width: 20px;
     height: 20px;
   }
+
+  @media (max-height: 768px) {
+    padding: 0.6rem;
+    font-size: 0.95rem;
+    margin-top: 0.35rem;
+    
+    svg {
+      width: 18px;
+      height: 18px;
+    }
+  }
 `;
 
 const MicrosoftIcon = () => (
@@ -414,6 +557,65 @@ const MicrosoftIcon = () => (
     <rect x="12" y="12" width="11" height="11" fill="#FFB900"/>
   </svg>
 );
+
+// Info panel pro M365 přihlášení
+const InfoPanel = styled.div`
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1px solid #93c5fd;
+  border-left: 4px solid #2563eb;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin: 0.75rem 0 1rem 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #1e40af;
+
+  @media (max-height: 768px) {
+    padding: 0.45rem 0.65rem;
+    margin: 0.4rem 0 0.5rem 0;
+    font-size: 0.75rem;
+    line-height: 1.35;
+    border-left-width: 3px;
+  }
+`;
+
+const InfoPanelTitle = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+  color: #1e3a8a;
+
+  @media (max-height: 768px) {
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+  }
+`;
+
+const InfoPanelText = styled.p`
+  margin: 0;
+  color: #1e40af;
+`;
+
+const InfoPanelIcon = styled.span`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: #2563eb;
+
+  @media (max-height: 768px) {
+    width: 16px;
+    height: 16px;
+    
+    svg {
+      width: 16px;
+      height: 16px;
+    }
+  }
+`;
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -429,10 +631,19 @@ const Login = () => {
   const [loadingAuthConfig, setLoadingAuthConfig] = useState(true);
   const [entraLoading, setEntraLoading] = useState(false);
   const [accessDenied, setAccessDenied] = useState(null); // { message: string } nebo null
-  // 🔐 Pokud se vracíme z Microsoft přihlašování, OKAMŽitě zobrazit loading (ne login formulář)
-  const [ssoInProgress, setSsoInProgress] = useState(
-    () => sessionStorage.getItem('entra_login_pending') === '1'
-  );
+  // 🔐 Pokud se vracíme z Microsoft přihlašování NEBO přicházíme z Dashboard s ?sso=auto, OKAMŽitě zobrazit loading (ne login formulář)
+  const [ssoInProgress, setSsoInProgress] = useState(() => {
+    // Návrat z M365 přihlašování
+    if (sessionStorage.getItem('entra_login_pending') === '1') {
+      return true;
+    }
+    // Příchod z Dashboard s ?sso=auto
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('sso') === 'auto') {
+      return true;
+    }
+    return false;
+  });
 
   // Load authentication configuration on mount
   useEffect(() => {
@@ -738,6 +949,16 @@ const Login = () => {
       <Wrapper>
         <Container>
           <CardHeader>
+            <HomeButton 
+              href="https://erdms.zachranka.cz/dashboard" 
+              title="Jdi na ERDMS portál aplikaci"
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.href = 'https://erdms.zachranka.cz/dashboard';
+              }}
+            >
+              <HomeIconCircle />
+            </HomeButton>
             <Title>Ověřování</Title>
             <Subtitle>Probíhá přihlášení přes Microsoft 365</Subtitle>
           </CardHeader>
@@ -756,6 +977,16 @@ const Login = () => {
       <Wrapper>
         <AccessDeniedCard>
           <AccessDeniedHeader>
+            <HomeButton 
+              href="https://erdms.zachranka.cz/dashboard" 
+              title="Jdi na ERDMS portál aplikaci"
+              onClick={(e) => {
+                e.preventDefault();
+                window.location.href = 'https://erdms.zachranka.cz/dashboard';
+              }}
+            >
+              <HomeIconCircle />
+            </HomeButton>
             <Title>Přístup zamítnut</Title>
             <Subtitle>Do systému se nelze přihlásit</Subtitle>
           </AccessDeniedHeader>
@@ -775,7 +1006,7 @@ const Login = () => {
                 href="https://erdms.zachranka.cz/dashboard"
               >
                 <Home size={18} />
-                Zpět na ERDMS rozcestník
+                Zpět na ERDMS portál aplikaci
               </BtnSecondary>
             </AccessDeniedButtons>
             <SupportSection>
@@ -806,11 +1037,30 @@ const Login = () => {
       <Wrapper>
         <Container>
         <CardHeader>
+          <HomeButton 
+            href="https://erdms.zachranka.cz/dashboard" 
+            title="Jdi na ERDMS portál aplikaci"
+            onClick={(e) => {
+              e.preventDefault();
+              window.location.href = 'https://erdms.zachranka.cz/dashboard';
+            }}
+          >
+            <HomeIconCircle />
+          </HomeButton>
           <Title>Přihlášení</Title>
           <Subtitle>Zadejte své přihlašovací údaje</Subtitle>
         </CardHeader>
 
         <CardBody>
+          {/* Info panel o možnosti přihlášení přes M365 */}
+          {authConfig && authConfig.entra_enabled === '1' && authConfig.auth_mode !== 'local_only' && (
+            <InfoPanel>
+              <InfoPanelText>
+                Můžete se <strong>nově</strong> přihlásit přes <strong>Microsoft 365</strong> tlačítkem níže, nebo použít klasické přihlášení <strong>jménem a heslem</strong>.
+              </InfoPanelText>
+            </InfoPanel>
+          )}
+
           <form onSubmit={handleSubmit}>
             <InputGroup>
               <InputLabel>Uživatelské jméno</InputLabel>
