@@ -1,6 +1,6 @@
 {
   "name": "r-app-zzs-eeo",
-  "version": "2.40.0",
+  "version": "2.50.0",
   "private": true,
   "homepage": "/dev/eeo-v2",
   "dependencies": {
@@ -94,6 +94,8 @@
     "cross-env": "^10.1.0",
     "postcss": "^8.5.6",
     "react-app-rewired": "^2.2.1",
-    "shx": "^0.4.0"
+    "sharp": "^0.34.5",
+    "shx": "^0.4.0",
+    "to-ico": "^1.1.5"
   }
 }

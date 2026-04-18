@@ -199,6 +199,16 @@ const HeaderCenter = styled.div`
 
 const HeaderRight = styled.div`text-align:right;`;
 
+// Microsoft 365 Icon (SVG)
+const MicrosoftIcon = ({ size = '16px' }) => (
+  <svg viewBox="0 0 23 23" fill="none" style={{ width: size, height: size, display: 'inline-block', verticalAlign: 'middle' }}>
+    <rect width="11" height="11" fill="#F25022"/>
+    <rect y="12" width="11" height="11" fill="#00A4EF"/>
+    <rect x="12" width="11" height="11" fill="#7FBA00"/>
+    <rect x="12" y="12" width="11" height="11" fill="#FFB900"/>
+  </svg>
+);
+
 // Theme toggle button removed per user request
 // Datum + čas (čas dominantní)
 const DateTimeBlock = styled.div`display:flex;flex-direction:row;align-items:baseline;gap:0.6rem;margin:0;padding:0;font-weight:600;color:${({theme})=>theme.colors.gold};letter-spacing:0.5px;white-space:nowrap;`;
@@ -3484,6 +3494,11 @@ const Layout = ({ children }) => {
             )}
             {isLoggedIn && userDetail && (
               <p style={{ margin: 0, fontSize: '0.82rem', fontWeight: 500, letterSpacing: '.4px', color: 'rgba(255,255,255,0.9)' }}>
+                {authMethod === 'entra_id' && (
+                  <span style={{ marginRight: '0.4rem' }} title="Přihlášen přes Microsoft 365">
+                    <MicrosoftIcon size="14px" />
+                  </span>
+                )}
                 Přihlášený uživatel: <span style={{ fontWeight: 600 }}>
                   {`${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim() || 'Neuvedeno'}
                   {(() => {
@@ -4212,7 +4227,7 @@ const Layout = ({ children }) => {
                     </LogoutMenuItem>
                     <LogoutMenuItem onClick={handleGoToDashboard}>
                       <FontAwesomeIcon icon={faHome} />
-                      <span>Zpět na ERDMS rozcestník</span>
+                      <span>Zpět na ERDMS portál aplikaci</span>
                     </LogoutMenuItem>
                   </LogoutDropdown>,
                   document.body

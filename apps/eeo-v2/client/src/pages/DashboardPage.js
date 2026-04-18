@@ -1,6 +1,7 @@
 /* eslint-disable no-unused-vars */
 import React, { useState, useEffect, useContext, useCallback, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
+import { createRoot } from 'react-dom/client';
 import { useNavigate } from 'react-router-dom';
 import styled, { keyframes } from 'styled-components';
 import { AuthContext } from '../context/AuthContext';
@@ -32,7 +33,7 @@ import {
   faExclamationCircle, faCalendarAlt, faMoneyBillWave,
   faFileContract, faComments, faComment, faHourglassHalf, faFileInvoice,
   faCoins, faChartLine, faBullhorn, faGift, faInfoCircle, faCalendarCheck, faUsers, faUser, faUserFriends,
-  faExpand, faCompress, faExchangeAlt,
+  faExpand, faCompress, faExchangeAlt, faExternalLinkAlt,
   faCloud, faWind, faTint, faThermometerHalf, faMapMarkerAlt,
   faChevronLeft, faChevronRight, faPaperPlane, faEnvelope,
   faClipboardList, faCubes, faInfinity, faHistory, faReceipt, faAddressBook
@@ -167,6 +168,600 @@ const refreshFlashAnim = keyframes`
   20%, 60%  { opacity: 0.05; }
   40%, 80%  { opacity: 1; }
 `;
+
+// ============================================================================
+// EXTERNAL WINDOW COMPONENTS (Always-on-Top)
+// ============================================================================
+
+// ============================================================================
+// EXTERNAL WINDOW - Samostatný React root (nezávislý na navigaci)
+// ============================================================================
+
+// Globální store pro external windows
+const externalWindowsStore = {
+  orders: { window: null, root: null, updateCallback: null },
+  invoices: { window: null, root: null, updateCallback: null },
+  weather: { window: null, root: null, updateCallback: null },
+  finance: { window: null, root: null, updateCallback: null }
+};
+
+// Funkce pro vytvoření a správu externího okna
+const createExternalStatsWindow = async (type, initialData, onCloseCallback) => {
+  // Nastavit title a rozměry podle typu okna
+  let title, windowWidth, windowHeight;
+  
+  if (type === 'orders') {
+    title = 'Statistiky objednávek';
+    const tilesCount = 12;
+    const tileWidth = 100;
+    const gap = 12;
+    const padding = 100;
+    windowWidth = tilesCount * tileWidth + (tilesCount - 1) * gap + padding;
+    windowHeight = 210;
+  } else if (type === 'invoices') {
+    title = 'Statistiky faktur';
+    const tilesCount = 13;
+    const tileWidth = 100;
+    const gap = 12;
+    const padding = 100;
+    windowWidth = tilesCount * tileWidth + (tilesCount - 1) * gap + padding;
+    windowHeight = 210;
+  } else if (type === 'weather') {
+    title = 'Počasí';
+    windowWidth = 465;   // optimální šířka pro weather widget
+    windowHeight = 470;  // optimální výška pro weather widget
+  } else if (type === 'finance') {
+    title = 'Finanční trhy';
+    windowWidth = 1400;  // široké pro všechny tickery
+    windowHeight = 280;
+  }
+
+  let win = null;
+
+  // Pokus o Always-on-Top pomocí Document Picture-in-Picture API
+  if ('documentPictureInPicture' in window) {
+    try {
+      win = await window.documentPictureInPicture.requestWindow({
+        width: windowWidth,
+        height: windowHeight,
+      });
+      console.log('✅ PiP okno vytvořeno');
+    } catch (error) {
+      console.warn('⚠️ PiP API selhalo:', error.message);
+      win = null;
+    }
+  }
+
+  // Fallback na klasické okno
+  if (!win) {
+    win = window.open(
+      '',
+      `stats_${type}_${Date.now()}`,
+      `width=${windowWidth},height=${windowHeight},left=100,top=100,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=no`
+    );
+  }
+
+  if (!win) {
+    alert('Vyskakovací okno bylo zablokováno. Povolte prosím pop-up okna.');
+    return null;
+  }
+
+  // Nastavit HTML strukturu
+  win.document.open();
+  win.document.write(`
+    <!DOCTYPE html>
+    <html lang="cs">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${title}</title>
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+        <style>
+          * { box-sizing: border-box; }
+          body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+          }
+          /* Vlastní scrollbar styling */
+          ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+          }
+          ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.3);
+            border-radius: 4px;
+          }
+          ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.4);
+            border-radius: 4px;
+            transition: background 0.2s;
+          }
+          ::-webkit-scrollbar-thumb:hover {
+            background: rgba(148, 163, 184, 0.6);
+          }
+          /* Firefox scrollbar */
+          * {
+            scrollbar-width: thin;
+            scrollbar-color: rgba(148, 163, 184, 0.4) rgba(15, 23, 42, 0.3);
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+          }
+        </style>
+      </head>
+      <body style="margin: 0; padding: 0; min-height: 100vh; background: linear-gradient(to bottom right, rgb(15, 23, 42), rgb(30, 41, 59));">
+        <div id="external-root" style="min-height: 100vh; padding: 0.5rem;"></div>
+      </body>
+    </html>
+  `);
+  win.document.close();
+
+  // Kopírovat styly z hlavní stránky
+  const copyStyles = () => {
+    const styles = document.querySelectorAll('style, link[rel="stylesheet"]');
+    styles.forEach(styleNode => {
+      try {
+        const cloned = styleNode.cloneNode(true);
+        win.document.head.appendChild(cloned);
+      } catch (e) { /* ignore */ }
+    });
+  };
+  copyStyles();
+  setTimeout(copyStyles, 100);
+  setTimeout(copyStyles, 500);
+
+  // Vytvořit React root v externím okně
+  const rootElement = win.document.getElementById('external-root');
+  const root = createRoot(rootElement);
+
+  // Inicializovat store
+  externalWindowsStore[type] = {
+    window: win,
+    root: root,
+    updateCallback: null
+  };
+
+  // Sledovat zavření okna
+  const checkClosed = setInterval(() => {
+    if (win.closed) {
+      console.log(`🚪 Externí okno ${type} bylo zavřeno`);
+      clearInterval(checkClosed);
+      if (externalWindowsStore[type].root) {
+        externalWindowsStore[type].root.unmount();
+      }
+      externalWindowsStore[type] = { window: null, root: null, updateCallback: null };
+      if (onCloseCallback) onCloseCallback();
+    }
+  }, 500);
+
+  // Event listener pro zavření
+  win.addEventListener('pagehide', () => {
+    clearInterval(checkClosed);
+    if (onCloseCallback) onCloseCallback();
+  });
+
+  // Render initial content
+  renderExternalStatsContent(type, initialData);
+
+  return win;
+};
+
+// Funkce pro renderování obsahu do externího okna
+const renderExternalStatsContent = (type, data) => {
+  const store = externalWindowsStore[type];
+  if (!store.root || !data) return;
+
+  if (type === 'orders' || type === 'invoices') {
+    renderStatsContent(type, data, store);
+  } else if (type === 'weather') {
+    renderWeatherContent(data, store);
+  } else if (type === 'finance') {
+    renderFinanceContent(data, store);
+  }
+};
+
+// Renderování statistik (objednávky/faktury)
+const renderStatsContent = (type, data, store) => {
+
+  const isOrders = type === 'orders';
+  const title = isOrders ? 'Statistiky objednávek' : 'Statistiky faktur';
+  
+  const tiles = isOrders ? [
+    { key: 'total', label: 'Celkem', value: data.total || 0, color: '#1d4ed8', bgColor: '#dbeafe', icon: 'fa-solid fa-list' },
+    { key: 'ke_schvaleni', label: 'Ke schválení', value: data.ke_schvaleni || 0, color: '#dc2626', bgColor: '#fee2e2', icon: 'fa-solid fa-exclamation-triangle' },
+    { key: 'schvalena', label: 'Schváleno', value: data.schvalena || 0, color: '#166534', bgColor: '#dcfce7', icon: 'fa-solid fa-check-circle' },
+    { key: 'rozpracovana', label: 'Rozpracované', value: data.rozpracovana || 0, color: '#b45309', bgColor: '#fef3c7', icon: 'fa-solid fa-hourglass-half' },
+    { key: 'odeslana', label: 'Odeslané', value: data.odeslana || 0, color: '#0284c7', bgColor: '#e0f2fe', icon: 'fa-solid fa-paper-plane' },
+    { key: 'potvrzena', label: 'Potvrzené', value: data.potvrzena || 0, color: '#7c3aed', bgColor: '#ede9fe', icon: 'fa-solid fa-check' },
+    { key: 'fakturace', label: 'Fakturace', value: data.fakturace || 0, color: '#06b6d4', bgColor: '#cffafe', icon: 'fa-solid fa-money-bill-wave' },
+    { key: 'vecna_spravnost', label: 'Věcná spr.', value: data.vecna_spravnost || 0, color: '#be185d', bgColor: '#fce7f3', icon: 'fa-solid fa-user-shield' },
+    { key: 'zkontrolovana', label: 'Zkontrolováno', value: data.zkontrolovana || 0, color: '#16a34a', bgColor: '#dcfce7', icon: 'fa-solid fa-check-double' },
+    { key: 'k_uverejneni_do_registru', label: 'Ke zveřejnění', value: data.k_uverejneni_do_registru || 0, color: '#ea580c', bgColor: '#fff7ed', icon: 'fa-solid fa-globe' },
+    { key: 'uverejnena', label: 'Zveřejněné', value: data.uverejnena || 0, color: '#059669', bgColor: '#ecfdf5', icon: 'fa-solid fa-check-circle' },
+    { key: 'dokoncena', label: 'Dokončené', value: data.dokoncena || 0, color: '#059669', bgColor: '#d1fae5', icon: 'fa-solid fa-flag-checkered' }
+  ] : [
+    { key: 'total', label: 'Celkem', value: data.total || 0, color: '#1d4ed8', bgColor: '#dbeafe', icon: 'fa-solid fa-file-invoice' },
+    { key: 'vecna_spravnost', label: 'Věcná spr.', value: data.vecna_spravnost || 0, color: '#7c3aed', bgColor: '#ede9fe', icon: 'fa-solid fa-user-shield' },
+    { key: 'zaplaceno', label: 'Zaplaceno', value: data.zaplaceno || 0, color: '#059669', bgColor: '#dcfce7', icon: 'fa-solid fa-check-circle' },
+    { key: 'nezaplaceno', label: 'Nezaplaceno', value: data.nezaplaceno || 0, color: '#b45309', bgColor: '#fef3c7', icon: 'fa-solid fa-hourglass-half' },
+    { key: 've_splatnosti', label: 'Ve splatnosti', value: data.ve_splatnosti || 0, color: '#0891b2', bgColor: '#e0f2fe', icon: 'fa-solid fa-clock' },
+    { key: 'po_splatnosti', label: 'Po splatnosti', value: data.po_splatnosti || 0, color: '#dc2626', bgColor: '#fee2e2', icon: 'fa-solid fa-exclamation-circle' },
+    { key: 'storno', label: 'Storno', value: data.storno || 0, color: '#64748b', bgColor: '#f1f5f9', icon: 'fa-solid fa-ban' },
+    { key: 'bez_prirazeni', label: 'Bez přiřazení', value: data.bez_prirazeni || 0, color: '#94a3b8', bgColor: '#f8fafc', icon: 'fa-solid fa-question-circle' },
+    { key: 's_objednavkou', label: 'S objednávkou', value: data.s_objednavkou || 0, color: '#1d4ed8', bgColor: '#dbeafe', icon: 'fa-solid fa-link' },
+    { key: 'se_smlouvou', label: 'Se smlouvou', value: data.se_smlouvou || 0, color: '#059669', bgColor: '#ecfdf5', icon: 'fa-solid fa-file-contract' },
+    { key: 'zkontrolovano', label: 'Kontrola', value: data.zkontrolovano || 0, color: '#0891b2', bgColor: '#e0f2fe', icon: 'fa-solid fa-check' },
+    { key: 's_poznamkou', label: 'S poznámkou', value: data.s_poznamkou || 0, color: '#ea580c', bgColor: '#fff7ed', icon: 'fa-solid fa-comment' },
+    { key: 'moje_faktury', label: 'Moje faktury', value: data.moje_faktury || 0, color: '#6366f1', bgColor: '#eef2ff', icon: 'fa-solid fa-user' }
+  ];
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dateStr = now.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  // Vypočítat cenovou sumaci
+  const totalSum = data.celkova_castka || 0;
+  const formattedSum = new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK' }).format(totalSum);
+
+  const content = React.createElement('div', {
+    style: {
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '0.5rem'
+    }
+  }, [
+    React.createElement('div', {
+      key: 'header',
+      style: {
+        marginBottom: '0.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: '0.5rem',
+        paddingRight: '0.5rem',
+        gap: '1rem'
+      }
+    }, [
+      React.createElement('div', {
+        key: 'left',
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem'
+        }
+      }, [
+        React.createElement('h1', {
+          key: 'title',
+          style: {
+            color: 'white',
+            fontSize: '14px',
+            fontWeight: 700,
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }
+        }, [
+          React.createElement('i', {
+            key: 'icon',
+            className: isOrders ? 'fa-solid fa-chart-bar' : 'fa-solid fa-file-invoice-dollar',
+            style: { fontSize: '14px' }
+          }),
+          React.createElement('span', { key: 'text' }, title)
+        ]),
+        React.createElement('span', {
+          key: 'sum',
+          style: {
+            color: '#10b981',
+            fontSize: '16px',
+            fontWeight: 700
+          }
+        }, formattedSum)
+      ]),
+      React.createElement('div', {
+        key: 'right',
+        style: {
+          textAlign: 'right',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: '0.1rem'
+        }
+      }, [
+        React.createElement('span', {
+          key: 'date',
+          style: {
+            color: '#cbd5e1',
+            fontSize: '9px',
+            fontWeight: 500
+          }
+        }, dateStr),
+        React.createElement('span', {
+          key: 'time',
+          style: {
+            color: '#94a3b8',
+            fontSize: '10px',
+            fontWeight: 600
+          }
+        }, timeStr)
+      ])
+    ]),
+    React.createElement('div', {
+      key: 'content',
+      style: {
+        display: 'flex',
+        gap: '0.75rem',
+        flex: 1,
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        padding: '0.25rem 0'
+      }
+    }, tiles.map((tile, index) => 
+      React.createElement('div', {
+        key: tile.key,
+        style: {
+          textAlign: 'center',
+          padding: '0.75rem 0.65rem',
+          borderRadius: '10px',
+          background: tile.bgColor,
+          transition: 'all 0.2s',
+          minWidth: '100px',
+          flex: '1 1 0',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '0.25rem'
+        }
+      }, [
+        React.createElement('i', {
+          key: 'icon',
+          className: tile.icon,
+          style: {
+            fontSize: '18px',
+            lineHeight: 1,
+            color: tile.color
+          }
+        }),
+        React.createElement('div', {
+          key: 'value',
+          style: {
+            fontSize: '1.5rem',
+            fontWeight: 800,
+            color: tile.color,
+            lineHeight: 1.2
+          }
+        }, tile.value),
+        React.createElement('div', {
+          key: 'label',
+          style: {
+            fontSize: '0.7rem',
+            color: '#64748b',
+            marginTop: '0.2rem',
+            textTransform: 'uppercase',
+            letterSpacing: '0.03em'
+          }
+        }, tile.label)
+      ])
+    ))
+  ]);
+
+  store.root.render(content);
+  console.log(`🔄 Aktualizace dat v externím okně ${type}`);
+};
+
+// Renderování počasí
+const renderWeatherContent = (data, store) => {
+  if (!data) return;
+  
+  // Renderovat WeatherWidget stejně jako v dashboardu, ale BEZ externího tlačítka
+  const content = React.createElement(WeatherWidget, {
+    weatherData: data,
+    weatherLoading: false,
+    weatherError: null,
+    onRefresh: () => {
+      // V externím okně nemůžeme refreshovat - prázdná funkce
+      console.log('⚠️ Refresh nelze provést z externího okna');
+    },
+    showExternalButton: false,  // Nezobraovat externí tlačítko v externím okně
+    externalWindow: null,
+    onOpenExternal: null,
+    onCloseExternal: null
+  });
+
+  store.root.render(content);
+  console.log('🔄 Aktualizace počasí v externím okně');
+};
+
+// Renderování finančních trhů (jen tickery)
+const renderFinanceContent = (data, store) => {
+  if (!data) return;
+  
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const dateStr = now.toLocaleDateString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  
+  const formatPrice = (price, currency = 'USD') => {
+    if (price == null) return '–';
+    if (currency === 'CZK') return price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
+    if (currency === 'EUR') return '€' + price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return '$' + price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+  
+  const formatChange = (change) => {
+    if (change == null) return '–';
+    const isPositive = change >= 0;
+    return `${isPositive ? '▲' : '▼'} ${Math.abs(change).toFixed(2)}%`;
+  };
+  
+  // Kombinovat všechny tickery z již filtrovaných polí
+  const allTickers = [];
+  
+  // Akcie - data.stocks je pole objektů
+  if (data.stocks && Array.isArray(data.stocks)) {
+    data.stocks.forEach((stock) => {
+      allTickers.push({
+        symbol: stock.ticker || stock.symbol,
+        name: stock.name,
+        price: stock.currency === 'CZK' ? formatPrice(stock.price, 'CZK') : formatPrice(stock.price),
+        change: stock.change_percent,
+        type: 'stock',
+        color: stock.change_percent >= 0 ? '#059669' : '#dc2626',
+        bgColor: stock.change_percent >= 0 ? '#ecfdf5' : '#fef2f2'
+      });
+    });
+  }
+  
+  // Krypto - data.crypto je pole objektů
+  if (data.crypto && Array.isArray(data.crypto)) {
+    data.crypto.forEach((coin) => {
+      allTickers.push({
+        symbol: coin.symbol?.toUpperCase() || coin.id,
+        name: coin.name,
+        price: formatPrice(coin.price_usd),
+        change: coin.change_24h,
+        type: 'crypto',
+        color: coin.change_24h >= 0 ? '#059669' : '#dc2626',
+        bgColor: coin.change_24h >= 0 ? '#ecfdf5' : '#fef2f2'
+      });
+    });
+  }
+  
+  // Forex - data.forex je pole objektů
+  if (data.forex && Array.isArray(data.forex)) {
+    data.forex.forEach((fx) => {
+      allTickers.push({
+        symbol: fx.pair,
+        name: `EUR/${fx.pair}`,
+        price: typeof fx.rate === 'number' ? fx.rate.toFixed(4) : '–',
+        change: null,
+        type: 'forex',
+        color: '#0891b2',
+        bgColor: '#e0f2fe'
+      });
+    });
+  }
+  
+  const content = React.createElement('div', {
+    style: {
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '0.5rem'
+    }
+  }, [
+    React.createElement('div', {
+      key: 'header',
+      style: {
+        marginBottom: '0.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingLeft: '0.5rem',
+        paddingRight: '0.5rem',
+        gap: '1rem'
+      }
+    }, [
+      React.createElement('div', {
+        key: 'left',
+        style: { display: 'flex', alignItems: 'center', gap: '0.5rem' }
+      }, [
+        React.createElement('i', {
+          key: 'icon',
+          className: 'fa-solid fa-chart-line',
+          style: { fontSize: '14px', color: 'white' }
+        }),
+        React.createElement('span', {
+          key: 'title',
+          style: { color: 'white', fontSize: '14px', fontWeight: 700 }
+        }, 'Finanční trhy')
+      ]),
+      React.createElement('div', {
+        key: 'right',
+        style: {
+          textAlign: 'right',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-end',
+          gap: '0.1rem'
+        }
+      }, [
+        React.createElement('span', {
+          key: 'date',
+          style: { color: '#cbd5e1', fontSize: '9px', fontWeight: 500 }
+        }, dateStr),
+        React.createElement('span', {
+          key: 'time',
+          style: { color: '#94a3b8', fontSize: '10px', fontWeight: 600 }
+        }, timeStr)
+      ])
+    ]),
+    React.createElement('div', {
+      key: 'content',
+      style: {
+        display: 'flex',
+        gap: '0.5rem',
+        flex: 1,
+        overflowX: 'auto',
+        overflowY: 'hidden',
+        padding: '0.25rem 0'
+      }
+    }, allTickers.map((ticker, index) => 
+      React.createElement('div', {
+        key: `${ticker.type}-${ticker.symbol}-${index}`,
+        style: {
+          textAlign: 'center',
+          padding: '0.75rem 0.65rem',
+          borderRadius: '10px',
+          background: ticker.bgColor,
+          minWidth: '100px',
+          flex: '0 0 auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.25rem'
+        }
+      }, [
+        React.createElement('div', {
+          key: 'symbol',
+          style: {
+            fontSize: '0.7rem',
+            fontWeight: 700,
+            color: '#64748b',
+            textTransform: 'uppercase'
+          }
+        }, ticker.symbol),
+        React.createElement('div', {
+          key: 'price',
+          style: {
+            fontSize: '1.1rem',
+            fontWeight: 800,
+            color: ticker.color,
+            lineHeight: 1.2
+          }
+        }, ticker.price),
+        ticker.change !== null && React.createElement('div', {
+          key: 'change',
+          style: {
+            fontSize: '0.65rem',
+            fontWeight: 700,
+            color: ticker.color
+          }
+        }, formatChange(ticker.change))
+      ])
+    ))
+  ]);
+  
+  store.root.render(content);
+  console.log('🔄 Aktualizace finančních trhů v externím okně');
+};
+
+// Tyto komponenty již nejsou potřeba - renderování je přímo v renderExternalStatsContent
 
 // ============================================================================
 // STYLED COMPONENTS
@@ -1873,7 +2468,7 @@ const WMO_INFO = {
   99: { text: 'Silná bouřka',       Icon: CloudRain,    iconColor: '#f97316' },
 };
 
-function WeatherWidget({ weatherData, weatherLoading, weatherError, onRefresh }) {
+function WeatherWidget({ weatherData, weatherLoading, weatherError, onRefresh, showExternalButton, externalWindow, onOpenExternal, onCloseExternal }) {
   const isDay = weatherData?.is_day !== 0; // default: denní
   const bgGradient = isDay
     ? 'linear-gradient(135deg, #60a5fa 0%, #2563eb 100%)'
@@ -1978,6 +2573,30 @@ function WeatherWidget({ weatherData, weatherLoading, weatherError, onRefresh })
             >
               <FontAwesomeIcon icon={faSync} style={{ fontSize: '0.7rem' }} />
             </button>
+            {showExternalButton && (
+              <button 
+                onClick={() => externalWindow ? onCloseExternal() : onOpenExternal()} 
+                title={externalWindow ? 'Zavřít externí okno' : 'Otevřít v externím okně (Always-on-Top)'}
+                style={{
+                  background: externalWindow ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)', 
+                  border: 'none', 
+                  color: '#fff',
+                  borderRadius: '50%', 
+                  width: '1.6rem', 
+                  height: '1.6rem',
+                  cursor: 'pointer', 
+                  display: 'flex',
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  backdropFilter: 'blur(4px)', 
+                  transition: 'background 0.15s'
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.3)'}
+                onMouseLeave={e => e.currentTarget.style.background = externalWindow ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.15)'}
+              >
+                <FontAwesomeIcon icon={faExternalLinkAlt} style={{ fontSize: '0.7rem' }} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -2181,7 +2800,7 @@ const CRYPTO_OPTIONS = [
 
 const FX_OPTIONS = ['CZK', 'USD', 'GBP', 'CHF', 'PLN', 'JPY', 'CAD', 'AUD', 'SEK', 'NOK', 'DKK', 'HUF'];
 
-function FinanceWidget({ financeData, financeLoading, financeError, onRefresh, userId, token, username }) {
+function FinanceWidget({ financeData, financeLoading, financeError, onRefresh, userId, token, username, showExternalButton, externalWindow, onOpenExternal, onCloseExternal }) {
   const [tipIndex, setTipIndex] = useState(() => Math.floor(Math.random() * FINANCE_TIPS.length));
   const [configOpen, setConfigOpen] = useState(false);
   const cfgKey = `finance_config_${userId || 'default'}`;
@@ -2510,6 +3129,32 @@ function FinanceWidget({ financeData, financeLoading, financeError, onRefresh, u
             >
               <FontAwesomeIcon icon={faSync} style={{ fontSize: '0.55rem' }} />
             </button>
+            {showExternalButton && (
+              <button 
+                onClick={() => externalWindow ? onCloseExternal() : onOpenExternal()} 
+                title={externalWindow ? 'Zavřít externí okno' : 'Otevřít v externím okně (Always-on-Top)'}
+                style={{
+                  background: externalWindow ? '#e2e8f0' : '#f1f5f9', 
+                  border: '1px solid #e2e8f0', 
+                  color: externalWindow ? accentColor : '#94a3b8',
+                  borderRadius: '50%', 
+                  width: '1.45rem', 
+                  height: '1.45rem', 
+                  cursor: 'pointer',
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center', 
+                  transition: 'all 0.15s'
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = accentColor; }}
+                onMouseLeave={e => { 
+                  e.currentTarget.style.background = externalWindow ? '#e2e8f0' : '#f1f5f9'; 
+                  e.currentTarget.style.color = externalWindow ? accentColor : '#94a3b8'; 
+                }}
+              >
+                <FontAwesomeIcon icon={faExternalLinkAlt} style={{ fontSize: '0.55rem' }} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -5546,6 +6191,100 @@ export default function DashboardPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [fullscreenChart]);
 
+  // External always-on-top windows pro statistiky - používají globální store
+  const [externalOrderStatsWindow, setExternalOrderStatsWindow] = useState(null);
+  const [externalInvoiceStatsWindow, setExternalInvoiceStatsWindow] = useState(null);
+  const [externalWeatherWindow, setExternalWeatherWindow] = useState(null);
+  const [externalFinanceWindow, setExternalFinanceWindow] = useState(null);
+
+  // Automatická aktualizace dat v externích oknech při změnách
+  useEffect(() => {
+    if (externalWindowsStore.orders.window && !externalWindowsStore.orders.window.closed && data?.orders_stats) {
+      renderExternalStatsContent('orders', data.orders_stats);
+    }
+  }, [data?.orders_stats]);
+
+  useEffect(() => {
+    if (externalWindowsStore.invoices.window && !externalWindowsStore.invoices.window.closed && data?.invoices_stats) {
+      renderExternalStatsContent('invoices', data.invoices_stats);
+    }
+  }, [data?.invoices_stats]);
+  
+  useEffect(() => {
+    if (externalWindowsStore.weather.window && !externalWindowsStore.weather.window.closed && weatherData) {
+      renderExternalStatsContent('weather', weatherData);
+    }
+  }, [weatherData]);
+  
+  useEffect(() => {
+    if (externalWindowsStore.finance.window && !externalWindowsStore.finance.window.closed && financeData) {
+      renderExternalStatsContent('finance', financeData);
+    }
+  }, [financeData]);
+
+  const openExternalWindow = async (type) => {
+    const store = externalWindowsStore[type];
+    
+    // Pokud už okno existuje, jen ho zaměříme
+    if (store.window && !store.window.closed) {
+      store.window.focus();
+      console.log(`✨ Externí okno ${type} je již otevřené - zaměřuji`);
+      return;
+    }
+
+    // Vytvoř nové okno
+    let initialData;
+    if (type === 'orders') {
+      initialData = data?.orders_stats;
+    } else if (type === 'invoices') {
+      initialData = data?.invoices_stats;
+    } else if (type === 'weather') {
+      initialData = weatherData;
+    } else if (type === 'finance') {
+      initialData = financeData;
+    }
+    
+    const win = await createExternalStatsWindow(type, initialData, () => {
+      if (type === 'orders') {
+        setExternalOrderStatsWindow(null);
+      } else if (type === 'invoices') {
+        setExternalInvoiceStatsWindow(null);
+      } else if (type === 'weather') {
+        setExternalWeatherWindow(null);
+      } else if (type === 'finance') {
+        setExternalFinanceWindow(null);
+      }
+    });
+
+    if (win) {
+      if (type === 'orders') {
+        setExternalOrderStatsWindow(win);
+      } else if (type === 'invoices') {
+        setExternalInvoiceStatsWindow(win);
+      } else if (type === 'weather') {
+        setExternalWeatherWindow(win);
+      } else if (type === 'finance') {
+        setExternalFinanceWindow(win);
+      }
+    }
+  };
+
+  const closeExternalWindow = (type) => {
+    const store = externalWindowsStore[type];
+    if (store.window && !store.window.closed) {
+      store.window.close();
+    }
+    if (type === 'orders') {
+      setExternalOrderStatsWindow(null);
+    } else if (type === 'invoices') {
+      setExternalInvoiceStatsWindow(null);
+    } else if (type === 'weather') {
+      setExternalWeatherWindow(null);
+    } else if (type === 'finance') {
+      setExternalFinanceWindow(null);
+    }
+  };
+
   const username = user?.username;
 
   // SUPERADMIN check
@@ -6019,6 +6758,38 @@ export default function DashboardPage() {
     return () => clearInterval(interval);
   }, [autoRefreshEnabled, fetchData]);
 
+  // 🔄 Listener pro refresh dashboard po změnách v objednávkách/fakturách (schválení, zrušení, editace)
+  useEffect(() => {
+    const handleStorageRefresh = (e) => {
+      // Kontrola, jestli je to náš event
+      if (e.key === 'dashboardRefreshTrigger') {
+        console.log('🔄 Dashboard: Detekován refresh trigger z jiného modulu');
+        fetchData(true); // Silent refresh
+        // Vyčistit trigger po použití
+        try {
+          localStorage.removeItem('dashboardRefreshTrigger');
+        } catch (err) {
+          console.error('Chyba při odstranění trigger:', err);
+        }
+      }
+    };
+
+    window.addEventListener('storage', handleStorageRefresh);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageRefresh);
+    };
+  }, [fetchData]);
+
+  // 🪟 Vystavit fetchData pro externí okna (pokud potřebují manuální refresh)
+  useEffect(() => {
+    if (window.dashboardAPI) {
+      window.dashboardAPI.refreshData = () => fetchData(true);
+    } else {
+      window.dashboardAPI = { refreshData: () => fetchData(true) };
+    }
+  }, [fetchData]);
+
   // Uložit stav auto-refresh do localStorage
   const handleToggleAutoRefresh = useCallback((e) => {
     const enabled = e.target.checked;
@@ -6267,6 +7038,25 @@ export default function DashboardPage() {
         break;
       case 'orders_stats':
         content = <OrderStatsWidget stats={data?.orders_stats} navigate={navigate} />;
+        headerExtra = (
+          <button
+            onClick={() => externalOrderStatsWindow ? closeExternalWindow('orders') : openExternalWindow('orders')}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: externalOrderStatsWindow ? '#1d4ed8' : '#94a3b8',
+              fontSize: '0.85rem',
+              padding: '0.15rem 0.3rem',
+              borderRadius: '4px',
+              lineHeight: 1,
+              transition: 'all 0.15s'
+            }}
+            title={externalOrderStatsWindow ? 'Zavřít externí okno' : 'Otevřít v externím okně (Always-on-Top)'}
+          >
+            <FontAwesomeIcon icon={faExternalLinkAlt} />
+          </button>
+        );
         break;
       case 'my_orders':
         content = <MyOrdersWidget myOrdersData={data?.my_orders_pending} navigate={navigate} />;
@@ -6378,6 +7168,25 @@ export default function DashboardPage() {
         break;
       case 'invoices_stats':
         content = <InvoiceStatsWidget stats={data?.invoices_stats} navigate={navigate} />;
+        headerExtra = (
+          <button
+            onClick={() => externalInvoiceStatsWindow ? closeExternalWindow('invoices') : openExternalWindow('invoices')}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: externalInvoiceStatsWindow ? '#7c3aed' : '#94a3b8',
+              fontSize: '0.85rem',
+              padding: '0.15rem 0.3rem',
+              borderRadius: '4px',
+              lineHeight: 1,
+              transition: 'all 0.15s'
+            }}
+            title={externalInvoiceStatsWindow ? 'Zavřít externí okno' : 'Otevřít v externím okně (Always-on-Top)'}
+          >
+            <FontAwesomeIcon icon={faExternalLinkAlt} />
+          </button>
+        );
         break;
       case 'annual_fees_due':
         content = <AnnualFeesDueWidget feesData={data?.annual_fees_due} navigate={navigate} />;
@@ -6485,16 +7294,37 @@ export default function DashboardPage() {
           <WidgetCard key={tileId} $accent={cfg.color} $index={index} style={{ padding: 0, overflow: 'hidden', borderLeft: 'none' }}
             ref={el => { widgetRefs.current[tileId] = el; }}
           >
-            <WeatherWidget weatherData={weatherData} weatherLoading={weatherLoading} weatherError={weatherError} onRefresh={() => fetchWeather(false)} />
+            <WeatherWidget 
+              weatherData={weatherData} 
+              weatherLoading={weatherLoading} 
+              weatherError={weatherError} 
+              onRefresh={() => fetchWeather(false)} 
+              showExternalButton={true}
+              externalWindow={externalWeatherWindow}
+              onOpenExternal={() => openExternalWindow('weather')}
+              onCloseExternal={() => closeExternalWindow('weather')}
+            />
           </WidgetCard>
         );
       case 'finance_markets':
-        // Finance: renderuje celou kartu sám (span2), podobné jako Weather
+        // Finance: renderuje celou kartu sám (span2)
         return (
           <WidgetCard key={tileId} $accent={cfg.color} $index={index} $span2={true} style={{ padding: 0, overflow: 'hidden', borderLeft: 'none' }}
             ref={el => { widgetRefs.current[tileId] = el; }}
           >
-            <FinanceWidget financeData={financeData} financeLoading={financeLoading} financeError={financeError} onRefresh={() => fetchFinance(false)} userId={user?.id} token={token} username={username} />
+            <FinanceWidget 
+              financeData={financeData} 
+              financeLoading={financeLoading} 
+              financeError={financeError} 
+              onRefresh={() => fetchFinance(false)} 
+              userId={user?.id} 
+              token={token} 
+              username={username} 
+              showExternalButton={true}
+              externalWindow={externalFinanceWindow}
+              onOpenExternal={() => openExternalWindow('finance')}
+              onCloseExternal={() => closeExternalWindow('finance')}
+            />
           </WidgetCard>
         );
       case 'calendar':
@@ -6884,6 +7714,8 @@ export default function DashboardPage() {
       </ChartOverlay>,
       document.body
     )}
+
+    {/* Externí okna se spravují přes globální store - není potřeba React Portal */}
     </>
   );
 }
