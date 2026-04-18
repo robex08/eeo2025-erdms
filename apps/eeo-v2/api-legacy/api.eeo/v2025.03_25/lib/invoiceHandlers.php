@@ -2087,6 +2087,12 @@ function handle_invoices25_list($input, $config, $queries) {
                     $params[] = $user_id;
                     break;
                     
+                case 'my_unchecked_invoices':
+                    // Moje nezkontrolované faktury (předané na mě, ale ještě bez věcné kontroly)
+                    $where_conditions[] = '(f.fa_predana_zam_id = ? AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0))';
+                    $params[] = $user_id;
+                    break;
+                    
                 case 'with_contract':
                     // Přiřazené ke smlouvě
                     $where_conditions[] = 'f.smlouva_id IS NOT NULL AND f.smlouva_id > 0';
@@ -2185,6 +2191,8 @@ function handle_invoices25_list($input, $config, $queries) {
             COALESCE(SUM(CASE WHEN f.stav = 'VECNA_SPRAVNOST' THEN f.fa_castka ELSE 0 END), 0) as celkem_vecna_spravnost,
             COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN 1 END) as pocet_moje_faktury,
             COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
+            COUNT(CASE WHEN f.fa_predana_zam_id = $user_id AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) THEN 1 END) as pocet_moje_nezkontrolovane,
+            COALESCE(SUM(CASE WHEN f.fa_predana_zam_id = $user_id AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_nezkontrolovane,
             COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
             COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
             COUNT(CASE WHEN f.objednavka_id IS NULL AND f.smlouva_id IS NULL THEN 1 END) as pocet_bez_prirazeni,
@@ -2225,6 +2233,8 @@ function handle_invoices25_list($input, $config, $queries) {
             'celkem_vecna_spravnost' => (float)$stats['celkem_vecna_spravnost'],
             'pocet_moje_faktury' => (int)$stats['pocet_moje_faktury'],
             'celkem_moje_faktury' => (float)$stats['celkem_moje_faktury'],
+            'pocet_moje_nezkontrolovane' => (int)$stats['pocet_moje_nezkontrolovane'],
+            'celkem_moje_nezkontrolovane' => (float)$stats['celkem_moje_nezkontrolovane'],
             'pocet_s_smlouvou' => (int)$stats['pocet_s_smlouvou'],
             'pocet_s_objednavkou' => (int)$stats['pocet_s_objednavkou'],
             'pocet_bez_prirazeni' => (int)$stats['pocet_bez_prirazeni'],

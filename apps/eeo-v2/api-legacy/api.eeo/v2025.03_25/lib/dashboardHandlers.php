@@ -2043,6 +2043,7 @@ function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_man
             SUM(CASE WHEN f.vecna_spravnost_potvrzeno = 1 THEN 1 ELSE 0 END) as zkontrolovano,
             SUM(CASE WHEN f.fa_poznamka IS NOT NULL AND TRIM(f.fa_poznamka) <> '' THEN 1 ELSE 0 END) as s_poznamkou,
             SUM(CASE WHEN f.vytvoril_uzivatel_id = {$uid} THEN 1 ELSE 0 END) as moje_faktury,
+            SUM(CASE WHEN f.fa_predana_zam_id = {$uid} AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) THEN 1 ELSE 0 END) as moje_nezkontrolovane,
             COALESCE(SUM(CASE WHEN f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as castka_zaplaceno,
             COALESCE(SUM(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as castka_po_splatnosti
         FROM `" . TBL_FAKTURY . "` f
@@ -2998,6 +2999,7 @@ function _dashboard_get_active_users($db, $period = '5min') {
                 'pocet_objednavek_objednatel' => (int)$row['pocet_objednavek_objednatel'],
                 'pocet_schvalenych'           => (int)$row['pocet_schvalenych'],
                 'pocet_ke_schvaleni'          => (int)$row['pocet_ke_schvaleni'],
+                'auth_method'                 => $meta['last_auth_method'] ?? 'local',
             ];
         }
 

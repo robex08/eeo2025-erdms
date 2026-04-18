@@ -214,22 +214,33 @@ function handle_entra_callback($input, $config, $queries) {
                 return;
             }
             
-            // Update EntraID metadata
+            // Update EntraID metadata + uložit last_auth_method do aktivita_metadata
             try {
+                // Načíst stávající aktivita_metadata a přidat last_auth_method
+                $stmtMeta = $pdo->prepare("SELECT aktivita_metadata FROM `" . TBL_UZIVATELE . "` WHERE id = :id");
+                $stmtMeta->execute([':id' => $user_id]);
+                $existingMeta = $stmtMeta->fetchColumn();
+                $metaArr = $existingMeta ? (json_decode($existingMeta, true) ?: []) : [];
+                $metaArr['last_auth_method'] = 'entra_id';
+                $metaArr['last_login_at'] = date('Y-m-d H:i:s');
+                $metaJson = json_encode($metaArr, JSON_UNESCAPED_UNICODE);
+
                 $stmt = $pdo->prepare("
-                    UPDATE " . TBL_UZIVATELE . " 
+                    UPDATE `" . TBL_UZIVATELE . "`
                     SET entra_id = :entra_id,
                         upn = :upn,
                         auth_source = 'entra_id',
                         entra_sync_at = NOW(),
                         dt_posledni_prihlaseni = NOW(),
-                        dt_posledni_aktivita = NOW()
+                        dt_posledni_aktivita = NOW(),
+                        aktivita_metadata = :metadata
                     WHERE id = :user_id
                 ");
                 $stmt->execute(array(
                     ':entra_id' => $entra_id,
                     ':upn' => $upn,
-                    ':user_id' => $user_id
+                    ':user_id' => $user_id,
+                    ':metadata' => $metaJson
                 ));
                 
             } catch (Exception $e) {
