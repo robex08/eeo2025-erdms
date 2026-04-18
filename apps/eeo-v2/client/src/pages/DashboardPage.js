@@ -2188,25 +2188,112 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
     });
   };
 
+  // Mapování URL na názvy modulů
   const MODULE_LABELS = {
     '/orders25-list-v3': 'Objednávky',
+    '/orders25-list': 'Objednávky',
     '/invoices': 'Faktury',
-    '/invoices25': 'Faktury',
+    '/invoices25-list': 'Faktury',
     '/dashboard': 'Domovská stránka',
     '/users': 'Správa uživatelů',
     '/smlouvy': 'Smlouvy',
     '/lp': 'LP',
     '/reports': 'Reporty',
     '/cashbook': 'Pokladna',
+    '/cash-book': 'Pokladna',
+    '/stats-reports': 'Statistika a reporty',
+    '/dictionaries': 'Číselníky',
+    '/address-book': 'Adresář',
+    '/contacts': 'Kontakty',
+    '/notifications': 'Notifikace',
+    '/profile': 'Profil',
+    '/app-settings': 'Nastavení aplikace',
+    '/organization-hierarchy': 'Organizační struktura',
+    '/annual-fees': 'Roční poplatky',
+    '/cerpani': 'Čerpání LP',
+    '/suppliers': 'Dodavatelé',
   };
 
+  // Mapování sekcí pro Statistiky a reporty (/stats-reports?tab=...)
+  const STATS_SECTIONS = {
+    'control': 'Kontrolní výkazy',
+    'spend': 'Čerpání',
+    'reports': 'Reporty',
+    'stats': 'Statistiky',
+    'attachments': 'Přílohy',
+    'pivot': 'Pivot',
+    'vzdel': 'Vzdělávání',
+    'cashbook': 'Pokladna',
+    'dohadne': 'Dohodné položky',
+  };
+
+  // Mapování sekcí pro Číselníky (/dictionaries?tab=...)
+  const DICT_SECTIONS = {
+    'docx': 'DOCX Šablony',
+    'cashbook': 'Pokladní knihy',
+    'smlouvy': 'Smlouvy',
+    'lokality': 'Lokality',
+    'pozice': 'Pozice',
+    'prava': 'Práva',
+    'role': 'Role',
+    'stavy': 'Stavy',
+    'useky': 'Úseky',
+    'organizace': 'Organizace',
+  };
+
+  // Parsuje cestu a vrací lidsky čitelný název s případnou sekcí
   const getModuleLabel = (modul, cesta) => {
     if (!modul && !cesta) return null;
     const path = cesta || modul || '';
-    for (const [key, val] of Object.entries(MODULE_LABELS)) {
-      if (path.includes(key)) return val;
+    
+    // Parse URL - rozděl na pathname a query params
+    let pathname = path;
+    let queryParams = '';
+    if (path.includes('?')) {
+      [pathname, queryParams] = path.split('?');
     }
-    return modul || path.split('/').filter(Boolean).pop() || null;
+
+    // Najdi základní název modulu
+    let baseLabel = null;
+    for (const [key, val] of Object.entries(MODULE_LABELS)) {
+      if (pathname.includes(key)) {
+        baseLabel = val;
+        break;
+      }
+    }
+
+    // Pokud nenajdeme v mapě, použij modul nebo poslední část cesty
+    if (!baseLabel) {
+      baseLabel = modul || pathname.split('/').filter(Boolean).pop() || null;
+    }
+
+    // Pokud nejsou query params, vrať jen základní label
+    if (!queryParams || !baseLabel) {
+      return baseLabel;
+    }
+
+    // Parse query params - hledej 'tab=...'
+    const tabMatch = queryParams.match(/tab=([^&]+)/);
+    if (!tabMatch) {
+      return baseLabel;
+    }
+
+    const tabValue = tabMatch[1];
+    let sectionLabel = null;
+
+    // Mapování sekcí podle modulu
+    if (pathname.includes('/stats-reports') && STATS_SECTIONS[tabValue]) {
+      sectionLabel = STATS_SECTIONS[tabValue];
+    } else if (pathname.includes('/dictionaries') && DICT_SECTIONS[tabValue]) {
+      sectionLabel = DICT_SECTIONS[tabValue];
+    }
+
+    // Vrať "Modul (Sekce)" pokud máme sekci, jinak jen "Modul"
+    if (sectionLabel) {
+      return `${baseLabel} (${sectionLabel})`;
+    }
+
+    return baseLabel;
   };
 
   const ROLE_BADGES = {
