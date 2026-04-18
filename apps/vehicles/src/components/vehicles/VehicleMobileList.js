@@ -12,9 +12,11 @@ const VehicleMobileList = ({ mobilePaged, positions, renderPhone, connectionErro
       <div className="vehicle-mobile-list-empty">Žádná vozidla</div>
     ) : (
       mobilePaged.map(v => {
-        const last = positions[v.w_carid] && positions[v.w_carid].length > 0
-          ? [...positions[v.w_carid]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''))[0]
-          : {};
+        const last = {
+          w_km: v.pos_km, w_lp: v.pos_lp, w_ln: v.pos_ln,
+          w_majak: v.pos_majak, w_zs: v.pos_zs, w_zd: v.pos_zd,
+          dt_aktualizace: v.pos_dt_aktualizace
+        };
         return <VehicleMobileCard key={v.w_carid} v={v} last={last} renderPhone={renderPhone} />;
       })
     )}

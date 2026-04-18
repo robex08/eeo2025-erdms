@@ -137,25 +137,10 @@ const Vehicles = () => {
 		setLoading(true);
 		setError('');
 		fetchVehicles()
-			.then(async (json) => {
+			.then((json) => {
 				// Očekáváme { status: 'success', cars: [...] }
 				if (json.status === 'success' && Array.isArray(json.cars)) {
 					setData(json.cars);
-					// Hromadně načti pozice pro všechny auta na stránce
-					const posObj = {};
-					await Promise.all(json.cars.map(async v => {
-						try {
-							const res = await fetchVehiclePositions(v.w_carid);
-							if (res.status === 'success' && Array.isArray(res.positions)) {
-								posObj[v.w_carid] = res.positions;
-							} else {
-								posObj[v.w_carid] = [];
-							}
-						} catch {
-							posObj[v.w_carid] = [];
-						}
-					}));
-					setPositions(posObj);
 				} else {
 					setData([]);
 				}
@@ -203,28 +188,25 @@ const Vehicles = () => {
 			let km = '';
 			let lastKmNum = null;
 			let podradekFields = [];
-			if (positions[v.w_carid] && Array.isArray(positions[v.w_carid]) && positions[v.w_carid].length > 0) {
-				const sorted = [...positions[v.w_carid]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''));
-				const last = sorted[0];
-				km = last && last.w_km ? String(last.w_km) : '';
-				lastKmNum = last && last.w_km ? Number(last.w_km) : null;
-				// Přidej relevantní pole z podřádku do pole pro vyhledávání
-				if (last) {
-					podradekFields = [
-						last["sestra SIM"],
-						last.sestra_IMEI,
-						last.inv_cis_sestra,
-						last.ridic_SIM,
-						last.ridic_IMEI,
-						last.inv_cis_ridic,
-						last.skupina,
-						last.cela_adresa,
-						last.w_zs,
-						last.w_zd,
-						last.w_ln
-					].filter(Boolean).map(String);
-				}
+			// Pozice a MT data jsou přímo v hlavním objektu (pos_km, mt_* atd.)
+			if (v.pos_km) {
+				km = String(v.pos_km);
+				lastKmNum = Number(v.pos_km);
 			}
+			// Přidej relevantní pole z MT dat do pole pro vyhledávání
+			podradekFields = [
+				v.mt_sestra_SIM,
+				v.mt_sestra_IMEI,
+				v.mt_inv_cis_sestra,
+				v.mt_ridic_SIM,
+				v.mt_ridic_IMEI,
+				v.mt_inv_cis_ridic,
+				v.mt_skupina,
+				v.mt_cela_adresa,
+				v.pos_zs,
+				v.pos_zd,
+				v.pos_ln
+			].filter(Boolean).map(String);
 			// Filtr podle km (výseč)
 			let kmMatchFilter = true;
 			if (kmFilter) {
@@ -262,17 +244,10 @@ const Vehicles = () => {
 	if (sort.field) {
 		filtered = [...filtered].sort((a, b) => {
 			let av = a[sort.field], bv = b[sort.field];
-			// Speciální řazení pro "Nájezd" (poslední w_km z positions)
+			// Speciální řazení pro "Nájezd" (pos_km z hlavního dotazu)
 			if (sort.field === 'najezd') {
-				const getLastKm = v => {
-					if (positions[v.w_carid] && Array.isArray(positions[v.w_carid]) && positions[v.w_carid].length > 0) {
-						const sorted = [...positions[v.w_carid]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''));
-						const last = sorted[0];
-						return last && last.w_km ? Number(last.w_km) : -1;
-					}
-					return -1;
-				};
-				const akm = getLastKm(a), bkm = getLastKm(b);
+				const akm = a.pos_km ? Number(a.pos_km) : -1;
+				const bkm = b.pos_km ? Number(b.pos_km) : -1;
 				return sort.dir === 'asc' ? akm - bkm : bkm - akm;
 			}
 			// Speciální řazení pro "Zasmluvněno" (Datum_od, formát DD.MM.YYYY)
@@ -342,31 +317,21 @@ const Vehicles = () => {
 	const handleWebDispecinkRefresh = async () => {
 		setRefreshing(true);
 		try {
-			// Proveď POST dotazy na webDispečink API
-			await postWebDispecink('wdCarsList');
-			await postWebDispecink('wdCarsGroup');
-			await postWebDispecink('wdCarsIDPosition');
-			await postWebDispecink('wdCarsGeneralInfo');
+			// Proveď POST dotazy na webDispečink API (paralelně - jsou nezávislé)
+			await Promise.all([
+				postWebDispecink('wdCarsList'),
+				postWebDispecink('wdCarsGroup'),
+				postWebDispecink('wdCarsIDPosition'),
+				postWebDispecink('wdCarsGeneralInfo'),
+			]);
 			setLoading(true);
 			setError('');
 			const json = await fetchVehicles();
 			if (json && Array.isArray(json.cars) && json.cars.length > 0) {
 				setData(json.cars);
-				// Hromadně načti pozice pro všechny auta na stránce
-				const posObj = {};
-				await Promise.all(json.cars.map(async v => {
-					try {
-						const res = await fetchVehiclePositions(v.w_carid);
-						if (res && Array.isArray(res.positions)) {
-							posObj[v.w_carid] = res.positions;
-						} else {
-							posObj[v.w_carid] = [];
-						}
-					} catch {
-						posObj[v.w_carid] = [];
-					}
-				}));
-				setPositions(posObj);
+				// Reset pozic - budou se lazy-loadovat při rozbalení
+				setPositions({});
+				setExpanded({});
 			} else {
 				setData([]);
 			}
@@ -842,11 +807,38 @@ const Vehicles = () => {
 			{/* HLAVIČKA SEZNAMU */}
 			<div className="vehicles-header" style={{display:'flex', alignItems:'center', gap:'1.2rem', justifyContent:'space-between'}}>
 				<h2 style={{marginRight:'2.5rem'}}>Seznam vozidel</h2>
-				<div style={{marginLeft:'auto'}}>
+				<div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:'0.7rem'}}>
+					{data.length > 0 && (() => {
+						const maxDt = data.reduce((max, v) => {
+							const dt = v.dt_aktualizace || '';
+							return dt > max ? dt : max;
+						}, '');
+						return maxDt ? (
+							<span style={{fontSize:'0.88rem', color:'#888', whiteSpace:'nowrap'}}>
+								Aktualizováno: {formatCzDateTime(maxDt)}
+							</span>
+						) : null;
+					})()}
 					<VehicleRefreshButton refreshing={refreshing} handleWebDispecinkRefresh={handleWebDispecinkRefresh} />
 				</div>
 			</div>
-				<div className="vehicles-table-wrapper">
+				<div className="vehicles-table-wrapper" style={{position:'relative'}}>
+					{refreshing && (
+						<div style={{
+							position:'absolute', top:0, left:0, right:0, bottom:0,
+							background:'rgba(255,255,255,0.8)', zIndex:100,
+							display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+							backdropFilter:'blur(2px)', borderRadius:12
+						}}>
+							<FiRefreshCw style={{fontSize:'2.5rem', color:'#1976d2', animation:'spin 1s linear infinite'}} />
+							<div style={{fontWeight:'bold', fontSize:'1.1rem', color:'#1976d2', marginTop:'0.7rem'}}>
+								Synchronizace z WebDispečinku...
+							</div>
+							<div style={{color:'#555', fontSize:'0.92rem', marginTop:'0.3rem'}}>
+								Načítám aktuální data – stav tachometru, km, pozice...
+							</div>
+						</div>
+					)}
 					{loading ? (
 						<div style={{padding: '2rem', textAlign: 'center'}}>Načítám data...</div>
 					) : error ? (
@@ -884,9 +876,11 @@ const Vehicles = () => {
 						<VehicleModal open={!!modalCarId} onClose={() => setModalCarId(null)}>
 							{modalCarId && (() => {
 								const v = data.find(x => x.w_carid === modalCarId);
-								const last = positions[modalCarId] && positions[modalCarId].length > 0
-									? [...positions[modalCarId]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''))[0]
-									: {};
+								const last = v ? {
+									w_km: v.pos_km, w_lp: v.pos_lp, w_ln: v.pos_ln,
+									w_majak: v.pos_majak, w_zs: v.pos_zs, w_zd: v.pos_zd,
+									dt_aktualizace: v.pos_dt_aktualizace
+								} : {};
 								return v ? <VehicleMobileCard v={v} last={last} /> : null;
 							})()}
 						</VehicleModal>
@@ -899,13 +893,7 @@ const Vehicles = () => {
 							vehicle={statCarId ? (() => {
 								const v = data.find(x => x.w_carid === statCarId);
 								if (!v) return null;
-								// Přidej celkový nájezd km do objektu vozidla
-								let celkovyNajezdKm = null;
-								if (positions[statCarId] && Array.isArray(positions[statCarId]) && positions[statCarId].length > 0) {
-									const sorted = [...positions[statCarId]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''));
-									const last = sorted[0];
-									celkovyNajezdKm = last && last.w_km ? Number(last.w_km) : null;
-								}
+								const celkovyNajezdKm = v.pos_km ? Number(v.pos_km) : null;
 								return { ...v, celkovyNajezdKm };
 							})() : null}
 						/>

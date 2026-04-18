@@ -2,6 +2,12 @@
 .vehicles-filter-box [style*="position: absolute"] {
   z-index: 9999 !important;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 .vehicles-nav {
   margin-bottom: 1.2rem;
 }
@@ -25,10 +31,55 @@
 }
 .vehicles-page {
   width: 100%;
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 2rem 2vw 2rem 2vw;
+  max-width: 100%;
+  margin: 0;
+  padding: 1.5rem 1.5vw;
   box-sizing: border-box;
+}
+
+@media (max-width: 1024px) {
+  .vehicles-page {
+    padding: 1rem 1rem;
+  }
+  .vehicles-header {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .vehicles-page {
+    padding: 0.75rem 0.5rem;
+  }
+  .vehicles-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .vehicles-search {
+    min-width: unset;
+    width: 100%;
+  }
+  .vehicles-table {
+    min-width: 600px;
+  }
+  .vehicles-paging {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 480px) {
+  .vehicles-page {
+    padding: 0.5rem 0.25rem;
+  }
+  .vehicles-table {
+    min-width: 400px;
+    font-size: 0.85rem;
+  }
+  .vehicles-table th, .vehicles-table td {
+    padding: 0.4rem 0.3rem;
+  }
 }
 
 .vehicles-header {
@@ -36,6 +87,8 @@
   align-items: center;
   justify-content: space-between;
   margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .vehicles-header h2 {

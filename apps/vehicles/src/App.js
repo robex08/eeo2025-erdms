@@ -35,7 +35,7 @@ function App() {
     <MainLayout username={fullname} onLogout={handleLogout}>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/vozidla" element={<Vehicles />} />
+        <Route path="/prehled" element={<Vehicles />} />
       </Routes>
     </MainLayout>
   );

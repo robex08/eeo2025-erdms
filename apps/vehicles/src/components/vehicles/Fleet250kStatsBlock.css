@@ -86,3 +86,128 @@
   text-align: center;
   padding: 1.2em 0;
 }
+
+/* Refresh overlay přes graf */
+.fleet250k-refresh-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.95);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  backdrop-filter: blur(3px);
+}
+.fleet250k-refresh-overlay-content {
+  text-align: center;
+  padding: 2.5rem;
+  max-width: 500px;
+  width: 90%;
+}
+
+/* Progress bar komponenta */
+.fleet250k-progress-wrapper {
+  margin-top: 1.5rem;
+  width: 100%;
+}
+
+.fleet250k-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  font-size: 0.95rem;
+  color: #555;
+}
+
+.fleet250k-progress-percent {
+  font-weight: bold;
+  font-size: 1.3rem;
+  color: #1976d2;
+}
+
+.fleet250k-progress-bar-bg {
+  width: 100%;
+  height: 28px;
+  background: #e3f2fd;
+  border-radius: 14px;
+  overflow: hidden;
+  position: relative;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.06);
+}
+
+.fleet250k-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1976d2 0%, #42a5f5 100%);
+  border-radius: 14px;
+  transition: width 0.8s cubic-bezier(0.4, 0.0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.fleet250k-progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: fleet250k-progress-shimmer 2s infinite;
+}
+
+@keyframes fleet250k-progress-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.fleet250k-progress-details {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+}
+
+.fleet250k-progress-stat {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #666;
+}
+
+.fleet250k-progress-stat-label {
+  font-weight: 500;
+  color: #888;
+}
+
+.fleet250k-progress-stat-value {
+  font-weight: bold;
+  color: #1976d2;
+  font-size: 1.05em;
+}
+
+.fleet250k-progress-stat.synced .fleet250k-progress-stat-value {
+  color: #4caf50;
+}
+
+.fleet250k-progress-stat.skipped .fleet250k-progress-stat-value {
+  color: #ff9800;
+}
+
+/* Spinner animace */
+@keyframes fleet250k-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+.fleet250k-spin {
+  animation: fleet250k-spin 1s linear infinite;
+  display: inline-block;
+}

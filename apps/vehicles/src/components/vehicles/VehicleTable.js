@@ -54,12 +54,7 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
           <tr><td colSpan={15} style={{textAlign:'center'}}>Žádná data</td></tr>
         ) : (
           paged.map(v => {
-            let lastKm = null;
-            if (positions[v.w_carid] && Array.isArray(positions[v.w_carid]) && positions[v.w_carid].length > 0) {
-              const sorted = [...positions[v.w_carid]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''));
-              const last = sorted[0];
-              lastKm = last && last.w_km ? Number(last.w_km) : null;
-            }
+            const lastKm = v.pos_km ? Number(v.pos_km) : null;
             let rowStyle = {};
             if (lastKm !== null && lastKm <= 100000) {
               rowStyle = {};
@@ -98,16 +93,10 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
                   </td>
                   <td>{highlightMatch(v.w_stanoviste, search)}</td>
                   <td style={{textAlign:'center'}}>
-                    {positions[v.w_carid] && Array.isArray(positions[v.w_carid]) && positions[v.w_carid].length > 0
-                      ? (() => {
-                          const sorted = [...positions[v.w_carid]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''));
-                          const last = sorted[0];
-                          return last && last.w_km ? <>{highlightMatch(`${last.w_km} km`, search)}</> : <span style={{color:'#888'}}>Není k dispozici</span>;
-                        })()
-                      : positions[v.w_carid] === null
-                        ? <span style={{color:'#888'}}>Načítám...</span>
-                        : <span style={{color:'#888'}}>Není k dispozici</span>
-                  }
+                    {v.pos_km
+                      ? <>{highlightMatch(`${v.pos_km} km`, search)}</>
+                      : <span style={{color:'#888'}}>Není k dispozici</span>
+                    }
                   </td>
                   <td style={{textAlign:'center'}}>{v.Datum_od ? v.Datum_od : ''}</td>
                   <td style={{textAlign:'center'}}>{formatCzDate(v.w_datod, false)}</td>
@@ -129,15 +118,25 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
                     <td colSpan={15} style={{background:'#f7f7f7', padding:'0.5rem 0.5rem'}}>
                       {positions[v.w_carid] === null ? (
                         <span>Načítám detail...</span>
-                      ) : positions[v.w_carid] && positions[v.w_carid].length === 0 ? (
-                        <span>Žádné záznam o pozici</span>
-                      ) : positions[v.w_carid] && (() => {
+                      ) : positions[v.w_carid] && positions[v.w_carid].length > 0 ? (() => {
                         const sorted = [...positions[v.w_carid]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''));
                         const last = sorted[0];
                         return (
                           <VehicleDetailRow vehicle={v} last={last} search={search} isMobilePortrait={isMobilePortrait} highlightMatch={highlightMatch} />
                         );
-                      })()}
+                      })() : (
+                        <VehicleDetailRow vehicle={v} last={{
+                          w_km: v.pos_km, w_lp: v.pos_lp, w_ln: v.pos_ln,
+                          w_majak: v.pos_majak, w_zs: v.pos_zs, w_zd: v.pos_zd,
+                          dt_aktualizace: v.pos_dt_aktualizace,
+                          skupina: v.mt_skupina, znak: v.mt_znak,
+                          cela_adresa: v.mt_cela_adresa,
+                          inv_cis_sestra: v.mt_inv_cis_sestra, sestra_IMEI: v.mt_sestra_IMEI,
+                          'sestra SIM': v.mt_sestra_SIM,
+                          inv_cis_ridic: v.mt_inv_cis_ridic, ridic_IMEI: v.mt_ridic_IMEI,
+                          ridic_SIM: v.mt_ridic_SIM
+                        }} search={search} isMobilePortrait={isMobilePortrait} highlightMatch={highlightMatch} />
+                      )}
                     </td>
                   </tr>
                 )}

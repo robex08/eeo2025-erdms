@@ -2,6 +2,7 @@ import React from 'react';
 import { Pie } from 'react-chartjs-2';
 import { Chart, ArcElement, Tooltip } from 'chart.js';
 import vehicleKmColors from '../../utils/vehicleKmColors';
+import ChartFullscreenWrapper from './ChartFullscreenWrapper';
 
 Chart.register(ArcElement, Tooltip);
 
@@ -19,12 +20,7 @@ export default function VehicleCharts({ data, positions, filteredCount, onKmSlic
   // --- Graf 1: Počet aut podle najetých km (pouze filtrovaná data) ---
   const kmCounts = { '0+': 0, '100 000+': 0, '200 000+': 0, '300 000+': 0, '400 000+': 0, '\u2265500 000': 0 };
   data.forEach(v => {
-    let lastKm = null;
-    if (positions[v.w_carid] && Array.isArray(positions[v.w_carid]) && positions[v.w_carid].length > 0) {
-      const sorted = [...positions[v.w_carid]].sort((a, b) => (b.dt_aktualizace || '').localeCompare(a.dt_aktualizace || ''));
-      const last = sorted[0];
-      lastKm = last && last.w_km ? Number(last.w_km) : null;
-    }
+    const lastKm = v.pos_km ? Number(v.pos_km) : null;
     if (lastKm !== null) {
       if (lastKm >= 0 && lastKm < 100000) kmCounts['0+']++;
       else if (lastKm >= 100000 && lastKm < 200000) kmCounts['100 000+']++;
@@ -129,6 +125,48 @@ export default function VehicleCharts({ data, positions, filteredCount, onKmSlic
     '#0288d1'
   ];
 
+  // Helper: render a single Pie chart with fullscreen support
+  const renderPie = (chartTitle, chartLabels, chartData, chartColors, onSliceClick, activeFilter, filterKey) => {
+    return (
+      <ChartFullscreenWrapper title={chartTitle}>
+        {(isFs) => (
+          <>
+            <div style={{textAlign:'center', fontWeight:'bold', fontSize: isFs ? '1.5rem' : '1.22rem', marginBottom:12, letterSpacing:'0.01em', color:'#1976d2'}}>{chartTitle}</div>
+            <div
+              style={{position:'relative', cursor:'pointer', width: isFs ? '100%' : undefined, height: isFs ? '100%' : undefined, display: isFs ? 'flex' : undefined, alignItems: isFs ? 'center' : undefined, justifyContent: isFs ? 'center' : undefined}}
+              onClick={e => {
+                if (e.target.tagName !== 'CANVAS' && onSliceClick) onSliceClick(null);
+              }}
+            >
+              <Pie
+                data={{
+                  labels: chartLabels,
+                  datasets: [{ data: chartData, backgroundColor: chartColors }]
+                }}
+                {...(isFs ? {} : { width: 320, height: 320 })}
+                options={{
+                  responsive: isFs,
+                  maintainAspectRatio: true,
+                  plugins: { legend: { display: isFs, position: 'right' } },
+                  onHover: (event, elements) => {
+                    event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
+                  },
+                  onClick: (e, elements, chart) => {
+                    if (elements.length && onSliceClick) {
+                      const idx = elements[0].index;
+                      onSliceClick(chartLabels[idx]);
+                    }
+                  }
+                }}
+                plugins={[pieLabel]}
+              />
+            </div>
+          </>
+        )}
+      </ChartFullscreenWrapper>
+    );
+  };
+
   return (
     <div style={{
       display: 'flex',
@@ -142,105 +180,19 @@ export default function VehicleCharts({ data, positions, filteredCount, onKmSlic
     }}>
       {/* Graf najetých km */}
       <div style={{flex:'1 1 340px', minWidth:320, maxWidth:340, background:'#fff', borderRadius:12, boxShadow:'0 2px 8px rgba(0,0,0,0.07)', padding:'1.2rem 1.5rem', marginBottom: '2rem'}}>
-        <div style={{textAlign:'center', fontWeight:'bold', fontSize:'1.22rem', marginBottom:12, letterSpacing:'0.01em', color:'#1976d2'}}>Nájezd vozů (km)</div>
-        <div
-          style={{position:'relative', cursor:'pointer'}}
-          onClick={e => {
-            if (e.target.tagName !== 'CANVAS' && onKmSliceClick) onKmSliceClick(null);
-          }}
-        >
-          <Pie
-            data={{
-              labels: kmLabels,
-              datasets: [{ data: kmData, backgroundColor: kmColors }]
-            }}
-            width={320}
-            height={320}
-            options={{
-              plugins: { legend: { display: false } },
-              onHover: (event, elements) => {
-                event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-              },
-              onClick: (e, elements, chart) => {
-                if (elements.length && onKmSliceClick) {
-                  const idx = elements[0].index;
-                  onKmSliceClick(kmLabels[idx]);
-                }
-              }
-            }}
-            plugins={[pieLabel]}
-          />
-        </div>
+        {renderPie('Nájezd vozů (km)', kmLabels, kmData, kmColors, onKmSliceClick, activeKmFilter, 'km')}
       </div>
       {/* Graf podle typu vozidla */}
       <div style={{flex:'1 1 340px', minWidth:320, maxWidth:340, background:'#fff', borderRadius:12, boxShadow:'0 2px 8px rgba(0,0,0,0.07)', padding:'1.2rem 1.5rem', marginBottom: '2rem'}}>
-        <div style={{textAlign:'center', fontWeight:'bold', fontSize:'1.22rem', marginBottom:12, letterSpacing:'0.01em', color:'#1976d2'}}>Typ vozidla</div>
-        <div
-          style={{position:'relative', cursor:'pointer'}}
-          onClick={e => {
-            if (e.target.tagName !== 'CANVAS' && onTypeSliceClick) onTypeSliceClick(null);
-          }}
-        >
-          <Pie
-            data={{
-              labels: typLabels,
-              datasets: [{
-                data: typData,
-                backgroundColor: typLabels.map((t, i) => activeTypeFilter && t === activeTypeFilter ? '#ffb300' : typColors[i % typColors.length])
-              }]
-            }}
-            width={320}
-            height={320}
-            options={{
-              plugins: { legend: { display: false } },
-              onHover: (event, elements) => {
-                event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-              },
-              onClick: (e, elements, chart) => {
-                if (elements.length && onTypeSliceClick) {
-                  const idx = elements[0].index;
-                  onTypeSliceClick(typLabels[idx]);
-                }
-              }
-            }}
-            plugins={[pieLabel]}
-          />
-        </div>
+        {renderPie('Typ vozidla', typLabels, typData,
+          typLabels.map((t, i) => activeTypeFilter && t === activeTypeFilter ? '#ffb300' : typColors[i % typColors.length]),
+          onTypeSliceClick, activeTypeFilter, 'type')}
       </div>
       {/* Graf podle stanoviště */}
       <div style={{flex:'1 1 340px', minWidth:320, maxWidth:340, background:'#fff', borderRadius:12, boxShadow:'0 2px 8px rgba(0,0,0,0.07)', padding:'1.2rem 1.5rem', marginBottom: '2rem'}}>
-        <div style={{textAlign:'center', fontWeight:'bold', fontSize:'1.22rem', marginBottom:12, letterSpacing:'0.01em', color:'#1976d2'}}>Stanoviště</div>
-        <div
-          style={{position:'relative', cursor:'pointer'}}
-          onClick={e => {
-            if (e.target.tagName !== 'CANVAS' && onStationSliceClick) onStationSliceClick(null);
-          }}
-        >
-          <Pie
-            data={{
-              labels: stanLabels,
-              datasets: [{
-                data: stanData,
-                backgroundColor: stanLabels.map((s, i) => activeStationFilter && s === activeStationFilter ? '#00bcd4' : stanColors[i % stanColors.length])
-              }]
-            }}
-            width={320}
-            height={320}
-            options={{
-              plugins: { legend: { display: false } },
-              onHover: (event, elements) => {
-                event.native.target.style.cursor = elements.length ? 'pointer' : 'default';
-              },
-              onClick: (e, elements, chart) => {
-                if (elements.length && onStationSliceClick) {
-                  const idx = elements[0].index;
-                  onStationSliceClick(stanLabels[idx]);
-                }
-              }
-            }}
-            plugins={[pieLabel]}
-          />
-        </div>
+        {renderPie('Stanoviště', stanLabels, stanData,
+          stanLabels.map((s, i) => activeStationFilter && s === activeStationFilter ? '#00bcd4' : stanColors[i % stanColors.length]),
+          onStationSliceClick, activeStationFilter, 'station')}
       </div>
     </div>
   );
