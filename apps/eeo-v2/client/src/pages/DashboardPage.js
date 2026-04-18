@@ -6115,18 +6115,7 @@ export default function DashboardPage() {
   const { token, user, userDetail, hasPermission, hasAdminRole, userPermissions, loading: authLoading } = useContext(AuthContext);
   const bgTasksContext = useBackgroundTasks();
   const navigate = useNavigate();
-  
-  // 🔐 DEBUG: Log auth state for troubleshooting
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🎛️ DashboardPage auth state:', {
-        token: token ? 'present' : 'missing',
-        user: user || 'null',
-        username: user?.username || 'null',
-        authLoading
-      });
-    }
-  }, [token, user, authLoading]);
+
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
