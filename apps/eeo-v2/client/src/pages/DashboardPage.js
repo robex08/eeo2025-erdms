@@ -2216,15 +2216,15 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
 
   // Mapování sekcí pro Statistiky a reporty (/stats-reports?tab=...)
   const STATS_SECTIONS = {
-    'control': 'Kontrolní výkazy',
+    'control': 'Finanční kontrola',
+    'vzdel': 'Vzdělávání',
     'spend': 'Čerpání',
     'reports': 'Reporty',
     'stats': 'Statistiky',
     'attachments': 'Přílohy',
-    'pivot': 'Pivot',
-    'vzdel': 'Vzdělávání',
-    'cashbook': 'Pokladna',
-    'dohadne': 'Dohodné položky',
+    'pivot': 'Agregační tabulka - vlastní',
+    'cashbook': 'Přehled pokladen',
+    'dohadne': 'Dohadné položky',
   };
 
   // Mapování sekcí pro Číselníky (/dictionaries?tab=...)
