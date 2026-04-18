@@ -709,10 +709,18 @@ const StickyHeaderContainer = styled.div`
   position: sticky;
   top: -16px;
   z-index: 50;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   border-bottom: 2px solid #cbd5e1;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+
+  /* Skrýt scrollbar - scroll se synchronizuje z body */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `;
 
 // Scrollovatelné tělo tabulky
@@ -2865,12 +2873,24 @@ const OrdersTableV3 = ({
       const headerTable = stickyHeader.querySelector('table');
       if (!bodyTable || !headerTable) return;
 
-      const bodyWidth = bodyTable.getBoundingClientRect().width;
-      headerTable.style.width = `${bodyWidth}px`;
-      headerTable.style.minWidth = `${bodyWidth}px`;
+      // Najít první datový řádek (ne empty state s colSpan)
+      const allRows = bodyTable.querySelectorAll('tbody tr');
+      let firstRow = null;
+      for (const row of allRows) {
+        if (row.children.length > 1) {
+          firstRow = row;
+          break;
+        }
+      }
 
-      const firstRow = bodyTable.querySelector('tbody tr');
+      // Při 0 výsledcích (empty state) - NENASTAVOVAT šířky, zachovat existující
       if (!firstRow) return;
+
+      const bodyWidth = bodyTable.getBoundingClientRect().width;
+      if (bodyWidth > 0) {
+        headerTable.style.width = `${bodyWidth}px`;
+        headerTable.style.minWidth = `${bodyWidth}px`;
+      }
 
       const bodyCols = firstRow.children;
       const headerRows = headerTable.querySelectorAll('thead tr');
@@ -4778,6 +4798,12 @@ const OrdersTableV3 = ({
     let filtered = allColumns;
     if (visibleColumns && visibleColumns.length > 0) {
       filtered = allColumns.filter(col => visibleColumns.includes(col.id));
+    }
+    
+    // ✅ KRITICKÁ OPRAVA: Pokud po filtrování nejsou žádné sloupce, vrátit všechny
+    // Jinak zmizí thead záhlaví když jsou 0 výsledků
+    if (filtered.length === 0) {
+      filtered = allColumns;
     }
     
     // Seřadit podle columnOrder

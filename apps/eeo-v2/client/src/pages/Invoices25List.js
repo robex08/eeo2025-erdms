@@ -814,10 +814,18 @@ const StickyHeaderContainer = styled.div`
   position: sticky;
   top: -16px;
   z-index: 50;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
   border-bottom: 2px solid #cbd5e1;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+
+  /* Skrýt scrollbar - scroll se synchronizuje z body */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `;
 
 // Scrollovatelné tělo tabulky
@@ -1755,14 +1763,25 @@ const Invoices25List = () => {
     const headerTable = headerEl.querySelector('table');
     if (!bodyTable || !headerTable) return;
 
+    // Najít první datový řádek (ne empty state s colSpan)
+    const allRows = bodyTable.querySelectorAll('tbody tr');
+    let firstRow = null;
+    for (const row of allRows) {
+      if (row.children.length > 1) {
+        firstRow = row;
+        break;
+      }
+    }
+
+    // Při 0 výsledcích (empty state) - NENASTAVOVAT šířky, zachovat existující
+    if (!firstRow) return;
+
     // Synchronizace celkové šířky tabulky
     const bodyWidth = bodyTable.getBoundingClientRect().width;
-    headerTable.style.width = `${bodyWidth}px`;
-    headerTable.style.minWidth = `${bodyWidth}px`;
-
-    // Přečíst skutečné šířky z prvního řádku body tabulky
-    const firstRow = bodyTable.querySelector('tbody tr');
-    if (!firstRow) return;
+    if (bodyWidth > 0) {
+      headerTable.style.width = `${bodyWidth}px`;
+      headerTable.style.minWidth = `${bodyWidth}px`;
+    }
 
     const bodyCols = firstRow.children;
     const headerRows = headerTable.querySelectorAll('thead tr');
@@ -1893,6 +1912,7 @@ const Invoices25List = () => {
     withinDueAmount: 0, // Částka ve splatnosti
     withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
     myInvoices: 0,      // Moje faktury (jen pro admin/invoice_manage)
+    myUncheckedInvoices: 0, // Moje nezkontrolované faktury (předané na mě, bez věcné kontroly)
     kontrolovano: 0,    // Zkontrolované faktury (kontrola_radku)
     withNote: 0         // Faktury s poznámkou
   });
@@ -2804,6 +2824,7 @@ const Invoices25List = () => {
           stornoAmount: parseFloat(response.statistiky.celkem_storno) || 0,
           vecnaSpravnostAmount: parseFloat(response.statistiky.celkem_vecna_spravnost) || 0,
           myInvoices: response.statistiky.pocet_moje_faktury || 0,
+          myUncheckedInvoices: response.statistiky.pocet_moje_nezkontrolovane || 0,
           // ✅ Nové statistiky z BE
           withOrder: response.statistiky.pocet_s_objednavkou || 0,
           withContract: response.statistiky.pocet_s_smlouvou || 0,
@@ -2855,13 +2876,18 @@ const Invoices25List = () => {
             acc.myInvoices++;
           }
 
+          // Moje nezkontrolované faktury (předané na mě, bez věcné kontroly)
+          if (user_id && inv.fa_predana_zam_id === user_id && !inv.potvrdil_vecnou_spravnost_id) {
+            acc.myUncheckedInvoices++;
+          }
+
           // S poznámkou
           if (inv.fa_poznamka && inv.fa_poznamka.toString().trim()) {
             acc.withNote++;
           }
           
           return acc;
-        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, withOrder: 0, withContract: 0, fromSpisovka: 0, withNote: 0 });
+        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, myUncheckedInvoices: 0, withOrder: 0, withContract: 0, fromSpisovka: 0, withNote: 0 });
         
         localStats.total = response.pagination?.total || transformedInvoices.length;
         setStats(localStats);
@@ -4532,7 +4558,25 @@ const Invoices25List = () => {
                   </StatIcon>
                 </StatHeader>
                 <StatValue>{stats.myInvoices}</StatValue>
-                <StatLabel>Předané / Věcná</StatLabel>
+                <StatLabel>Předané na mně</StatLabel>
+              </DashboardCard>
+            )}
+
+            {/* Moje nezkontrolované faktury */}
+            {canViewAllInvoices && (
+              <DashboardCard 
+                onClick={() => handleDashboardCardClick('my_unchecked_invoices')}
+                $isActive={activeFilterStatus === 'my_unchecked_invoices'}
+                $color="#f59e0b"
+              >
+                <StatHeader>
+                  <StatLabel>Mé nezkontrolované</StatLabel>
+                  <StatIcon $color="#f59e0b">
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                  </StatIcon>
+                </StatHeader>
+                <StatValue>{stats.myUncheckedInvoices}</StatValue>
+                <StatLabel>Předané na mě / Věcná</StatLabel>
               </DashboardCard>
             )}
             </DashboardGrid>

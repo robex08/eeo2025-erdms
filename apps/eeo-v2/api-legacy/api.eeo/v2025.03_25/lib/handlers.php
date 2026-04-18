@@ -231,8 +231,21 @@ function generate_new_token($username) {
  */
 function update_user_activity_with_metadata($db, $queries, $user_id, $metadata) {
     try {
-        // 1. Připrav JSON metadata
-        $json_metadata = json_encode([
+        // 1. Načíst stávající metadata (zachovat last_auth_method z loginu)
+        $existingMeta = [];
+        try {
+            $stmtRead = $db->prepare("SELECT aktivita_metadata FROM `" . TBL_UZIVATELE . "` WHERE id = :id");
+            $stmtRead->execute([':id' => $user_id]);
+            $existingJson = $stmtRead->fetchColumn();
+            if ($existingJson) {
+                $existingMeta = json_decode($existingJson, true) ?: [];
+            }
+        } catch (Exception $e) {
+            // non-fatal
+        }
+
+        // 2. Připrav JSON metadata - merge se stávajícími (zachová last_auth_method, last_login_at)
+        $newMeta = [
             'last_public_ip' => $metadata['public_ip'] ?? null,
             'last_local_ip' => $metadata['local_ip'] ?? null,
             'last_module' => $metadata['module'] ?? null,
@@ -240,7 +253,15 @@ function update_user_activity_with_metadata($db, $queries, $user_id, $metadata) 
             'last_user_agent' => $metadata['user_agent'] ?? null,
             'session_id' => $metadata['session_id'] ?? null,
             'updated_at' => date('Y-m-d H:i:s')
-        ], JSON_UNESCAPED_UNICODE);
+        ];
+        // Zachovat login-related pole z existujících metadat
+        if (isset($existingMeta['last_auth_method'])) {
+            $newMeta['last_auth_method'] = $existingMeta['last_auth_method'];
+        }
+        if (isset($existingMeta['last_login_at'])) {
+            $newMeta['last_login_at'] = $existingMeta['last_login_at'];
+        }
+        $json_metadata = json_encode($newMeta, JSON_UNESCAPED_UNICODE);
 
         // 2. Update 25_uzivatele
         if (isset($queries['uzivatele_update_activity_with_metadata'])) {
@@ -543,15 +564,26 @@ function handle_login($input, $config, $queries) {
             return;
         }
 
-        // Uložit skutečný čas přihlášení a aktualizovat dt_posledni_aktivita
+        // Uložit skutečný čas přihlášení a aktualizovat dt_posledni_aktivita + auth method v metadata
         try {
+            // Načíst stávající metadata a přidat/aktualizovat last_auth_method
+            $stmtMeta = $db->prepare("SELECT aktivita_metadata FROM `" . TBL_UZIVATELE . "` WHERE id = :id");
+            $stmtMeta->execute([':id' => $user['id']]);
+            $existingMeta = $stmtMeta->fetchColumn();
+            $metaArr = $existingMeta ? (json_decode($existingMeta, true) ?: []) : [];
+            $metaArr['last_auth_method'] = 'local';
+            $metaArr['last_login_at'] = date('Y-m-d H:i:s');
+            $metaJson = json_encode($metaArr, JSON_UNESCAPED_UNICODE);
+
             $stmtLogin = $db->prepare("
-                UPDATE " . TBL_UZIVATELE . " 
+                UPDATE `" . TBL_UZIVATELE . "`
                 SET dt_posledni_prihlaseni = NOW(),
-                    dt_posledni_aktivita = NOW()
+                    dt_posledni_aktivita = NOW(),
+                    aktivita_metadata = :metadata
                 WHERE id = :id
             ");
             $stmtLogin->bindParam(':id', $user['id'], PDO::PARAM_INT);
+            $stmtLogin->bindParam(':metadata', $metaJson, PDO::PARAM_STR);
             $stmtLogin->execute();
         } catch (Exception $e) {
             // non-fatal – login pokračuje i při chybě
@@ -881,14 +913,21 @@ function handle_user_detail($input, $config, $queries) {
         
         $user_detail['statistiky_objednavek'] = $stats;
         
-        // 🔐 EntraID: Transform auth_source to auth_method for frontend consistency
-        if (isset($user_detail['auth_source'])) {
-            $user_detail['auth_method'] = $user_detail['auth_source'];
-            unset($user_detail['auth_source']); // Remove duplicate field
-        } else {
-            // Default to 'local' for old users without auth_source
-            $user_detail['auth_method'] = 'local';
+        // 🔐 EntraID: Determine auth_method from aktivita_metadata (actual last login method)
+        $auth_method = 'local'; // default
+        if (!empty($user_detail['aktivita_metadata'])) {
+            $meta = json_decode($user_detail['aktivita_metadata'], true);
+            if (is_array($meta) && isset($meta['last_auth_method'])) {
+                $auth_method = $meta['last_auth_method'];
+            } elseif (isset($user_detail['auth_source'])) {
+                // Fallback na auth_source pokud metadata ještě nemají last_auth_method
+                $auth_method = $user_detail['auth_source'];
+            }
+        } elseif (isset($user_detail['auth_source'])) {
+            $auth_method = $user_detail['auth_source'];
         }
+        $user_detail['auth_method'] = $auth_method;
+        unset($user_detail['auth_source']); // Remove DB field from response
 
         echo json_encode($user_detail);
         exit;

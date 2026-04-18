@@ -398,7 +398,8 @@ const renderStatsContent = (type, data, store) => {
     { key: 'se_smlouvou', label: 'Se smlouvou', value: data.se_smlouvou || 0, color: '#059669', bgColor: '#ecfdf5', icon: 'fa-solid fa-file-contract' },
     { key: 'zkontrolovano', label: 'Kontrola', value: data.zkontrolovano || 0, color: '#0891b2', bgColor: '#e0f2fe', icon: 'fa-solid fa-check' },
     { key: 's_poznamkou', label: 'S poznámkou', value: data.s_poznamkou || 0, color: '#ea580c', bgColor: '#fff7ed', icon: 'fa-solid fa-comment' },
-    { key: 'moje_faktury', label: 'Moje faktury', value: data.moje_faktury || 0, color: '#6366f1', bgColor: '#eef2ff', icon: 'fa-solid fa-user' }
+    { key: 'moje_faktury', label: 'Moje faktury', value: data.moje_faktury || 0, color: '#6366f1', bgColor: '#eef2ff', icon: 'fa-solid fa-user' },
+    { key: 'moje_nezkontrolovane', label: 'Mé nezkontrolované', value: data.moje_nezkontrolovane || 0, color: '#f59e0b', bgColor: '#fef3c7', icon: 'fa-solid fa-exclamation-triangle' }
   ];
 
   const now = new Date();
@@ -2345,6 +2346,16 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
                       <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: isOnline ? '#22c55e' : '#cbd5e1', flexShrink: 0 }} title={isOnline ? 'Online' : 'Offline'} />
                       <span style={{ fontWeight: 600, color: '#1e293b' }}>{u.cele_jmeno}</span>
                       <span style={{ color: '#94a3b8', fontSize: '0.72rem' }}>({u.username})</span>
+                      {u.auth_method === 'entra_id' && (
+                        <span title="Přihlášen přes Microsoft 365" style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '0.3rem', fontSize: '0.7rem', color: '#0078d4', cursor: 'help' }}>
+                          <svg viewBox="0 0 23 23" width="14" height="14" style={{ marginRight: '2px' }}>
+                            <rect x="1" y="1" width="10" height="10" fill="#f25022" />
+                            <rect x="12" y="1" width="10" height="10" fill="#7fba00" />
+                            <rect x="1" y="12" width="10" height="10" fill="#00a4ef" />
+                            <rect x="12" y="12" width="10" height="10" fill="#ffb900" />
+                          </svg>
+                        </span>
+                      )}
                       <button
                         onClick={(e) => { e.stopPropagation(); setQuickMessageUser(u); }}
                         style={{ 
@@ -5749,7 +5760,8 @@ function InvoiceStatsWidget({ stats, navigate }) {
     { key: 'se_smlouvou', label: 'Přiřazené SML', sub: 'Se smlouvou', value: stats.se_smlouvou, color: '#059669', bg: '#ecfdf5', filter: null },
     { key: 'zkontrolovano', label: 'Kontrola', sub: 'Zkontrolováno', value: stats.zkontrolovano, color: '#0891b2', bg: '#e0f2fe', filter: null },
     { key: 's_poznamkou', label: 'S poznámkou', sub: 'Faktury s poznámkou', value: stats.s_poznamkou, color: '#ea580c', bg: '#fff7ed', filter: 'with_note' },
-    { key: 'moje_faktury', label: 'Moje faktury', sub: 'Předané / Věcná', value: stats.moje_faktury, color: '#6366f1', bg: '#eef2ff', filter: 'my_invoices' }
+    { key: 'moje_faktury', label: 'Moje faktury', sub: 'Předané na mně', value: stats.moje_faktury, color: '#6366f1', bg: '#eef2ff', filter: 'my_invoices' },
+    { key: 'moje_nezkontrolovane', label: 'Mé nezkontrolované', sub: 'Předané na mě / Věcná', value: stats.moje_nezkontrolovane, color: '#f59e0b', bg: '#fef3c7', filter: 'my_unchecked_invoices' }
   ];
 
   return (
@@ -7598,6 +7610,28 @@ export default function DashboardPage() {
             {quickTilesConfig.showNotifications && (
               <>
                 <QuickTileSeparator />
+                {/* Nezkontrolované faktury - zobrazit PŘED zvonečkem */}
+                {(data?.invoices_stats?.moje_nezkontrolovane || 0) > 0 && (
+                  <SmartTooltip
+                    text={`Máte ${data.invoices_stats.moje_nezkontrolovane} ${data.invoices_stats.moje_nezkontrolovane === 1 ? 'nezkontrolovanou fakturu' : data.invoices_stats.moje_nezkontrolovane < 5 ? 'nezkontrolované faktury' : 'nezkontrolovaných faktur'} k věcné kontrole`}
+                    icon="none"
+                    preferredPosition="bottom"
+                  >
+                    <QuickTile
+                      onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_unchecked_invoices' } })}
+                      style={{
+                        background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
+                        borderColor: 'rgba(255,255,255,0.5)',
+                        boxShadow: '0 4px 12px rgba(0,0,0,0.25)',
+                      }}
+                    >
+                      <QuickTileIcon><FontAwesomeIcon icon={faFileInvoiceDollar} /></QuickTileIcon>
+                      <QuickTileCount style={{ background: '#c2410c', borderColor: 'white' }}>
+                        {data.invoices_stats.moje_nezkontrolovane}
+                      </QuickTileCount>
+                    </QuickTile>
+                  </SmartTooltip>
+                )}
                 <SmartTooltip
                   text={`Oznámení${(bgTasksContext?.unreadNotificationsCount || 0) > 0 ? ` (${bgTasksContext.unreadNotificationsCount} nepřečtených)` : ''}`}
                   icon="none"
