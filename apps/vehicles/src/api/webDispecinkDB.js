@@ -36,7 +36,7 @@ export async function fetchVehicles(params = {}) {
 }
 
 
-const API_POST_URL = process.env.REACT_APP_APIURL_POST || 'http://10.1.1.253/api/vehicle/vehicle.php';
+const API_POST_URL = process.env.REACT_APP_APIURL_POST;
 
 // Univerzální POST dotaz na webDispečink API, ošetření chyb
 export async function postWebDispecink(action) {
@@ -61,7 +61,7 @@ export async function postWebDispecink(action) {
 export async function fetchVehicleKmMonthWithRefresh(carid, interval) {
   // 1. Zkusit načíst data přes GET
   const API_URL = process.env.REACT_APP_APIURL_GET;
-  const API_POST_URL = process.env.REACT_APP_APIURL_POST || 'http://10.1.1.253/api/vehicle/vehicle.php';
+  const API_POST_URL = process.env.REACT_APP_APIURL_POST;
   const query = new URLSearchParams({ action: 'dbCarsKmMonth', carid, interval }).toString();
   const url = `${API_URL}?${query}`;
   let response = await fetch(url);
@@ -89,6 +89,19 @@ export async function fetchVehicleKmMonthWithRefresh(carid, interval) {
   }
   // 4. Pokud stále nejsou data, vrátit error
   return { status: 'error', message: 'Zadaná statistická data nejsou dostupná.' };
+}
+
+/**
+ * Batch načtení KM statistik pro VŠECHNA vozidla (1 request).
+ * Vrací objekt { status, km: { [carid]: row } }
+ */
+export async function fetchAllVehiclesKmMonth() {
+  const API_URL = process.env.REACT_APP_APIURL_GET;
+  const query = new URLSearchParams({ action: 'dbCarsKmMonthAll' }).toString();
+  const url = `${API_URL}?${query}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Chyba při načítání KM statistik');
+  return response.json();
 }
 
 // Další funkce (např. fetchVehicleById, createVehicle, updateVehicle, deleteVehicle) lze přidat dle potřeby.

@@ -13,13 +13,22 @@
   color: #1976d2;
 }
 .fleet250k-gantt-refresh {
-  background: none;
-  border: none;
+  background: rgba(255,255,255,0.85);
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 1.7em;
+  font-size: 1.5rem;
   color: #1976d2;
-  padding: 0;
-  margin-left: 0.5em;
+  padding: 2px 4px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.fleet250k-gantt-refresh:hover {
+  background: #e3f2fd;
+  color: #0d47a1;
 }
 .fleet250k-gantt-refresh:disabled {
   color: #aaa;

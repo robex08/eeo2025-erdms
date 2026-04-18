@@ -1,0 +1,18 @@
+# .htaccess
+RewriteEngine On
+
+
+#  API v2025.02 Směrování /api/query na router.php
+#RewriteRule ^query$ routes.php [L,QSA]
+
+# API v2025.01 Rewrite all requests to index.php
+#RewriteCond %{REQUEST_FILENAME} !-f
+#RewriteCond %{REQUEST_FILENAME} !-d
+#RewriteRule ^(.*)$ index.php [QSA,L]
+
+
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>

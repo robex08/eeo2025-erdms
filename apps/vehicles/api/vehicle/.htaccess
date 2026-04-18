@@ -1,0 +1,17 @@
+# Vehicles API v2 - .htaccess
+RewriteEngine On
+
+# Nerozepisovat existující soubory a složky
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^ - [L]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# Směrovat vše na api.php
+RewriteRule ^(.*)$ api.php [QSA,L]
+
+<IfModule mod_headers.c>
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, POST, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type, Authorization"
+</IfModule>

@@ -6,9 +6,9 @@ import { useNavigate } from 'react-router-dom';
 
 const tilesData = [
   {
-    title: 'Vozidla',
+    title: 'Přehled vozidel',
     icon: '🚑',
-    route: '/vozidla',
+    route: '/prehled',
   },
   {
     title: 'Číselník',

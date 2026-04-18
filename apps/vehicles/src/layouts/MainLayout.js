@@ -25,7 +25,10 @@ const MainLayout = ({ children, username, onLogout }) => {
         {isMobile ? (
           <div style={{width:'100%'}}>
             <div style={{display:'flex',width:'100%',justifyContent:'space-between',alignItems:'center'}}>
-              <div className="app-title">Vozidla ZZS SK, p.o.</div>
+              <div className="app-title" style={{display:'flex',alignItems:'center',gap:'0.6em'}}>
+                <img src={`${process.env.PUBLIC_URL}/logo_zzs_main.png`} alt="ZZS SK Logo" style={{height:'42px',width:'auto'}} />
+                <span>Vozidla ZZS SK, p.o.</span>
+              </div>
               <div style={{display:'flex',alignItems:'center',gap:'0.2em'}}>
                 {!isDashboard && (
                   <button className="back-btn" onClick={() => navigate('/')} title="Zpět na dashboard" aria-label="Zpět na dashboard">
@@ -46,7 +49,10 @@ const MainLayout = ({ children, username, onLogout }) => {
           </div>
         ) : (
           <div style={{display:'flex',alignItems:'center',width:'100%'}}>
-            <div className="app-title" style={{flex: '1 1 auto'}}>Vozidla ZZS SK, p.o.</div>
+            <div className="app-title" style={{flex: '1 1 auto',display:'flex',alignItems:'center',gap:'0.8em'}}>
+              <img src={`${process.env.PUBLIC_URL}/logo_zzs_main.png`} alt="ZZS SK Logo" style={{height:'50px',width:'auto'}} />
+              <span>Vozidla ZZS SK, p.o.</span>
+            </div>
             <div style={{display:'flex',alignItems:'center',gap:'1em'}}>
               <div className="user-name" style={{textAlign:'right',minWidth:'7em'}}>{username}</div>
               <button className="logout-btn" onClick={onLogout} title="Odhlásit se">

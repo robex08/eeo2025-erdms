@@ -3,8 +3,9 @@ import React from 'react';
 import { Chart as ReactChart } from 'react-chartjs-2';
 import { Chart, CategoryScale, LinearScale, BarElement, Tooltip } from 'chart.js';
 import { BarController } from 'chart.js';
-import { MdRefresh } from 'react-icons/md';
+import { FiRefreshCw } from 'react-icons/fi';
 import { FiX } from 'react-icons/fi';
+import ChartFullscreenWrapper from './ChartFullscreenWrapper';
 import './Fleet250kStatsGanttChart.css';
 
 // Register required Chart.js components
@@ -151,6 +152,31 @@ export default function Fleet250kStatsGanttChart({ stats, onRefresh, loading, on
       });
     }
   };
+  // Plugin to draw count inside each colored bar segment
+  const segmentLabelPlugin = {
+    id: 'segmentLabel',
+    afterDraw: chart => {
+      const { ctx } = chart;
+      chart.data.datasets.forEach((ds, dsIdx) => {
+        const meta = chart.getDatasetMeta(dsIdx);
+        meta.data.forEach((bar, barIdx) => {
+          const value = ds.data[barIdx];
+          if (!value || value === 0) return;
+          const { x, y, height, width } = bar.getProps(['x', 'y', 'height', 'width']);
+          // Only show label if segment is tall enough (min 16px)
+          if (height < 16) return;
+          ctx.save();
+          ctx.font = 'bold 11px sans-serif';
+          ctx.fillStyle = '#fff';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.globalAlpha = 0.9;
+          ctx.fillText(value, x, y + height / 2);
+          ctx.restore();
+        });
+      });
+    }
+  };
   // Pro každý měsíc v rámci pololetí vytvořit dataset
   const monthColors = [
     '#1976d2', '#388e3c', '#fbc02d', '#d84315', '#8e24aa', '#00838f',
@@ -222,68 +248,71 @@ export default function Fleet250kStatsGanttChart({ stats, onRefresh, loading, on
   return (
     <>
       <div className="fleet250k-gantt-container">
-        <div className="fleet250k-gantt-header">
-          <span className="fleet250k-gantt-title"></span>
-          <div style={{display:'flex', alignItems:'center', gap:'0.7em'}}>
-            {onRefresh && (
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={loading}
-                className="fleet250k-gantt-refresh"
-                title="Aktualizovat data z API"
-              >
-                <MdRefresh />
-              </button>
-            )}
-          </div>
-        </div>
-        <div style={{display:'flex', flexDirection:'column'}}>
+        <ChartFullscreenWrapper
+          title="Predikce dosažení 250 000 km"
+          extraButtons={onRefresh ? (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={loading}
+              className="chart-fs-btn"
+              title="Aktualizovat data z WebDispečinku (stáhne nová KM data za poslední 3 měsíce)"
+            >
+              <FiRefreshCw className={loading ? 'fleet250k-spin' : ''} />
+            </button>
+          ) : null}
+        >
+        {(isFs) => (
+        <div style={{display:'flex', flexDirection:'column', width:'100%', height: isFs ? 'calc(100vh - 140px)' : undefined}}>
           {/* Only render chart and button if visible (controlled by parent) */}
           {typeof stats !== 'undefined' && stats && stats.results && stats.results.length > 0 && (
             <>
               {/* Row above columns: total vehicle count per half-year */}
-              <ReactChart
-                ref={chartRef}
-                type="bar"
-                data={{
-                  labels,
-                  datasets
-                }}
-                options={{
-                  indexAxis: 'x',
-                  plugins: {
-                    legend: { display: true },
-                    tooltip: {
-                      callbacks: tooltipCallbacks,
-                      titleColor: '#1976d2',
-                      titleFont: { weight: 'bold', size: 15 },
-                    }
-                  },
-                  scales: {
-                    x: {
-                      title: { display: true, text: 'Rok / Pololetí' },
-                      stacked: true,
-                      ticks: {
-                        display: true,
-                        callback: function(value, index, values) {
-                          // value je index, labels je pole pololetí
-                          return labels[index] || value;
-                        }
-                      },
+              <div style={{ height: isFs ? '100%' : '450px', flex: isFs ? 1 : undefined }}>
+                <ReactChart
+                  ref={chartRef}
+                  type="bar"
+                  data={{
+                    labels,
+                    datasets
+                  }}
+                  options={{
+                    indexAxis: 'x',
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 25 } },
+                    plugins: {
+                      legend: { display: true },
+                      tooltip: {
+                        callbacks: tooltipCallbacks,
+                        titleColor: '#1976d2',
+                        titleFont: { weight: 'bold', size: 15 },
+                      }
                     },
-                    y: {
-                      title: { display: true, text: 'Počet aut' },
-                      stacked: true,
-                      beginAtZero: true
+                    scales: {
+                      x: {
+                        title: { display: true, text: 'Rok / Pololetí' },
+                        stacked: true,
+                        ticks: {
+                          display: true,
+                          callback: function(value, index, values) {
+                            // value je index, labels je pole pololetí
+                            return labels[index] || value;
+                          }
+                        },
+                      },
+                      y: {
+                        title: { display: true, text: 'Počet aut' },
+                        stacked: true,
+                        beginAtZero: true
+                      }
                     }
-                  }
-                }}
-                plugins={[totalCountLabelPlugin]}
-                onClick={handleChartClick}
-              />
+                  }}
+                  plugins={[totalCountLabelPlugin, segmentLabelPlugin]}
+                  onClick={handleChartClick}
+                />
+              </div>
               {/* Clear filter button directly below chart, left aligned, with icon */}
-              {chartCarids && chartCarids.length > 0 && onClearChartFilter && (
+              {!isFs && chartCarids && chartCarids.length > 0 && onClearChartFilter && (
                 <div className="fleet250k-clearfilter-wrapper" style={{justifyContent:'flex-start', marginTop:'0.7em'}}>
                   <button
                     onClick={onClearChartFilter}
@@ -297,6 +326,8 @@ export default function Fleet250kStatsGanttChart({ stats, onRefresh, loading, on
             </>
           )}
         </div>
+        )}
+        </ChartFullscreenWrapper>
       </div>
     </>
   );
