@@ -19,6 +19,7 @@ import VehiclePaging from '../components/vehicles/VehiclePaging';
 import VehicleChartsPanel from '../components/vehicles/VehicleChartsPanel';
 import MobileTabs from '../components/vehicles/MobileTabs';
 import Fleet250kStatsBlock from '../components/vehicles/Fleet250kStatsBlock';
+import StationsMapBlock from '../components/vehicles/StationsMapBlock';
 
 import { formatCzDate, highlightMatch, removeDiacritics } from '../utils/format';
 
@@ -505,8 +506,7 @@ const Vehicles = () => {
 				setTypeFilter={setTypeFilter}
 				stationFilter={stationFilter}
 				setStationFilter={setStationFilter}
-			/>
-									<Fleet250kStatsBlock
+			/>				<StationsMapBlock vehicles={filtered} />									<Fleet250kStatsBlock
 										data={filtered}
 										positions={positions}
 										onChartFilter={handleChartCaridFilter}
