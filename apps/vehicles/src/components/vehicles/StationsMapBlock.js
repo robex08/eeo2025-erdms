@@ -759,68 +759,213 @@ const StationsMapBlock = ({ vehicles = [] }) => {
       const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}`;
       const wazeUrl = `https://waze.com/ul?ll=${lat},${lon}&navigate=yes`;
       
-      const popupContent = `
-        <div style="font-family:system-ui,-apple-system,sans-serif;width:290px;overflow:hidden;">
-          <div style="display:flex;align-items:flex-start;gap:10px;padding-bottom:8px;margin-bottom:8px;border-bottom:2px solid #e2e8f0;">
-            <div style="width:36px;height:36px;border-radius:8px;background:${color};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="#fff" stroke="none">
+      // Helper pro generování servisní historie HTML
+      const generateServiceHistoryHtml = (orders = null, loading = false, error = null) => {
+        if (loading) {
+          return `
+            <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+              <span style="font-weight:700;font-size:0.82rem;color:#4338ca;">Servisní historie</span>
+            </div>
+            <div style="color:#94a3b8;font-size:0.78rem;">Načítám...</div>`;
+        }
+        if (error) {
+          return `
+            <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+              <span style="font-weight:700;font-size:0.82rem;color:#4338ca;">Servisní historie</span>
+            </div>
+            <div style="color:#ef4444;font-size:0.78rem;">${error}</div>`;
+        }
+        if (!orders || orders.length === 0) {
+          return `
+            <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+              <span style="font-weight:700;font-size:0.82rem;color:#4338ca;">Servisní historie</span>
+            </div>
+            <div style="color:#94a3b8;font-size:0.78rem;font-style:italic;">Žádné objednávky nalezeny</div>`;
+        }
+        const formatDate = (dt) => {
+          if (!dt) return '–';
+          const d = new Date(dt);
+          if (isNaN(d.getTime())) return '–';
+          return d.toLocaleDateString('cs-CZ');
+        };
+        const formatPrice = (o) => {
+          const val = parseFloat(o.faktura_celkem) > 0 ? o.faktura_celkem : o.polozky_celkem;
+          if (!val || parseFloat(val) === 0) return '–';
+          return parseFloat(val).toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 }) + ' Kč';
+        };
+        let html = `
+          <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+            <span style="font-weight:700;font-size:0.75rem;color:#4338ca;">Servisní historie (${orders.length})</span>
+          </div>
+          <div style="max-height:150px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#e2e8f0 transparent;margin:0 -4px;">
+            <style>
+              .service-history-scroll::-webkit-scrollbar { width: 4px; }
+              .service-history-scroll::-webkit-scrollbar-track { background: transparent; }
+              .service-history-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+              .service-history-scroll::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+            </style>
+            <div class="service-history-scroll" style="max-height:150px;overflow-y:auto;padding:0 4px;">`;
+        orders.forEach(o => {
+          html += `
+            <div style="background:#f8fafc;border-radius:4px;padding:4px 6px;margin-bottom:3px;font-size:0.7rem;border-left:2px solid #6366f1;">
+              <div style="margin-bottom:2px;">
+                <span style="font-weight:700;color:#1e293b;font-size:0.68rem;">${o.cislo_objednavky || '–'}</span>
+              </div>
+              <div style="text-align:right;margin-bottom:2px;">
+                <span style="font-weight:700;color:#16a34a;font-size:0.68rem;">${formatPrice(o)}</span>
+              </div>
+              <div style="color:#475569;margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.3;" title="${(o.predmet || '').replace(/"/g, '&quot;')}">${o.predmet || '–'}</div>
+              <div style="display:flex;justify-content:space-between;color:#334155;font-size:0.65rem;">
+                <span>Odes: ${formatDate(o.dt_odeslani)}</span>
+                <span>Potv: ${formatDate(o.dt_akceptace)}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center;color:#334155;font-size:0.65rem;margin-top:1px;">
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:140px;">${o.dodavatel_nazev || '–'}</span>
+                <span style="background:#e0e7ff;color:#4338ca;padding:0 3px;border-radius:2px;font-size:0.62rem;font-weight:600;white-space:nowrap;">${o.stav_objednavky || '–'}</span>
+              </div>
+            </div>`;
+        });
+        html += '</div></div>';
+        return html;
+      };
+      
+      // Funkce pro generování celého popup HTML
+      const generatePopupContent = (serviceHistoryHtml) => `
+        <style>
+          .vehicle-popup-full-width .leaflet-popup-content-wrapper { padding: 5px !important; }
+          .vehicle-popup-full-width .leaflet-popup-content { margin: 0 !important; }
+        </style>
+        <div style="font-family:system-ui,-apple-system,sans-serif;overflow:hidden;">
+          <div style="display:flex;align-items:flex-start;gap:8px;padding-bottom:6px;margin-bottom:6px;border-bottom:2px solid #e2e8f0;">
+            <div style="width:32px;height:32px;border-radius:8px;background:${color};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="#fff" stroke="none">
                 <path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/>
               </svg>
             </div>
             <div style="flex:1;min-width:0;overflow:hidden;">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
-                <span style="font-weight:700;font-size:1rem;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${vehicle.w_popis || 'N/A'}</span>
-                <span style="font-weight:700;font-size:0.9rem;color:#475569;white-space:nowrap;flex-shrink:0;">${spz}</span>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;margin-bottom:3px;">
+                <span style="font-weight:700;font-size:0.9rem;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${vehicle.w_popis || 'N/A'}</span>
+                <span style="font-weight:700;font-size:0.85rem;color:#475569;white-space:nowrap;flex-shrink:0;">${spz}</span>
               </div>
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
-                <span class="vehicle-type-badge ${typBadgeClass}" style="padding:2px 8px;border-radius:5px;font-size:0.72rem;font-weight:700;text-transform:uppercase;flex-shrink:0;">${vehicle.zzs_typ || 'N/A'}</span>
-                <span style="font-size:0.85rem;color:#64748b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${vehicle.w_groupname || 'N/A'}</span>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+                <span class="vehicle-type-badge ${typBadgeClass}" style="padding:2px 6px;border-radius:4px;font-size:0.68rem;font-weight:700;text-transform:uppercase;flex-shrink:0;">${vehicle.zzs_typ || 'N/A'}</span>
+                <span style="font-size:0.78rem;color:#64748b;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${vehicle.w_groupname || 'N/A'}</span>
               </div>
             </div>
           </div>
           ${stationAddress ? `
-          <div style="background:#eff6ff;border-left:3px solid #3b82f6;padding:5px 8px;margin-bottom:8px;border-radius:4px;font-size:0.82rem;color:#1e293b;">${stationAddress}</div>
+          <div style="background:#eff6ff;border-left:3px solid #3b82f6;padding:4px 6px;margin-bottom:6px;border-radius:4px;font-size:0.75rem;color:#1e293b;">${stationAddress}</div>
           ` : ''}
           ${vehicle.pos_ln ? `
-          <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:4px;margin-bottom:4px;font-size:0.82rem;color:#1e293b;">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+          <div style="display:flex;align-items:center;gap:4px;padding:3px 5px;background:#f0fdf4;border-left:3px solid #22c55e;border-radius:4px;margin-bottom:4px;font-size:0.75rem;color:#1e293b;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${vehicle.pos_ln}</span>
           </div>
           ` : ''}
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;background:#f8fafc;border-radius:5px;margin-bottom:4px;font-size:0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 5px;background:#f8fafc;border-radius:4px;margin-bottom:3px;font-size:0.78rem;">
             <span style="color:#64748b;">Nájezd:</span>
             <span style="font-weight:700;color:${parseInt(vehicle.pos_km) > 300000 ? '#dc2626' : '#16a34a'};">${km}</span>
           </div>
           ${zasmlouvnenoOd !== 'N/A' ? `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;background:#f8fafc;border-radius:5px;margin-bottom:4px;font-size:0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 5px;background:#f8fafc;border-radius:4px;margin-bottom:3px;font-size:0.78rem;">
             <span style="color:#64748b;">Zařazeno:</span>
             <span style="font-weight:700;color:#1e293b;">${zasmlouvnenoOd}</span>
           </div>
           ` : ''}
           ${vehicleAge ? `
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 6px;background:#f8fafc;border-radius:5px;margin-bottom:4px;font-size:0.85rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 5px;background:#f8fafc;border-radius:4px;margin-bottom:3px;font-size:0.78rem;">
             <span style="color:#64748b;">V provozu:</span>
             <span style="font-weight:700;color:#1e293b;">${vehicleAge}</span>
           </div>
           ` : ''}
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:3px 6px;font-size:0.75rem;margin-bottom:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:2px 5px;font-size:0.7rem;margin-bottom:5px;">
             <span style="color:#94a3b8;">Aktualizace:</span>
             <span style="color:#64748b;">${lastUpdate}</span>
           </div>
-          <div style="display:flex;gap:8px;padding-top:6px;border-top:1px solid #e2e8f0;">
-            <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#475569;text-decoration:none;" title="Google Maps">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
+          <div style="display:flex;gap:6px;padding-top:5px;border-top:1px solid #e2e8f0;">
+            <a href="${googleMapsUrl}" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;color:#475569;text-decoration:none;" title="Google Maps">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"></polygon></svg>
             </a>
-            <a href="${wazeUrl}" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:32px;height:32px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;color:#475569;text-decoration:none;" title="Waze">
-              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
+            <a href="${wazeUrl}" target="_blank" rel="noopener noreferrer" style="display:flex;align-items:center;justify-content:center;width:28px;height:28px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;color:#475569;text-decoration:none;" title="Waze">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 11 22 2 13 21 11 13 3 11"></polygon></svg>
             </a>
+          </div>
+          <div style="margin-top:6px;border-top:1px solid #e2e8f0;padding-top:5px;">
+            ${serviceHistoryHtml}
           </div>
         </div>
       `;
 
+      // Vytvoř marker s loading stavem
+      const initialContent = generatePopupContent(generateServiceHistoryHtml(null, true));
       const marker = window.L.marker([lat, lon], { icon })
         .addTo(mapInstanceRef.current)
-        .bindPopup(popupContent, { maxWidth: 310, minWidth: 290 });
+        .bindPopup(initialContent, { maxWidth: 320, minWidth: 280, className: 'vehicle-popup-full-width' });
+
+      // Lazy-load servisní historie po otevření popupu
+      let historyLoaded = false;
+      marker.on('popupopen', async () => {
+        if (historyLoaded) return; // Už jsme načetli
+        historyLoaded = true;
+        
+        console.log('[ServiceHistory] 🔍 Popup otevřen pro vozidlo:', vehicle.w_carid, 'SPZ:', spz);
+        
+        if (!spz || spz === 'N/A') {
+          console.warn('[ServiceHistory] ⚠️ Chybí SPZ pro vozidlo:', vehicle.w_carid);
+          const errorHtml = generateServiceHistoryHtml(null, false, 'SPZ není k dispozici');
+          marker.getPopup().setContent(generatePopupContent(errorHtml));
+          return;
+        }
+        
+        try {
+          const API_URL = process.env.REACT_APP_APIURL_GET;
+          const query = new URLSearchParams({ action: 'dbServiceHistory', spz: spz }).toString();
+          const url = `${API_URL}?${query}`;
+          
+          console.log('[ServiceHistory] 📡 Načítám historii pro SPZ:', spz);
+          console.log('[ServiceHistory] 🌐 URL:', url);
+          
+          const resp = await fetch(url);
+          
+          console.log('[ServiceHistory] ✅ Response status:', resp.status, resp.statusText);
+          
+          if (!resp.ok) {
+            const errorText = await resp.text();
+            console.error('[ServiceHistory] ❌ HTTP error:', resp.status, errorText);
+            throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+          }
+          
+          const json = await resp.json();
+          console.log('[ServiceHistory] 📦 Response data:', json);
+          
+          const orders = json.orders || json.data || [];
+          
+          // Seřaď od nejnovější po nejstarší
+          orders.sort((a, b) => {
+            const dateA = new Date(a.dt_odeslani || a.dt_akceptace || 0);
+            const dateB = new Date(b.dt_odeslani || b.dt_akceptace || 0);
+            return dateB - dateA; // Descending
+          });
+          
+          console.log('[ServiceHistory] 📋 Počet objednávek:', orders.length);
+
+          // Vygeneruj nový HTML s daty
+          const serviceHistoryHtml = generateServiceHistoryHtml(orders);
+          const newPopupContent = generatePopupContent(serviceHistoryHtml);
+          
+          console.log('[ServiceHistory] 🔄 Aktualizuji popup s novým contentem...');
+          marker.getPopup().setContent(newPopupContent);
+          console.log('[ServiceHistory] ✅ Hotovo!');
+        } catch (err) {
+          console.error('[ServiceHistory] ❌ Chyba při načítání:', err);
+          const errorHtml = generateServiceHistoryHtml(null, false, `Chyba: ${err.message}`);
+          marker.getPopup().setContent(generatePopupContent(errorHtml));
+        }
+      });
 
       vehicleMarkersRef.current[vehicle.w_carid] = marker;
     });
