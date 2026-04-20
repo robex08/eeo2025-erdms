@@ -26,7 +26,7 @@ import OrderFormTabs from '../forms/OrderFormTabs'; // Updated path after moving
 import Statistics from '../components/Statistics'; // Ensure correct import
 import { AuthContext } from '../context/AuthContext'; // Ensure correct import
 import { ToastContext } from '../context/ToastContext'; // Toast notifications
-import { TooltipWrapper } from '../styles/GlobalTooltip';
+import { TooltipWrapperStyled as TooltipWrapper } from '../styles/GlobalTooltip';
 import styled from '@emotion/styled';
 
 ChartJS.register(ArcElement, Tooltip, Legend, ChartDataLabels); // Ensure correct registration
@@ -463,17 +463,17 @@ const CacheStatusIcon = styled.span`
   };
   color: white;
   font-size: 0.8rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   cursor: help;
   transition: all 0.2s ease;
 
   &:hover {
-    transform: scale(1.1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transform: scale(1.15);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
 
   svg {
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
   }
 `;
 
@@ -1455,7 +1455,8 @@ const Orders = () => {
       startGlobalProgress();
       setGlobalProgress(10);
 
-      const { yearFrom, yearTo } = calculateDateRange(yearFilter);
+      // ✅ OPRAVA: Použij oba parametry (yearFilter, selectedMonth)
+      const { yearFrom, yearTo } = calculateDateRange(yearFilter, selectedMonth);
       const tabulkaObj = dbSource;
       const tabulkaOpriloh = getAttachmentTableName(tabulkaObj);
 
@@ -1700,8 +1701,18 @@ const Orders = () => {
       startGlobalProgress();
       setGlobalProgress(20);
 
-      const yearFrom = value === 'Všechny roky' ? '2016-01-01' : `${value}-01-01`; // "Všechny roky" = 2016 až současnost
-      const yearTo = value === 'Všechny roky' ? '2099-12-31' : `${value}-12-31`;   // Include full end date
+      // ✅ OPRAVA: Použij calculateDateRange aby se respektoval selectedMonth (např. Q4)
+      const { yearFrom, yearTo } = calculateDateRange(value, selectedMonth);
+
+      // 🐛 DEBUG - Co se posílá na server?
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📅 handleYearFilterChange - Datový rozsah:', {
+          yearFilter: value,
+          selectedMonth,
+          yearFrom,
+          yearTo
+        });
+      }
 
       // Připrav názvy tabulek
       const tabulkaObj = selectedDbSource || process.env.REACT_APP_DB_ORDER_KEY;
@@ -2030,17 +2041,7 @@ const Orders = () => {
       return { yearFrom: '2016-01-01', yearTo: '2099-12-31' };
     }
 
-    // Jednotlivé měsíce (1-12)
-    if (month >= '1' && month <= '12') {
-      const monthNum = parseInt(month, 10);
-      const lastDay = new Date(currentYear, monthNum, 0).getDate();
-      return {
-        yearFrom: `${currentYear}-${String(monthNum).padStart(2, '0')}-01`,
-        yearTo: `${currentYear}-${String(monthNum).padStart(2, '0')}-${lastDay}`
-      };
-    }
-
-    // Kvartály
+    // ✅ OPRAVA: Kvartály PŘED jednotlivými měsíci (aby se '10-12' nechytlo jako měsíc)
     if (month === '1-3') {
       return { yearFrom: `${currentYear}-01-01`, yearTo: `${currentYear}-03-31` };
     }
@@ -2052,6 +2053,16 @@ const Orders = () => {
     }
     if (month === '10-12') {
       return { yearFrom: `${currentYear}-10-01`, yearTo: `${currentYear}-12-31` };
+    }
+
+    // Jednotlivé měsíce (1-12)
+    if (month >= '1' && month <= '12') {
+      const monthNum = parseInt(month, 10);
+      const lastDay = new Date(currentYear, monthNum, 0).getDate();
+      return {
+        yearFrom: `${currentYear}-${String(monthNum).padStart(2, '0')}-01`,
+        yearTo: `${currentYear}-${String(monthNum).padStart(2, '0')}-${lastDay}`
+      };
     }
 
     // Dynamické období
@@ -2104,6 +2115,16 @@ const Orders = () => {
 
         // Vypočítej rozsah dat podle roku a měsíce
         const { yearFrom, yearTo } = calculateDateRange(yearFilter, selectedMonth);
+
+        // 🐛 DEBUG - Co se posílá na server?
+        if (process.env.NODE_ENV === 'development') {
+          console.log('📅 Orders.js - Datový rozsah:', {
+            yearFilter,
+            selectedMonth,
+            yearFrom,
+            yearTo
+          });
+        }
 
         // Připrav názvy tabulek
         const tabulkaObj = selectedDbSource || process.env.REACT_APP_DB_ORDER_KEY;
@@ -2936,15 +2957,15 @@ return (
             </CacheStatusIcon>
             <div className="tooltip top" data-icon="none">
               {lastLoadSource === 'cache'
-                ? '⚡ Načteno z cache (paměti) - rychlé zobrazení bez dotazu na databázi'
-                : '💾 Načteno z databáze - aktuální data přímo ze serveru'
+                ? 'Z cache (rychlé)'
+                : 'Z databáze (aktuální)'
               }
               {lastLoadTime && (
                 <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.8 }}>
-                  📅 {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
+                  {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
                   {lastLoadDuration !== null && (
                     <span style={{ marginLeft: '0.5rem' }}>
-                      ⏱️ {lastLoadDuration}ms
+                      {lastLoadDuration}ms
                     </span>
                   )}
                 </div>

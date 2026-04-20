@@ -823,19 +823,20 @@ const CacheStatusIcon = styled.div`
   };
   color: white;
   font-size: 0.9rem;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
   cursor: help;
   transition: all 0.2s ease;
   position: relative;
   z-index: 999999;
+  margin-right: 0.5rem;
 
   &:hover {
-    transform: scale(1.1);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transform: scale(1.15);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
   }
 
   svg {
-    filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+    filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
   }
 `;
 
@@ -14615,15 +14616,15 @@ const Orders25List = () => {
               text={
                 <>
                   {(lastLoadSource === 'memory' || lastLoadSource === 'cache')
-                    ? '⚡ Načteno z cache (paměti) - rychlé zobrazení bez dotazu na databázi'
-                    : '💾 Načteno z databáze - aktuální data přímo ze serveru'
+                    ? 'Z cache (rychlé)'
+                    : 'Z databáze (aktuální)'
                   }
                   {lastLoadTime && (
                     <div style={{ fontSize: '0.75rem', marginTop: '0.25rem', opacity: 0.8 }}>
-                      📅 {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
+                      {new Date(lastLoadTime).toLocaleTimeString('cs-CZ')}
                       {lastLoadDuration !== null && (
                         <span style={{ marginLeft: '0.5rem' }}>
-                          ⏱ {lastLoadDuration}ms
+                          {lastLoadDuration}ms
                         </span>
                       )}
                     </div>
