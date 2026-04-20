@@ -492,10 +492,26 @@ export async function fetchOldOrders({
 
   try {
     const response = await api2.post('/old_endpoints.php', payload);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ fetchOldOrders response:', {
+        status: response.status,
+        dataType: typeof response.data,
+        isArray: Array.isArray(response.data),
+        dataLength: Array.isArray(response.data) ? response.data.length : 'N/A',
+        dataSample: Array.isArray(response.data) ? response.data.slice(0, 2) : response.data
+      });
+    }
+    
     if (response.status !== 200) {
       throw new Error('Neočekávaný kód odpovědi ze serveru');
     }
     const data = response.data;
+
+    // Check if server returned an error object (status 200 but with error field)
+    if (data && typeof data === 'object' && data.error) {
+      throw new Error(data.error);
+    }
 
     if (Array.isArray(data)) return data;
 
@@ -510,7 +526,16 @@ export async function fetchOldOrders({
     }
     throw new Error('Neplatný formát odpovědi při načítání objednávek');
   } catch (error) {
-    throw new Error(error.response?.data?.message || 'Chyba na serveru. Zkuste to prosím později.');
+    const errorMsg = error.response?.data?.message || error.message || 'Chyba na serveru. Zkuste to prosím později.';
+    if (process.env.NODE_ENV === 'development') {
+      console.error('❌ fetchOldOrders error:', {
+        status: error.response?.status,
+        data: error.response?.data,
+        message: errorMsg,
+        url: error.config?.url
+      });
+    }
+    throw new Error(errorMsg);
   }
 }
 
