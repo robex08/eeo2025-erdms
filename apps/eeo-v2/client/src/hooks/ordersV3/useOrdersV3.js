@@ -15,6 +15,7 @@ import {
   addOrderComment,
   deleteOrderComment
 } from '../../services/apiOrdersV3';
+import { getOrderInvoicesV3 } from '../../services/apiOrderV3'; // ✅ Import faktur API
 import useOrdersV3State from './useOrdersV3State';
 import useOrdersV3Data from './useOrdersV3Data';
 import ORDERS_V3_CONFIG from '../../constants/ordersV3Config';
@@ -727,19 +728,22 @@ export function useOrdersV3({
         try {
           // console.log('📋 Loading subrow data for order:', orderId);
           
-          // TODO: Implementovat načítání detailu
-          // const detail = await getOrderDetail(orderId, token, username);
+          // ✅ SKUTEČNÉ NAČTENÍ FAKTUR místo mockDetail
+          const invoices = await getOrderInvoicesV3({ 
+            token, 
+            username, 
+            orderId 
+          });
           
-          // PLACEHOLDER
-          const mockDetail = {
-            items: [],
-            invoices: [],
-            attachments: [],
+          const detail = {
+            items: [], // TODO: implementovat načítání položek
+            faktury: invoices || [], // ✅ OPRAVA: faktury ne invoices!
+            attachments: [], // TODO: implementovat načítání příloh
           };
           
           setSubRowsData(prev => ({
             ...prev,
-            [orderId]: mockDetail,
+            [orderId]: detail,
           }));
         } catch (err) {
           console.error('❌ Error loading subrow data:', err);

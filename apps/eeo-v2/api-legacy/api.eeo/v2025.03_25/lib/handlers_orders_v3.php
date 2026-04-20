@@ -200,11 +200,14 @@ function handle_orders_v3_detail($input, $config) {
         $sql_invoices = "SELECT 
             f.id,
             f.fa_cislo_vema,
+            f.fa_vema_kod,
             f.fa_datum_vystaveni,
+            f.fa_datum_doruceni,
             f.fa_datum_splatnosti,
             f.fa_castka,
             f.stav,
             f.fa_poznamka,
+            f.fa_strediska_kod,
             f.vecna_spravnost_poznamka,
             f.dt_vytvoreni,
             f.vytvoril_uzivatel_id,
@@ -630,6 +633,10 @@ function handle_orders_v3_items($input, $config) {
  * @return void JSON response
  */
 function handle_orders_v3_invoices($input, $config) {
+    // 🚨 VELMI VIDITELNÝ DEBUG - ENDPOINT SE VOLÁ!
+    error_log("🚨🚨🚨 [V3 ORDER INVOICES] ENDPOINT ZAVOLÁN! 🚨🚨🚨");
+    error_log("🚨 [V3 ORDER INVOICES] POST DATA: " . json_encode($input));
+    
     $token = $input['token'] ?? '';
     $username = $input['username'] ?? '';
     $order_id = $input['order_id'] ?? 0;
@@ -654,19 +661,23 @@ function handle_orders_v3_invoices($input, $config) {
             return;
         }
 
-        // Načtení faktur
+        // Načtení faktur - EXPLICITNÍ VÝČET SLOUPCŮ + FA_STREDISKA_KOD
         $sql = "SELECT 
             f.id,
             f.fa_cislo_vema,
+            f.fa_vema_kod,
             f.fa_datum_vystaveni,
+            f.fa_datum_doruceni,
             f.fa_datum_splatnosti,
             f.fa_castka,
             f.stav,
             f.fa_poznamka,
+            f.fa_strediska_kod,
             f.dt_vytvoreni,
             f.vytvoril_uzivatel_id,
             f.dt_potvrzeni_vecne_spravnosti,
             f.potvrdil_vecnou_spravnost_id,
+            f.vecna_spravnost_poznamka,
             uv.jmeno as vytvoril_jmeno,
             uv.prijmeni as vytvoril_prijmeni,
             uv.email as vytvoril_email,
@@ -687,6 +698,14 @@ function handle_orders_v3_invoices($input, $config) {
         $stmt = $db->prepare($sql);
         $stmt->execute(['order_id' => $order_id]);
         $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 🔍 DEBUG: Co DB vrací pro faktury
+        error_log("🔍 [V3 ORDER INVOICES] Počet faktur: " . count($invoices));
+        if (count($invoices) > 0) {
+            error_log("🔍 [V3 ORDER INVOICES] První faktura sloupce: " . implode(', ', array_keys($invoices[0])));
+            error_log("🔍 [V3 ORDER INVOICES] První faktura fa_strediska_kod: " . ($invoices[0]['fa_strediska_kod'] ?? 'NULL'));
+            error_log("🔍 [V3 ORDER INVOICES] První faktura fa_datum_doruceni: " . ($invoices[0]['fa_datum_doruceni'] ?? 'NULL'));
+        }
 
         api_ok(null, [
             'invoices' => $invoices,
