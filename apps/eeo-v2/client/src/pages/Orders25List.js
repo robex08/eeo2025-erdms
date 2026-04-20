@@ -7231,7 +7231,7 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 90
+      size: 110
     },
     {
       accessorKey: 'cislo_objednavky',
@@ -7312,15 +7312,15 @@ const Orders25List = () => {
           {/* Druhý řádek - Předmět */}
           {row.original.predmet && (
             <div style={{
-              fontSize: '1em',
-              fontWeight: 600,
-              color: '#1e293b',
-              marginTop: '4px',
-              lineHeight: '1.3',
-              maxWidth: '300px',
+              fontSize: '0.85em',
+              fontWeight: 500,
+              color: '#475569',
+              marginTop: '6px',
+              lineHeight: '1.35',
+              maxWidth: '100%',
               overflow: 'hidden',
               display: '-webkit-box',
-              WebkitLineClamp: 2,
+              WebkitLineClamp: 3,
               WebkitBoxOrient: 'vertical',
               textOverflow: 'ellipsis',
               wordBreak: 'break-word'
@@ -7330,7 +7330,9 @@ const Orders25List = () => {
           )}
         </div>
       ),
-      size: 140
+      size: 200,
+      minSize: 150,
+      maxSize: 400
     },
     {
       accessorKey: 'zpusob_financovani',
@@ -7811,7 +7813,9 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 130
+      size: 160,
+      minSize: 130,
+      maxSize: 250
     },
     {
       accessorKey: 'prikazce_schvalovatel',
@@ -7957,7 +7961,9 @@ const Orders25List = () => {
           </div>
         );
       },
-      size: 130
+      size: 160,
+      minSize: 130,
+      maxSize: 250
     },
     {
       accessorKey: 'dodavatel_nazev',
