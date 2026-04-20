@@ -4,6 +4,7 @@ import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { downloadOrderAttachment, downloadInvoiceAttachment } from '../../services/apiOrderV2';
+import { getStrediska25 } from '../../services/api25orders';
 import AttachmentViewer from '../invoices/AttachmentViewer';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 import { AuthContext } from '../../context/AuthContext';
@@ -421,21 +422,26 @@ const InvoiceHeader = styled.div`
 `;
 
 const InvoiceNumber = styled.div`
+  font-family: 'Roboto', sans-serif;
   font-weight: 600;
   color: #1e293b;
   font-size: 0.875rem;
 `;
 
 const InvoiceAmount = styled.div`
+  font-family: 'Roboto', sans-serif;
   font-weight: 600;
   color: #059669;
   font-size: 0.875rem;
 `;
 
 const InvoiceDetail = styled.div`
-  font-size: 0.9375rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 0.875rem;
+  font-weight: 400;
   color: #64748b;
   margin-top: 0.25rem;
+  line-height: 1.5;
 `;
 
 const InvoiceStatusBadge = styled.span`
@@ -1055,6 +1061,9 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
   // 🔎 Vyhledávání v inline komentářích (autor + text)
   const [commentsSearchQuery, setCommentsSearchQuery] = useState('');
 
+  // 🏢 Načtení středisek při mount (token a username jsou už v props)
+  const [strediskaOptions, setStrediskaOptions] = useState([]);
+
   const loadInlineComments = useCallback(async () => {
     if (!onLoadComments || !order?.id) return;
     setCommentsLoading(true);
@@ -1127,6 +1136,24 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     return () => {
       isCancelled = true;
     };
+  }, [token, username]);
+
+  // 🏢 Načtení středisek při mount
+  useEffect(() => {
+    const loadStrediska = async () => {
+      try {
+        const data = await getStrediska25({ token, username });
+        if (data && Array.isArray(data)) {
+          setStrediskaOptions(data);
+        }
+      } catch (error) {
+        console.error('❌ Chyba při načítání středisek:', error);
+      }
+    };
+    
+    if (token && username) {
+      loadStrediska();
+    }
   }, [token, username]);
 
   const getAttachmentTypeLabel = useCallback((typeCode, source = 'obj') => {
@@ -1955,6 +1982,68 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     <InfoLabel>Počet faktur:</InfoLabel>
                     <InfoValue style={{ fontWeight: 500 }}>{faktury.length} ks</InfoValue>
                   </InfoRow>
+                  
+                  {/* 💰 Součet ceny faktur */}
+                  <InfoRow>
+                    <InfoLabel>Faktury (s DPH):</InfoLabel>
+                    <InfoValue style={{ fontWeight: 600, color: '#059669' }}>
+                      {formatCurrency(faktury.reduce((sum, inv) => sum + (parseFloat(inv.fa_castka) || 0), 0))}
+                    </InfoValue>
+                  </InfoRow>
+                  
+                  {/* 🏢 Střediska z faktur (unique) */}
+                  {(() => {
+                    // Získat všechny kódy středisek z faktur
+                    const allKody = [];
+                    faktury.forEach(invoice => {
+                      if (!invoice.fa_strediska_kod) return;
+                      
+                      let kody = [];
+                      if (typeof invoice.fa_strediska_kod === 'string') {
+                        try {
+                          const parsed = JSON.parse(invoice.fa_strediska_kod);
+                          kody = Array.isArray(parsed) ? parsed : [parsed];
+                        } catch (e) {
+                          kody = [invoice.fa_strediska_kod];
+                        }
+                      } else if (Array.isArray(invoice.fa_strediska_kod)) {
+                        kody = invoice.fa_strediska_kod;
+                      } else {
+                        kody = [invoice.fa_strediska_kod];
+                      }
+                      
+                      allKody.push(...kody);
+                    });
+                    
+                    // Unique kódy
+                    const uniqueKody = [...new Set(allKody)];
+                    
+                    // Převést na názvy
+                    const nazvy = uniqueKody.map(kod => {
+                      const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                      return stredisko ? stredisko.label : kod;
+                    });
+                    
+                    if (nazvy.length === 0) return null;
+                    
+                    // Porovnání se střediska nahoře (detail.strediska_nazvy nebo detail.strediska_kod)
+                    const strediskaHore = detail.strediska_nazvy || detail.strediska_kod || '';
+                    const strediskaDole = nazvy.join(', ');
+                    const jeShoda = strediskaHore === strediskaDole;
+                    
+                    return (
+                      <InfoRow>
+                        <InfoLabel>Střediska:</InfoLabel>
+                        <InfoValue style={{ 
+                          fontSize: '0.9em', 
+                          fontWeight: 500,
+                          color: jeShoda ? '#059669' : '#dc2626' // zelená pokud shoda, červená pokud rozdíl
+                        }}>
+                          {strediskaDole}
+                        </InfoValue>
+                      </InfoRow>
+                    );
+                  })()}
                 </>
               )}
 
@@ -2645,11 +2734,42 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   const invoiceAttachments = invoice.prilohy || [];
                   const invoiceStatus = normalizeInvoiceStatus(invoice.stav);
                   
+                  // 🏢 Převod kódů středisek na názvy
+                  const strediskaNazvy = (() => {
+                    if (!invoice.fa_strediska_kod) return [];
+                    
+                    let kody = [];
+                    
+                    // 1. Parsuj JSON string pokud je to string
+                    if (typeof invoice.fa_strediska_kod === 'string') {
+                      try {
+                        const parsed = JSON.parse(invoice.fa_strediska_kod);
+                        kody = Array.isArray(parsed) ? parsed : [parsed];
+                      } catch (e) {
+                        // Není JSON - použij jako jedinou hodnotu
+                        kody = [invoice.fa_strediska_kod];
+                      }
+                    } else if (Array.isArray(invoice.fa_strediska_kod)) {
+                      kody = invoice.fa_strediska_kod;
+                    } else {
+                      return [];
+                    }
+                    
+                    // 2. Převeď kódy na názvy ze číselníku
+                    return kody.map(kod => {
+                      const stredisko = strediskaOptions.find(opt => opt.value === kod);
+                      return stredisko ? stredisko.label : kod;
+                    });
+                  })();
+                  
                   return (
                   <InvoiceItem key={index}>
                     <InvoiceHeader>
                       <InvoiceNumber>
                         FA VS: {invoice.fa_cislo_vema || invoice.id || 'N/A'}
+                        {invoice.fa_vema_kod && (
+                          <span style={{ fontFamily: "'Roboto', sans-serif", color: '#3b82f6', fontWeight: 500 }}> / FA VEMA číslo: {invoice.fa_vema_kod}</span>
+                        )}
                       </InvoiceNumber>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
                         <InvoiceAmount>
@@ -2669,48 +2789,56 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                       </div>
                     </InvoiceHeader>
                     {(invoice.vytvoril_jmeno || invoice.vytvoril_prijmeni) && (
-                      <InvoiceDetail style={{ fontWeight: 500 }}>
-                        <span style={{ color: '#6b7280', fontWeight: 600 }}>Evidoval:</span> <span style={{ color: '#1e293b', fontWeight: 600 }}>{formatUserName(invoice.vytvoril_jmeno, invoice.vytvoril_prijmeni, invoice.vytvoril_titul_pred, invoice.vytvoril_titul_za)}</span>
+                      <InvoiceDetail>
+                        <span style={{ fontFamily: "'Roboto', sans-serif", color: '#6b7280', fontWeight: 600 }}>Evidoval:</span> <span style={{ fontFamily: "'Roboto', sans-serif", color: '#1e293b', fontWeight: 600 }}>{formatUserName(invoice.vytvoril_jmeno, invoice.vytvoril_prijmeni, invoice.vytvoril_titul_pred, invoice.vytvoril_titul_za)}</span>
                       </InvoiceDetail>
                     )}
                     {(invoice.fa_datum_doruceni || invoice.fa_datum_vystaveni || invoice.fa_datum_splatnosti) && (
                       <InvoiceDetail>
                         {invoice.fa_datum_doruceni && (
-                          <span>Doručeno: {formatDate(invoice.fa_datum_doruceni)}</span>
+                          <span style={{ fontFamily: "'Roboto', sans-serif" }}>Doručeno: {formatDate(invoice.fa_datum_doruceni)}</span>
                         )}
                         {invoice.fa_datum_doruceni && invoice.fa_datum_vystaveni && (
-                          <span> | </span>
+                          <span style={{ fontFamily: "'Roboto', sans-serif" }}> | </span>
                         )}
                         {invoice.fa_datum_vystaveni && (
-                          <span>Vystaveno: {formatDate(invoice.fa_datum_vystaveni)}</span>
+                          <span style={{ fontFamily: "'Roboto', sans-serif" }}>Vystaveno: {formatDate(invoice.fa_datum_vystaveni)}</span>
                         )}
                         {invoice.fa_datum_vystaveni && invoice.fa_datum_splatnosti && (
-                          <span> | </span>
+                          <span style={{ fontFamily: "'Roboto', sans-serif" }}> | </span>
                         )}
                         {!invoice.fa_datum_vystaveni && invoice.fa_datum_doruceni && invoice.fa_datum_splatnosti && (
-                          <span> | </span>
+                          <span style={{ fontFamily: "'Roboto', sans-serif" }}> | </span>
                         )}
                         {invoice.fa_datum_splatnosti && (
-                          <span>Splatnost: {formatDate(invoice.fa_datum_splatnosti)}</span>
+                          <span style={{ fontFamily: "'Roboto', sans-serif" }}>Splatnost: {formatDate(invoice.fa_datum_splatnosti)}</span>
                         )}
                       </InvoiceDetail>
                     )}
+                    
+                    {/* 🏢 STŘEDISKA FAKTURY - NAD věcnou správností, čistý text */}
+                    {strediskaNazvy.length > 0 && (
+                      <InvoiceDetail>
+                        <span style={{ fontFamily: "'Roboto', sans-serif", color: '#6b7280', fontWeight: 600 }}>Střediska:</span> {strediskaNazvy.join(', ')}
+                      </InvoiceDetail>
+                    )}
+                    
                     {invoice.dt_potvrzeni_vecne_spravnosti && (
                       <InvoiceDetail>
-                        <span style={{ color: '#0891b2', fontWeight: 600 }}>Věcná správnost:</span> <span style={{ color: '#64748b' }}>{formatDateTime(invoice.dt_potvrzeni_vecne_spravnosti)}</span>
+                        <span style={{ fontFamily: "'Roboto', sans-serif", color: '#0891b2', fontWeight: 600 }}>Věcná správnost:</span> <span style={{ fontFamily: "'Roboto', sans-serif", color: '#64748b' }}>{formatDateTime(invoice.dt_potvrzeni_vecne_spravnosti)}</span>
                         {(invoice.potvrdil_vecnou_spravnost_jmeno || invoice.potvrdil_vecnou_spravnost_prijmeni) && (
-                          <span style={{ color: '#0891b2', fontWeight: 500 }}> - {formatUserName(invoice.potvrdil_vecnou_spravnost_jmeno, invoice.potvrdil_vecnou_spravnost_prijmeni, invoice.potvrdil_vecnou_spravnost_titul_pred, invoice.potvrdil_vecnou_spravnost_titul_za)}</span>
+                          <span style={{ fontFamily: "'Roboto', sans-serif", color: '#0891b2', fontWeight: 500 }}> - {formatUserName(invoice.potvrdil_vecnou_spravnost_jmeno, invoice.potvrdil_vecnou_spravnost_prijmeni, invoice.potvrdil_vecnou_spravnost_titul_pred, invoice.potvrdil_vecnou_spravnost_titul_za)}</span>
                         )}
                       </InvoiceDetail>
                     )}
                     {invoice.vecna_spravnost_poznamka && (
-                      <InvoiceDetail style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.8rem' }}>
-                        <strong>Poznámka VS:</strong> {invoice.vecna_spravnost_poznamka}
+                      <InvoiceDetail style={{ fontFamily: "'Roboto', sans-serif", fontStyle: 'italic', color: '#64748b' }}>
+                        <strong style={{ fontFamily: "'Roboto', sans-serif" }}>Poznámka VS:</strong> {invoice.vecna_spravnost_poznamka}
                       </InvoiceDetail>
                     )}
                     {invoice.fa_poznamka && (
-                      <InvoiceDetail style={{ fontStyle: 'italic', color: '#64748b', fontSize: '0.8rem' }}>
-                        <strong>Poznámka:</strong> {invoice.fa_poznamka}
+                      <InvoiceDetail style={{ fontFamily: "'Roboto', sans-serif", fontStyle: 'italic', color: '#64748b' }}>
+                        <strong style={{ fontFamily: "'Roboto', sans-serif" }}>Poznámka:</strong> {invoice.fa_poznamka}
                       </InvoiceDetail>
                     )}
 
