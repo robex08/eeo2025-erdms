@@ -4101,7 +4101,7 @@ const OrdersTableV3 = ({
           return (
             <div style={{ textAlign: 'center', lineHeight: '1.3' }}>
               {/* První řádek - datum aktualizace (bez tooltipu) */}
-              <div style={{ fontWeight: 'bold' }}>{formatDateOnly(lastModified)}</div>
+              <div style={{ fontWeight: 'bold', whiteSpace: 'nowrap' }}>{formatDateOnly(lastModified)}</div>
               
               {/* Druhý a třetí řádek - datum a čas vytvoření (s tooltipem) */}
               {workflowTooltip ? (
@@ -4128,7 +4128,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 100,
+        size: 120,
+        minSize: 115,
+        maxSize: 150,
         enableSorting: true,
       },
       {
@@ -4155,17 +4157,17 @@ const OrdersTableV3 = ({
               {order.predmet && (
                 <SmartTooltip text={order.predmet} preferredPosition="right" multiline={true}>
                   <div style={{
-                    fontSize: '1em',
-                    fontWeight: 'normal',
-                    color: '#1e293b',
-                    marginTop: '4px',
+                    fontSize: '0.85em',
+                    fontWeight: 500,
+                    color: '#475569',
+                    marginTop: '6px',
                     paddingRight: '1em',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     display: '-webkit-box',
-                    WebkitLineClamp: 2,
+                    WebkitLineClamp: 3,
                     WebkitBoxOrient: 'vertical',
-                    lineHeight: '1.2',
+                    lineHeight: '1.35',
                     cursor: 'help'
                   }}>
                     {order.predmet}
@@ -4175,7 +4177,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 220,
+        size: 160,
+        minSize: 140,
+        maxSize: 350,
         enableSorting: true,
       },
       {
@@ -4228,12 +4232,14 @@ const OrdersTableV3 = ({
           
           return (
             <div style={{ lineHeight: '1.3' }}>
-              <div style={{ fontWeight: 500 }}>{objednatel}</div>
-              <div style={{ fontSize: '0.85em', color: '#6b7280' }}>{garant}</div>
+              <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{objednatel}</div>
+              <div style={{ fontSize: '0.85em', color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{garant}</div>
             </div>
           );
         },
-        size: 130,
+        size: 180,
+        minSize: 150,
+        maxSize: 280,
         enableSorting: true,
       },
       {
@@ -4252,12 +4258,14 @@ const OrdersTableV3 = ({
           
           return (
             <div style={{ lineHeight: '1.3' }}>
-              <div style={{ fontWeight: 500 }}>{prikazce}</div>
-              <div style={{ fontSize: '0.85em', color: '#6b7280' }}>{schvalovatel}</div>
+              <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prikazce}</div>
+              <div style={{ fontSize: '0.85em', color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{schvalovatel}</div>
             </div>
           );
         },
-        size: 130,
+        size: 180,
+        minSize: 150,
+        maxSize: 280,
         enableSorting: true,
       },
       {
