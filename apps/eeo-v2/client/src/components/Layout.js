@@ -1726,6 +1726,7 @@ const Layout = ({ children }) => {
   // State pro module visibility settings
   const [moduleSettings, setModuleSettings] = useState({
     module_orders_visible: true,
+    module_orders_old_visible: true,
     module_orders_v3_visible: false,
     module_invoices_visible: true,
     module_annual_fees_visible: true,
@@ -2161,6 +2162,7 @@ const Layout = ({ children }) => {
           const settings = await getGlobalSettings(token, username);
           setModuleSettings({
             module_orders_visible: settings.module_orders_visible ?? true,
+            module_orders_old_visible: settings.module_orders_old_visible ?? true,
             module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
             module_invoices_visible: settings.module_invoices_visible ?? true,
             module_annual_fees_visible: settings.module_annual_fees_visible ?? true,
@@ -2201,6 +2203,7 @@ const Layout = ({ children }) => {
           const settings = await getGlobalSettings(token, username);
           setModuleSettings({
             module_orders_visible: settings.module_orders_visible ?? true,
+            module_orders_old_visible: settings.module_orders_old_visible ?? true,
             module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
             module_invoices_visible: settings.module_invoices_visible ?? true,
             module_annual_fees_visible: settings.module_annual_fees_visible ?? true,
@@ -3710,7 +3713,7 @@ const Layout = ({ children }) => {
               </MenuLinkLeft>
             ) : null }
             
-            {/* Přehled menu - pro ADMINI nebo uživatele se všemi třemi právy */}
+            {/* Přehled menu - POUZE pro ADMINI nebo uživatele se všemi třemi právy (sbalení položek do dropdownu) */}
             { (hasAdminRole && hasAdminRole()) || hasAllThreePermissions ? (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
@@ -3743,13 +3746,13 @@ const Layout = ({ children }) => {
                       minWidth: `${prehledDropdownPosition.width}px`
                     }}
                   >
-                    {/* Objednávky - zobrazit vždy (nebo když jsou enabled) */}
+                    {/* Objednávky V2 - zobrazit vždy (nebo když jsou enabled) */}
                     {moduleSettings.module_orders_visible && (
                       <MenuDropdownItem 
                         to="/orders25-list" 
                         onClick={() => setPrehledMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Objednávky
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Objednávky V2
                       </MenuDropdownItem>
                     )}
                     
@@ -3793,13 +3796,15 @@ const Layout = ({ children }) => {
                       </MenuDropdownItem>
                     )}
 
-                    {/* Staré objednávky - vždy zobrazit */}
-                    <MenuDropdownItem 
-                      to="/orders" 
-                      onClick={() => setPrehledMenuOpen(false)}
-                    >
-                      <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Objednávky (&lt; 2026)
-                    </MenuDropdownItem>
+                    {/* Staré objednávky - zobrazit když má právo ORDER_OLD a modul je viditelný */}
+                    {moduleSettings.module_orders_old_visible && hasPermission && (hasPermission('ORDER_OLD') || hasPermission('ORDER_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                      <MenuDropdownItem 
+                        to="/orders" 
+                        onClick={() => setPrehledMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileInvoice} fixedWidth /> Objednávky (&lt; 2026)
+                      </MenuDropdownItem>
+                    )}
                   </MenuDropdownContent>,
                   document.body
                 )}
@@ -3812,14 +3817,14 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faFileInvoice} /> Faktury - přehled
               </MenuLinkLeft>
             ) }
-            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && moduleSettings.module_orders_visible && (
+            { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) && moduleSettings.module_orders_old_visible && (
               <MenuLinkLeft to="/orders" $active={isActive('/orders')}>
                 <FontAwesomeIcon icon={faFileInvoice} /> Objednávky (&lt; 2026)
               </MenuLinkLeft>
             ) }
             { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && moduleSettings.module_orders_visible && (
               <MenuLinkLeft to="/orders25-list" $active={isActive('/orders25-list')}>
-                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky - přehled
+                <FontAwesomeIcon icon={faFileInvoice} /> Objednávky V2
               </MenuLinkLeft>
             ) }
             { !((hasAdminRole && hasAdminRole()) || hasAllThreePermissions) && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_2025')) && moduleSettings.module_orders_v3_visible && (
@@ -3976,7 +3981,7 @@ const Layout = ({ children }) => {
                         to="/orders25-list" 
                         onClick={() => setBetaMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                        <FontAwesomeIcon icon={faFileInvoice} style={{color: '#f59e0b'}} /> Objednávky V2 <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     {hasBetaMenuAccess && !moduleSettings.module_invoices_visible && hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')) && (

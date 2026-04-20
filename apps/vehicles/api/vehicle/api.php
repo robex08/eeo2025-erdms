@@ -8,6 +8,7 @@
  *   ?action=dbCarsListDetail        - Seznam vozidel s detaily
  *   ?action=dbCarsPosition&carid=X  - Pozice vozidla
  *   ?action=dbCarsKmMonth&carid=X   - KM statistiky vozidla
+ *   ?action=dbServiceHistory&spz=X  - Servisní historie dle SPZ (EEO DB)
  * 
  * POST endpointy (synchronizace z WebDispečinku):
  *   action=wdCarsList               - Sync seznam vozidel
@@ -82,6 +83,7 @@ function handleGetRequest(): void
     $action = $_GET['action'] ?? '';
     $carid = isset($_GET['carid']) ? intval($_GET['carid']) : 0;
     $progressId = $_GET['progressId'] ?? '';
+    $spz = $_GET['spz'] ?? '';
 
     switch ($action) {
         case 'dbCarsListDetail':
@@ -104,8 +106,12 @@ function handleGetRequest(): void
             VehicleHandlers::getSyncProgress($progressId);
             break;
 
+        case 'dbServiceHistory':
+            VehicleHandlers::getServiceHistory($spz);
+            break;
+
         default:
-            Response::error('Neznámá akce. Dostupné: dbCarsListDetail, dbCarsPosition, dbCarsKmMonth, getSyncProgress', 400);
+            Response::error('Neznámá akce. Dostupné: dbCarsListDetail, dbCarsPosition, dbCarsKmMonth, dbServiceHistory, getSyncProgress', 400);
     }
 }
 

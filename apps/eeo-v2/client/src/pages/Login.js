@@ -32,25 +32,25 @@ const spinAnimation = keyframes`
 // Emotion styled komponenty mimo funkci Login
 const Wrapper = styled.div`
   position: fixed;
-  inset: 0; /* top:0; right:0; bottom:0; left:0 */
-  height: 100dvh; /* avoid mobile browser UI issues */
-  width: 100vw;
+  top: var(--app-header-height, 96px); /* Pod hlavičku */
+  left: 0;
+  right: 0;
+  bottom: var(--app-footer-height, 54px); /* Nad patičku */
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 1rem;
   box-sizing: border-box;
-  overflow-y: auto; /* povolit scrollování pro malé obrazovky */
+  overflow-y: auto; /* Scrollbar na kraji okna */
   overflow-x: hidden;
 
   @media (max-width: 768px) {
     padding: 0.75rem;
   }
 
-  @media (max-height: 768px) {
-    padding: 0.5rem;
+  /* Na velmi malých obrazovkách zarovnat nahoru aby scrollbar fungoval lépe */
+  @media (max-height: 600px) {
     align-items: flex-start;
-    padding-top: 1rem;
   }
 `;
 
@@ -61,20 +61,23 @@ const Container = styled.div`
   overflow: hidden;
   width: min(378px, 50vw);
   min-height: 155px;
-  max-height: 95vh;
   animation: ${slideInUp} 0.6s ease-out;
   border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0; /* Zabránit smrštění při centrování */
 
   @media (max-width: 768px) {
     width: 64vw;
     min-height: 191px;
   }
 
-  @media (max-height: 768px) {
-    max-height: calc(100vh - 2rem);
+  @media (max-height: 700px) {
     width: min(360px, 90vw);
+  }
+
+  @media (max-height: 500px) {
+    border-radius: 10px;
   }
 `;
 
@@ -86,8 +89,12 @@ const CardHeader = styled.div`
   flex-shrink: 0;
   position: relative;
 
-  @media (max-height: 768px) {
-    padding: 0.65rem 1rem;
+  @media (max-height: 700px) {
+    padding: 0.7rem 1rem;
+  }
+
+  @media (max-height: 500px) {
+    padding: 0.5rem 0.85rem;
   }
 `;
 
@@ -126,13 +133,24 @@ const HomeButton = styled.a`
     pointer-events: none;
   }
 
-  @media (max-height: 768px) {
+  @media (max-height: 700px) {
     padding: 5px;
-    right: 0.8rem;
+    right: 0.85rem;
     
     .home-icon-circle {
       width: 28px;
       height: 28px;
+    }
+  }
+
+  @media (max-height: 500px) {
+    padding: 4px;
+    right: 0.7rem;
+    border-radius: 6px;
+    
+    .home-icon-circle {
+      width: 24px;
+      height: 24px;
     }
   }
 `;
@@ -155,8 +173,13 @@ const Title = styled.h1`
   position: relative;
   z-index: 1;
 
-  @media (max-height: 768px) {
-    font-size: 1.25rem;
+  @media (max-height: 700px) {
+    font-size: 1.3rem;
+    margin-bottom: 0.2rem;
+  }
+
+  @media (max-height: 500px) {
+    font-size: 1.15rem;
     margin-bottom: 0.15rem;
   }
 `;
@@ -168,18 +191,25 @@ const Subtitle = styled.p`
   position: relative;
   z-index: 1;
 
-  @media (max-height: 768px) {
-    font-size: 0.75rem;
+  @media (max-height: 700px) {
+    font-size: 0.8rem;
+  }
+
+  @media (max-height: 500px) {
+    font-size: 0.7rem;
   }
 `;
 
 const CardBody = styled.div`
   padding: 0.94rem 1.13rem 1.13rem;
-  overflow-y: auto;
   flex: 1;
 
-  @media (max-height: 768px) {
-    padding: 0.5rem 0.85rem 0.65rem;
+  @media (max-height: 700px) {
+    padding: 0.65rem 0.85rem 0.85rem;
+  }
+
+  @media (max-height: 500px) {
+    padding: 0.5rem 0.75rem 0.65rem;
   }
 `;
 
@@ -188,8 +218,12 @@ const Form = styled.form`
   flex-direction: column;
   gap: 1.13rem;
 
-  @media (max-height: 768px) {
-    gap: 0.75rem;
+  @media (max-height: 700px) {
+    gap: 0.85rem;
+  }
+
+  @media (max-height: 500px) {
+    gap: 0.6rem;
   }
 `;
 
@@ -197,8 +231,12 @@ const InputGroup = styled.div`
   margin-bottom: 0.75rem;
   position: relative;
 
-  @media (max-height: 768px) {
-    margin-bottom: 0.4rem;
+  @media (max-height: 700px) {
+    margin-bottom: 0.5rem;
+  }
+
+  @media (max-height: 500px) {
+    margin-bottom: 0.3rem;
   }
 `;
 
@@ -209,9 +247,14 @@ const InputLabel = styled.label`
   color: #374151;
   font-size: 0.8rem;
 
-  @media (max-height: 768px) {
-    margin-bottom: 0.2rem;
+  @media (max-height: 700px) {
+    margin-bottom: 0.25rem;
     font-size: 0.75rem;
+  }
+
+  @media (max-height: 500px) {
+    margin-bottom: 0.2rem;
+    font-size: 0.7rem;
   }
 `;
 
@@ -274,9 +317,15 @@ const Input = styled.input`
     color: #9ca3af;
   }
 
-  @media (max-height: 768px) {
-    padding: 0.5rem 0.6rem 0.5rem 2.25rem;
-    font-size: 0.875rem;
+  @media (max-height: 700px) {
+    padding: 0.5rem 0.6rem 0.5rem 2.35rem;
+    font-size: 0.9rem;
+  }
+
+  @media (max-height: 500px) {
+    padding: 0.4rem 0.5rem 0.4rem 2.2rem;
+    font-size: 0.85rem;
+    border-radius: 6px;
   }
 `;
 
@@ -316,10 +365,17 @@ const Button = styled.button`
     transform: none;
   }
 
-  @media (max-height: 768px) {
-    padding: 0.6rem;
-    font-size: 0.95rem;
+  @media (max-height: 700px) {
+    padding: 0.7rem;
+    font-size: 1rem;
+    margin-top: 0.75rem;
+  }
+
+  @media (max-height: 500px) {
+    padding: 0.55rem;
+    font-size: 0.9rem;
     margin-top: 0.5rem;
+    border-radius: 7px;
   }
 `;
 
@@ -331,9 +387,14 @@ const LoadingSpinner = styled.div`
   border-radius: 50%;
   ${css`animation: ${spinAnimation} 1s linear infinite;`}
 
-  @media (max-height: 768px) {
+  @media (max-height: 700px) {
     width: 18px;
     height: 18px;
+  }
+
+  @media (max-height: 500px) {
+    width: 16px;
+    height: 16px;
   }
 `;
 
@@ -349,10 +410,16 @@ const ErrorMessage = styled.div`
   gap: 0.38rem;
   font-size: 0.8rem;
 
-  @media (max-height: 768px) {
-    padding: 0.5rem;
-    margin-top: 0.5rem;
+  @media (max-height: 700px) {
+    padding: 0.6rem;
+    margin-top: 0.6rem;
     font-size: 0.75rem;
+  }
+
+  @media (max-height: 500px) {
+    padding: 0.45rem;
+    margin-top: 0.4rem;
+    font-size: 0.7rem;
   }
 `;
 
@@ -492,7 +559,12 @@ const Divider = styled.div`
     margin-left: 0.75rem;
   }
 
-  @media (max-height: 768px) {
+  @media (max-height: 700px) {
+    margin: 0.75rem 0 0.5rem 0;
+    font-size: 0.8rem;
+  }
+
+  @media (max-height: 500px) {
     margin: 0.5rem 0 0.35rem 0;
     font-size: 0.7rem;
   }
@@ -537,14 +609,26 @@ const EntraButton = styled.button`
     height: 20px;
   }
 
-  @media (max-height: 768px) {
-    padding: 0.6rem;
-    font-size: 0.95rem;
-    margin-top: 0.35rem;
+  @media (max-height: 700px) {
+    padding: 0.7rem;
+    font-size: 1rem;
+    margin-top: 0.5rem;
     
     svg {
       width: 18px;
       height: 18px;
+    }
+  }
+
+  @media (max-height: 500px) {
+    padding: 0.55rem;
+    font-size: 0.9rem;
+    margin-top: 0.35rem;
+    border-radius: 7px;
+    
+    svg {
+      width: 16px;
+      height: 16px;
     }
   }
 `;
@@ -570,12 +654,20 @@ const InfoPanel = styled.div`
   line-height: 1.5;
   color: #1e40af;
 
-  @media (max-height: 768px) {
+  @media (max-height: 700px) {
+    padding: 0.6rem 0.8rem;
+    margin: 0.5rem 0 0.65rem 0;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    border-left-width: 3px;
+  }
+
+  @media (max-height: 500px) {
     padding: 0.45rem 0.65rem;
     margin: 0.4rem 0 0.5rem 0;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     line-height: 1.35;
-    border-left-width: 3px;
+    border-left-width: 2px;
   }
 `;
 
@@ -587,9 +679,14 @@ const InfoPanelTitle = styled.div`
   margin-bottom: 0.4rem;
   color: #1e3a8a;
 
-  @media (max-height: 768px) {
-    margin-bottom: 0.25rem;
+  @media (max-height: 700px) {
+    margin-bottom: 0.3rem;
     font-size: 0.85rem;
+  }
+
+  @media (max-height: 500px) {
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
   }
 `;
 
@@ -606,13 +703,23 @@ const InfoPanelIcon = styled.span`
   height: 18px;
   color: #2563eb;
 
-  @media (max-height: 768px) {
+  @media (max-height: 700px) {
     width: 16px;
     height: 16px;
     
     svg {
       width: 16px;
       height: 16px;
+    }
+  }
+
+  @media (max-height: 500px) {
+    width: 14px;
+    height: 14px;
+    
+    svg {
+      width: 14px;
+      height: 14px;
     }
   }
 `;

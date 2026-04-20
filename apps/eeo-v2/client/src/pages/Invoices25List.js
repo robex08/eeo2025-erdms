@@ -1798,8 +1798,8 @@ const Invoices25List = () => {
   }, []);
 
 
-  // LocalStorage klíč pro uložení stavu (user-specific)
-  const LS_KEY = `invoices25_filters_state_${user_id || 'guest'}`;
+  // LocalStorage klíč pro uložení stavu (user-specific) - v3: třífázové třídění (ASC/DESC/NONE)
+  const LS_KEY = `invoices25_filters_state_v3_${user_id || 'guest'}`;
 
   // Helper: Load state from localStorage
   const loadFromLS = () => {
@@ -1876,7 +1876,7 @@ const Invoices25List = () => {
   const [showOnlyInactive, setShowOnlyInactive] = useState(false); // NEVER persisted to localStorage
   
   // �📊 Sorting state (client-side)
-  const [sortField, setSortField] = useState(savedState?.sortField || null);
+  const [sortField, setSortField] = useState(savedState?.sortField !== undefined ? savedState.sortField : null);
   const [sortDirection, setSortDirection] = useState(savedState?.sortDirection || 'asc'); // 'asc' nebo 'desc'
 
   // Sort ikona jako ve StatsReportsPage
@@ -2489,7 +2489,7 @@ const Invoices25List = () => {
       sortDirection
     };
     saveToLS(stateToSave);
-  }, [selectedPeriod, columnFilters, filters, activeFilterStatus, globalSearchTerm, showDashboard, currentPage, itemsPerPage, saveToLS]);
+  }, [selectedPeriod, columnFilters, filters, activeFilterStatus, globalSearchTerm, showDashboard, currentPage, itemsPerPage, sortField, sortDirection, saveToLS]);
 
   // Load data
   const loadData = useCallback(async () => {
@@ -2668,10 +2668,13 @@ const Invoices25List = () => {
       }
       
       // 📥 ŘAZENÍ - podle sortField a sortDirection
+      // Pokud sortField JE nastaven → pošli do API
+      // Pokud sortField je NULL → NEPOSÍLEJ (backend použije výchozí podle ID)
       if (sortField && sortField.trim()) {
         apiParams.order_by = sortField.trim();
-        apiParams.order_direction = sortDirection || 'desc'; // default DESC
+        apiParams.order_direction = sortDirection || 'asc';
       }
+      // Pokud sortField není nastaven → backend použije defaultní ORDER BY fa_id DESC
       
       // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
       // Pouze pokud je uživatel ADMIN a checkbox je zaškrtnutý
@@ -3181,18 +3184,19 @@ const Invoices25List = () => {
   };
 
   // Handler pro třídění tabulky
+  // 3-fázový cyklus: ASC → DESC → NONE (bez třídění, backend použije ID)
   const handleSort = useCallback((field) => {
     if (sortField === field) {
-      // Cycle: ASC → DESC → NONE (reset)
+      // Stejný sloupec → cyklus ASC → DESC → NONE
       if (sortDirection === 'asc') {
         setSortDirection('desc');
       } else if (sortDirection === 'desc') {
-        // Zrušit třídění
-        setSortField('');
+        // Zrušit třídění (backend použije výchozí podle ID)
+        setSortField(null);
         setSortDirection('asc');
       }
     } else {
-      // Nové pole -> výchozí směr ASC
+      // Nový sloupec → začni s ASC
       setSortField(field);
       setSortDirection('asc');
     }

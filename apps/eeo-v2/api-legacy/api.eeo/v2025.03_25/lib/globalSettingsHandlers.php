@@ -165,6 +165,7 @@ function handle_get_settings($db, $forDisplay = false) {
             
             // Module visibility settings
             'module_orders_visible' => ($settings['module_orders_visible'] ?? '1') === '1',
+            'module_orders_old_visible' => ($settings['module_orders_old_visible'] ?? '1') === '1',
             'module_orders_v3_visible' => ($settings['module_orders_v3_visible'] ?? '0') === '1',
             'module_invoices_visible' => ($settings['module_invoices_visible'] ?? '1') === '1',
             'module_annual_fees_visible' => ($settings['module_annual_fees_visible'] ?? '1') === '1',
@@ -236,6 +237,7 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'post_login_modal_content' => 'post_login_modal_content',
             // Module visibility
             'module_orders_visible' => 'module_orders_visible',
+            'module_orders_old_visible' => 'module_orders_old_visible',
             'module_orders_v3_visible' => 'module_orders_v3_visible',
             'module_invoices_visible' => 'module_invoices_visible',
             'module_annual_fees_visible' => 'module_annual_fees_visible',
