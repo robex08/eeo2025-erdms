@@ -2171,6 +2171,30 @@ export default function InvoiceEvidencePage() {
     return originalFormData.stav !== 'DOKONCENA';
   }, [editingInvoiceId, originalFormData, hasPermission, hasAccountantRole]);
 
+  // 🆕 SEPARÁTNÍ LOGIKA PRO POLE FA_VEMA_KOD - editovatelné pro INVOICE_EDIT/MANAGE/ADMIN dokud není DOKONČENÁ
+  const isVemaKodEditable = useMemo(() => {
+    // Readonly režim - nemůže editovat
+    if (isReadOnlyMode) return false;
+    
+    // Kontrola oprávnění uživatele
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    const hasInvoiceEdit = hasPermission('INVOICE_EDIT');
+    
+    // Pokud NEMÁ práva INVOICE_EDIT/MANAGE ani není ADMIN, nemůže editovat
+    if (!isAdmin && !hasInvoiceManage && !hasInvoiceEdit) {
+      return false;
+    }
+    
+    // Pro nové faktury VŽDY povolit editaci
+    if (!originalFormData) {
+      return true;
+    }
+    
+    // Pole fa_vema_kod je editovatelné dokud faktura NENÍ DOKONČENÁ
+    return originalFormData.stav !== 'DOKONCENA';
+  }, [isReadOnlyMode, originalFormData, hasPermission]);
+
   // 🆕 SEPARÁTNÍ LOGIKA PRO SEKCI VĚCNÉ SPRÁVNOSTI
   // Věcná správnost JE editovatelná dokud NENÍ potvrzena V DATABÁZI
   // Po potvrzení (originalFormData.vecna_spravnost_potvrzeno === 1 V DB) se ZAMKNE
@@ -5775,7 +5799,14 @@ export default function InvoiceEvidencePage() {
                       gap: '0.5rem'
                     }}>
                       <FontAwesomeIcon icon={faLock} />
-                      Faktura uzamčena
+                      Faktura částečně uzamčena
+                    </span>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      color: 'rgba(255, 255, 255, 0.9)',
+                      fontStyle: 'italic'
+                    }}>
+                      (editovatelné: přílohy, VEMA číslo)
                     </span>
                   </div>
                 )}
@@ -6471,7 +6502,7 @@ export default function InvoiceEvidencePage() {
                   name="fa_vema_kod"
                   value={formData.fa_vema_kod}
                   onChange={handleInputChange}
-                  disabled={!isInvoiceEditable || loading}
+                  disabled={!isVemaKodEditable || loading}
                   placeholder="volitelné"
                   style={{ fontWeight: formData.fa_vema_kod ? '600' : '400' }}
                 />

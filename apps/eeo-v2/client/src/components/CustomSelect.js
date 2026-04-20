@@ -614,7 +614,7 @@ const CustomSelect = ({
     onChange({ target: { value: clearedValue } });
     
     // Mark as touched
-    if (setTouchedSelectFields) {
+    if (setTouchedSelectFields && typeof setTouchedSelectFields === 'function') {
       setTouchedSelectFields((prev) => ({ ...prev, [field]: true }));
     }
     
@@ -651,7 +651,7 @@ const CustomSelect = ({
       onChange(optionValue); // PŘÍMO hodnota, ne event wrapper
       setSelectStates(prev => ({ ...prev, [field]: false }));
       setSearchStates(prev => ({ ...prev, [field]: '' }));
-      if (setTouchedSelectFields) {
+      if (setTouchedSelectFields && typeof setTouchedSelectFields === 'function') {
         setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
       }
       if (onBlur) {
@@ -670,7 +670,7 @@ const CustomSelect = ({
     setSearchStates(prev => ({ ...prev, [field]: '' }));
 
     // Označ pole jako touched při výběru hodnoty
-    if (setTouchedSelectFields) {
+    if (setTouchedSelectFields && typeof setTouchedSelectFields === 'function') {
       setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
     }
 
@@ -704,7 +704,7 @@ const CustomSelect = ({
     onChange(newValues); // Pro multiselect pošli přímo array
 
     // Označ pole jako touched při výběru hodnoty
-    if (setTouchedSelectFields) {
+    if (setTouchedSelectFields && typeof setTouchedSelectFields === 'function') {
       setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
     }
 
@@ -833,7 +833,7 @@ const CustomSelect = ({
         }}
         onBlur={() => {
           // Označ pole jako touched
-          if (setTouchedSelectFields) {
+          if (setTouchedSelectFields && typeof setTouchedSelectFields === 'function') {
             setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
           }
 

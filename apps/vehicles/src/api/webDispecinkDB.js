@@ -7,6 +7,17 @@ export async function fetchVehicleKmMonth(carid) {
   if (!response.ok) throw new Error('Chyba při načítání měsíčních km vozidla');
   return response.json();
 }
+
+// Získání servisní historie vozidla dle SPZ (z EEO objednávek)
+export async function fetchServiceHistory(spz) {
+  const API_URL = process.env.REACT_APP_APIURL_GET;
+  const query = new URLSearchParams({ action: 'dbServiceHistory', spz }).toString();
+  const url = `${API_URL}?${query}`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Chyba při načítání servisní historie');
+  return response.json();
+}
+
 // Získání obecných informací o vozidlech přes POST action wdCarsGeneralInfo
 export async function fetchGeneralInfo() {
   return await postWebDispecink('wdCarsGeneralInfo');

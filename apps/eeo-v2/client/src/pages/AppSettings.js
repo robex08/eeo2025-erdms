@@ -392,6 +392,7 @@ const AppSettings = () => {
     post_login_modal_valid_to: '',
     // Module visibility
     module_orders_visible: true,
+    module_orders_old_visible: true,
     module_orders_v3_visible: false,
     module_invoices_visible: true,
     module_annual_fees_visible: true,
@@ -1559,10 +1560,10 @@ const AppSettings = () => {
             <SettingRow>
               <SettingInfo>
                 <SettingLabel>
-                  📋 Objednávky (Order25List)
+                  📋 Objednávky V2 (Order25List)
                 </SettingLabel>
                 <SettingDescription>
-                  Klasický modul objednávek. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
+                  Klasický modul objednávek V2. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA.
                 </SettingDescription>
               </SettingInfo>
               <ToggleButton
@@ -1576,7 +1577,24 @@ const AppSettings = () => {
             <SettingRow>
               <SettingInfo>
                 <SettingLabel>
-                  🚀 Objednávky V3 (Order25ListV3)
+                  � Objednávky (&lt; 2026)
+                </SettingLabel>
+                <SettingDescription>
+                  Staré objednávky před rokem 2026. Pokud vypnuto, uživatelé s právem ORDER_OLD tuto položku menu neuvidí.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.module_orders_old_visible}
+                onClick={() => toggleSetting('module_orders_old_visible')}
+              >
+                <ToggleThumb $active={settings.module_orders_old_visible} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  �🚀 Objednávky V3 (Order25ListV3)
                 </SettingLabel>
                 <SettingDescription>
                   Nový modul objednávek V3. Pokud vypnuto, uvidí ho pouze BETA testeři v menu BETA. Pokud zapnuto, uvidí ho všichni uživatelé s právem ORDER_VIEW/EDIT/READ.

@@ -184,4 +184,42 @@ class Queries
         (w_carid, w_majak, w_pt, w_lp, w_km, w_ln, w_zs, w_zd, dt_aktualizace) 
         VALUES (:carid, :majak, :pt, :lp, :km, :ln, :zs, :zd, :dt)
     ";
+
+    /**
+     * Servisní historie vozidla dle SPZ (EEO databáze)
+     * Hledá v předmětu objednávek SPZ bez mezer
+     * Filtruje pouze stavy od "Odeslaná" dál (mimo Zrušena/Zamítnutá)
+     * Parametr :spz = SPZ bez mezer (např. '6SL8773')
+     */
+    const EEO_SERVICE_HISTORY_BY_SPZ = "
+        SELECT 
+            o.id,
+            o.cislo_objednavky,
+            o.predmet,
+            o.dodavatel_nazev,
+            o.stav_objednavky,
+            o.dt_objednavky,
+            o.dt_odeslani,
+            o.dt_akceptace,
+            o.dt_dokonceni,
+            COALESCE(f.fa_suma, 0) as faktura_celkem,
+            COALESCE(p.polozky_suma, 0) as polozky_celkem
+        FROM `25a_objednavky` o
+        LEFT JOIN (
+            SELECT objednavka_id, SUM(fa_castka) as fa_suma 
+            FROM `25a_objednavky_faktury` 
+            WHERE stav != 'STORNO' 
+            GROUP BY objednavka_id
+        ) f ON o.id = f.objednavka_id
+        LEFT JOIN (
+            SELECT objednavka_id, SUM(cena_s_dph) as polozky_suma 
+            FROM `25a_objednavky_polozky` 
+            GROUP BY objednavka_id
+        ) p ON o.id = p.objednavka_id
+        WHERE REPLACE(o.predmet, ' ', '') LIKE CONCAT('%', :spz, '%')
+          AND o.aktivni = 1
+          AND o.stav_objednavky NOT IN ('Rozpracovaná', 'Ke schválení', 'Schválená', 'Zamítnutá', 'Zrušena')
+        ORDER BY o.dt_akceptace DESC
+        LIMIT 50
+    ";
 }

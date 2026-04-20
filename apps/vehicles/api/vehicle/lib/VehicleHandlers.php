@@ -116,4 +116,34 @@ class VehicleHandlers
             Response::success($data, 'Progress načten');
         }
     }
+
+    /**
+     * Servisní historie vozidla dle SPZ
+     * GET ?action=dbServiceHistory&spz=6SL8773
+     * 
+     * Hledá v předmětu objednávek (EEO databáze) výskyt SPZ.
+     * Mezery v SPZ se odstraňují na obou stranách.
+     */
+    public static function getServiceHistory(string $spz): void
+    {
+        // Odstranit všechny mezery ze SPZ
+        $spzClean = preg_replace('/\s+/', '', $spz);
+
+        if (empty($spzClean) || strlen($spzClean) < 4) {
+            Response::error('Parametr spz je povinný (min. 4 znaky bez mezer)', 400);
+            return;
+        }
+
+        try {
+            $db = Database::getEeoConnection();
+            $stmt = $db->prepare(Queries::EEO_SERVICE_HISTORY_BY_SPZ);
+            $stmt->execute([':spz' => $spzClean]);
+            $orders = $stmt->fetchAll();
+
+            Response::success($orders, 'Servisní historie načtena', 200, 'orders');
+        } catch (PDOException $e) {
+            error_log("Vehicles API - getServiceHistory($spz): " . $e->getMessage());
+            Response::error('Chyba při načítání servisní historie', 500);
+        }
+    }
 }

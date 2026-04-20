@@ -378,6 +378,7 @@ function App() {
   // 🎛️ Module visibility settings - načítá se při loginu (MUSÍ BÝT PŘED RestoreLastRoute!)
   const [moduleSettings, setModuleSettings] = useState({
     module_orders_visible: true,
+    module_orders_old_visible: true,
     module_orders_v3_visible: false,
     module_invoices_visible: true,
     module_annual_fees_visible: true,
@@ -531,6 +532,7 @@ function App() {
         const settings = await getGlobalSettings(token, username);
         const moduleSettingsData = {
           module_orders_visible: settings.module_orders_visible ?? true,
+          module_orders_old_visible: settings.module_orders_old_visible ?? true,
           module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
           module_invoices_visible: settings.module_invoices_visible ?? true,
           module_annual_fees_visible: settings.module_annual_fees_visible ?? true,
