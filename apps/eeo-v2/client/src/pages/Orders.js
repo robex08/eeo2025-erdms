@@ -2066,31 +2066,53 @@ const Orders = () => {
     }
 
     // Dynamické období
-    const now = new Date();
-
     if (month === 'last-month') {
-      const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
-      return {
-        yearFrom: `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-${String(lastMonth.getDate()).padStart(2, '0')}`,
-        yearTo: `${lastMonthEnd.getFullYear()}-${String(lastMonthEnd.getMonth() + 1).padStart(2, '0')}-${String(lastMonthEnd.getDate()).padStart(2, '0')}`
-      };
+      // ✅ Pro konkrétní rok: poslední měsíc = prosinec toho roku
+      // Pro "Všechny roky": skutečně poslední měsíc od současnosti
+      if (year === 'Všechny roky') {
+        const now = new Date();
+        const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+        return {
+          yearFrom: `${lastMonth.getFullYear()}-${String(lastMonth.getMonth() + 1).padStart(2, '0')}-${String(lastMonth.getDate()).padStart(2, '0')}`,
+          yearTo: `${lastMonthEnd.getFullYear()}-${String(lastMonthEnd.getMonth() + 1).padStart(2, '0')}-${String(lastMonthEnd.getDate()).padStart(2, '0')}`
+        };
+      } else {
+        // Pro konkrétní rok: prosinec toho roku
+        return { yearFrom: `${currentYear}-12-01`, yearTo: `${currentYear}-12-31` };
+      }
     }
 
     if (month === 'last-quarter') {
-      const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
-      return {
-        yearFrom: `${threeMonthsAgo.getFullYear()}-${String(threeMonthsAgo.getMonth() + 1).padStart(2, '0')}-${String(threeMonthsAgo.getDate()).padStart(2, '0')}`,
-        yearTo: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-      };
+      // ✅ Pro konkrétní rok: Q4 toho roku (říjen-prosinec)
+      // Pro "Všechny roky": poslední 3 měsíce od současnosti
+      if (year === 'Všechny roky') {
+        const now = new Date();
+        const threeMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        return {
+          yearFrom: `${threeMonthsAgo.getFullYear()}-${String(threeMonthsAgo.getMonth() + 1).padStart(2, '0')}-${String(threeMonthsAgo.getDate()).padStart(2, '0')}`,
+          yearTo: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+        };
+      } else {
+        // Pro konkrétní rok: Q4 (říjen-prosinec)
+        return { yearFrom: `${currentYear}-10-01`, yearTo: `${currentYear}-12-31` };
+      }
     }
 
     if (month === 'last-half') {
-      const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
-      return {
-        yearFrom: `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, '0')}-${String(sixMonthsAgo.getDate()).padStart(2, '0')}`,
-        yearTo: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-      };
+      // ✅ Pro konkrétní rok: 2. polovina roku (červenec-prosinec)
+      // Pro "Všechny roky": posledních 6 měsíců od současnosti
+      if (year === 'Všechny roky') {
+        const now = new Date();
+        const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, 1);
+        return {
+          yearFrom: `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, '0')}-${String(sixMonthsAgo.getDate()).padStart(2, '0')}`,
+          yearTo: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+        };
+      } else {
+        // Pro konkrétní rok: červenec-prosinec
+        return { yearFrom: `${currentYear}-07-01`, yearTo: `${currentYear}-12-31` };
+      }
     }
 
     // Default - celý rok
