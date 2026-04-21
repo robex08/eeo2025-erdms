@@ -1496,6 +1496,7 @@ export async function fetchEmployees({ token, username }) {
         usek_zkr: emp.usek_zkr || '',
         usek_nazev: emp.usek_nazev || '',
         dt_posledni_aktivita: emp.dt_posledni_aktivita || '',
+        dt_posledni_prihlaseni: emp.dt_posledni_prihlaseni || '',
         aktivita_metadata: emp.aktivita_metadata || null,
         // Normalize aktivni to number: 1 for active, 0 for inactive
         aktivni: emp.aktivni === 1 || emp.aktivni === '1' || emp.aktivni === true ? 1 : 0,
