@@ -2756,6 +2756,8 @@ const Invoices25List = () => {
         vytvoril_uzivatel_detail: invoice.vytvoril_uzivatel_detail || null, // Kompletní objekt
         dt_vytvoreni: invoice.dt_vytvoreni,
         dt_aktualizace: invoice.dt_aktualizace,
+        aktualizoval_jmeno: invoice.aktualizoval_jmeno || null,
+        aktualizoval_prijmeni: invoice.aktualizoval_prijmeni || null,
         aktivni: invoice.aktivni === 1 || invoice.aktivni === true,
         
         // Věcná správnost - přenést všechna pole z BE
@@ -4841,6 +4843,11 @@ const Invoices25List = () => {
                             <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
                               {new Date(invoice.dt_aktualizace).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
                             </span>
+                            {invoice.aktualizoval_prijmeni && (
+                              <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontStyle: 'italic' }}>
+                                {invoice.aktualizoval_prijmeni} {invoice.aktualizoval_jmeno ? invoice.aktualizoval_jmeno.charAt(0) + '.' : ''}
+                              </span>
+                            )}
                           </div>
                         ) : '—'}
                       </span>

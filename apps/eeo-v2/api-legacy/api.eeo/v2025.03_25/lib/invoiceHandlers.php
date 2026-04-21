@@ -2283,6 +2283,10 @@ function handle_invoices25_list($input, $config, $queries) {
             u_predana.prijmeni AS fa_predana_zam_prijmeni,
             u_predana.titul_pred AS fa_predana_zam_titul_pred,
             u_predana.titul_za AS fa_predana_zam_titul_za,
+            u_aktualizoval.jmeno AS aktualizoval_jmeno,
+            u_aktualizoval.prijmeni AS aktualizoval_prijmeni,
+            u_aktualizoval.titul_pred AS aktualizoval_titul_pred,
+            u_aktualizoval.titul_za AS aktualizoval_titul_za,
             szl.id AS spisovka_tracking_id,
             szl.dokument_id AS spisovka_dokument_id,
             szl.spisovka_priloha_id AS spisovka_priloha_id,
@@ -2298,6 +2302,7 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_ciselnik_stavy` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
+        LEFT JOIN `25_uzivatele` u_aktualizoval ON f.aktualizoval_uzivatel_id = u_aktualizoval.id
         LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
         WHERE $where_sql
         GROUP BY f.id";
