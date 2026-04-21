@@ -3264,36 +3264,66 @@ function FinanceWidget({ financeData, financeLoading, financeError, onRefresh, u
             {crypto && crypto.length > 0 && (
               <>
                 <span style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px' }}>Kryptoměny</span>
-                {crypto.map((coin) => (
-                  <div key={coin.id} style={{
-                    ...cardStyle(), display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <div style={{
-                        width: '1.8rem', height: '1.8rem', borderRadius: '50%',
-                        background: coin.id === 'bitcoin' ? 'linear-gradient(135deg, #f7931a 0%, #ffb347 100%)' :
-                                    coin.id === 'ethereum' ? 'linear-gradient(135deg, #627eea 0%, #8c9eff 100%)' :
-                                    'linear-gradient(135deg, #6366f1 0%, #a5b4fc 100%)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '0.65rem', fontWeight: 800, color: '#fff',
-                        boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
-                      }}>
-                        {coin.symbol}
+                {crypto.map((coin) => {
+                  // Najdi odpovídající ticker v allChartTickers
+                  const cryptoTickerMap = { bitcoin: 'BTC-USD', ethereum: 'ETH-USD', solana: 'SOL-USD', ripple: 'XRP-USD', cardano: 'ADA-USD', polkadot: 'DOT-USD', dogecoin: 'DOGE-USD', 'avalanche-2': 'AVAX-USD', chainlink: 'LINK-USD', litecoin: 'LTC-USD' };
+                  const ticker = cryptoTickerMap[coin.id];
+                  const tickerIndex = allChartTickers.indexOf(ticker);
+                  const isActive = chartData?.ticker === ticker || (tickerIndex >= 0 && tickerIndex === (chartTickerIdx % allChartTickers.length));
+                  
+                  return (
+                    <div 
+                      key={coin.id} 
+                      onClick={() => {
+                        if (tickerIndex >= 0) {
+                          setChartTickerIdx(tickerIndex);
+                          if (chartRotationRef.current) {
+                            clearInterval(chartRotationRef.current);
+                            chartRotationRef.current = null;
+                          }
+                        }
+                      }}
+                      style={{
+                        ...cardStyle(), 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'space-between',
+                        cursor: tickerIndex >= 0 ? 'pointer' : 'default',
+                        transition: 'all 0.2s',
+                        border: isActive ? `2px solid ${accentColor}` : '1px solid #e2e8f0',
+                        background: isActive ? '#ecfdf5' : '#f8fafc',
+                        boxShadow: isActive ? '0 2px 8px rgba(5, 150, 105, 0.15)' : 'none'
+                      }}
+                      onMouseEnter={e => { if (tickerIndex >= 0 && !isActive) e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                      onMouseLeave={e => { if (tickerIndex >= 0 && !isActive) e.currentTarget.style.borderColor = '#e2e8f0'; }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                        <div style={{
+                          width: '1.8rem', height: '1.8rem', borderRadius: '50%',
+                          background: coin.id === 'bitcoin' ? 'linear-gradient(135deg, #f7931a 0%, #ffb347 100%)' :
+                                      coin.id === 'ethereum' ? 'linear-gradient(135deg, #627eea 0%, #8c9eff 100%)' :
+                                      'linear-gradient(135deg, #6366f1 0%, #a5b4fc 100%)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '0.65rem', fontWeight: 800, color: '#fff',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.12)'
+                        }}>
+                          {coin.symbol}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>{coin.name}</span>
+                          <span style={{ fontSize: '0.56rem', color: '#94a3b8' }}>MCap: {formatMarketCap(coin.market_cap)}</span>
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>{coin.name}</span>
-                        <span style={{ fontSize: '0.56rem', color: '#94a3b8' }}>MCap: {formatMarketCap(coin.market_cap)}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
+                        <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>{formatPrice(coin.price_usd)}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                          <span style={{ fontSize: '0.56rem', color: '#94a3b8' }}>{formatPrice(coin.price_czk, 'CZK')}</span>
+                          {formatChange(coin.change_24h)}
+                        </div>
                       </div>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.3px' }}>{formatPrice(coin.price_usd)}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                        <span style={{ fontSize: '0.56rem', color: '#94a3b8' }}>{formatPrice(coin.price_czk, 'CZK')}</span>
-                        {formatChange(coin.change_24h)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             )}
 
@@ -3335,25 +3365,51 @@ function FinanceWidget({ financeData, financeLoading, financeError, onRefresh, u
               <>
                 <span style={{ fontSize: '0.58rem', fontWeight: 700, textTransform: 'uppercase', color: '#94a3b8', letterSpacing: '0.5px' }}>Akcie</span>
                 <FinanceScrollArea>
-                  {stocks.map((s) => (
-                    <div key={s.ticker} style={{
-                      ...cardStyle({ padding: '0.5rem 0.7rem' }),
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between'
-                    }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>{s.ticker}</span>
-                        <span style={{ fontSize: '0.55rem', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
-                          {s.name}
-                        </span>
+                  {stocks.map((s) => {
+                    const tickerIndex = allChartTickers.indexOf(s.ticker);
+                    const isActive = chartData?.ticker === s.ticker || (tickerIndex >= 0 && tickerIndex === (chartTickerIdx % allChartTickers.length));
+                    
+                    return (
+                      <div 
+                        key={s.ticker} 
+                        onClick={() => {
+                          if (tickerIndex >= 0) {
+                            setChartTickerIdx(tickerIndex);
+                            if (chartRotationRef.current) {
+                              clearInterval(chartRotationRef.current);
+                              chartRotationRef.current = null;
+                            }
+                          }
+                        }}
+                        style={{
+                          ...cardStyle({ padding: '0.5rem 0.7rem' }),
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          cursor: tickerIndex >= 0 ? 'pointer' : 'default',
+                          transition: 'all 0.2s',
+                          border: isActive ? `2px solid ${accentColor}` : '1px solid #e2e8f0',
+                          background: isActive ? '#ecfdf5' : '#f8fafc',
+                          boxShadow: isActive ? '0 2px 8px rgba(5, 150, 105, 0.15)' : 'none'
+                        }}
+                        onMouseEnter={e => { if (tickerIndex >= 0 && !isActive) e.currentTarget.style.borderColor = '#cbd5e1'; }}
+                        onMouseLeave={e => { if (tickerIndex >= 0 && !isActive) e.currentTarget.style.borderColor = '#e2e8f0'; }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#1e293b' }}>{s.ticker}</span>
+                          <span style={{ fontSize: '0.55rem', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
+                            {s.name}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
+                          <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
+                            {s.currency === 'CZK' ? formatPrice(s.price, 'CZK') : formatPrice(s.price)}
+                          </span>
+                          {formatChange(s.change)}
+                        </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.1rem' }}>
-                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#0f172a' }}>
-                          {s.currency === 'CZK' ? formatPrice(s.price, 'CZK') : formatPrice(s.price)}
-                        </span>
-                        {formatChange(s.change)}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </FinanceScrollArea>
               </>
             )}

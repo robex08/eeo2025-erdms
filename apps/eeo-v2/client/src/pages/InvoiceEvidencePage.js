@@ -2172,28 +2172,49 @@ export default function InvoiceEvidencePage() {
   }, [editingInvoiceId, originalFormData, hasPermission, hasAccountantRole]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO POLE FA_VEMA_KOD - editovatelné pro INVOICE_EDIT/MANAGE/ADMIN dokud není DOKONČENÁ
+  // ⚠️ VEMA kód je editovatelné NEZÁVISLE na isReadOnlyMode, protože INVOICE_EDIT může existovat
+  // i společně s INVOICE_VIEW/INVOICE_MATERIAL_CORRECTNESS (které jinak zapínají readonly režim).
+  // Pole je editovatelné i když nadřazená objednávka je v uzamčeném stavu (DOKONCENA apod.),
+  // protože VEMA kód je pouze informativní externí identifikátor.
   const isVemaKodEditable = useMemo(() => {
-    // Readonly režim - nemůže editovat
-    if (isReadOnlyMode) return false;
-    
+    // KONTROLOR_FAKTUR - plné readonly (nesmí editovat nic)
+    if (hasInvoiceControlRole) return false;
+
     // Kontrola oprávnění uživatele
     const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
     const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
     const hasInvoiceEdit = hasPermission('INVOICE_EDIT');
-    
-    // Pokud NEMÁ práva INVOICE_EDIT/MANAGE ani není ADMIN, nemůže editovat
-    if (!isAdmin && !hasInvoiceManage && !hasInvoiceEdit) {
+
+    // Pokud NEMÁ práva INVOICE_EDIT/MANAGE ani není ADMIN/ÚČETNÍ, nemůže editovat
+    if (!isAdmin && !hasInvoiceManage && !hasInvoiceEdit && !hasAccountantRole) {
       return false;
     }
-    
+
     // Pro nové faktury VŽDY povolit editaci
     if (!originalFormData) {
       return true;
     }
-    
+
     // Pole fa_vema_kod je editovatelné dokud faktura NENÍ DOKONČENÁ
     return originalFormData.stav !== 'DOKONCENA';
-  }, [isReadOnlyMode, originalFormData, hasPermission]);
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole]);
+
+  // 🆕 Detekce změny POUZE pole fa_vema_kod (pro povolení uložení i v jinak readonly režimu
+  // nebo když je nadřazená objednávka v zamčeném stavu).
+  const hasChangedVemaKod = useMemo(() => {
+    if (!editingInvoiceId || !originalFormData) return false;
+    return (originalFormData.fa_vema_kod || '') !== (formData.fa_vema_kod || '');
+  }, [formData.fa_vema_kod, originalFormData, editingInvoiceId]);
+
+  // 🆕 Speciální režim: uživatel s právem editace VEMA kódu upravil JEN toto pole
+  // a chceme mu povolit uložení i když by jinak byl save button disabled
+  // (např. readonly uživatel bez INVOICE_MANAGE, nebo objednávka ve stavu DOKONCENA/KE_ZVEREJNENI).
+  const canSaveVemaKodOnly = useMemo(() => {
+    return !!editingInvoiceId
+      && isVemaKodEditable
+      && hasChangedVemaKod
+      && originalFormData?.stav !== 'DOKONCENA';
+  }, [editingInvoiceId, isVemaKodEditable, hasChangedVemaKod, originalFormData]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO SEKCI VĚCNÉ SPRÁVNOSTI
   // Věcná správnost JE editovatelná dokud NENÍ potvrzena V DATABÁZI
@@ -4436,6 +4457,12 @@ export default function InvoiceEvidencePage() {
         return;
       }
     }
+
+    // 🆕 VEMA-ONLY SAVE: uživatel změnil pouze pole fa_vema_kod (např. s právem INVOICE_EDIT nebo
+    // u objednávky v zamčeném stavu). Přeskočíme plnou validaci a workflow a uložíme jen VEMA kód.
+    const isVemaKodOnlySave = canSaveVemaKodOnly
+      && !hasChangedVecnaSpravnost
+      && !hasChangedCriticalField;
     
     // 🎯 Zobrazit progress modal ihned při startu
     setProgressModal({
@@ -4449,7 +4476,7 @@ export default function InvoiceEvidencePage() {
     // ✅ Validace povinných polí - PŘESKOČIT pro readonly uživatele ukládající pouze věcnou správnost
     const errors = {};
     
-    if (!isReadOnlyMode) {
+    if (!isReadOnlyMode && !isVemaKodOnlySave) {
       // Běžná validace pro uživatele s INVOICE_MANAGE
       // Číslo faktury - POVINNÉ
       if (!formData.fa_cislo_vema || !formData.fa_cislo_vema.trim()) {
@@ -4492,7 +4519,7 @@ export default function InvoiceEvidencePage() {
     }
 
     // 🔥 SPECIÁLNÍ VALIDACE PRO READONLY UŽIVATELE (věcná správnost)
-    if (isReadOnlyMode && editingInvoiceId) {
+    if (isReadOnlyMode && editingInvoiceId && !isVemaKodOnlySave) {
       // 1. POVINNOST zaškrtnout checkbox - vždy, pokud není už potvrzeno
       if (formData.vecna_spravnost_potvrzeno !== 1) {
         errors.vecna_spravnost_potvrzeno = '⚠️ Musíte potvrdit věcnou správnost zaškrtnutím checkboxu "Potvrzuji věcnou správnost faktury"';
@@ -4747,7 +4774,9 @@ export default function InvoiceEvidencePage() {
       // ✅ Pokud je faktura připojena k objednávce, aktualizuj workflow stav
       // - NOVÁ FAKTURA: přidat stav VECNA_SPRAVNOST
       // - EDITACE: vrátit na VECNA_SPRAVNOST (musí projít novou kontrolou)
-      if (formData.order_id && orderData) {
+      // 🆕 VEMA-ONLY SAVE: úpravu samotného VEMA kódu NEpovažujeme za změnu, která by měla
+      // ovlivnit workflow objednávky (VEMA kód je jen externí identifikátor).
+      if (formData.order_id && orderData && !isVemaKodOnlySave) {
         try {
           // Parsuj aktuální workflow stavy
           let stavKody = [];
@@ -5800,13 +5829,6 @@ export default function InvoiceEvidencePage() {
                     }}>
                       <FontAwesomeIcon icon={faLock} />
                       Faktura částečně uzamčena
-                    </span>
-                    <span style={{
-                      fontSize: '0.7rem',
-                      color: 'rgba(255, 255, 255, 0.9)',
-                      fontStyle: 'italic'
-                    }}>
-                      (editovatelné: přílohy, VEMA číslo)
                     </span>
                   </div>
                 )}
@@ -7007,7 +7029,7 @@ export default function InvoiceEvidencePage() {
               <FontAwesomeIcon 
                 icon={faExclamationTriangle} 
                 style={{ 
-                  color: editingInvoiceId ? '#dc2626' : '#f59e0b', 
+                  color: '#dc2626', 
                   marginTop: '0.25rem', 
                   fontSize: '1.25rem' 
                 }} 
@@ -7015,13 +7037,21 @@ export default function InvoiceEvidencePage() {
               <div style={{ flex: 1 }}>
                 <div style={{ 
                   fontWeight: 600, 
-                  color: editingInvoiceId ? '#991b1b' : '#92400e', 
+                  color: '#991b1b', 
                   marginBottom: '0.25rem' 
                 }}>
-                  ⚠️ {editingInvoiceId ? 'Nelze aktualizovat fakturu u této objednávky' : 'Nelze přidat fakturu k této objednávce'}
+                  {editingInvoiceId ? 'Nelze aktualizovat fakturu u této objednávky' : 'Nelze přidat fakturu k této objednávce'}
                 </div>
-                <div style={{ fontSize: '0.9rem', color: editingInvoiceId ? '#991b1b' : '#78350f' }}>
+                <div style={{ fontSize: '0.9rem', color: '#991b1b' }}>
                   {canAddInvoiceToOrder(orderData).reason}
+                  {editingInvoiceId && isVemaKodEditable && (
+                    <>
+                      <br />
+                      <span style={{ fontWeight: 500, marginTop: '0.5rem', display: 'inline-block' }}>
+                        💡 Můžete však upravit VEMA číslo a přílohy.
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -7051,9 +7081,12 @@ export default function InvoiceEvidencePage() {
           {/* Zobrazit tlačítka pokud:
               - Není readonly mode (běžný uživatel s INVOICE_MANAGE)
               - NEBO je readonly mode (INVOICE_MATERIAL_CORRECTNESS) ale změnila se věcná správnost
-              - ALE NE pokud má pouze INVOICE_VIEW (hasOnlyViewPermission)
+              - NEBO uživatel změnil pouze VEMA kód (canSaveVemaKodOnly) – povolíme uložení i v jinak readonly režimu
+              - ALE NE pokud má pouze INVOICE_VIEW (hasOnlyViewPermission) BEZ změny VEMA kódu
           */}
-          {(!isReadOnlyMode || (isReadOnlyMode && hasChangedVecnaSpravnost && !hasOnlyViewPermission)) && (
+          {(!isReadOnlyMode
+            || (isReadOnlyMode && hasChangedVecnaSpravnost && !hasOnlyViewPermission)
+            || canSaveVemaKodOnly) && (
           <ButtonGroup>
             <Button $variant="secondary" onClick={handleBack} disabled={loading}>
               <FontAwesomeIcon icon={faTimes} />
@@ -7064,27 +7097,32 @@ export default function InvoiceEvidencePage() {
               onClick={handleSubmit} 
               disabled={
                 loading || 
-                hasOnlyViewPermission || // 🔒 Uživatel s pouze VIEW nemůže ukládat
-                // 🔥 NOVÉ: Faktura se stavem DOKONCENA nelze editovat (jen READ-ONLY)
+                // 🔒 Uživatel s pouze VIEW nemůže ukládat (výjimka: povoleno pokud JEN upravil VEMA kód)
+                (hasOnlyViewPermission && !canSaveVemaKodOnly) ||
+                // 🔥 Faktura se stavem DOKONCENA nelze editovat (jen READ-ONLY)
                 (originalFormData?.stav === 'DOKONCENA') ||
                 // Běžná disabled logika - nelze přidat fakturu k objednávce v zakázaném stavu
-                (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) ||
-                // 🔥 NOVÉ: Readonly uživatelé (INVOICE_MATERIAL_CORRECTNESS) mohou uložit POUZE pokud se změnila věcná správnost
-                (isReadOnlyMode && !hasChangedVecnaSpravnost)
+                // (výjimka: pouhá změna VEMA kódu je povolena i u uzamčené objednávky)
+                (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && !canSaveVemaKodOnly) ||
+                // 🔥 Readonly uživatelé (INVOICE_MATERIAL_CORRECTNESS) mohou uložit POUZE pokud se změnila věcná správnost NEBO VEMA kód
+                (isReadOnlyMode && !hasChangedVecnaSpravnost && !canSaveVemaKodOnly)
               }
               title={
-                hasOnlyViewPermission
+                hasOnlyViewPermission && !canSaveVemaKodOnly
                   ? 'Nemáte oprávnění upravovat faktury. Zobrazení je pouze pro čtení.'
                   : originalFormData?.stav === 'DOKONCENA'
                   ? '🔒 Faktura je DOKONČENÁ a nelze ji editovat. Všechna pole jsou pouze pro čtení.'
-                  : formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed
+                  : formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && !canSaveVemaKodOnly
                   ? canAddInvoiceToOrder(orderData).reason
-                  : (isReadOnlyMode && !hasChangedVecnaSpravnost)
+                  : (isReadOnlyMode && !hasChangedVecnaSpravnost && !canSaveVemaKodOnly)
                     ? 'Nemáte oprávnění měnit základní data faktury. Můžete pouze potvrdit věcnou správnost.'
                     : ''
               }
             >
-              <FontAwesomeIcon icon={loading ? faExclamationTriangle : faSave} />
+              <FontAwesomeIcon 
+                icon={loading ? faExclamationTriangle : faSave} 
+                style={{ color: canSaveVemaKodOnly ? '#fef08a' : 'inherit' }}
+              />
               {loading ? 'Ukládám...' : (() => {
                 // 🔥 Readonly uživatelé vidí jednoduché "Uložit věcnou správnost"
                 if (isReadOnlyMode) {

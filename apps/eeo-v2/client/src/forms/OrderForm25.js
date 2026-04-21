@@ -9058,6 +9058,29 @@ function OrderForm25() {
           })
         : [];
 
+      // 🔍 DETEKCE ZMĚN: Kontrola zda se změnily klíčové údaje faktury
+      // DŮLEŽITÉ: fa_vema_kod (prefix FA/VPD) se NEKONTROLUJE - je to jen administrativní změna
+      let shouldResetVecnaSpravnost = false;
+      
+      if (editingFaktura && formData.faktury) {
+        const originalInvoice = formData.faktury.find(inv => inv.id === editingFaktura.id);
+        
+        if (originalInvoice && originalInvoice.vecna_spravnost_potvrzeno === 1) {
+          // Kontrola změny POUZE klíčových polí (fa_vema_kod se NEKONTROLUJE!)
+          const keyFieldsChanged = (
+            String(originalInvoice.fa_castka || '') !== String(fakturaFormData.fa_castka || '') ||
+            String(originalInvoice.fa_cislo_vema || '') !== String(fakturaFormData.fa_cislo_vema || '') ||
+            String(originalInvoice.fa_datum_doruceni || '') !== String(fakturaFormData.fa_datum_doruceni || '') ||
+            String(originalInvoice.fa_datum_vystaveni || '') !== String(fakturaFormData.fa_datum_vystaveni || '') ||
+            String(originalInvoice.fa_datum_splatnosti || originalInvoice.fa_splatnost || '') !== String(fakturaFormData.fa_splatnost || '')
+          );
+          
+          if (keyFieldsChanged) {
+            shouldResetVecnaSpravnost = true;
+          }
+        }
+      }
+
       // Připrav data pro API update
       const updateData = {
         fa_cislo_vema: fakturaFormData.fa_cislo_vema,
@@ -9070,12 +9093,13 @@ function OrderForm25() {
         fa_strediska_kod: JSON.stringify(cleanedStrediska),
         fa_poznamka: fakturaFormData.fa_poznamka || null,
         rozsirujici_data: fakturaFormData.rozsirujici_data || null,
-        // ✅ RESET: Při aktualizaci faktury se zruší JEN checkbox (umístění a poznámka zůstávají)
-        vecna_spravnost_umisteni_majetku: fakturaFormData.vecna_spravnost_umisteni_majetku || '',
-        vecna_spravnost_poznamka: fakturaFormData.vecna_spravnost_poznamka || '',
-        vecna_spravnost_potvrzeno: 0,
-        potvrdil_vecnou_spravnost_id: null,
-        dt_potvrzeni_vecne_spravnosti: null
+        // ✅ RESET VĚCNÉ SPRÁVNOSTI: JEN pokud se změnily klíčové údaje (částka, číslo FA, datumy)
+        // ⚠️ fa_vema_kod (prefix) se NEKONTROLUJE - není to podstatná změna!
+        vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_umisteni_majetku || ''),
+        vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_poznamka || ''),
+        vecna_spravnost_potvrzeno: shouldResetVecnaSpravnost ? 0 : (fakturaFormData.vecna_spravnost_potvrzeno || 0),
+        potvrdil_vecnou_spravnost_id: shouldResetVecnaSpravnost ? null : (fakturaFormData.potvrdil_vecnou_spravnost_id || null),
+        dt_potvrzeni_vecne_spravnosti: shouldResetVecnaSpravnost ? null : (fakturaFormData.dt_potvrzeni_vecne_spravnosti || null)
       };
 
       // Volej API update
