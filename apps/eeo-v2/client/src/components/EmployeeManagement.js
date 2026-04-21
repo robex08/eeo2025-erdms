@@ -883,11 +883,11 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                   </ContactItem>
                 )}
 
-                {employee.dt_posledni_aktivita && (
+                {(employee.dt_posledni_prihlaseni || employee.dt_posledni_aktivita) && (
                   <ContactItem>
                     <ContactIcon><Calendar size={16} /></ContactIcon>
                     <ContactText>
-                      Poslední aktivita: {formatDate(employee.dt_posledni_aktivita)}
+                      Poslední přihlášení: {formatDate(employee.dt_posledni_prihlaseni || employee.dt_posledni_aktivita)}
                       {(() => {
                         try {
                           const metadata = employee.aktivita_metadata 
@@ -957,7 +957,7 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                   )}
                 </ListEmployeeDepartment>
                 <div>
-                  {employee.dt_posledni_aktivita && (
+                  {(employee.dt_posledni_prihlaseni || employee.dt_posledni_aktivita) && (
                     <div style={{
                       display: 'flex',
                       flexDirection: 'column',
@@ -967,7 +967,7 @@ const EmployeeManagement = ({ permissionLevel, userDetail, showToast }) => {
                     }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <Calendar size={12} />
-                        {formatDate(employee.dt_posledni_aktivita)}
+                        {formatDate(employee.dt_posledni_prihlaseni || employee.dt_posledni_aktivita)}
                       </div>
                       {(() => {
                         try {
