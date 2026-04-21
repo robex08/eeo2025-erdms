@@ -2462,6 +2462,31 @@ const OrdersTableV3 = ({
   } = useExpandedRowsV3({ token, username, userId });
 
   
+  // 🎯 State pro INPUT values (okamžitá hodnota pro plynulé psaní)
+  const [inputValues, setInputValues] = useState(() => {
+    // Inicializuj z columnFilters (ale s UI mapováním)
+    const mapped = { ...columnFilters };
+    if (mapped.stav) {
+      mapped.stav_objednavky = mapped.stav;
+      delete mapped.stav;
+    }
+    if (mapped.datum_presne !== undefined) {
+      mapped.dt_objednavky = mapped.datum_presne;
+      delete mapped.datum_presne;
+    }
+    else if (mapped.datum_od) {
+      mapped.dt_objednavky = mapped.datum_od;
+      delete mapped.datum_od;
+    }
+    if (mapped.objednatel_jmeno) {
+      mapped.objednatel_garant = mapped.objednatel_jmeno;
+    }
+    if (mapped.prikazce_jmeno) {
+      mapped.prikazce_schvalovatel = mapped.prikazce_jmeno;
+    }
+    return mapped;
+  });
+  
   // State pro column filters (lokální - zobrazení v UI)
   const [localColumnFilters, setLocalColumnFilters] = useState(() => {
     // ✅ Při inicializaci mapuj backend formát na UI formát
@@ -2546,6 +2571,23 @@ const OrdersTableV3 = ({
       const merged = { ...prev, ...mappedFilters };
       
       // Odstraň prázdné hodnoty z backend (když backend vrátí prázdný filtr)
+      Object.keys(columnFilters).forEach(key => {
+        const uiKey = key === 'stav' ? 'stav_objednavky' : 
+                      key === 'datum_presne' ? 'dt_objednavky' : 
+                      key === 'datum_od' ? 'dt_objednavky' : key;
+        
+        if (columnFilters[key] === '' || columnFilters[key] === null || columnFilters[key] === undefined) {
+          delete merged[uiKey];
+        }
+      });
+      
+      return merged;
+    });
+    
+    // 🎯 Synchronizuj také inputValues (aby se input updatoval při clear filters)
+    setInputValues(prev => {
+      const merged = { ...prev, ...mappedFilters };
+      
       Object.keys(columnFilters).forEach(key => {
         const uiKey = key === 'stav' ? 'stav_objednavky' : 
                       key === 'datum_presne' ? 'dt_objednavky' : 
@@ -2775,7 +2817,7 @@ const OrdersTableV3 = ({
     }
   }, [columnSizing, userId]);
   
-  // Debounced filter change - posílá změny do parent komponenty po 1000ms
+  // Debounced filter change - posílá změny do parent komponenty po debounce
   const handleFilterChange = useCallback((columnId, value) => {
     // ✅ Mapování UI column názvů na backend parametry
     const columnToBackendMapping = {
@@ -2785,23 +2827,29 @@ const OrdersTableV3 = ({
     
     const backendColumnId = columnToBackendMapping[columnId] || columnId;
     
-    // Update lokální state okamžitě (pro UI s UI názvy)
-    setLocalColumnFilters(prev => ({
+    // 🎯 OKAMŽITĚ update inputValues (pro plynulé psaní bez "vypadávání písmen")
+    setInputValues(prev => ({
       ...prev,
       [columnId]: value  // UI column název
     }));
     
-    // Debounce pro volání API (400ms pro rychlejší response)
+    // Debounce pro update localColumnFilters a API call (800ms pro lepší UX)
     if (filterTimers.current[columnId]) {
       clearTimeout(filterTimers.current[columnId]);
     }
     
     filterTimers.current[columnId] = setTimeout(() => {
+      // Update lokální state (pro UI s UI názvy)
+      setLocalColumnFilters(prev => ({
+        ...prev,
+        [columnId]: value  // UI column název
+      }));
+      
       // ✅ Volání parent callback pro API update - použij BACKEND column ID
       if (onColumnFiltersChange) {
         onColumnFiltersChange(backendColumnId, value, 0);
       }
-    }, 400); // Sníženo z 1000ms na 400ms pro rychlejší response
+    }, 800); // Zvýšeno na 800ms pro plynulejší UX při psaní
   }, [onColumnFiltersChange]);
   
   // Cleanup timers při unmount
@@ -5059,7 +5107,7 @@ const OrdersTableV3 = ({
                         
                         // Datum sloupec - DatePicker
                         if (columnId === 'dt_objednavky') {
-                          const dateValue = localColumnFilters[columnId] || '';
+                          const dateValue = inputValues[columnId] || '';
                           return (
                             <div style={{ position: 'relative', marginTop: '4px' }}>
                               <DatePicker
@@ -5080,7 +5128,7 @@ const OrdersTableV3 = ({
                           return (
                             <StavMultiSelect
                               columnId={columnId}
-                              localColumnFilters={localColumnFilters}
+                              localColumnFilters={inputValues}
                               handleFilterChange={handleFilterChange}
                               orderStatesList={orderStatesList}
                             />
@@ -5092,7 +5140,7 @@ const OrdersTableV3 = ({
                           return (
                             <div style={{ position: 'relative', marginTop: '4px', width: '100%' }}>
                               <OperatorInput
-                                value={localColumnFilters[columnId] || ''}
+                                value={inputValues[columnId] || ''}
                                 onChange={(value) => handleFilterChange(columnId, value)}
                                 placeholder={
                                   columnId === 'max_cena_s_dph' ? 'Max. cena' :
@@ -5100,7 +5148,7 @@ const OrdersTableV3 = ({
                                   'Cena FA'
                                 }
                                 clearButton={true}
-                                isActive={isActiveColumnValue(localColumnFilters[columnId])}
+                                isActive={isActiveColumnValue(inputValues[columnId])}
                                 onClear={(e) => {
                                   e?.stopPropagation();
                                   handleFilterChange(columnId, '');
@@ -5117,14 +5165,14 @@ const OrdersTableV3 = ({
                             <ColumnFilterInput
                               type="text"
                               placeholder="Filtrovat..."
-                              value={localColumnFilters[columnId] || ''}
+                              value={inputValues[columnId] || ''}
                               onChange={(e) => handleFilterChange(columnId, e.target.value)}
                               onClick={(e) => e.stopPropagation()}
                               onMouseDown={(e) => e.stopPropagation()}
-                              $active={isActiveColumnValue(localColumnFilters[columnId])}
-                              data-filter-active={isActiveColumnValue(localColumnFilters[columnId]) ? 'true' : 'false'}
+                              $active={isActiveColumnValue(inputValues[columnId])}
+                              data-filter-active={isActiveColumnValue(inputValues[columnId]) ? 'true' : 'false'}
                             />
-                            {localColumnFilters[columnId] && (
+                            {inputValues[columnId] && (
                               <ColumnClearButton
                                 onClick={(e) => {
                                   e.stopPropagation();
