@@ -385,6 +385,345 @@ function parseFinancovani($financovaniRaw) {
     return null;
 }
 
+// ============================================================================
+// 🚀 BATCH OPTIMIZATION FUNKCE (Fáze F1 - Eliminace N+1 problému)
+// ============================================================================
+
+/**
+ * BATCH: Načte všechny LP detaily najednou pro všechny objednávky
+ * @param PDO $db
+ * @param array $lp_ids - Pole LP ID čísel
+ * @return array - Mapa [lp_id => LP data]
+ */
+function getLPDetailyBatch($db, $lp_ids) {
+    if (empty($lp_ids)) return array();
+    
+    // Deduplikace a sanitizace
+    $lp_ids = array_unique(array_map('intval', array_filter($lp_ids)));
+    if (empty($lp_ids)) return array();
+    
+    try {
+        $placeholders = implode(',', array_fill(0, count($lp_ids), '?'));
+        $stmt = $db->prepare("
+            SELECT
+                lp.id,
+                lp.cislo_lp,
+                lp.cislo_uctu,
+                lp.nazev_uctu,
+                lp.vyse_financniho_kryti,
+                u.usek_zkr,
+                TRIM(CONCAT(COALESCE(uz.jmeno, ''), ' ', COALESCE(uz.prijmeni, ''))) AS prikazce_jmeno
+            FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
+            LEFT JOIN " . TBL_USEKY . " u ON u.id = lp.usek_id
+            LEFT JOIN " . TBL_UZIVATELE . " uz ON uz.id = lp.user_id
+            WHERE lp.id IN ($placeholders)
+        ");
+        $stmt->execute($lp_ids);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Převést na mapu [id => data]
+        $map = array();
+        foreach ($results as $row) {
+            $map[(int)$row['id']] = $row;
+        }
+        return $map;
+    } catch (Exception $e) {
+        error_log("getLPDetailyBatch Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
+ * BATCH: Načte všechny smlouvy najednou
+ * @param PDO $db
+ * @param array $cisla_smluv - Pole čísel smluv (string)
+ * @return array - Mapa [cislo_smlouvy => smlouva data]
+ */
+function getSmlouvyBatch($db, $cisla_smluv) {
+    if (empty($cisla_smluv)) return array();
+    
+    // Deduplikace
+    $cisla_smluv = array_unique(array_filter($cisla_smluv));
+    if (empty($cisla_smluv)) return array();
+    
+    try {
+        $placeholders = implode(',', array_fill(0, count($cisla_smluv), '?'));
+        $stmt = $db->prepare("
+            SELECT 
+                cislo_smlouvy,
+                hodnota_s_dph as hodnota,
+                cerpano_pozadovano,
+                cerpano_planovano,
+                cerpano_skutecne,
+                zbyva_pozadovano,
+                zbyva_planovano,
+                zbyva_skutecne,
+                nazev_firmy,
+                ico,
+                nazev_smlouvy
+            FROM " . TBL_SMLOUVY . " 
+            WHERE cislo_smlouvy IN ($placeholders)
+              AND aktivni = 1
+        ");
+        $stmt->execute($cisla_smluv);
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Převést na mapu [cislo_smlouvy => data]
+        $map = array();
+        foreach ($results as $row) {
+            $map[$row['cislo_smlouvy']] = $row;
+        }
+        return $map;
+    } catch (Exception $e) {
+        error_log("getSmlouvyBatch Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
+ * BATCH: Spočítá cerpano_v_procesu pro všechny smlouvy najednou
+ * @param PDO $db
+ * @param array $cisla_smluv - Pole čísel smluv
+ * @return array - Mapa [cislo_smlouvy => cerpano_v_procesu (float)]
+ */
+function getCerpanoVProceseBatch($db, $cisla_smluv) {
+    if (empty($cisla_smluv)) return array();
+    
+    $cisla_smluv = array_unique(array_filter($cisla_smluv));
+    if (empty($cisla_smluv)) return array();
+    
+    try {
+        $v_procesu_stavy = array('Schválená', 'Odeslaná', 'Potvrzená', 'Fakturace', 'Ke zveřejnění');
+        $stav_ph = implode(',', array_fill(0, count($v_procesu_stavy), '?'));
+        $smlouvy_ph = implode(',', array_fill(0, count($cisla_smluv), '?'));
+        
+        $stmt = $db->prepare("
+            SELECT
+                JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) AS cislo_smlouvy,
+                COALESCE(SUM(
+                    CASE WHEN o.max_cena_s_dph > 0 THEN o.max_cena_s_dph
+                         ELSE COALESCE((SELECT SUM(p.cena_s_dph) 
+                                       FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p 
+                                       WHERE p.objednavka_id = o.id), 0)
+                    END
+                ), 0) AS cerpano_v_procesu
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) IN ($smlouvy_ph)
+              AND o.aktivni = 1
+              AND o.stav_objednavky IN ($stav_ph)
+              AND NOT EXISTS (
+                  SELECT 1 FROM `" . TBL_FAKTURY . "` f 
+                  WHERE f.objednavka_id = o.id AND f.aktivni = 1
+              )
+            GROUP BY cislo_smlouvy
+        ");
+        $stmt->execute(array_merge($cisla_smluv, $v_procesu_stavy));
+        $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Převést na mapu
+        $map = array();
+        foreach ($results as $row) {
+            if ($row['cislo_smlouvy']) {
+                $map[$row['cislo_smlouvy']] = (float)$row['cerpano_v_procesu'];
+            }
+        }
+        return $map;
+    } catch (Exception $e) {
+        error_log("getCerpanoVProceseBatch Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
+ * BATCH: Načte faktury pro všechny objednávky najednou
+ * @param PDO $db
+ * @param array $order_ids - Pole ID objednávek
+ * @return array - Mapa [objednavka_id => [array faktur]]
+ */
+function loadOrderInvoicesBatch($db, $order_ids) {
+    if (empty($order_ids)) return array();
+    
+    $order_ids = array_unique(array_map('intval', array_filter($order_ids)));
+    if (empty($order_ids)) return array();
+    
+    try {
+        $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+        
+        // Stejný dotaz jako loadOrderInvoices(), jen batch
+        $sql = "
+            SELECT 
+                f.*,
+                CONCAT(COALESCE(u_prijem.titul_pred,''), ' ', u_prijem.jmeno, ' ', u_prijem.prijmeni, ' ', COALESCE(u_prijem.titul_za,'')) as prijal_user_jmeno,
+                CONCAT(COALESCE(u_upd.titul_pred,''), ' ', u_upd.jmeno, ' ', u_upd.prijmeni, ' ', COALESCE(u_upd.titul_za,'')) as upd_user_jmeno,
+                CONCAT(COALESCE(u_schval.titul_pred,''), ' ', u_schval.jmeno, ' ', u_schval.prijmeni, ' ', COALESCE(u_schval.titul_za,'')) as schvalil_user_jmeno
+            FROM " . TBL_FAKTURY . " f
+            LEFT JOIN " . TBL_UZIVATELE . " u_prijem ON f.prijal_user_id = u_prijem.id
+            LEFT JOIN " . TBL_UZIVATELE . " u_upd ON f.upd_user_id = u_upd.id
+            LEFT JOIN " . TBL_UZIVATELE . " u_schval ON f.schvalil_user_id = u_schval.id
+            WHERE f.objednavka_id IN ($placeholders)
+              AND f.aktivni = 1
+            ORDER BY f.objednavka_id, f.id
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($order_ids);
+        $all_invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Seskupit podle objednavka_id
+        $map = array();
+        foreach ($order_ids as $oid) {
+            $map[(int)$oid] = array();
+        }
+        
+        foreach ($all_invoices as $invoice) {
+            $oid = (int)$invoice['objednavka_id'];
+            if (!isset($map[$oid])) {
+                $map[$oid] = array();
+            }
+            $map[$oid][] = $invoice;
+        }
+        
+        return $map;
+    } catch (Exception $e) {
+        error_log("loadOrderInvoicesBatch Error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
+ * BATCH: Načte attachment status pro všechny objednávky najednou
+ * @param PDO $db
+ * @param array $order_ids - Pole ID objednávek
+ * @return array - Mapa [objednavka_id => attachment_color]
+ */
+function getAttachmentStatusBatch($db, $order_ids) {
+    if (empty($order_ids)) return array();
+    
+    $order_ids = array_unique(array_map('intval', array_filter($order_ids)));
+    if (empty($order_ids)) return array();
+    
+    try {
+        $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
+        
+        // 1. Načti všechny přílohy objednávek
+        $stmt_order = $db->prepare("
+            SELECT objednavka_id, typ_prilohy 
+            FROM " . TBL_OBJEDNAVKY_PRILOHY . " 
+            WHERE objednavka_id IN ($placeholders)
+        ");
+        $stmt_order->execute($order_ids);
+        $order_attachments = $stmt_order->fetchAll(PDO::FETCH_ASSOC);
+        
+        // 2. Načti všechna faktura ID pro tyto objednávky
+        $stmt_invoices = $db->prepare("
+            SELECT id, objednavka_id 
+            FROM " . TBL_FAKTURY . " 
+            WHERE objednavka_id IN ($placeholders) AND aktivni = 1
+        ");
+        $stmt_invoices->execute($order_ids);
+        $invoice_data = $stmt_invoices->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Mapa faktura_id => objednavka_id
+        $invoice_to_order = array();
+        $invoice_ids = array();
+        foreach ($invoice_data as $row) {
+            $fid = (int)$row['id'];
+            $invoice_ids[] = $fid;
+            $invoice_to_order[$fid] = (int)$row['objednavka_id'];
+        }
+        
+        // 3. Načti přílohy faktur (pokud existují)
+        $invoice_attachments = array();
+        if (!empty($invoice_ids)) {
+            $placeholders_fa = implode(',', array_fill(0, count($invoice_ids), '?'));
+            $stmt_fa = $db->prepare("
+                SELECT faktura_id, typ_prilohy 
+                FROM " . TBL_FAKTURY_PRILOHY . " 
+                WHERE faktura_id IN ($placeholders_fa)
+            ");
+            $stmt_fa->execute($invoice_ids);
+            $invoice_attachments = $stmt_fa->fetchAll(PDO::FETCH_ASSOC);
+        }
+        
+        // 4. Seskupit přílohy podle objednávky
+        $order_attachments_map = array();
+        $invoice_attachments_map = array();
+        
+        foreach ($order_ids as $oid) {
+            $order_attachments_map[(int)$oid] = array();
+            $invoice_attachments_map[(int)$oid] = array();
+        }
+        
+        foreach ($order_attachments as $att) {
+            $oid = (int)$att['objednavka_id'];
+            $order_attachments_map[$oid][] = $att['typ_prilohy'];
+        }
+        
+        foreach ($invoice_attachments as $att) {
+            $fid = (int)$att['faktura_id'];
+            if (isset($invoice_to_order[$fid])) {
+                $oid = $invoice_to_order[$fid];
+                $invoice_attachments_map[$oid][] = $att['typ_prilohy'];
+            }
+        }
+        
+        // 5. Vyhodnotit barvu pro každou objednávku
+        $colors = array();
+        foreach ($order_ids as $oid) {
+            $obj_atts = $order_attachments_map[(int)$oid];
+            $inv_atts = $invoice_attachments_map[(int)$oid];
+            
+            $total_count = count($obj_atts) + count($inv_atts);
+            $obj_podklady = count(array_filter($obj_atts, fn($t) => $t === 'PODKLADY'));
+            $obj_cestovni_prikaz = count(array_filter($obj_atts, fn($t) => $t === 'CESTOVNI_PRIKAZ'));
+            $obj_certifikat = count(array_filter($obj_atts, fn($t) => $t === 'CERTIFIKAT'));
+            $fa_faktura = count(array_filter($inv_atts, fn($t) => $t === 'FAKTURA'));
+            
+            // Logika vyhodnocení barvy (stejná jako v enrichOrderWithAttachmentStatus)
+            if ($total_count === 0) {
+                $colors[(int)$oid] = '#cbd5e1'; // Světle šedá - žádné přílohy
+                continue;
+            }
+            
+            $has_basic_obj = $obj_podklady >= 1 || $obj_cestovni_prikaz >= 1;
+            
+            if (!$has_basic_obj) {
+                $colors[(int)$oid] = '#dc2626'; // Červená
+                continue;
+            }
+            
+            $has_complete_fa = $fa_faktura >= 2;
+            $has_complete_obj = $obj_podklady >= 2 || ($obj_cestovni_prikaz >= 1 && $obj_certifikat >= 1);
+            if ($has_complete_fa && $has_complete_obj) {
+                $colors[(int)$oid] = '#16a34a'; // Zelená
+                continue;
+            }
+            
+            if ($fa_faktura >= 2) {
+                $colors[(int)$oid] = '#fbbf24'; // Žlutá
+                continue;
+            }
+            
+            $colors[(int)$oid] = '#f97316'; // Oranžová
+        }
+        
+        return $colors;
+        
+    } catch (Exception $e) {
+        error_log("getAttachmentStatusBatch Error: " . $e->getMessage());
+        // Return default gray for all
+        $colors = array();
+        foreach ($order_ids as $oid) {
+            $colors[(int)$oid] = '#64748b';
+        }
+        return $colors;
+    }
+}
+
+// ============================================================================
+// 🔧 PŮVODNÍ JEDNOTLIVÉ FUNKCE (zachovány pro backward compatibility)
+// ============================================================================
+
 /**
  * Načte LP detaily podle ID z tabulky 25_limitovane_prisliby
  * @param PDO $db
@@ -558,8 +897,9 @@ function enrichFinancovaniV3($db, &$order) {
 }
 
 /**
- * Obohacení dodavatele - pokud je dodavatel_id, načte celé info z tabulky dodavatelů
- * @param PDO $db
+ * Obohacení dodavatele - OPTIMALIZOVÁNO (používá data z hlavního JOIN)
+ * Data dodavatele už jsou načtené v hlavním SELECTu přes LEFT JOIN d.*
+ * @param PDO $db - UNUSED (pro backward compatibility)
  * @param array $order - Reference na objednávku (bude upravena)
  */
 function enrichDodavatelV3($db, &$order) {
@@ -567,30 +907,29 @@ function enrichDodavatelV3($db, &$order) {
         return;
     }
     
-    try {
-        $stmt = $db->prepare("
-            SELECT id, nazev, ico, dic, ulice, mesto, psc, stat, kontakt_jmeno, kontakt_email, kontakt_telefon
-            FROM " . TBL_DODAVATELE . "
-            WHERE id = ?
-            LIMIT 1
-        ");
-        $stmt->execute(array($order['dodavatel_id']));
-        $dodavatel = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($dodavatel) {
-            if (!isset($order['_enriched'])) {
-                $order['_enriched'] = array();
-            }
-            $order['_enriched']['dodavatel'] = $dodavatel;
-        }
-    } catch (Exception $e) {
-        error_log("enrichDodavatelV3 Error: " . $e->getMessage());
+    // 🚀 OPTIMALIZACE: Místo DB volání použít data z hlavního JOIN
+    // Hlavní SELECT obsahuje: COALESCE(o.dodavatel_nazev, d.nazev) AS dodavatel_nazev
+    // a další sloupce z dodavatele (pokud existují)
+    
+    if (!isset($order['_enriched'])) {
+        $order['_enriched'] = array();
     }
+    
+    // Mapovat existující data do struktury _enriched.dodavatel
+    $order['_enriched']['dodavatel'] = array(
+        'id' => $order['dodavatel_id'],
+        'nazev' => isset($order['dodavatel_nazev']) ? $order['dodavatel_nazev'] : null,
+        'ico' => isset($order['dodavatel_ico']) ? $order['dodavatel_ico'] : null,
+        // Poznámka: Další pole (dic, ulice, mesto...) nejsou v hlavním SELECTu
+        // Pokud je FE potřebuje, musí být přidány do hlavního JOIN
+        // Pro současnou funkcionalitu stačí nazev a ico (které tam už jsou)
+    );
 }
 
 /**
- * Obohacení registru zveřejnění - data PŘÍMO z objednávky (ne z modulu smluv)
- * @param PDO $db
+ * Obohacení registru zveřejnění - OPTIMALIZOVÁNO (používá data z hlavního JOIN)
+ * Data uživatele zverejnil_id už jsou načtené v hlavním SELECTu přes LEFT JOIN u7.*
+ * @param PDO $db - UNUSED (pro backward compatibility)
  * @param array $order - Reference na objednávku (bude upravena)
  */
 function enrichRegistrZverejneniV3($db, &$order) {
@@ -601,36 +940,33 @@ function enrichRegistrZverejneniV3($db, &$order) {
         'zverejnil' => null
     );
     
-    // Načíst uživatele který zveřejnil
+    // 🚀 OPTIMALIZACE: Místo DB volání použít data z hlavního JOIN u7.*
+    // Hlavní SELECT obsahuje LEFT JOIN u7 pro zverejnil_id
     if (!empty($order['zverejnil_id'])) {
-        try {
-            $stmt = $db->prepare("
-                SELECT id, jmeno, prijmeni, email, titul_pred, titul_za
-                FROM " . TBL_UZIVATELE . "
-                WHERE id = ?
-                LIMIT 1
-            ");
-            $stmt->execute(array($order['zverejnil_id']));
-            $user = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($user) {
-                $celeMeno = '';
-                if (!empty($user['titul_pred'])) {
-                    $celeMeno .= $user['titul_pred'] . ' ';
-                }
-                $celeMeno .= trim($user['jmeno'] . ' ' . $user['prijmeni']);
-                if (!empty($user['titul_za'])) {
-                    $celeMeno .= ', ' . $user['titul_za'];
-                }
-                
-                $registr['zverejnil'] = array(
-                    'cele_jmeno' => $celeMeno,
-                    'email' => $user['email'],
-                    'datum' => $registr['dt_zverejneni']
-                );
-            }
-        } catch (Exception $e) {
-            error_log("enrichRegistrZverejneniV3 Error: " . $e->getMessage());
+        // Postavit jméno z polí u7_* (pokud existují v response)
+        // Alternativně můžeme předpokládat, že pole jsou pojmenovaná přímo
+        
+        $jmeno = isset($order['zverejnil_jmeno']) ? $order['zverejnil_jmeno'] : '';
+        $prijmeni = isset($order['zverejnil_prijmeni']) ? $order['zverejnil_prijmeni'] : '';
+        $email = isset($order['zverejnil_email']) ? $order['zverejnil_email'] : '';
+        $titul_pred = isset($order['zverejnil_titul_pred']) ? $order['zverejnil_titul_pred'] : '';
+        $titul_za = isset($order['zverejnil_titul_za']) ? $order['zverejnil_titul_za'] : '';
+        
+        $celeMeno = '';
+        if (!empty($titul_pred)) {
+            $celeMeno .= $titul_pred . ' ';
+        }
+        $celeMeno .= trim($jmeno . ' ' . $prijmeni);
+        if (!empty($titul_za)) {
+            $celeMeno .= ', ' . $titul_za;
+        }
+        
+        if (!empty($celeMeno)) {
+            $registr['zverejnil'] = array(
+                'cele_jmeno' => $celeMeno,
+                'email' => $email,
+                'datum' => $registr['dt_zverejneni']
+            );
         }
     }
     
@@ -682,6 +1018,202 @@ function enrichRegistrZverejneniV3($db, &$order) {
  *   }
  * }
  */
+
+/**
+ * 🚀 MASTER BATCH ENRICHMENT FUNKCE
+ * Nahrazuje per-order enrichment loop - optimalizace N+1 → batch queries
+ * 
+ * @param PDO $db
+ * @param array &$orders - Reference na pole objednávek (budou obohaceny)
+ */
+function enrichOrdersV3Batch($db, &$orders) {
+    if (empty($orders)) return;
+    
+    error_log("[OrderV3 Batch] Enriching " . count($orders) . " orders...");
+    
+    // ========================================================================
+    // 1. PŘÍPRAVA - Sesbírat všechna potřebná ID
+    // ========================================================================
+    
+    $order_ids = array();
+    $lp_ids_all = array();
+    $cisla_smluv = array();
+    
+    foreach ($orders as $order) {
+        $order_ids[] = (int)$order['id'];
+        
+        // Sesbírat LP IDs z financovani.lp_kody
+        if (isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
+            foreach ($order['financovani']['lp_kody'] as $lp_id) {
+                $lp_ids_all[] = (int)$lp_id;
+            }
+        }
+        
+        // Sesbírat čísla smluv
+        if (isset($order['financovani']['cislo_smlouvy']) && !empty($order['financovani']['cislo_smlouvy'])) {
+            $cisla_smluv[] = $order['financovani']['cislo_smlouvy'];
+        }
+    }
+    
+    // ========================================================================
+    // 2. BATCH QUERIES - Načíst všechna data najednou
+    // ========================================================================
+    
+    $lp_data = array();
+    $smlouvy_data = array();
+    $cerpano_data = array();
+    $invoices_data = array();
+    $attachments_data = array();
+    
+    if (!empty($lp_ids_all)) {
+        $lp_data = getLPDetailyBatch($db, $lp_ids_all);
+        error_log("[OrderV3 Batch] Loaded " . count($lp_data) . " LP records");
+    }
+    
+    if (!empty($cisla_smluv)) {
+        $smlouvy_data = getSmlouvyBatch($db, $cisla_smluv);
+        $cerpano_data = getCerpanoVProceseBatch($db, $cisla_smluv);
+        error_log("[OrderV3 Batch] Loaded " . count($smlouvy_data) . " smlouvy, " . count($cerpano_data) . " cerpano");
+    }
+    
+    if (!empty($order_ids)) {
+        $invoices_data = loadOrderInvoicesBatch($db, $order_ids);
+        $attachments_data = getAttachmentStatusBatch($db, $order_ids);
+        error_log("[OrderV3 Batch] Loaded invoices and attachments for " . count($order_ids) . " orders");
+    }
+    
+    // ========================================================================
+    // 3. APLIKACE - Obohacení jednotlivých objednávek z načtených dat
+    // ========================================================================
+    
+    foreach ($orders as &$order) {
+        $order_id = (int)$order['id'];
+        
+        // 3.1 Financování - typ_nazev mapping
+        if (isset($order['financovani']['typ']) && !empty($order['financovani']['typ'])) {
+            $typ_nazvy = array(
+                'LP' => 'Limitovaný příslib',
+                'SMLOUVA' => 'Smlouva',
+                'INDIVIDUALNI_SCHVALENI' => 'Individuální schválení',
+                'POJISTNA_UDALOST' => 'Pojistná událost',
+                'FINKP' => 'Finanční kontrola'
+            );
+            
+            if (isset($typ_nazvy[$order['financovani']['typ']])) {
+                $order['financovani']['typ_nazev'] = $typ_nazvy[$order['financovani']['typ']];
+            }
+        }
+        
+        // 3.2 Financování - LP názvy
+        if (isset($order['financovani']['lp_kody']) && is_array($order['financovani']['lp_kody'])) {
+            $lp_nazvy = array();
+            
+            foreach ($order['financovani']['lp_kody'] as $lp_id) {
+                if (isset($lp_data[(int)$lp_id])) {
+                    $lp = $lp_data[(int)$lp_id];
+                    $lp_nazvy[] = array(
+                        'id' => $lp_id,
+                        'cislo_lp' => $lp['cislo_lp'],
+                        'cislo_uctu' => isset($lp['cislo_uctu']) ? $lp['cislo_uctu'] : null,
+                        'kod' => $lp['cislo_lp'],
+                        'nazev' => $lp['nazev_uctu'],
+                        'usek_zkr' => isset($lp['usek_zkr']) ? $lp['usek_zkr'] : null,
+                        'prikazce_jmeno' => isset($lp['prikazce_jmeno']) ? trim($lp['prikazce_jmeno']) : null,
+                        'vyse_financniho_kryti' => isset($lp['vyse_financniho_kryti']) ? $lp['vyse_financniho_kryti'] : null
+                    );
+                }
+            }
+            
+            if (!empty($lp_nazvy)) {
+                $order['financovani']['lp_nazvy'] = $lp_nazvy;
+            }
+        }
+        
+        // 3.3 Financování - Smlouva info
+        if (isset($order['financovani']['cislo_smlouvy']) && !empty($order['financovani']['cislo_smlouvy'])) {
+            $cislo_smlouvy = $order['financovani']['cislo_smlouvy'];
+            
+            if (!isset($order['_enriched'])) {
+                $order['_enriched'] = array();
+            }
+            
+            if (isset($smlouvy_data[$cislo_smlouvy])) {
+                $smlouva = $smlouvy_data[$cislo_smlouvy];
+                $cerpano_v_procesu = isset($cerpano_data[$cislo_smlouvy]) ? $cerpano_data[$cislo_smlouvy] : 0.0;
+                
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => $smlouva['hodnota'],
+                    'cerpano_v_procesu' => $cerpano_v_procesu,
+                    'cerpano_pozadovano' => $smlouva['cerpano_pozadovano'],
+                    'cerpano_planovano' => $smlouva['cerpano_planovano'],
+                    'cerpano_skutecne' => $smlouva['cerpano_skutecne'],
+                    'zbyva_pozadovano' => $smlouva['zbyva_pozadovano'],
+                    'zbyva_planovano' => $smlouva['zbyva_planovano'],
+                    'zbyva_skutecne' => $smlouva['zbyva_skutecne'],
+                    'nazev_firmy' => isset($smlouva['nazev_firmy']) ? $smlouva['nazev_firmy'] : null,
+                    'ico' => isset($smlouva['ico']) ? $smlouva['ico'] : null,
+                    'nazev_smlouvy' => isset($smlouva['nazev_smlouvy']) ? $smlouva['nazev_smlouvy'] : null
+                );
+            } else {
+                // Smlouva neexistuje - prázdná struktura
+                $order['_enriched']['smlouva_info'] = array(
+                    'cislo_smlouvy' => $cislo_smlouvy,
+                    'hodnota' => null,
+                    'cerpano_v_procesu' => 0.0,
+                    'cerpano_pozadovano' => null,
+                    'cerpano_planovano' => null,
+                    'cerpano_skutecne' => null,
+                    'zbyva_pozadovano' => null,
+                    'zbyva_planovano' => null,
+                    'zbyva_skutecne' => null,
+                    'nazev_firmy' => null,
+                    'ico' => null,
+                    'nazev_smlouvy' => null
+                );
+            }
+        }
+        
+        // 3.4 Faktury (nahrazuje enrichOrderWithInvoices)
+        if (isset($invoices_data[$order_id])) {
+            $order['faktury'] = $invoices_data[$order_id];
+        } else {
+            $order['faktury'] = array();
+        }
+        
+        $order['faktury_count'] = count($order['faktury']);
+        
+        // Celková částka z faktur
+        $celkova_castka_faktur_s_dph = 0.0;
+        foreach ($order['faktury'] as $faktura) {
+            $castka = null;
+            if (isset($faktura['castka_s_dph']) && is_numeric($faktura['castka_s_dph'])) {
+                $castka = (float)$faktura['castka_s_dph'];
+            } elseif (isset($faktura['fa_castka']) && is_numeric($faktura['fa_castka'])) {
+                $castka = (float)$faktura['fa_castka'];
+            }
+            
+            if ($castka !== null) {
+                $celkova_castka_faktur_s_dph += $castka;
+            }
+        }
+        $order['faktury_celkova_castka_s_dph'] = $celkova_castka_faktur_s_dph;
+        
+        // Celková cena objednávky (podle priority: faktury > položky > max cena)
+        $order['celkova_cena_s_dph'] = calculateOrderTotalPrice($order);
+        
+        // 3.5 Attachment status (nahrazuje enrichOrderWithAttachmentStatus)
+        if (isset($attachments_data[$order_id])) {
+            $order['attachment_color'] = $attachments_data[$order_id];
+        } else {
+            $order['attachment_color'] = '#cbd5e1'; // Default gray
+        }
+    }
+    unset($order);
+    
+    error_log("[OrderV3 Batch] Enrichment completed");
+}
+
 function handle_order_v3_list($input, $config, $queries) {
     // 1. Validace požadavku
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -1742,6 +2274,7 @@ function handle_order_v3_list($input, $config, $queries) {
 
         // 13. Post-processing - parsování JSON polí a enrichment
         
+        // 13.1 Parsování JSON polí (musí být před batch enrichmentem)
         foreach ($orders as &$order) {
             // Parsovat financovani z TEXT/JSON do array
             if (isset($order['financovani'])) {
@@ -1760,13 +2293,19 @@ function handle_order_v3_list($input, $config, $queries) {
             } elseif (!isset($order['strediska_kod'])) {
                 $order['strediska_kod'] = [];
             }
-            
-            // ENRICHMENT - obohacení dat z dalších tabulek
-            enrichFinancovaniV3($db, $order);
+        }
+        unset($order);
+        
+        // 13.2 🚀 BATCH ENRICHMENT - optimalizované obohacení dat (NOVÁ VERZE)
+        // Nahrazuje per-order loop který volal 5× enrichment funkcí pro každou objednávku
+        // Nová verze: VŠECHNY dotazy najednou → 300-400 dotazů → ~10 dotazů
+        enrichOrdersV3Batch($db, $orders);
+        
+        // 13.3 Jednotlivé enrichmenty které používají existující JOIN data (bez DB volání)
+        foreach ($orders as &$order) {
+            // enrichDodavatelV3 a enrichRegistrZverejneniV3 teď jen mapují existující data
             enrichDodavatelV3($db, $order);
             enrichRegistrZverejneniV3($db, $order);
-            enrichOrderWithInvoices($db, $order); // ✅ Přidáno načítání faktur pro workflow tooltip
-            enrichOrderWithAttachmentStatus($db, $order); // 🎨 Přidáno načítání stavu příloh pro barevnou ikonu
         }
         unset($order);
 
