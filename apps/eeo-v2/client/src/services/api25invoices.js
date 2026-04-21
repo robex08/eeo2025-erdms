@@ -1822,14 +1822,6 @@ export async function listInvoices25({
 
     // ✅ Vrátit data podle BE dokumentace (status: "ok")
     if (data.status === 'ok') {
-      // 🐛 DEBUG: Kontrola prvních 2 faktur - zda obsahují aktualizoval_prijmeni
-      if (data.faktury && data.faktury.length > 0) {
-        console.log('🔍 DEBUG První faktura obsahuje:', {
-          dt_aktualizace: data.faktury[0].dt_aktualizace,
-          aktualizoval_jmeno: data.faktury[0].aktualizoval_jmeno,
-          aktualizoval_prijmeni: data.faktury[0].aktualizoval_prijmeni,
-        });
-      }
       return {
         status: data.status,
         message: data.message,

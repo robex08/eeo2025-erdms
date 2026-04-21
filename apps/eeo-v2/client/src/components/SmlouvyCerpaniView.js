@@ -416,9 +416,6 @@ export default function SmlouvyCerpaniView({ forceUnrestricted = false }) {
         show_inactive: false,
         limit: 2000,
       });
-      // DEBUG - VÝPIS RAW API RESPONSE
-      console.log('🔍 RAW API RESPONSE smlouvy:', resp);
-      console.log('🔍 První smlouva z API:', resp?.data?.[0]);
       setSmlouvy(resp?.data || resp?.smlouvy || []);
     } catch (e) {
       setError(e.message || 'Chyba při načítání smluv');

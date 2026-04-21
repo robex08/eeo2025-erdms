@@ -1195,8 +1195,6 @@ function Orders25ListV3() {
         }
         
         // Objednávka NENÍ na aktuální stránce - zavolat API pro nalezení stránky
-        console.log('🔍 Hledám objednávku #' + orderIdFromEdit + ' v datasetu...');
-        
         const result = await findOrderPageV3({
           token,
           username,

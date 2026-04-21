@@ -323,17 +323,6 @@ export const filterByStatusArray = (order, statusFilter, getOrderSystemStatus) =
   const czechStatus = order.stav_objednavky; // České názvy z DB: "Ke schválení", "Dokončená", atd.
   const systemStatus = getOrderSystemStatus(order); // Systémové kódy: "ODESLANA_KE_SCHVALENI", "DOKONCENA", atd.
   
-  // 🐛 DEBUG
-  if (statusFilter.includes('Ke schválení') && order.id < 165) {
-    console.log('🔍 filterByStatusArray DEBUG:', {
-      orderId: order.id,
-      filterValue: statusFilter,
-      czechStatus,
-      systemStatus,
-      match: czechStatus === 'Ke schválení'
-    });
-  }
-  
   if ((!czechStatus && !systemStatus) || systemStatus === 'DRAFT') {
     return statusFilter.includes('Nová') || statusFilter.includes('Koncept') || statusFilter.includes('NOVA') || statusFilter.includes('Draft');
   }
