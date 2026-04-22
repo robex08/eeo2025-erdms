@@ -1,0 +1,10 @@
+Test API volání:
+Build DEV: process.env.PUBLIC_URL = "/dev/inventik"
+isDev = true
+apiUrl = "/dev/api.inventik/api.php"
+
+Zkus otevřít v dev tools console a spustit:
+console.log('PUBLIC_URL:', process.env.PUBLIC_URL);
+fetch('/dev/api.inventik/api.php?endpoint=majetek&cislo=D09040329')
+  .then(r => r.json())
+  .then(console.log);
