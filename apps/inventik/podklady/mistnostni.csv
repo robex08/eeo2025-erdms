@@ -1,0 +1,2099 @@
+budt;mist;mistt;zaplf;koplf
+101;1;vedoucí řidič (102);;
+101;2;bývalá čekárna LPS (102);;
+101;3;pokoj řidiči 1 (102);;
+101;4;primář ZS (102);;
+101;5;lékař. pokoj I (102);;
+101;6;lékař. pokoj II (102);;
+101;7;stan. sestra (102);;
+101;8;pokoj sestry (102);;
+101;9;THP (199);;
+101;10;pokoj řidiči 2 (102);;
+101;11;společenská místnost (102);;
+101;12;úklid (102);;
+101;13;WC pacienti (102);;
+101;14;chodba (102);;
+101;15;garáž 151 (102) - převedeno 101/6719, uzavřeno;;1.12.2022
+101;16;pokoj řidiči RV (102);;
+101;17;WC muži (102);;
+101;18;WC ženy (102);;
+101;19;sklad (102);;
+101;20;místnost (102);;
+101;21;šatna muži (102);;
+101;22;šatna ženy (102);;
+101;23;garáž (102);;
+101;28;přístroje (102);;
+101;29;garáž 158 (102) - převedeno 101/6720, uzavřeno;;1.12.2022
+101;30;garáž 152 5SE 8606(102) převod 101/8606, uzavřeno;;1.12.2022
+101;31;garáž 150 Kodiaq 4SY 8120 (102) - převod 101/8120;;1.12.2022
+101;32;Kodiaq 4SY 8120 FZŠ -převedeno 101/8120, uzavřeno;;1.11.2022
+101;1840;VW Tiguan 3SL 1840 RV, ZKL150, FZŠ;1.9.2022;
+101;6719;VW Transp 3SU 6719 RZP, ZKL151, převod 701 03/24;1.11.2022;
+101;6720;VW Transp 3SU 6720 RZP2, ZKL158;1.11.2022;
+101;7594;Škoda Octavia 2ST 7594, REF RA;1.9.2024;
+101;8120;Šk.Kodiaq 4SY 8120 RV, ZKL150, převod 401 04/23;1.11.2022;1.5.2023
+101;8407;Šk.Octavia Combi 1SB 8407 přev.do ADBN 08/24;1.11.2022;1.9.2024
+101;8563;Škoda Yeti 1SU 8563 (REF);1.10.2025;
+101;8589;VW Transp 6SF 8589 RZP1, ZKL151, sanita C IROP921;1.12.2023;
+101;8606;VW Transp 3SE 8606 RZP, ZKL152, znovu od 10/24;1.11.2022;
+104;1;kuchyňka (104);;1.9.2022
+104;2;pokoj č. 1 (104);;1.9.2022
+104;3;sklad (104);;1.9.2022
+104;4;šatna (104);;1.9.2022
+104;5;sprcha (104);;1.9.2022
+104;6;garáž (104);;1.9.2022
+104;7;přístroje (104);;1.9.2022
+104;8;WC (104);;1.9.2022
+104;9;pokoj č. 2 (104);;1.9.2022
+104;2928;VW Transp 5SJ 2928 RZP, ZKL153, převod 114 09/22;1.5.2022;1.9.2022
+105;1;chodba (105);;
+105;2;pokoj řidičů (105);;
+105;3;pokoj sester (105);;
+105;4;pokoj lékařů (105);;
+105;5;denní místnost (105);;
+105;7;čistící místnost (105);;
+105;8;WC nové (105);;
+105;10;kuchyně (105);;
+105;11;sklad léků, materiálu (105);;
+105;12;-----;;
+105;13;VW Transp 4SF 0523 přev.105/0523, uzavřeno;;1.12.2022
+105;100;před a kolem budovy Masarykova;1.10.2024;
+105;107;chodba přízemí;1.9.2024;
+105;109;prádelna a sušárna;1.9.2024;
+105;110;dekontaminační místnost;1.9.2024;
+105;111;WC;1.9.2024;
+105;113;sklad SZM;1.9.2024;
+105;114;garáž;1.9.2024;
+105;115;odpad;1.9.2024;
+105;116;kotelna;1.9.2024;
+105;117;sklad;1.9.2024;
+105;213;chodba 1NP;1.9.2024;
+105;214;pokoj sestra;1.9.2024;
+105;215;šatna ženy;1.9.2024;
+105;216;pokoj řidič;1.9.2024;
+105;217;úklid;1.9.2024;
+105;218;denní místnost;1.9.2024;
+105;219;WC ženy;1.9.2024;
+105;220;WC muži;1.9.2024;
+105;221;šatna muži;1.9.2024;
+105;222;koupelna;1.9.2024;
+105;0523;VW Transp 4SF 0523 RZP, ZKL115, převod 903 05/24;1.12.2022;1.8.2024
+105;8592;VW Transp 6SF 8592 RZP, ZKL114, sanita C IROP921;1.12.2023;
+106;1;společenská místnost (106);;
+106;2;dekontaminace (106);;
+106;3;pokoj - řidiči (106);;
+106;4;prádelna, koupelna (106);;
+106;5;kuchyň, chodba (106);;
+106;6;přístroje, garáž (106);;
+106;7;budova (106);;
+106;8;nový prostor (106);1.7.2022;
+106;0525;VW Transp 4SF 0525 RZP, ZKL154;1.11.2022;
+107;0;objekt a před objektem;1.11.2023;
+107;1;čistící místnost;1.9.2023;
+107;2;chodba + příslušenství;1.9.2023;
+107;3;společenská místnost;1.9.2023;
+107;4;šatna;1.9.2023;
+107;5;sklad;1.9.2023;
+107;6;pokoj ženy;1.9.2023;
+107;7;pokoj muži;1.9.2023;
+107;8;garáž;1.9.2023;
+107;8606;VW Transp 3SE 8606 RZP, ZKL152, přev.RA 10/24;1.11.2023;1.12.2024
+107;8993;VW Crafter 7J5 8993 RZP novorozenci, ZKL155;1.8.2024;
+114;1;společenská místnost;;
+114;2;pokoj řidič;;
+114;3;pokoj sestra;;
+114;4;kuchyň, WC;;
+114;5;koupelna + techn. místnost;;
+114;6;garáž + techn. místnost;;
+114;7;přístroje;;
+114;2928;VW Transp 5SJ 2928 RZP, ZKL153, sanita B IROP921;1.9.2022;
+200;0;venku na pozemku;;
+200;1;denní místnost (201);;
+200;2;pokoj řidičů RV (201);;
+200;9;řidiči RZP 2 (201);;
+200;10;řidiči RZP 1 (201);;
+200;11;server (251);;
+200;12;úklid přízemí (251);;
+200;13;WC dámy přízemí (201);;
+200;14;WC páni přízemí (201);;
+200;15;garáže RZP (201);;
+200;16;výměník (251);;
+200;17;posilovna 2 (201);;
+200;18;denní místnost - počítače (201);;
+200;19;uklízečka (201);;
+200;20;šatna úklid (251);;
+200;22;kuchyňka (201);;
+200;23;učebna (270);;
+200;24;primář (251);;
+200;25;vrchní sestra (251);;
+200;26;THP (251);;
+200;27;vedoucí řidičů (251);;
+200;28;archiv 1  (251);;
+200;29;pokoj lékařek (201);;
+200;30;pokoj sester RZP 1 (201);;
+200;31;pokoj sester RZP 2 (201);;
+200;32;pokoj lékařů (201);;
+200;33;úklid 1.p. (251);;
+200;34;WC dámy 1. p. (251);;
+200;35;WC páni 1. p. (251);;
+200;36;VW Tr. 9S5 06 78 (201) (auto vyř.05/2022);;1.5.2022
+200;37;RV Yeti 2ST 7674 (201) převod 701/1001 v 01/2021;;1.6.2023
+200;38;VW T5 3SY 7314 pův. 2SD 2568 vyř.17.7.23;;1.8.2023
+200;39;VW T5 2SD 2593 (201), ukončeno;;1.5.2025
+200;43;prádelna;;
+200;50;garáž (201);;
+200;51;myčka (201);;
+200;52;dílna (201);;
+200;53;sklad (201);;
+200;54;sklad kyslíku (201);;
+200;59;hlavní chodba přízemí (251);;
+200;60;vchod přízemí (251);;
+200;61;býv. ordinace LPS (201);;
+200;62;býv. pokoj sester LPS (201);;
+200;63;býv. pokoj lékaře LPS (201);;
+200;64;býv. čekárna LPS (201);;
+200;65;býv. WC LPS (201);;
+200;66;sklad sester RLP (201);;
+200;67;sklad vrchní sestry (201);;
+200;68;sklad RLP (201);;
+200;69;dekontaminační místnost (201);;
+200;70;Mercedes 2S4 4030 (201);;1.6.2023
+200;71;Mercedes MEM 20 72 (201);;1.6.2023
+200;72;MB 3S8 5400 (201);;1.6.2023
+200;73;2SD 2567 (201) - nová 200/2567-uzavřeno;;1.2.2023
+200;74;Škoda Karoq 4ST 7503-nová.míst.200/7503;;1.1.2023
+200;75;MB MEA 38-19 (201);;1.6.2023
+200;76;Octavia KHH 85-25 (251) (auto vyř.06/2022);;1.6.2022
+200;77;R. Rover;;1.6.2023
+200;78;Octavia 9S8 1474 (251)-převod na 200/1907,uzavřeno;;1.12.2022
+200;79;Crafter 4SY 8123-převod míst.200/8123-uzavřeno;;1.12.2022
+200;80;sanitní vozy k vyřaz., přeřazení (901);;
+200;81;člun SUNBIRD CROSAIR a přívěs 5S2 2491 (záložní);;
+200;82;-----;;1.6.2023
+200;83;-----;;1.6.2023
+200;84;MB MEM 20-72;;1.6.2023
+200;85;-----;;1.6.2023
+200;86;-----;;1.6.2023
+200;87;-----;;1.6.2023
+200;88;kancelář na OÚ Mělník;;
+200;89;sklad EDEKA;;
+200;90;ASČR Praha - západ;;
+200;91;-----;;1.6.2023
+200;92;chodba - 1. patro;;
+200;93;-----;;1.6.2023
+200;94;VW 7S0 7063;;1.6.2023
+200;95;VW Transp. 5SE 8608-nová 200/8608-uzavřeno;;1.2.2023
+200;101;RZP1;1.5.2023;
+200;102;RZP2;1.5.2023;
+200;103;RZP3;1.5.2023;
+200;105;k vyřazení (THP Mělník);1.5.2023;
+200;109;RV přenosná výbava;1.11.2023;
+200;201;BioHazard Team (BHT);1.6.2025;
+200;1907;Š.Octavia 8S4 1907, REF ME (251), převod do ADBN;1.12.2022;
+200;2567;VW Transporter 2SD 2567 (ZKL218) do ADBN 03/24;1.1.2023;1.1.2025
+200;2607;VW Transporter 5SJ 2607 / ZKL212, sanita B IROP921;1.5.2022;
+200;6322;Škoda Octavia 3SI 6322, REF Mělník;1.12.2024;
+200;7503;Škoda Karoq 4ST 7503 / ZKL210, FZŠ;1.1.2023;
+200;8123;VW Crafter 4SY 8123 / ZKL219, HPO Mělník;1.12.2022;
+200;8608;VW Transporter 5SE 8608 / ZKL211;1.1.2023;
+201;1;kuchyně;;
+201;2;denní místnost;;
+201;3;čekárna;;
+201;4;ordinace;;
+201;5;sesterna (pův. LPS);;
+201;6;pokoj lékařek;;
+201;7;pokoj lékařů;;
+201;8;sesterna;;
+201;9;pokoj řidičů RLP;;
+201;10;pokoj řidičů DNRR;;
+201;11;vstup;;
+201;12;chodba před garáží;;
+201;13;šatna pro uklízečky;;
+201;14;úklidová komora;;
+201;15;přípravna;;
+201;16;sklad RLP;;
+201;17;sklad (pův. LPS);;
+201;18;inhalace;;
+201;19;WC;;
+201;20;zahradní bouda;;
+201;21;garáž Neratovice;;
+201;22;budova a její okolí;;
+201;77;R. Rover;;
+201;88;VW Transp. 3SU 6709 - nová 201/6709-uzavřeno;;1.2.2023
+201;89;Mercedes 3S8 54-00;;1.6.2023
+201;90;Mercedes MEJ 66-29;;1.6.2023
+201;91;VW T5 2SD 2568 vyřazeno;;1.6.2023
+201;92;VW T5 2SD 2567 (je  v ADBN);;1.10.2025
+201;100;Spolana;;
+201;104;RZP4 Neratovice;1.5.2023;
+201;200;DD Neratovice;;
+201;6709;VW Transporter 3SU 6709 / ZKL215, přev.ADBN 10/25;1.1.2023;
+201;8605;VW Transporter 6SF 8605 / ZKL215 sanita C IROP921;1.12.2023;
+202;1;LPS sestry;;
+202;2;řidiči RZP4;;
+202;3;řidiči RZP3;;
+202;4;sklad léků;;
+202;5;místnost 17 šatna;;
+202;6;místnost 07 lékařký pokoj LPS;;
+202;7;řidič RZP2;;
+202;8;místnost 10 prov.tech. vedoucí;;
+202;9;řidič RZP1;;
+202;10;školící místnost (dříve 12 ekonom);;
+202;11;sestry RZP4;;
+202;12;sestry RZP1;;
+202;13;sestry RZP3;;
+202;14;místnost 113 jídelna;;
+202;15;společenská místnost RLP;;
+202;16;lékařský pokoj RLP;;
+202;17;vrchní sestra (pův. šatna lékaři);;
+202;18;místnost 103 lékařský pokoj, 2 lékaři;;
+202;19;pokoj primář;;
+202;20;nová učebna (býv. zázemí ZOS);;
+202;21;staré RLP M.B.;;
+202;22;staré LPS M. B.;;
+202;23;sklad materiál;;
+202;24;pozemky;;
+202;25;WC LPS;;
+202;26;WC;;
+202;27;čekárna LPS + zubní LPS;;
+202;28;mandlovna;;
+202;29;Mercedes 3S5 05-86 - ukončeno;;1.11.2022
+202;30;Mercedes 3S8 55-95 - ukončeno;;1.11.2022
+202;31;Yeti 1SU 8562 - ukončeno;;1.11.2022
+202;32;VW T5 2SD 2592 ZKL258 - vyřazeno 01/2022;;1.2.2024
+202;33;VW MBN 69-69 - ukončeno;;1.11.2022
+202;34;VW 8S6 3658 (pův. 6S6 5123) - ukončeno;;1.11.2022
+202;35;VW MBM 48-80 - ukončeno;;1.11.2022
+202;36;3koda Fabia 1SR 7186 (auto vyř.08/2022);;1.8.2022
+202;37;Škoda Forman  MBI 35-53 - ukončeno;;1.11.2022
+202;38;kuchyň RLP;;
+202;39;pracovna sester služebna;;
+202;40;řidiči RV (býv. studovna);;
+202;41;kuchyňka - sestry RZP2 (dříve studovna);;
+202;42;WC u lékařů RLP;;
+202;43;WC u dispečinku;;
+202;44;sprcha vedle ZOS;;
+202;45;sprcha vedle LPS;;
+202;46;ordinace LPS;;
+202;47;čistička;;
+202;48;sklep;;
+202;49;garáže;;
+202;50;dvůr;;
+202;51;VW 7S0 7033 - ukončeno;;1.11.2022
+202;52;VW 9S5 0681 (auto vyř.10/2022-DS NS);;1.10.2022
+202;53;VW T5 2SD 2574 - ukončeno;;1.11.2022
+202;54;VW T5 2SD 2575 - ukončeno;;1.11.2022
+202;55;VW T5 2SD 2599 ZKL255 - nová m.2599, ukončeno;;1.12.2022
+202;56;Yeti 2SL 4214 RV - ukončeno;;1.11.2022
+202;57;Škoda Yeti 3SE 9089 - ukončeno;;1.11.2022
+202;58;VW Transp. 3SU 6701 ZKL251 IOP-nová m.6701, ukonč.;;1.12.2022
+202;59;VW Transp. 4SB 9177 ZKL252 IOP-přev.701/701/1020;;1.12.2022
+202;60;VW Transp. 3SJ 4532 (pův. 3SU 6703) nová m.,ukonč.;;1.12.2022
+202;61;garáže s myčkou;;
+202;63;Yeti 4SA 7360 ZKL250 FZŠ, prázdné, uzavřeno;;1.2.2024
+202;64;Škoda Kodiaq 4ST 7505 - nová m.7505, ukončeno;;1.12.2022
+202;65;VW Transp. 5SE 8607-nová m.8607, ukončeno;;1.12.2022
+202;66;chodba přízemí;1.10.2023;
+202;1676;Š.Octavia 9S8 1676 REF Ml.Bol. (203);1.12.2022;
+202;2599;VW T5 2SD 2599  ZKL255 (203);1.12.2022;
+202;2823;MAN TGE 7SF 2810 - MB;1.3.2026;
+202;3428;VW Transporter 5SJ 3428 / ZKL252 sanita B IROP921;1.5.2022;
+202;4532;VW Transp. 3SJ 4532,  ZKL254, 03/24 do ADBN;1.12.2022;1.3.2024
+202;6701;VW Transp. 3SU 6701 ZKL251 IOP (203) do ADBN03/24;1.12.2022;1.3.2024
+202;7505;Škoda Kodiaq 4ST 7505 ZKL250, RV Ml.Bol.(203);1.12.2022;1.5.2025
+202;8455;VW 7HC kombi 6SU 8455 ZKL250, RV Ml.Bol.(203);1.2.2025;
+202;8597;VW Transporter 6SF 8597 / ZKL254 sanita C IROP921;1.12.2023;
+202;8607;VW Transp. 5SE 8607 ZKL258 (203);1.12.2022;
+202;vp4903;MB Sprinter 1BI 4903 - výpůjčka od ZZS JMK;1.10.2025;
+204;1;chodba;1.6.2022;
+204;2;kuchyň;1.6.2022;
+204;3;pokoj řidiči;1.6.2022;
+204;4;pokoj sestry;1.6.2022;
+204;5;služební místnost;1.6.2022;
+204;6;sklad a čistička;1.6.2022;
+204;7;prádelna a sušárna;1.6.2022;
+204;3428;VW Transporter 5SJ 3428 / ZKL252 sanita B IROP921;1.4.2024;
+205;1;denní místnost;;
+205;2;vrátnice;;
+205;3;telefon. ústředna;;
+205;4;VW 8S6 3658 - vyřazeno 03/2013;;1.2.2024
+205;5;budovy, okolí;;
+205;6;sklad a čistička;1.7.2025;
+205;8598;VW Transporter 6SF 8598 / ZKL251 sanita C IROP921;1.12.2023;
+301;1;vrchní sestra;;
+301;2;primář;;
+301;3;řidiči RV;;
+301;4;sklad - úklid;;
+301;5;lékaři;;
+301;6;šatna řidičů;;
+301;7;THP (inv. úsek 351);;
+301;8;řidiči RZP;;
+301;9;šatna sestry;;
+301;10;chodba;;
+301;11;sestry;;
+301;12;denní místnost;;
+301;13;školící místnost;;
+301;14;garáže a dekontaminace;;
+301;23;kuchyňka;;
+301;24;sklady;;
+301;29;VW 7S6 8653 (voz.zapůjčeno 902/443, prázdná míst.);;1.11.2022
+301;30;budova Žižkova Kolín;;
+301;33;VW T5 2SD 2560 / 378 přev.míst.2560;;1.11.2022
+301;36;ústředna;;
+301;37;Kazda Milan;;
+301;38;Šedivka Ondřej;;
+301;39;Yeti 3SY 1350;;1.2.2024
+301;40;VW Transp. 3SU 6619/372 IOP přev.míst.6619;;1.11.2022
+301;41;VW Transp. 3SU 6621/371 IOP přev.míst.6621;;1.11.2022
+301;42;VW Transp. 3SU 6620/373 IOP přev.míst.6620;;1.11.2022
+301;43;Škoda Fabia 4SF 0514 (auto vyř.05/2022);;1.5.2022
+301;44;Škoda Kodiaq 4ST 7504 (převedeno 408/10);;1.2.2024
+301;45;VW Transp. 8S9 9474 (621) přev.míst.9474;;1.11.2022
+301;xxxx;předpokládané vozidlo inspektorů Kolín od 09/24;1.8.2024;1.5.2025
+301;2560;VW T5 2SD 2560 (ZKL 378) přev.ADBN 10/24;1.11.2022;1.10.2024
+301;2800;MAN TGE 7SF 2798 - KO;1.3.2026;
+301;3437;Škoda Octavia 3SJ 3437, REF Kolín;1.12.2024;
+301;4502;Toyota RAV4  5SJ 4502 RV Kolín;1.2.2022;
+301;4976;VW Transp 3SZ 4976 RZP, ZKL378;1.9.2024;
+301;5649;Yeti 3SN 5649, RV;1.11.2024;
+301;6619;VW Transp. 3SU 6619/372 IOP - VYPRÁZDNIT;1.11.2022;
+301;6620;VW Transp. 3SU 6620/373 IOP (ZKL 373);1.11.2022;
+301;6621;VW Transp. 3SU 6621/371 IOP převod 701;1.11.2022;
+301;7505;Škoda Kodiaq 4ST 7505, inspektoři Kolín;1.5.2025;
+301;8563;Škoda Yeti 1SU 8563 (REF);1.11.2022;
+301;8583;VW Transporter 6SF 8583 / ZKL371 sanita C IROP921;1.12.2023;
+301;8607;VW Transporter 6SF 8607 / ZKL372 sanita C IROP921;1.12.2023;
+301;9474;VW Transp. 8S9 9474 (ZKL 379);1.11.2022;
+302;1;společenská místnost;;
+302;2;kuchyň;;
+302;3;úseková sestra;;
+302;4;sestry;;
+302;5;lékařský pokoj;;
+302;6;odkládací místnost;;
+302;7;mycí místnost;;
+302;8;řidiči;;
+302;9;šatna;;
+302;10;prádelna;;
+302;11;sklad u kuchyně;;
+302;12;sklad zdravotnický;;
+302;13;chodba RLP;;
+302;15;sanity;;
+302;16;garážový přístřešek;;
+302;17;VW Transp. 3SU 6618 IOP (přev.701/1015);;1.2.2024
+302;18;VW Transp. 5SB 1802 (přev.míst.1802);;1.11.2022
+302;1802;VW Transp. 5SB 1802 (ZKL 615) Č.Brod-převod 701;1.11.2022;1.11.2025
+302;4817;VW Transp 6SR 4817, ZKL375, sanita C 2024, IROP925;1.11.2024;
+303;1;šatna;;
+303;2;provozní místnost;;
+303;3;pokoj vedoucího lékaře;;
+303;4;pokoj lékařů;;
+303;5;řidiči RLP;;
+303;6;společenská místnost;;
+303;7;sestry RLP;;
+303;8;staniční sestra;;
+303;9;úklid;;
+303;10;chodba budovy;;
+303;13;VW T5 2SD 2580 přev.701/973 v 05/2016, prázdné;;1.10.2022
+303;14;VW Transp. 3SJ 3451 ZPV616 IOP, přev.701,uzavřeno;1.11.2018;1.2.2024
+303;2590;VW Transporter 5SJ 2590 / ZKL374 sanita B IROP921;1.5.2022;
+304;1;Vedoucí lékař;;
+304;2;Staniční sestra;;
+304;3;Ekonomický úsek + chodba;;
+304;4;Lékařský pokoj;;
+304;5;Kuchyň+chodba;;
+304;6;Sklad zdr. materiálu;;
+304;7;Vedoucí dopravy;;
+304;8;Sklad prádla;;
+304;9;Sestra LPS;;
+304;10;Sestra I;;
+304;11;Sestra II;;
+304;12;Chodbička u sester;;
+304;13;Řidič I;;
+304;14;Řidič II;;
+304;15;Ordinace bývalé LPS;;
+304;16;Čekárna bývalé LPS;;
+304;17;Koupelna;;
+304;18;Denní místnost;;
+304;19;Dispečink;;
+304;20;Denní místnost dispečink;;
+304;21;Doktor I;;
+304;22;Doktor II;;
+304;23;Schodiště;;
+304;24;Sklad;;
+304;25;Hlavní chodba;;
+304;26;Velká garáž;;
+304;27;Malá garáž;;
+304;28;VW T5 2SD 2585-ukončeno, převod 701/976;;1.4.2023
+304;29;klec pro kyslíkové láhve;;
+304;30;dekontaminační místnost;;
+304;31;-----;;
+304;32;-----;;
+304;33;Škoda Karoq 4ST 7500 - nová m.7500, uzavřeno;;1.12.2022
+304;34;MB 3S8 5583 - vyřazeno 2013;;1.1.2023
+304;35;VW Transp. 3SU 6716 (311) převod na 701, uzavřeno;;1.4.2023
+304;36;VW Transp. 5SB 1521 pův.3SU 6717 (312), uzavřeno;;1.2.2024
+304;37;Octavia 2S8 9674-nová místn.304/9674 od 12/22;;1.12.2022
+304;38;VW 6S6 4847 - vyřazeno 2019;;1.1.2023
+304;39;Vacek Karel;;
+304;40;VW T5 2SD 2565 - převod DBN 05/2016;;1.1.2023
+304;41;Juláková Martina;;
+304;42;Martínková Aneta;;
+304;43;RV Yeti 1SU 8564 - převedeno ADBN;;1.3.2023
+304;44;garáž RV;;
+304;2902;VW Transporter 5SJ 2902 / ZKL311 sanita B IROP921;1.5.2022;
+304;3178;VW Transporter 5SJ 3178 / ZKL312 sanita B IROP921;1.5.2022;
+304;3711;Škoda Yeti 1SK 3711 (304), převod do ADBN;1.3.2023;1.1.2025
+304;5707;Škoda Octavia 2SZ 5707;1.12.2024;
+304;6710;VW 3SU 6710;1.10.2022;
+304;7500;Škoda Karoq 4ST 7500 RV NB, přev.Zdiby 06/24;1.12.2022;1.6.2024
+304;8469;Škoda Karoq 6SL 8469 RV NB, ZKL310, FZŠ;1.6.2024;
+304;9674;Octavia 2S8 9674 REF Nymburk - převod na 701;1.12.2022;1.5.2023
+305;1;Kuchyň;;1.3.2023
+305;2;Lékárna;;1.3.2023
+305;3;Pokoj lékařů;;1.3.2023
+305;4;Sestry;;1.3.2023
+305;5;Chodba;;1.3.2023
+305;6;Ordinace;;1.3.2023
+305;7;Řidiči;;1.3.2023
+305;8;Denní místnost;;1.3.2023
+305;9;Sklad;;1.3.2023
+305;10;Sanity;;1.3.2023
+305;11;před budovou;;1.3.2023
+305;12;p. Karásek;;1.3.2023
+305;13;VW T5 2SD 2566 - prázdné, uzavřeno;;1.1.2023
+305;14;MUDr. Julák;;1.3.2023
+305;15;garážové stání nové;;1.3.2023
+306;1;pokoj lékaře;;
+306;2;pokoj sester;;
+306;3;společenská místnost;;
+306;4;chodba;;
+306;5;pokoj řidičů;;
+306;6;čistící místnost;;
+306;7;sklad;;
+306;8;koupelna;;
+306;9;MB NBH 78-98 (auto vyř.05/2022);;1.5.2022
+306;10;budova Masarykova 214;;
+306;11;-----;;
+306;12;p. Hlaváček;;
+306;13;VW T5 2SD 2595 - prázdné, uzavřeno;;1.1.2023
+306;14;venkovní prostor u budovy;;
+306;15;Martínková Aneta;;
+306;16;p. Keistová;;
+306;17;VW Transp. 3SU 6704 IOP;;1.2.2024
+306;18;VW Transp. 5SB 1803 - nová m.1803, uzavřeno;;1.12.2022
+306;1803;VW Transp. 5SB 1803 ZKL313 Lysá, přev ADBN 01/25;1.12.2022;
+306;4724;VW Transp 6SR 4724, ZKL313, sanita C 2024, IROP925;1.11.2024;
+307;1;kuchyně;;
+307;2;společenská místnost;;
+307;3;pokoj lékařů;;
+307;4;sestry;;
+307;5;chodba;;
+307;6;řidiči;;
+307;7;úklidová místnost;;
+307;8;garáž;;
+307;9;sklad;;
+307;10;sanita 2SD 2566 - prázdné, uzavřeno;;1.1.2023
+307;11;před budovou;;
+307;12;p. Karásek;;
+307;13;MUDr. Julák;;
+307;14;dekontaminační místnost;;
+307;15;WC + sprchový kout;;
+307;16;VW Transp. 4SF 0516-nová míst.0516;;1.3.2023
+307;0516;VW Transp. 4SF 0516 ZKL325 Městec, do ADBN 01/25;1.1.2023;
+307;4696;VW Transp 6SR 4696, ZKL325, sanita C 2024, IROP925;1.11.2024;
+313;1;1.08;;1.6.2024
+313;2;1.12;;1.6.2024
+313;3;1.13;;1.6.2024
+313;4;1.14;;1.6.2024
+313;5;1.15;;1.6.2024
+313;6;1.24;;1.6.2024
+313;7;1.25;;1.6.2024
+400;1;prim. MUDr. Bráza;;
+400;2;vrchní sestra;;
+400;3;úklidová místnost (401);;
+400;4;sestry - silnice;;
+400;5;sestry - dvůr;;
+400;6;kuchyň;;
+400;7;sklad;;
+400;8;řidiči RV;;
+400;9;THP;;
+400;10;primář;;
+400;11;řidiči 421;;
+400;12;nájem - Kačenga;;
+400;13;řidiči 420;;
+400;14;nájem - Kačenga - ordinace;;
+400;15;nájem - Kačenga - WC pacienti;;
+400;16;nájem - Kačenga - WC;;
+400;17;chodba ZZS;;
+400;18;lékaři;;
+400;19;sklad garáže;;
+400;20;mycí box;;
+400;21;sklad UKM;;
+400;22;garáž I;;
+400;23;garáž II;;
+400;24;garáž III;;
+400;25;garáž IV;;
+400;26;garáž V;;
+400;27;čistící;;
+400;28;sklad dispečink (stř. 430 M. Wolf);;
+401;1;pův.denní místnost 401+431, přev.701/401/v01,uzavř;;1.4.2025
+401;2;dispečink, 401+431;;
+401;3;šatna dispečink (pův. chodba), 431;;
+401;4;WC + sprchy, 401+431;;
+401;5;kuchyňka (pův.dispečink dopravy) 401+431;;
+401;6;výcviková báze;;
+401;7;sklad vrchní sestra, 401+431;;
+401;8;pokoj - dispečerky, 401+431;;
+401;9;nácviková místnost 2 (pův. A. Havelka);;
+401;10;zasedací místnost, 431;;
+401;11;chodba (pův. sprcha + WC);;
+401;12;komora, sklad;;
+401;13;sprcha + WC;;
+401;14;posilovna;;
+401;15;společ.kanc.2 úseky BN401 Kotek+ADBN701 Škarvadová;;
+401;16;WC koupelna;;
+401;17;Škoda Yeti 2ST 7675  RV 410;;1.2.2024
+401;18;auto 4S34690 (vyř.03/13);;1.8.2024
+401;19;Š. Fabia 3S5 5228 (auto vyř.08/2022);;1.8.2022
+401;21;Š. Octavia 9S8 1474 - přev.místn.1474, uzavřeno;;1.12.2022
+401;22;vozík 5S7 8719 (vyř.07/2017);;1.8.2024
+401;23;kontejnery HN;;
+401;24;Oct. 2S6 2134 (vyř.03/2015);;1.8.2024
+401;25;server, 401;;
+401;26;Subaru 4S3 7921 záložní (auto vyř.08/2022);;1.8.2022
+401;27;Kodiaq 4SY 8122 - přev.míst.8122, uzavřeno;;1.12.2022
+401;28;VW KHH 38-39 (vyř.09/2012);;1.8.2024
+401;29;převaděč Džbány;;
+401;30;VW T5 2SD 2570 - přev.902/436 (vyř.05/23);;1.8.2024
+401;31;VW T5 2SD 2571 - přev.místn.2571, uzavřeno;;1.12.2022
+401;32;dvůr;;
+401;33;pracoviště kriz. připravenosti Benešov, 909;;
+401;34;VW Transp. 3SU 6604 IOP - přev.místn.6604,uzavřeno;;1.12.2022
+401;35;VW Transp. 3SU 6602 IOP - přev.místn.6602,uzavřeno;;1.12.2022
+401;36;krizová sanita 4S3 4691 - přev.701/434, uzavřeno;;1.12.2022
+401;37;výcviková báze, 401;;
+401;38;garážový přístřešek;;
+401;39;Yeti 4SB 2717 - je na 701/701/1056 Šalda, uzavřeno;;1.12.2022
+401;40;VW Crafter 4SY 8124 spec-přev.místn.8124,uzavřeno;;1.12.2022
+401;v01;kancelář ADBN701 Šalda v budově 401;1.1.2024;
+401;v15;společ.kanc.2 úseky ADBN701 Škarvadová+BN401 Kotek;1.1.2024;
+401;1474;Š. Octavia 9S8 1474 - REF BN (401), přev.do ADBN;1.12.2022;1.1.2025
+401;2571;VW T5 2SD 2571 , ZKL418 (401);1.12.2022;
+401;6602;VW Transp. 3SU 6602 , ZKL411 (923) přev.ADBN 03/24;1.12.2022;1.10.2024
+401;6604;VW Transp. 3SU 6604 , ZKL412 (923) přev.ADBN 03/24;1.12.2022;1.10.2024
+401;7595;Škoda Octavia 2ST 7595;1.12.2024;
+401;8120;Kodiaq 4SY 8120 FZŠ, inspektoři provozu BN;1.4.2023;
+401;8122;Kodiaq 4SY 8122  RV BN, ZKL410, FZŠ;1.12.2022;
+401;8124;VW Crafter 4SY 8124 spec. ZKL419 (909) PKP;1.12.2022;
+401;8593;VW Transporter 6SF 8593 / ZKL411 sanita C IROP921;1.12.2023;
+401;8604;VW Transporter 6SF 8604 / ZKL412 sanita C IROP921;1.12.2023;
+401;8632;VW 7HC kombi 6SU 8632 ZKL410, RV Benešov (401);1.2.2025;
+402;1;společenská místnost;;
+402;2;pokoj sester;;
+402;3;pokoj RV;;
+402;4;koupelna + WC;;
+402;5;sklad Vlašim;;
+402;6;lékařský pokoj;;
+402;7;sklad;;
+402;8;řidiči I;;
+402;9;řidiči II;;
+402;10;pokoj sester;;
+402;11;WC ženy;;
+402;12;sprcha lékaři;;
+402;13;sprcha řidiči;;
+402;14;sprcha sestry;;
+402;15;chodba;;
+402;16;-----;;
+402;17;-----;;
+402;18;řidiči DNRR;;
+402;19;sprcha;;
+402;20;-----;;
+402;21;Yeti 1SU 85 63 - je na 301/301/8563;;1.2.2024
+402;22;Jeep 7S3 9808 (auto vyř.10/2022);;1.9.2022
+402;23;Subaru 4S3 7921 (auto vyř.08/2022);;1.8.2022
+402;24;auto BNJ 02-46 (vyř.07/2007);;
+402;25;auto BNI 47-96 (vyř.03/2009);;
+402;26;garáž;;
+402;27;VW 6S6 5125 (vyř.03/2019);;
+402;28;VW 1SU 7934 (pův. 6S6 5122) vyř.08/2016;;
+402;29;garáž I;;
+402;30;garáž II;;
+402;31;Subaru 4S3 7922 (likvidace 12/2009);;1.2.2024
+402;32;Subaru 2S8 7644 (vyř.10/2016);;
+402;33;VW T5 2SD 2588 - je na 901/902/452;;
+402;34;VW T5 2SD 2589 (auto vyř.08/2022);;1.8.2022
+402;35;čistící místnost - suterén;;
+402;36;Karbulka - PEER;;
+402;37;Yeti 4SA 7361 RV ZKL420,FZŠ-přev.místn.7361,uzavře;;1.12.2022
+402;38;VW Transp. 5SB 1805 - přev.místn.1805,uzavřeno;;1.12.2022
+402;39;VW Transp. 5SB 1806 - přev.místn.1806,uzavřeno;;1.12.2022
+402;40;posilovna - Vlašim;;
+402;410;vůz 410 - prázdná místnost, uzavřeno;;1.11.2022
+402;411;vůz 411 - prázdná místnost, uzavřeno;;1.11.2022
+402;1805;VW Transp. 5SB 1805 , ZKL421 Vlašim (402);1.12.2022;
+402;1806;VW Transp. 5SB 1806 , ZKL422 Vlašim (402);1.12.2022;
+402;7361;Yeti 4SA 7361 RV Vlašim ZKL420, FZŠ;1.12.2022;
+402;7502;Škoda Karoq 4ST 7502 RV, ZKLxxx od 05/25;1.5.2025;
+403;1;sklad Votice;;
+403;2;společenská místnost;;
+403;3;řidiči;;
+403;4;sesterna;;
+403;5;WC;;
+403;6;čistící malá;;
+403;7;čistící místnost II;;
+403;8;chodba;;
+403;9;zádveří;;
+403;10;garáže;;
+403;11;řidiči  RLP vzadu;;
+403;12;VW Transp.  2SD 2596 - je na 701/987;;1.2.2024
+403;13;VW Transp. 4SF 0519 - přev.místn.0519,uzavřeno;;1.12.2022
+403;0519;VW Transp. 4SF 0519 ZKL413, převod do ADBN 12/24;1.12.2022;
+403;4715;VW Transp 6SR 4715, ZKL413, sanita C 2024, IROP925;1.11.2024;
+404;1;spisovna archiv (901);;
+404;2;řidiči III.;;
+404;3;šatna;;
+404;4;denní místnost;;
+404;5;dvůr;;
+404;6;garáž;;
+404;7;.........;;1.12.2021
+404;8;chodba ZS;;
+404;9;.........;;
+404;10;.........;;
+404;11;.........;;
+404;12;.........;;
+404;13;........;;
+404;14;kuchyň ekonom. úsek;;
+404;15;kuchyň ZS;;
+404;16;lékař;;
+404;17;lékaři RLP;;
+404;18;mezisklad;;
+404;19;posilovna;;
+404;20;plynoměrna;;
+404;21;školící místnost;;
+404;22;provozní referent;;
+404;23;přípravna;;
+404;24;primář;;
+404;25;řidiči RZP II.;;
+404;26;řidiči RZP I.;;
+404;27;sestry III.;;
+404;28;sestry I.;;
+404;29;sestry II.;;
+404;30;sklad;;
+404;31;sklad ZM;;
+404;32;řidiči RV;;
+404;33;společenská místnost;;
+404;34;šatna - lékaři;;
+404;35;..........;;
+404;36;spisovna;;
+404;37;úklidová místnost;;
+404;38;úklidová místnost - skříň;;
+404;39;vrchní sestra;;
+404;40;Škoda Kodiaq 3SJ 3919 (FZŠ)  350 (nově míst.3919);;1.11.2022
+404;41;VW T5 2SD 2586 (od 03/21 dílny BN);;1.11.2022
+404;42;VW T5 2SD 2587 352 (prázdná, je na 701/978);;1.10.2022
+404;43;Octavia 9S8 1535 (pův. Fabia 3S1 2949) nově m.1535;;1.11.2022
+404;44;Octávia 1SE 4681 (auto vyř.08/2022);;1.8.2022
+404;45;.........;;
+404;46;VW Transp. 5SE 8612 351 (nově míst.8612);;1.11.2022
+404;47;VW T5 2SD 2601 záložní (prázdná, je 407/2601);;1.10.2022
+404;48;........;;
+404;49;provozní sklad ZZS SK (901);;
+404;50;........;;
+404;51;VW T5 2SD 2576 (od 11/22 na 701/963);;1.2.2024
+404;0517;VW Transp. 4SF 0517 (ZKL354 změna na ZKL358 01/25);1.12.2024;
+404;1535;Octavia 9S8 1535 (IÚ 452 - REF) - převod 701/932;1.11.2022;1.2.2024
+404;2717;Škoda YETI 4SB 2717 REF KH;1.2.2023;
+404;3919;Škoda Kodiaq 3SJ 3919 FZŠ, RV Kutná Hora (ZKL 350);1.11.2022;
+404;6712;VW Transp. 3SU 6712 (ZKL 356) převod do ADBN 12/24;1.11.2022;
+404;7117;VW Transporter 5SK 7117 sanita C, FIN/KP (ZKL 352);1.7.2022;
+404;8612;VW Transp. 5SE 8612 (ZKL 351);1.11.2022;
+405;1;mycí box;;
+405;2;garáž;;
+405;3;.......;;
+405;4;kuchyň;;
+405;5;lékaři ZS;;
+405;6;pracovna;;
+405;7;předsíň;;
+405;8;řidiči ZS;;
+405;9;sestry ZS;;
+405;10;.........;;
+405;11;společenská místnost;;
+405;12;úklidová místnost;;
+405;13;..........;;
+405;14;..........;;
+405;15;VW Transp. 3SU 6712 (353) od 11/22 KH 404/6712;;1.12.2022
+405;2935;VW Transporter 5SJ 2935 / ZKL353 sanita B IROP921;1.5.2022;
+406;1;garáž;;
+406;2;chodba ZS;;
+406;3;VW T5 2SD 2582 - 354 prázdné;;1.2.2024
+406;4;koupelna ZS;;
+406;5;kuchyň ZS;;
+406;6;sklad ( pův. lékaři ZS);;
+406;7;VW Transp. 4SF 0517 (přev. míst. 0517);;1.11.2022
+406;8;.........;;
+406;9;řidiči ZS;;
+406;10;sestry ZS;;
+406;11;sklad ZM;;
+406;12;sklep;;
+406;13;.........;;
+406;14;společenská místnost ZS;;
+406;15;střecha;;
+406;16;budova;;
+406;0517;VW Transp. 4SF 0517 (ZKL 354), přev.do KH 12/24;1.11.2022;
+406;4725;VW Transp 6SR 4725, ZKL354, sanita C 2024, IROP925;1.11.2024;
+407;1;denní místnost;;
+407;2;sestry 1;;
+407;3;řidiři 1;;
+407;4;garáž;;
+407;5;pokoj lékaři;;
+407;6;chodba;;
+407;7;koupelna;;
+407;8;šatna;;
+407;9;........;;
+407;10;sestry 2;;
+407;11;řidiči 2;;
+407;12;VW T5 2SD 2576 (od 11/22 na 701/963);;1.11.2022
+407;13;VW T5 2SD 2573 (nově míst.2573);;1.11.2022
+407;14;pozemek, budova;;
+407;15;VW T5 2SD 2601 (nově míst.2601);;1.11.2022
+407;2573;VW T5 2SD 2573 (ZKL 355);1.11.2022;
+407;2601;VW T5 2SD 2601 (dříve ZKL 358);1.11.2022;
+407;4830;VW Transp 6SR 4830, ZKL356, sanita C 2024, IROP925;1.11.2024;
+407;8573;VW Transporter 6SF 8573 / ZKL355 sanita C IROP921;1.12.2023;
+408;1;..........;;
+408;2;garáž;;
+408;3;denní místnost;;
+408;4;pokoj lékaři;;
+408;5;pokoj řidič;;
+408;6;kuchyně;;
+408;7;sociální zaříz.;;
+408;8;technické zázemí;;
+408;9;Škoda Yeti 3SY 1351, prázdné, uzavřeno;;1.4.2024
+408;10;Škoda Kodiaq 4ST 7504 (nově míst. 7504);;1.11.2022
+408;7504;Škoda Kodiaq 4ST 7504 RV Zbraslavice (ZKL 360);1.11.2022;
+409;1;společ. místnost + kuchyň. kout;;
+409;2;pokoj sestry;;
+409;3;pokoj řidiči;;
+409;4;koupelna + WC;;
+409;5;chodba;;
+409;6;VW Transp. 3SJ 4819 (pův. 2SD 2570) je na 901/436;;1.2.2024
+409;7;garáž;;
+409;8;vůz 806 - prázdná místnost, uzavřeno;;1.11.2022
+409;9;VW Transp. 5SB 1801 - přev.místn.1801,uzavřeno;;1.12.2022
+409;1801;VW Transp. 5SB 1801 Vranov ZKL414 (409);1.12.2022;
+409;2798;MAN TGE 7SF 2798 - Vranov;;
+410;1;J. Indrová (552);;1.6.2024
+410;2;primář - doprava;;1.6.2024
+410;4;řidiči I.;;1.6.2024
+410;5;denní místnost;;1.6.2024
+410;6;6S6 5125;;1.6.2024
+410;8;kuchyňka;;1.6.2024
+410;10;řidiči II.;;1.6.2002
+410;11;chodba;;1.6.2024
+410;12;sestry;;1.6.2024
+410;13;lékaři;;1.6.2024
+410;14;šatna;;1.6.2024
+410;15;úklidová místnost;;1.6.2024
+410;16;garáž;;1.6.2024
+410;17;WC ženy;;1.6.2024
+410;18;nádvoří;;1.6.2024
+410;19;sklad Jesenice;;1.6.2024
+410;20;sklad Slapy Kolár;;1.6.2024
+410;21;sběrná místnost;;1.6.2024
+410;22;Felicia 3S8 44 54;;1.6.2024
+410;23;posilovna;;1.6.2024
+410;24;-------;;1.6.2024
+410;25;prádelna;;1.6.2024
+410;26;dekontaminační místnost;;1.6.2024
+410;27;kyslík;;1.6.2024
+410;28;VW Transp. 3SU 6707 IOP, prázdné, uzavřeno;;1.2.2024
+413;1;vrchní sestra;;1.10.2022
+413;2;primář;;1.10.2022
+413;3;řidiči RV;;1.10.2022
+413;4;sklad - úklid;;1.10.2022
+413;5;lékaři;;1.10.2022
+413;6;šatna řidičů;;1.10.2022
+413;7;THP;;1.10.2022
+413;8;řidiči RZP;;1.10.2022
+413;9;šatna sestry;;1.10.2022
+413;10;chodba;;1.10.2022
+413;11;sestry;;1.10.2022
+413;12;denní místnost;;1.10.2022
+413;13;školící místnost;;1.10.2022
+413;14;garáže;;1.10.2022
+413;21;-----;;1.10.2022
+413;23;kuchyňka;;1.10.2022
+413;24;sklady;;1.10.2022
+413;26;........;;1.10.2022
+413;27;........;;1.10.2022
+413;29;VW 7S6 8653 (voz.zapůjčeno 902/443, prázdná míst.);;1.10.2022
+413;30;budova Žižkova Kolín;;1.10.2022
+413;31;........;;1.10.2022
+413;32;........;;1.10.2022
+413;33;VW T5 2SD 2560 uzavřeno, prázdné;;1.10.2022
+413;34;........;;1.10.2022
+413;35;........;;1.10.2022
+413;36;ústředna;;1.10.2022
+413;37;Kazda Milan;;1.10.2022
+413;38;Šedivka Ondřej;;1.10.2022
+413;39;Škoda Yeti 3SY 1350;;1.10.2022
+413;40;VW Transp. 3SU 6619/372 IOP uzavřeno, prázdné;;1.10.2022
+413;41;VW Transp. 3SU 6621/371 IOP uzavřeno, prázdné;;1.10.2022
+413;42;VW Transp. 3SU 6620/373 IOP uzavřeno, prázdné;;1.10.2022
+501;1;J. Indrová (552);;
+501;2;primář - doprava;;
+501;4;řidiči I.;;
+501;5;denní místnost;;
+501;6;6S6 5125 - prázdné, uzavřeno;;1.11.2022
+501;8;kuchyňka;;
+501;10;řidiči II.;;
+501;11;chodba;;
+501;12;sestry;;
+501;13;lékaři;;
+501;14;šatna;;
+501;15;úklidová místnost;;
+501;16;garáž;;
+501;17;WC ženy;;
+501;18;nádvoří;;
+501;19;sklad Jesenice léky;;
+501;20;sklad Slapy Kolár;;
+501;21;sběrná místnost;;
+501;22;Felicia 3S8 4454 - prázdné, uzavřeno;;1.11.2022
+501;23;posilovna;;
+501;25;prádelna;;
+501;26;dekontaminační místnost;;
+501;27;kyslík;;
+501;28;VW Transp. 3SU 6707 IOP převod 701/1025, uzavřeno;;1.3.2023
+501;29;místnost sběrná odpadová;;
+501;2326;MB Vito 5SL 2326 RV, ZKL670, FZŠ, Jesenice PZ;1.11.2025;
+501;2608;VW Transp.5SJ 2608 / ZKL614-změna SPZ na 6SR 4454;1.5.2022;1.8.2025
+501;4454;VW Transporter 6SR 4454 / ZKL614 sanita B IROP921;1.4.2025;
+504;1;denní místnost;;
+504;2;sestry RZP;;
+504;3;vedoucí provozu;;
+504;4;ordinace LPS;;
+504;5;pokoj sester RLP;;
+504;6;pokoj řidiči  I.;;
+504;7;lékařský pokoj;;
+504;8;chodba;;
+504;9;kuchyňka;;
+504;10;pokoj sester LPS;;
+504;11;pokoj lékařů LPS;;
+504;12;pokoj řidičů LPS;;
+504;13;šatna LPS;;
+504;14;sklad léků;;
+504;15;administrativa;;
+504;16;čekárna;;
+504;17;sprcha;;
+504;18;pokoj řidiči RV;;
+504;19;WC pacienti;;
+504;20;WC  ženy;;
+504;21;WC muži;;
+504;22;prádelna;;
+504;23;WC pokoj;;
+504;24;sklad kyslíku;;
+504;25;úklid;;
+504;26;7S6 9581 - prázdné, uzavřeno;;1.11.2022
+504;27;VW T5 2SD 2594 - prázdné, uzavřeno;;1.11.2022
+504;28;VW Transp. 3SU 6711 převod míst.6711,uzavřeno;;1.12.2022
+504;29;PZA 86-73 - prázdné, uzavřeno;;1.11.2022
+504;30;sklad garáž;;
+504;31;Fabia 3S5 5439 - prázdné, uzavřeno;;1.11.2022
+504;32;čistící místnost;;
+504;33;VW Tr. 2SD 2594 - ???;;
+504;34;Subaru 9S0 0503  ZPV231 - prázdné, uzavřeno;;1.11.2022
+504;35;denní místnost II.;;
+504;36;pokoj řidiči II.;;
+504;37;pokoj chodba;;
+504;38;chodba II.;;
+504;39;šatna;;
+504;40;YETI 1SK 3709 Indrová, přev.míst.3709, uzavřeno;;1.12.2022
+504;41;sběrná místnost;;
+504;42;7S6 5582 (pův.7S6 9582)  ZPV 624 -prázdné,uzavřeno;;1.11.2022
+504;43;VW T5 2SD 2602 ZPV612 - převod 701, uzavřeno;;1.3.2023
+504;44;Yeti 1SU 8562 nebo Yeti 2SI 7057 prázdné,uzavřeno;;1.11.2022
+504;45;Yeti 3SE 9088 RV  ZPV610 - prázdné,uzavřeno;;1.11.2022
+504;46;garáž;;
+504;47;odpadová místnost;;
+504;48;archiv;;
+504;49;Škoda Karoq 4SY 7701 RV, přev.míst.7701, uzavřeno;;1.12.2022
+504;50;VW Transp. 5SB 1804 ZPV611, přev.míst.1804,uzavřen;;1.12.2022
+504;51;VW Transp. 5SB 1807 ZPV612, přev.míst.1807,uzavřen;;1.12.2022
+504;52;pokoj primář;1.9.2023;
+504;0520;VW Transp. 4SF 0520 ZKL618;1.4.2024;
+504;1804;VW Transp. 5SB 1804 ZKL611, přev.do ADBN,uzavřeno;1.12.2022;1.2.2025
+504;1807;VW Transp. 5SB 1807 ZKL612, převod do ADBN 12/24;1.12.2022;
+504;3709;YETI 1SK 3709 REF Indrová (599);1.12.2022;
+504;4377;VW Transp 6SR 4377, ZKL612, sanita C 2024, IROP925;1.11.2024;
+504;4801;VW Transp 6SR 4801, ZKL611, sanita C 2024, IROP925;1.11.2024;
+504;6711;VW Transp. 3SU 6711 ZKL618 záložní, přev.701/v6711;1.12.2022;
+504;7701;Škoda Karoq 4SY 7701 (dříve 4ST 7501), RV, ZKL610;1.12.2022;
+506;1;chodba;;1.6.2024
+506;2;pokoj lékařů;;1.6.2024
+506;3;pokoj sester;;1.6.2024
+506;4;pokoj řidičů;;1.6.2024
+506;5;denní místnost;;1.6.2024
+506;6;kuchyňka;;1.6.2024
+506;7;předsíň;;1.6.2024
+506;8;PZK 45-59;;1.6.2024
+506;9;ZPV 617  PZL 51-17;;1.6.2024
+506;10;koupelna;;1.6.2024
+506;11;------;;1.6.2024
+506;12;prostor před budovou;;1.6.2024
+506;13;VW Tr. 7S6 8650 ZPV 614;;1.6.2024
+506;14;RV Hostivice;;1.6.2024
+507;0;venkovní prostory, voda, molo apod.;1.5.2025;
+507;1;ordinace;;
+507;2;člun;;
+507;3;dočasné vozidlo RV (sezona 2025 - Kodiaq 4SY 8122);;
+507;4;člun VZS Jeanneau Merry Fischer 2024;1.2.2024;
+507;0606;přívěs pro lodě 6SF 0606 VG,ATB-PBA;1.2.2024;
+507;3348;přívěs pro lodě 33PZA-48 Bootcenter Schneider;1.4.2024;
+508;1;chodba přízemí;1.4.2025;
+508;2;pokoj sestry;1.4.2025;
+508;3;chodba 1.patro;1.4.2025;
+508;4;šatna;1.4.2025;
+508;5;pokoj řidiči RV;1.4.2025;
+508;6;pokoj řidiči RZP;1.4.2025;
+508;7;sklad;1.4.2025;
+508;8;pokoj lékaři;1.4.2025;
+508;9;šatna lékaři;1.4.2025;
+508;10;vstup.chodba do spol.místnosti;1.4.2025;
+508;11;společenská místnost a kuchyňka;1.4.2025;
+508;12;koupelna;1.4.2025;
+508;13;čistící místnosti;1.4.2025;
+508;14;sklad odpadů;1.4.2025;
+508;15;přístřešek;1.4.2025;
+508;16;WC ženy;1.4.2025;
+508;17;WC muži;1.4.2025;
+508;2927;VW Transporter 5SJ 2927 / ZKL561 sanita B IROP921;1.4.2025;
+508;8121;Kodiaq 4SY 8121 RV (ZKL 560);1.4.2025;
+510;1;VW 2S8 6710 vyřazeno 30.6.2017;;1.7.2017
+510;2;denní místnost (do 02/23 sestry);;
+510;3;kuchyňka;;
+510;4;řidiči;;
+510;5;chodba (do 02/23 denní místnost);;
+510;6;šatna;;
+510;7;koupelna;;
+510;8;sklad;;
+510;9;čistící místnost;;
+510;10;VW 8S9 9474 vol. znak 621 (převedeno, prázdné);;1.10.2022
+510;11;VW T5 2SD 2600 - vyřazeno 11/2018;;
+510;12;sanitní vůz volací znak 613, prázdné-uzavřeno;;1.12.2022
+510;13;VW Transp. 5SC 9676, převod míst.9676, uzavřeno;;1.12.2022
+510;14;kancelář pro školení;1.3.2023;
+510;15;sestry;1.3.2023;
+510;16;venkovní přístřešek (garáž);1.6.2024;
+510;17;nádvoří;1.5.2025;
+510;1352;dočasné voz.inspektorů Yeti 3SY 1352, bez převodu;1.5.2024;1.6.2024
+510;4822;VW Transp 6SR 4822, ZKL613, sanita C 2024, IROP925;1.11.2024;
+510;7500;Škoda Karoq 4ST 7500 inspektoři provozu Zdiby;1.6.2024;
+510;8562;Yeti 1SU 8562 inspektoři Zdiby-přev.do ADBN 05/24;1.5.2023;1.6.2024
+510;9676;VW Transp. 5SC 9676 ZKL613 (507), do ADBN 12/24;1.12.2022;
+511;1;sklad léků a ZM;;1.8.2023
+511;2;šatna ženy;;1.8.2023
+511;3;šatna muži;;1.8.2023
+511;4;technická místnost;;1.8.2023
+511;5;pokoj sestry II.;;1.8.2023
+511;6;pokoj řidiči RV;;1.8.2023
+511;7;lékařský pokoj;;1.8.2023
+511;8;kuchyňka;;1.8.2023
+511;9;společenská místnost;;1.8.2023
+511;10;jídelna;;1.8.2023
+511;11;chodba;;1.8.2023
+511;12;pokoj řidiči RZP;;1.8.2023
+511;13;pokoj sestry I.;;1.8.2023
+511;14;prostor před budovou;;1.8.2023
+511;15;úklidová místnost;;1.8.2023
+511;16;předsíň;;1.8.2023
+511;17;přístřešek;;1.8.2023
+511;18;VW Transp. 3SU 6710  ZPV622;;1.7.2020
+511;19;Subaru  1SC 0210 (pův. 9S0 0501) RV;;1.8.2023
+511;20;Zápy;;1.8.2023
+511;21;VW T5 2SD 2562 prázdné;;1.8.2023
+511;22;VW T5 2SD 2569  ZPV621;;1.8.2023
+511;23;------;;1.8.2023
+511;24;Yeti 4SA 7362 FZŠ - prázdné, uzavřeno;;1.12.2022
+511;25;VW Transp. 4SF 0520, prázdné, uzavřeno;;1.8.2023
+511;26;VW Transp. 4SF 0521;;1.8.2023
+512;1;čistící místnosti;;
+512;2;odpady;;
+512;3;hala;;
+512;4;SZM I.;;
+512;5;chodba I. - přízemí;;
+512;6;chodba II. - mezipatro;;
+512;7;šatna muži;;
+512;8;lékař;;
+512;9;šatna ženy;;
+512;10;chodba III. - patro;;
+512;11;řidiči RV;;
+512;12;řidiči RZP I.;;
+512;13;prádelna;;
+512;14;společenská místnost;;
+512;15;SZM II.;;
+512;16;kuchyň;;
+512;17;řidiči RZP II.;;
+512;18;sestry I.;;
+512;19;sestry II.;;
+512;20;prostor před budovou;;
+512;21;Yeti 4SA 7362 VZ620 FZŠ, prázdné, uzavřeno;;1.4.2024
+512;22;VW Transp. 4SF 0521 VZ621, přev.míst.0521,uzavřeno;;1.12.2022
+512;23;VW Transp. 4SF 0520 VZ622, přev.míst.0520,uzavřeno;;1.12.2022
+512;24;Zápy;;
+512;25;Karoq 5SE 8676 RV,ZKL620,přev.míst.8676, uzavřeno;;1.12.2022
+512;0520;VW Transp. 4SF 0520 ZKL622, přev.na 504/0520;1.12.2022;
+512;0521;VW Transp. 4SF 0521 ZKL621, přev.ADBN 05/24;1.12.2022;
+512;8591;VW Transporter 6SF 8591 / ZKL622 sanita C IROP921;1.12.2023;
+512;8595;VW Transporter 6SF 8595 / ZKL621 sanita C IROP921;1.12.2023;
+512;8676;Karoq 5SE 8676 RV Brandýs, ZKL620 (504);1.12.2022;
+513;1;společenská místnost;;1.10.2022
+513;2;kuchyň;;1.10.2022
+513;3;úseková sestra;;1.10.2022
+513;4;sestry;;1.10.2022
+513;5;lékařský pokoj;;1.10.2022
+513;6;odkládací místnost;;1.10.2022
+513;7;mycí místnost;;1.10.2022
+513;8;řidiči;;1.10.2022
+513;9;šatna;;1.10.2022
+513;10;prádelna;;1.10.2022
+513;11;sklad u kuchyně;;1.10.2022
+513;12;sklad zdravotnický;;1.10.2022
+513;13;chodba RLP;;1.10.2022
+513;15;sanity;;1.10.2022
+513;16;garážový přístřešek;;1.10.2022
+513;17;VW Transp. 3SU 6618 IOP (prázdné,převedeno);;1.10.2022
+514;1;šatna;;1.10.2022
+514;2;provozní místnost;;1.10.2022
+514;3;pokoj vedoucího lékaře;;1.10.2022
+514;4;pokoj lékařů;;1.10.2022
+514;5;řidiči RLP;;1.10.2022
+514;6;společenská místnost;;1.10.2022
+514;7;sestry RLP;;1.10.2022
+514;8;staniční sestra;;1.10.2022
+514;9;úklid;;1.10.2022
+514;10;chodba budovy;;1.10.2022
+514;13;VW T5 2SD 2580 prázdné;;1.10.2022
+514;14;VW Transp. 3SU 6617 IOP ZPV616, přev.303, uzavřeno;;1.11.2018
+515;1804;VW Transp. 5SB 1804 (ZKL...);1.7.2025;
+516;1;pokoj - zdravotnický záchranář;1.6.2025;
+516;2;pokoj - řidič;1.6.2025;
+516;3;společenská místnost;1.6.2025;
+516;4;WC, sprcha;1.6.2025;
+516;5;kuchyňka;1.6.2025;
+516;6;pokoj - řidič RV;1.6.2025;
+516;7;pokoj - lékař;1.6.2025;
+516;8;čistící místnost;1.6.2025;
+516;9;chodba přízemí;1.6.2025;
+516;11;prostor před budovou;1.6.2025;
+516;10a;sklad ZM;1.6.2025;
+516;10b;šatna;1.6.2025;
+516;9177;VW Transp. 4SB 9177 (dříve 3SU 6702), ZKL556, IOP;1.6.2025;
+520;0;Žitavského 497 (před a kolem budovy);1.12.2025;
+520;1;šatna;1.10.2025;
+520;2;denní místnost + kuchyňka;1.10.2025;
+520;3;chodba, tech.místnost;1.10.2025;
+520;4;chodba;1.10.2025;
+520;5;pokoj záchranář;1.10.2025;
+520;6;chodba, sklad;1.10.2025;
+520;7;pokoj řidič;1.10.2025;
+520;1802;VW Transp. 5SB 1802, ZKL??? (12/25 z ADBN);1.12.2025;
+601;1;primář OS (651);;
+601;2;řidiči 2 (601);;
+601;3;lékaři 1 (601);;
+601;4;výcvikové pomůcky (601);;
+601;5;řidiči 1 (601);;
+601;6;býv. ZOS (601);;
+601;7;býv. ZOS, tech.zázemí, posilovna (601);;
+601;8;sklad plynů (601);;
+601;9;nelékaři 2 (601);;
+601;10;nádvoří ZS Pb,Školní 70 (601);;
+601;11;chodba (651);;
+601;12;hasiči (651);;
+601;13;generátor (601);;
+601;14;garáže (601);;
+601;15;žehlírna, sušárna (601);;
+601;16;kuchyňka;;
+601;17;prádelna (601);;
+601;18;šatna - ženy (601);;
+601;19;záchranáři-denní místnost (601);;
+601;20;------;;
+601;21;koupelna -muži,ženy (601);;
+601;22;zdravotnické přístroje,nástroje (601);;
+601;23;šatna - muži (601);;
+601;24;provozně-ekonomický správce (651);;
+601;25;sterilizační místnost (601);;
+601;26;vrchní sestra (601);;
+601;27;úklidová místnost (651);;
+601;28;sekretariát (651);;
+601;29;nelékaři 1 (601);;
+601;30;sklad zdr. materiálu (601);;
+601;31;hromad. neštěstí (660);;
+601;32;Brod u Příbramě;;
+601;100;stanoviště Orlík - prozatímní 2025;1.6.2025;
+601;0685;VW Transp. 9S5 0685 REF (651) převedeno ADBN;1.11.2022;1.5.2025
+601;2564;VW T5 2SD 2564 ZKL 518 převod 701/955 v 01/2021;;1.10.2022
+601;2591;VW T5 2SD 2591 ZKL 518 (601) převod 701/2591;;1.9.2025
+601;4819;VW Transp 6SR 4819, ZKL512, sanita C 2024, IROP925;1.11.2024;
+601;6713;VW Transp. 3SU 6713 ZKL 512, převod do ADBN 12/24;;
+601;6714;VW Transp. 3SU 6714 ZKL 518, záloha (601);;
+601;7502;Škoda Karoq 4ST 7502 RV, ZKL510, přev.ADBN;;1.9.2025
+601;7674;Yeti 2ST 7674 REF (651) budova 601;1.11.2022;
+601;8125;VW Crafter 4SY 8125 HN, ZKL519 (909) bud.601;;
+601;8596;VW Transporter 6SF 8596 / ZKL511 sanita C IROP921;1.12.2023;
+601;8610;VW Transp. 5SE 8610 ZKL 515 (601);;
+601;8639;VW 7HC kombi 6SU 8639 ZKL510, RV Příbram (601);1.2.2025;
+601;8718;přívěs 5S7 8718 bez převodky 701odpis, převést DDM;;1.9.2025
+601;9675;Octavia 2S8 9675 (651) vyřazeno 08/2022;;1.10.2022
+602;1;bývalý KÚ-sklad (651);;1.10.2022
+602;2;posilovna (651);;1.10.2022
+602;3;přednášková místnost (670);;1.10.2022
+602;4;učebna č. 1 (670);;1.10.2022
+602;5;učebna č. 2 (670);;1.10.2022
+602;6;kancelář-vzdělávání II (670);;1.10.2022
+602;7;kancelář vzdělávání (670);;1.10.2022
+602;8;sklad vzdělávání (670);;1.10.2022
+602;9;učebna č. 3 (670);;1.10.2022
+602;10;býv. LPS čekárna (651);;1.10.2022
+602;11;býv. LPS ordinace dospělí (651);;1.10.2022
+602;12;býv. LPS zázemí dospělí (651);;1.10.2022
+602;13;-----;;1.10.2022
+602;14;býv. pokoj č.13-lékař (651);;1.10.2022
+602;15;býv. pokoj č.15-lékař (651);;1.10.2022
+602;16;býv. LPS řidiči (651);;1.10.2022
+602;17;-----;;1.10.2022
+602;18;WC pacienti (651);;1.10.2022
+602;19;WC zdrav. personálu (651);;1.10.2022
+602;20;býv. LPS kuchyňka - šatna (651);;1.10.2022
+602;21;býv. LPS pomocnice (651);;1.10.2022
+602;22;býv. LPS údržba (651);;1.10.2022
+602;23;-----;;1.10.2022
+602;24;archiv (651);;1.10.2022
+602;25;budova Tř.Osvobození 387 (651);;1.10.2022
+602;26;prádelna (651);;1.10.2022
+602;27;-----;;1.10.2022
+602;28;-----;;1.10.2022
+602;29;kancelář vzdělávání III (670);;1.10.2022
+602;30;sklad vysílaček Pleva J. (901);;1.12.2022
+603;1;společenská místnost;;
+603;2;zádveří;;
+603;3;chodba;;
+603;4;technická místnost č. 1;;
+603;5;technická místnost č. 2;;
+603;6;čistící místnost - dekontaminace;;
+603;7;SZM;;
+603;8;prádelna - sušárna;;
+603;9;staniční sestra;;
+603;10;lékaři;;
+603;11;řidiči;;
+603;12;šatna muži;;
+603;13;WC muži;;
+603;14;WC ženy;;
+603;15;šatna ženy;;
+603;16;záchranáři;;
+603;17;shromaždiště  nebezpečného odpadu;;
+603;18;nádvoří, budova;;
+603;19;garáž pronajatá;;
+603;20;garážový přístřešek;;
+603;21;sklad-průjezdná garáž;1.10.2023;
+603;0524;VW Transp. 4SF 0524  ZKL522, převod do ADBN 12/24;;
+603;3170;VW Transporter 5SJ 3170 / ZKL521 sanita B IROP921;1.5.2022;
+603;4719;VW Transp 6SR 4719, ZKL522, sanita C 2024, IROP925;1.11.2024;
+603;5649;Yeti 3SN 5649 převod na 701, uzavřeno;;1.2.2024
+603;6715;VW Transp. 3SU 6715 (521) převod 701, uzavřeno;;1.2.2024
+603;7360;Yeti Outdoor 4SA 7360 FZŠ, RV;1.11.2024;
+603;8677;Karoq 5SE 8677 RV, ZKL520 (603);;
+604;1;kuchyňka;;1.3.2023
+604;2;šatna sestry;;1.3.2023
+604;3;šatna řidiči;;1.3.2023
+604;4;dispečink;;1.3.2023
+604;5;denní místnost řidiči;;1.3.2023
+604;6;chodba;;1.3.2023
+604;7;sklad u dispeč.;;1.3.2023
+604;8;čistička;;1.3.2023
+604;9;úseková sestra;;1.3.2023
+604;10;společenská místnost;;1.3.2023
+604;11;lékař;;1.3.2023
+604;12;výlevka;;1.3.2023
+604;13;Sedlčany č. 160;;1.3.2023
+604;14;hromad. neštěstí;;1.3.2023
+605;1;denní místnost;;
+605;2;bývalý lékař;;
+605;3;kuchyňka;;
+605;4;koupelna;;
+605;5;čistička;;
+605;6;řidiči;;
+605;7;chodba;;
+605;8;sklad VS Dobříš;;
+605;9;hromad. něštěstí;;
+605;10;garáž - nádvoří;;
+605;6718;VW Transp. 3SU 6718 vyřazeno 01/22, uzavřeno;;1.11.2022
+605;8609;VW Transp. 5SE 8609 ZKL513 (602) přev.bud.618;;1.4.2024
+609;1;sklad KÚ;;
+609;6304;vůz PBA 63-04 je na 901/200/80;;1.10.2022
+610;1;Loužek;;
+610;2;denní místnost;;
+610;4;řidiči;;
+610;5;kuchyňka;;
+610;6;šatna;;
+610;7;garáž;;
+610;8;sklad;;
+610;9;čistička;;
+610;2584;VW T5 2SD 2584 ZKL 516 přev ADBN 03/24;;
+610;8584;VW Transporter 6SF 8584 / ZKL516 sanita C IROP921;1.12.2023;
+612;1;Beroun prof. Veselého č. 461;;
+612;13;hromadné neštěstí;;
+612;14;kotelna;;
+612;15;prádelna;;
+612;16;technická místnost;;
+612;17;šatna;;
+612;18;čistící místnost;;
+612;19;sklad;;
+612;20;Pleva denní místnost (býv. LPS spol.);;
+612;21;vrchní sestra (býv. LPS ordinace);;
+612;22;Pleva sklad (býv. LPS čekárna);;
+612;23;býv. LPS chodba;;
+612;24;společenská místnost;;
+612;25;primář;;
+612;26;vrchní sestra, THP;;
+612;27;kuchyňka;;
+612;28;jídelna;;
+612;29;chodba 2.NP;;
+612;30;lékař 1 - denní místnost;;
+612;31;řidič RV;;
+612;32;řidič RZP;;
+612;33;zdrav.záchranář 2 (dříve KP);;
+612;34;řidič RZP 2 (dříve ved.řidič);;
+612;35;záchranáři 2 - denní místnost;;
+612;36;sprcha pánská, dámská;;
+612;37;chodba - kuchyňka 3.NP;;
+612;38;půda;;
+612;39;garáže;;
+612;40;garážový přístřešek;;
+612;41;centrální sklad;;
+612;42;sklad odpadu;;
+612;554;Octavia 9S8 0554 vyř.03/2015;;1.10.2022
+612;1292;Octavia 9S8 1292 REF Beroun, přev.do ADBN;1.11.2022;1.1.2025
+612;1803;VW Transp. 5SB 1803 (ZKL...);1.2.2025;
+612;2583;VW T5 2SD 2583 (ZKL 558), přev.ADBN 01/25;;
+612;2716;MAN TGE 7SF 2810 - Beroun;1.3.2026;
+612;3899;Škoda Kodiaq 3SJ 3899 FZŠ, RV (ZKL 550);;
+612;4130;vůz BEI 41-30  ZPB 552 vyřazeno 04/14;;1.10.2022
+612;4821;VW Transp 6SR 4821, ZKL551, sanita C 2024, IROP925;1.11.2024;
+612;6323;Škoda Octavia 2SI 6323 (604, Štursová);1.12.2024;
+612;7721;Fabia 3SB 7721 vyřazeno 08/22;;1.8.2022
+612;7758;VW Transp. 7S6 7758 vyřazeno 05/2016;;1.10.2022
+612;8016;vůz 1S2 8016  ZPB 551 vyřazeno 12/2012;;1.10.2022
+612;8422;vůz PBJ 84-22 ZPB 510 vyřazeno 01/2011;;1.10.2022
+612;8525;Octavia KHH 8525 (auto vyř.06/2022);;1.6.2022
+612;8613;VW Transp. 5SE 8613 (ZKL 558 záloha);;
+612;8651;vůz 7S6 8651 ZPB 555 vyřazeno 01/2013;;1.10.2022
+613;1;společenská místnost;;
+613;2;šatna - prádelna;;
+613;3;řidiči;;
+613;4;chodba - kuchyňka;;
+613;5;čistička;;
+613;6;sklad;;
+613;7;sprcha;;
+613;8;WC;;
+613;9;pozemek;;
+613;10;garáž;;
+613;0518;VW Transp. 4SF 0518  ZKL514, převod do ADBN 12/24;;
+613;1421;3SY 1421-je na 701/981;;1.11.2022
+613;4802;VW Transp 6SR 4802, ZKL514, sanita C 2024, IROP925;1.11.2024;
+614;0;areál Zdice (před a kolem budovy);1.11.2024;
+614;1;společenská místnost + kuchyňka;;
+614;2;pokoj sester;;
+614;3;pokoj řidičů;;
+614;4;chodba levé křídlo;;
+614;5;chodba 1. patro;;
+614;6;šatna;;
+614;7;školící centrum;;
+614;8;čistící místnost;;
+614;9;chodba pravé křídlo;;
+614;10;sprcha;;
+614;11;kotelna;;
+614;12;prádelna;;
+614;13;WC + výlevka;;
+614;14;WC + pisoár;;
+614;15;chodba přízemí;;
+614;16;sklad kyslíku + odpad;;
+614;17;sklad;;
+614;18;garáž + dekontaminace;;
+614;19;místnost výzkumu;;
+614;100;RZP Zdice;;
+614;0515;VW Transp. 4SF 0515 (ZKL 552) přev.ADBN 12/24;;
+614;2577;VW T5 2SD 2577 vyřazeno 08/2022;;1.8.2022
+614;4805;VW Transp 6SR 4805, ZKL552, sanita C 2024, IROP925;1.11.2024;
+614;7032;VW 7S0 7032 vyřazeno 04/2016;;1.10.2022
+615;1;společenská místnost;;
+615;2;kuchyňka;;
+615;3;řidič 1;;
+615;4;řidič 2;;
+615;5;lékaři;;
+615;6;sestra 2;;
+615;7;sestra 1;;
+615;8;sklad sestry;;
+615;9;sklad technický;;
+615;10;chodba;;
+615;11;čistící místnost;;
+615;12;šatna;;
+615;13;sprchy + prádelna;;
+615;14;stání;;
+615;15;hromad. neštěstí (660);;
+615;100;před a kolem budovy Masarykova;1.11.2025;
+615;101;primář;1.11.2025;
+615;102;lékařský pokoj;1.11.2025;
+615;103;záchranář I. RLP;1.11.2025;
+615;104;záchranář II. RZP;1.11.2025;
+615;105;řidič I. RLP;1.11.2025;
+615;106;řidič II. RZP;1.11.2025;
+615;107;spol.místnost + kuchyňka;1.11.2025;
+615;108;šatna dámy;1.11.2025;
+615;109;šatna páni;1.11.2025;
+615;110;sklad ZM;1.11.2025;
+615;111;prádelna;1.11.2025;
+615;112;sklad technický;1.11.2025;
+615;113;garáže;1.11.2025;
+615;114;chodba;1.12.2025;
+615;682;9S5 06 82 zapůjčeno Autoklub Slaný 902/538;;1.10.2022
+615;2603;VW T5 2SD 2603 vyřazeno 01/2022, zůstatek DDM;;
+615;4130;BEI 41-30 ZPB 552 vyřazeno 06/14;;1.10.2022
+615;6705;VW Transp. 3SU 6705 IOP (ZKL 553) do ADBN 03/24;;1.4.2024
+615;8578;VW Transporter 6SF 8578 / ZKL553 sanita C IROP921;1.12.2023;
+615;8611;VW Transp. 5SE 8611 (ZKL 555);;
+616;1;------;;1.7.2022
+616;2;------;;1.7.2022
+616;3;čistící místnost 1;;1.7.2022
+616;4;čistící místnost 2;;1.7.2022
+616;5;prostor před budovou;;1.7.2022
+616;6;chodba;;1.7.2022
+616;7;kuchyňka;;1.7.2022
+616;8;šatna lékaři;;1.7.2022
+616;9;lékaři;;1.7.2022
+616;10;chodba řidiči;;1.7.2022
+616;11;řidiči 1;;1.7.2022
+616;12;řidiči 2;;1.7.2022
+616;13;sestry;;1.7.2022
+616;14;Yeti 1SK 3708;;1.7.2022
+616;15;dekontaminační místnost;;1.7.2022
+616;16;koupelna;;1.7.2022
+616;17;společenská místnost;;1.7.2022
+616;100;Hostivice;;1.7.2022
+616;1352;Škoda Yeti 3SY 1352, prázdné, uzavřeno;;1.7.2022
+616;2572;VW T5 2SD 2572 (auto vyř.05/2022);;1.5.2022
+616;6708;VW Transp. 3SU 6708 IOP převod 617/6708;;1.7.2022
+616;8121;Kodiaq 4SY 8121 ukončeno;;1.7.2022
+617;1;chodba přízemí;;
+617;2;pokoj sestry;;
+617;3;chodba 1. patro;;
+617;4;šatna;;
+617;5;pokoj řidiči RV;;
+617;6;pokoj řidiči RZP;;
+617;7;sklad;;
+617;8;pokoj lékaři;;
+617;9;šatna lékaři;;
+617;10;vstup. chodba do spol. místnosti;;
+617;11;společenská místnost + kuchyňka;;
+617;12;koupelna;;
+617;13;čistící místnosti;;
+617;14;sklad odpadů;;
+617;15;přístřešek;;
+617;16;WC ženy;;
+617;17;WC muži;;
+617;2927;VW Transporter 5SJ 2927 / ZKL561 sanita B IROP921;1.5.2022;
+617;6708;VW Tr. 3SU 6708 IOP převod 701/1026;;1.10.2022
+617;8121;Kodiaq 4SY 8121 RV (ZKL 560);;
+618;1;denní místnost;1.3.2024;
+618;2;záchranáři;1.3.2024;
+618;3;řidiči;1.3.2024;
+618;4;WC řidiči;1.3.2024;
+618;5;WC ženy;1.3.2024;
+618;6;koupelna;1.3.2024;
+618;7;chodba;1.3.2024;
+618;8;prádelna;1.3.2024;
+618;9;šatna;1.3.2024;
+618;10;zádveří;1.3.2024;
+618;11;dekontaminace;1.3.2024;
+618;12;garáž;1.3.2024;
+618;13;nádvoří;1.3.2024;
+618;8609;VW Transp. 5SE 8609 ZKL513 (602);1.3.2024;
+619;1;pokoj - zdravotnický záchranář;1.4.2024;
+619;2;pokoj - řidič;1.4.2024;
+619;3;společenská místnost;1.4.2024;
+619;4;WC, sprcha;1.4.2024;
+619;5;kuchyňka;1.4.2024;
+619;6;pokoj - řidič RV (dříve šatna);1.4.2025;
+619;7;pokoj - lékař (dříve sklad ZM);1.4.2025;
+619;8;čistící místnost;1.4.2024;
+619;9;chodba přízemí;1.4.2024;
+619;10;sál - 05/25 rozdělen na 10a,10b;1.4.2024;
+619;11;prostor před budovou;1.6.2024;
+619;12;chodba 1.patro;1.5.2025;
+619;10a;sklad ZM;1.4.2025;
+619;10b;šatna;1.4.2025;
+619;1804;VW Transp. 5SB 1804 (ZKL...) PZ od 08/25;1.5.2025;
+619;9177;VW Transp. 4SB 9177 (dříve 3SU 6702), ZKL556, IOP;1.3.2024;
+701;0;venku na pozemku;1.9.2023;
+701;1;vedoucí autodílny Matej;;
+701;2;účtárna Sochůrková;;
+701;3;mechanici;;
+701;4;dílna;;
+701;5;sklad;;
+701;6;myčka;;
+701;7;pneu dílna;;
+701;8;mechanici 2;;
+701;9;přístřešek;;
+701;101;Merc. Benz Sprinter 2S4 4020;;1.2.2024
+701;102;MBenz 2S4 4030;;1.2.2024
+701;108;M. Benz 3S5 05 84;;1.2.2024
+701;109;VW 7S3 94 63;;1.2.2024
+701;112;Felicia 3S8 4456;;1.2.2024
+701;115;VW 7S0 6797;;1.2.2024
+701;117;VW Transp. 9S5 0679 (auto vyř.05/2022);;1.5.2022
+701;203;MBM 17-71;;1.2.2024
+701;204;Laureta MBN 91-00;;1.2.2024
+701;205;Merc. MBK 14-16;;1.2.2024
+701;206;VW 5S3 5667;;1.2.2024
+701;207;vozidlo MBM 48-80;;1.2.2024
+701;210;Mercedes MEA 38-19;;1.2.2024
+701;211;Merc. MEM 20-72;;1.2.2024
+701;212;Merc. MEJ 66-29;;1.2.2024
+701;216;VW 6S0 0223;;1.2.2024
+701;217;VW 2S8 6903;;1.2.2024
+701;223;vozidlo MEM 23-62;;1.2.2024
+701;224;vozidlo 1S4 4939;;1.2.2024
+701;233;VW 7S0 7033;;1.2.2024
+701;234;VW Transp. 9S5 0678 (auto vyř.05/2022);;1.5.2022
+701;235;VW Transp. 9S5 0681 (auto vyř.10/22);;1.2.2024
+701;303;Peugeot 1S7 6789;;1.2.2024
+701;307;VW KOL 43-38;;1.2.2024
+701;312;NBJ 11-33;;1.2.2024
+701;313;6S4 0102 Ford dílna;;1.2.2024
+701;314;NBH 78-98 (auto vyř.05/2022);;1.5.2022
+701;316;NBH 37-05;;1.2.2024
+701;318;Mercedes Spr. 3S8 5580;;1.2.2024
+701;320;BMW 5S3 1033;;1.2.2024
+701;321;VW 6S6 5119;;1.2.2024
+701;322;VW 7S4 0484;;1.2.2024
+701;324;VW 6S6 4847;;1.2.2024
+701;401;Š. Octavia 2S6 2135;;1.2.2024
+701;402;VW BNJ 07-75;;1.2.2024
+701;403;Skoda - okt. PHM 71-59 (auto vyř.05/2022);;1.5.2022
+701;405;BNA 74-69;;1.2.2024
+701;406;VW BNI 47-96;;1.2.2024
+701;407;BNJ 02-46;;1.2.2024
+701;427;VW KHH 85-25 (auto vyř.06/2022);;1.6.2022
+701;429;Renault KHH 08-28;;1.2.2024
+701;430;Renault KHI 21-29;;1.2.2024
+701;434;VW Transp. 4S3 4691 krizová sanita;1.12.2022;1.2.2024
+701;440;VW 1SU 7934 (pův. 6S6 5122) vyř.08/2016;;1.2.2024
+701;441;VW 6S6 5125;;1.2.2024
+701;443;VW Tr. 1SR 6348;;1.2.2024
+701;444;VW Tr. 7S0 7062 (auto vyř.05/2022);;1.5.2022
+701;446;VW Transp. 9S5 0683;;1.2.2024
+701;501;Subaru 2S8 76 44;;1.2.2024
+701;502;PZL 37-03 Felicie;;1.2.2024
+701;503;Fabia 3S1 2949;;1.2.2024
+701;504;PZA 86-73;;1.2.2024
+701;506;PZK 45-59;;1.2.2024
+701;507;VW PZL 51-17;;1.2.2024
+701;509;PZK 93-68;;1.2.2024
+701;513;2S8 6710 - vyřazeno 06/2017;;1.2.2024
+701;514;2S8 75 84;;1.2.2024
+701;515;2S8 6711;;1.2.2024
+701;517;BE 89-31;;1.2.2024
+701;520;VW Tr. 6S6 5118;;1.2.2024
+701;522;člun RLP Slapy SPORT UTILITY;;
+701;523;VW 7S6 8650;;1.2.2024
+701;525;7S6 9581;;1.2.2024
+701;601;VW PBA 64-92;;1.2.2024
+701;602;VW PBA 47-26;;1.2.2024
+701;604;Renault PBL 20-63;;1.2.2024
+701;606;Renault 1S2 0550;;1.2.2024
+701;607;VW PBK 69-72 (převod na v6972);;1.4.2024
+701;611;Golf PBJ 84-22 vyřazeno 01/2011;;1.10.2022
+701;612;Passat PBI 75-33;;1.2.2024
+701;613;Subaru 2S8 7647;;1.2.2024
+701;618;BEH 15-03;;1.2.2024
+701;620;VW BEI 41 30;;1.2.2024
+701;621;VW BEJ 06-10;;1.2.2024
+701;622;BEI 25-42;;1.2.2024
+701;623;VW BEH 88-91;;1.2.2024
+701;630;VW 6S6 5124;;1.2.2024
+701;632;motorový člun Sunbird Crosair (200/81),uzavřeno;;1.4.2024
+701;634;7S0 7032 vyřazeno 04/2016;;1.10.2022
+701;638;VW Transp. 9S5 0677;;1.2.2024
+701;639;VW Transp. 9S5 0684;;1.2.2024
+701;640;9S5 0682;;1.2.2024
+701;702;KHD 68-57;;1.2.2024
+701;703;Octavia 9S8 0554 vyř.03/2015;;1.10.2022
+701;704;Avia 1SC 02 32;;1.2.2024
+701;706;nákl. přívěs 2SA 5405, nově 701/v5405, uzavřeno;;1.4.2024
+701;901;Octavia Combi 2S0 0105 (auto vyř.05/2022);;1.5.2022
+701;902;Octavia 2S8 9674 dříve REF Nymburk;1.5.2023;1.9.2023
+701;905;Fabia 3S5 5438 (auto vyř.06/2022);;1.6.2022
+701;909;Subaru 9S8 1022 (auto vyř.05/2022);;1.5.2022
+701;910;Subaru 4S3 7921 (auto vyř.05/2022);;1.5.2022
+701;911;Subaru 4S3 7922;;1.2.2024
+701;912;Nissan Patrol 3S5 7699;;1.2.2024
+701;914;Mitsubishi 5S1 7818 (auto vyř.06/2022);;1.6.2022
+701;915;Škoda Octavia 6S0 0116 (auto vyř.06/2022);;1.6.2022
+701;916;Škoda Octavia 2SY 7358 k vyřazení;1.7.2023;1.2.2024
+701;918;Jeep G. Ch. 7S3 9808 (auto vyř.10/2022);;1.2.2024
+701;920;Octavia 1SB 84 07;;1.2.2024
+701;927;Subaru Forester 9S0 0502;;1.2.2024
+701;928;Subaru 9S0 0503;;1.2.2024
+701;929;Fabia 9S8 1557 (auto vyř.05/2022);;1.5.2022
+701;932;Octavia 9S8 1535 REF z KH k vyřazení;1.1.2023;1.2.2024
+701;935;Yeti 1SK 3710 (auto vyř.05/2022);;1.5.2022
+701;936;Yeti 1SK 3711;;1.2.2024
+701;937;Yeti 1SK 3708;;1.2.2024
+701;938;Yeti 1SK 3709;;1.2.2024
+701;941;Yeti 1SU 8561 (převedeno 101/903/8561) uzavřeno;;1.12.2022
+701;942;Yeti 1SU 8562;;1.2.2024
+701;943;Yeti 1SU 8563 přev.301/43 v 04/2021, prázdné;;1.10.2022
+701;944;Yeti 1SU 8564, nově 701/v8564;;1.4.2024
+701;948;VW T5 2SD 2559 - převedeno 902/2559;;1.2.2024
+701;949;VW T5 2SK 4979 (pův.2SD 2558), nově 701/v4979;1.9.2022;1.4.2024
+701;950;VW T5 2SD 2561, nově 701/v2561;;1.4.2024
+701;952;VW T5 2SD 2557, nově 701/v2557;;1.4.2024
+701;953;VW T5 2SD 2562, nově 701/v2562;;1.4.2024
+701;955;VW T5 2SD 2564 převod JM Kraj 01/2022 - prázdné;;1.2.2024
+701;956;VW T5 2SD 2565, nově 701/v2565;;1.4.2024
+701;957;VW T5 2SD 2566, nově 701/v2566;;1.4.2024
+701;959;WV T5 3SY 7314 (pův.2SD 2568)  Mělník;1.10.2022;1.8.2023
+701;963;VW T5 2SD 2576 (356) převod 902/436;1.11.2022;1.2.2024
+701;965;VW T5 2SD 2574, nově 701/v2574;;1.4.2024
+701;966;VW T5 2SD 2575, nově 701/v2575;;1.4.2024
+701;967;VW T5 2SD 2572 (auto vyř.05/2022);;1.2.2024
+701;968;VW Transp 3SZ 4976 ZKL118, nově 701/v4976;1.1.2023;1.4.2024
+701;969;VW Transp. 2SD 2577 vyř.08/22 zůstatek DDM;;1.2.2024
+701;970;2SD 2581, nově 701/2581;;1.4.2024
+701;971;VW T5 2SD 2582, nově 701/2582;;1.4.2024
+701;972;VW Transp. 2SD 2578 prázdné;;1.2.2024
+701;973;2SD 2580, nově 701/2580;;1.4.2024
+701;976;VW T5 2SD 2585, nově 701/v2585;1.4.2023;1.4.2024
+701;977;VW T5 2SD 2586, nově 701/v2586;;1.4.2024
+701;978;San.vůz VW T5 2SD 2587, nově 701/v2587;1.9.2022;1.4.2024
+701;981;VW T5 3SY 1421 vrác.záp.ASČR Kralupy, prázdné;1.9.2022;1.2.2024
+701;986;VW T5 2SD 2595, nově 701/2595;;1.4.2024
+701;987;VW T5 2SD 2596, nově 701/v2596;;1.4.2024
+701;988;Yeti 2SI 7048 - převod na 902, prázdné;;1.2.2024
+701;989;Yeti 2SI 7057, nově 701/v7057;;1.2.2024
+701;990;VW Transp. 2SD 2597, převod, prázdné;;1.2.2024
+701;995;San.vůz VW T5 2SD 2602, vyř.06/23;1.1.2023;1.6.2024
+701;998;Škoda Octavia 2ST 7594 (701)-REF Šalda, nově v7594;1.2.2023;1.4.2024
+701;1001;YETI 2ST 7674 - převod na 601, uzavřeno;;1.12.2022
+701;1005;Škoda Superb 3SE 9377 Matej, vyř.02/24, uzavřeno;;1.3.2024
+701;1006;Yeti 3SE 9088, nově 701/9088;;1.4.2024
+701;1010;Yeti 3SN 5649, nově 701/v5649;;1.4.2024
+701;1014;VW Transp. 3SJ 3451 (dříve 3SU 6617), nově v3451;1.11.2022;1.4.2024
+701;1015;VW Transp. 3SU 6618 IOP, nově 701/v6618;1.11.2022;1.4.2024
+701;1020;VW Transp. 4SB 9177 (dříve 3SU 6702) přev.619/9177;1.12.2022;1.4.2024
+701;1022;VW Transp. 3SU 6704 (havárie) IOP, nově 701/v6704;1.4.2023;1.4.2024
+701;1024;VW Transp. 3SU 6706 IOP, nově 701/v6706;1.9.2022;1.4.2024
+701;1025;VW Transp. 3SU 6707 IOP, nově 701/v6707, uzavřeno;1.9.2022;1.4.2024
+701;1026;VW Transp. 3SU 6708, IOP, nově 701/v6708;1.10.2022;1.4.2024
+701;1028;VW 3SU 6710 - převod na 304, uzavřeno;;1.2.2023
+701;1033;VW Transp. 3SU 6715, vyř.07/23, uzavřeno;1.11.2022;1.2.2024
+701;1034;VW Transp. 3SU 6716 vyřazeno 08/23, uzavřeno;1.4.2023;1.2.2024
+701;1035;VW Transp. 5SB 1521 pův.3SU 6717, vyř.06/23, uzavř;1.10.2022;1.2.2024
+701;1036;VW Tr. 3SU 6718, vyř.ON Kolín 01/22, uzavřeno;;1.2.2024
+701;1040;Yeti 3SY 1350, nově 701/v1350;;1.4.2024
+701;1041;Yeti 3SY 1351, nově 701/v1351;1.4.2022;1.4.2024
+701;1042;Yeti 3SY 1352, nově 701/v1352;;1.4.2024
+701;1046;Yeti 4SA 7362 (FZŠ), nově 701/v7362, uzavřeno;;1.4.2024
+701;1047;Yeti Outdoor 4SA 7360 FZŠ (z MB), nově 701/v7360;1.11.2023;1.4.2024
+701;1056;Škoda YETI 4SB 2717 REF - převod 404, uzavřeno;1.7.2022;1.2.2024
+701;1099;Škoda Superb 5SJ 2254, nově 701/v2254, uzavřeno;1.7.2022;1.4.2024
+701;1115;VW Crafter 5SY 5541, servis A FZŠ, nově 701/v5541;1.9.2022;1.4.2024
+701;1116;VW Crafter 5SL 2327, servis B FZŠ, nově 701/v2327;1.9.2022;1.4.2024
+701;6619;VW Transp. 3SU 6619 IOP, nově 701/v6619, uzavřeno;1.12.2023;1.4.2024
+701;6706;VW Transp. 3SU 6706 IOP, nově 701/1024;;1.9.2022
+701;v0515;VW Transp. 4SF 0515 (ZKL 552 ze Zdic-BE);1.11.2024;
+701;v0516;VW Transp. 4SF 0516 přev.z NB Městec 01/25;1.1.2025;
+701;v0518;VW Transp. 4SF 0518, převedeno z PB-Březnice;1.12.2024;
+701;v0519;VW Transp. 4SF 0519, převedeno z BN-Votice;1.12.2024;
+701;v0521;VW Transp. 4SF 0521 (z Brandýsa);1.5.2024;
+701;v0524;VW Transp. 4SF 0524, převedeno z PB-Sedlčany;1.12.2024;
+701;v0685;VW Transp. 9S5 0685 REF z PB 03/25;1.3.2025;
+701;v1292;Octavia 9S8 1292, převedeno z BE;1.12.2024;
+701;v1350;Yeti 3SY 1350;1.1.2024;
+701;v1351;Yeti 3SY 1351;1.1.2024;
+701;v1352;Yeti 3SY 1352, záloha;1.1.2024;
+701;v1474;Š. Octavia 9S8 1474, převedeno z BN;1.12.2024;
+701;v1503;nákl. přívěs plošinový JINOS 9S5 1503 (DDM);1.3.2024;
+701;v1801;VW Transp. 5SB 1801 Vranov (záloha);1.3.2026;
+701;v1802;VW Transp. 5SB 1802 (ZKL 615 z Č.Brodu);1.12.2024;
+701;v1803;VW Transp. 5SB 1803, převod z NB Lysá 01/25;1.1.2025;
+701;v1804;VW Transp. 5SB 1804, převedno z PV-Říčany;1.12.2024;1.5.2025
+701;v1807;VW Transp. 5SB 1807, převedeno z PV-Říčany;1.12.2024;
+701;v1907;Š.Octavia 8S4 1907, převedeno z ME;1.12.2024;
+701;v2254;Škoda Superb 5SJ 2254;1.1.2024;
+701;v2327;VW Crafter 5SL 2327, servisní B (FZŠ);1.3.2024;
+701;v2556;VW Transp. 2SD 2556 RZP, ZKL809, z KL 903;1.5.2024;
+701;v2557;VW T5 2SD 2557;1.1.2024;
+701;v2560;VW T5 2SD 2560 (ZKL 378) záložní sanita;1.9.2024;
+701;v2561;VW T5 2SD 2561;1.1.2024;
+701;v2562;VW T5 2SD 2562;1.1.2024;
+701;v2565;VW T5 2SD 2565;1.1.2024;
+701;v2566;VW T5 2SD 2566;1.1.2024;
+701;v2567;VW Transporter 2SD 2567 (z ME ZKL218);1.3.2024;
+701;v2573;VW T5 2SD 2573;1.3.2024;
+701;v2574;VW T5 2SD 2574;1.1.2024;
+701;v2575;VWT5 2SD 2575;1.1.2024;
+701;v2580;VW T5 2SD 2580;1.1.2024;
+701;v2581;VW T5 2SD 2581;1.1.2024;
+701;v2582;VW T5 2SD 2582;1.1.2024;
+701;v2583;VW T5 2SD 2583 (ZKL 558 z BE 01/25);1.1.2025;
+701;v2584;VW T5 2SD 2584 (z PB-606 ZKL 516);1.3.2024;
+701;v2585;VW T5 2SD 2585;1.1.2024;
+701;v2586;VW T5 2SD 2586;1.1.2024;
+701;v2587;VW T5 2SD 2587;1.1.2024;
+701;v2591;VW T5 2SD 2591 (z PB ZKL 518);1.3.2024;
+701;v2595;VW T5 2SD 2595;1.1.2024;
+701;v2596;VW T5 2SD 2596;1.1.2024;
+701;v2601;VW T5 2SD 2601 (ZKL 358 z Čáslavi, převodka chybí);1.1.2025;
+701;v3451;VW Transp. 3SJ 3451 (dříve 3SU 6617), ZKL616, IOP;1.3.2024;
+701;v3708;Škoda Yeti 1SK 3708;1.5.2024;
+701;v3709;Škoda YETI 1SK 3709, přev.REF z PV 04/25;1.4.2025;
+701;v3711;Škoda Yeti 1SK 3711, převedeno z NB;1.12.2024;
+701;v4532;VW Transp. 3SJ 4532 (pův. 3SU 6703) ZKL254 IOP;1.3.2024;
+701;v4976;VW Transp 3SZ 4976 RZP, ZKLxxx;1.1.2024;
+701;v4979;VW T5 2SK 4979 (pův.2SD 2558);1.3.2024;
+701;v5141;Škoda Superb 3SJ 5141;1.12.2024;
+701;v5405;nákl. přívěs skříňový JINOS 2SA 5405 (DDM);1.1.2024;
+701;v5541;VW Crafter 5SY 5541, servisní A (FZŠ);1.1.2024;
+701;v5649;Yeti 3SN 5649-Říčany;1.1.2024;
+701;v6602;VW Transp. 3SU 6602 , ZKL411 (923) IOP z BN;1.3.2024;
+701;v6604;VW Transp. 3SU 6604 , ZKL412 (923) IOP z BN;1.3.2024;
+701;v6618;VW Transp. 3SU 6618 IOP;1.1.2024;
+701;v6619;VW Transp. 3SU 6619/372 IOP (ZKL 372) z KO;1.1.2024;
+701;v6621;VW Transp. 3SU 6621/371 IOP z KO;1.4.2024;
+701;v6701;VW Transp. 3SU 6701 ZKL251 IOP (z MB);1.3.2024;
+701;v6704;VW Transp. 3SU 6704 (havárie) IOP;1.3.2024;
+701;v6705;VW Transp. 3SU 6705 IOP (ZKL 553) z BE (605);1.3.2024;
+701;v6706;VW Transp. 3SU 6706 IOP;1.1.2024;
+701;v6707;VW Transp. 3SU 6707 IOP;1.1.2024;
+701;v6708;VW Transp. 3SU 6708, IOP;1.3.2024;
+701;v6709;VW Transporter 3SU 6709, přev.z MB 10/25;1.10.2025;
+701;v6711;VW Transp. 3SU 6711  ZKL618 záložní (z PV);1.4.2024;
+701;v6712;VW Transp. 3SU 6712, převedeno z KH;1.12.2024;
+701;v6713;VW Transp. 3SU 6713, převedeno z PB;1.12.2024;
+701;v6719;VW Transp. 3SU 6719 z RA k vyřazení;1.3.2024;
+701;v6939;VW Multivan 7S0 6939 (701) od 11/25;1.11.2025;
+701;v6972;VW PBK 69-72;1.3.2024;
+701;v7057;Yeti 2SI 7057;1.1.2024;
+701;v7360;Yeti Outdoor 4SA 7360 FZŠ (z MB)-Příbram;1.1.2024;
+701;v7361;Yeti 4SA 7361 přev.z Vlašimi 05/25;1.5.2025;
+701;v7362;Yeti 4SA 7362 (FZŠ)-Kutná Hora;1.1.2024;
+701;v7502;Škoda Karoq 4ST 7502 přev.z PB 04/25;1.3.2025;
+701;v7505;Škoda Kodiaq 4ST 7505, převedeno z MB;1.4.2025;
+701;v7594;Škoda Octavia 2ST 7594 (701)-REF Šalda-př.101/7594;1.3.2024;
+701;v8122;Kodiaq 4SY 8122  přev.z BN 2025/04, FZŠ;1.4.2025;
+701;v8407;Šk.Octavia Combi 1SB 8407;1.8.2024;
+701;v8561;Š.Yeti 1SU 8561 REF, přev.z KL;1.10.2025;
+701;v8562;Yeti 1SU 8562 (přev.ze Zdib-IP);1.5.2024;
+701;v8564;Š.Yeti 1SU 8564;1.3.2024;
+701;v9088;Yeti 3SE 9088-Mělník;1.1.2024;
+701;v9177;VW Transp. 4SB 9177 (dříve 3SU 6702) přev.619/9177;1.1.2024;1.4.2024
+701;v9676;VW Transp. 5SC 9676 (dříve 4SF 0522), z PV-Zdiby;1.12.2024;
+701;vp2598;VW T5 6U6 2598 - výpůjčka od ZZS UK, záloha ADBN;1.12.2025;
+701;vp2917;VW T5 7U0 2917 - výpůjčka od ZZS UK, záloha ADBN;1.12.2025;
+902;101;ZZS SK vrátnice (dřív sklad kanc.potřeb 901);;
+902;105;nový server přízemí - 2 úseky (901/902/105);;
+902;136;ZZS SK chodba přízemí OIT (901);;
+902;137;ZZS SK Sybera, Štěpař, Himmel , OIT (901);;
+902;138;ZZS SK Holovský R. Wolf M. OIT (901);;
+902;139;ZZS SK sklad OIVT (901);;
+902;140;ZZS SK WC invalida (901);;
+902;201;RLP pokoj vlevo RZP (101) uzavřeno;;1.12.2022
+902;202;RLP pokoj vlevo lékaři (101) uzavřeno;;1.12.2022
+902;203;RLP pokoj vlevo sestry (101) uzavřeno;;1.12.2022
+902;204;RLP pokoj vlevo řidiči (101) uzavřeno;;1.12.2022
+902;205;RLP denní místnost (101) uzavřeno;;1.12.2022
+902;206;serverovna 1.patro - 2 úseky (901/902/206);1.12.2022;
+902;207;OS dispečink (130) přev.budova 904, uzavřeno;;1.12.2022
+902;208;OS sklad ZOS (130) přev.budova 904, uzavřeno;;1.12.2022
+902;209;OS kuchyňka ZOS (130) pův. CCentrum, přev.904,uzav;;1.12.2022
+902;210;OS šatna ZOS (130), přev.budova 904, uzavřeno;;1.12.2022
+902;211;Covid 1.patro, Štěpán,Ondrák - 2 úseky (901+130);;
+902;212;ZZS SK Bc.Tlustý (2 úseky 901+130);;
+902;213;ZZS SK úklid 1. patro (901) UKONČENO;;1.12.2022
+902;214;RLP šatna ženy (101) uzavřeno;;1.12.2022
+902;215;RLP prádelna (901) uzavřeno;;1.12.2022
+902;216;RLP šatna muži (101) uzavřeno;;1.12.2022
+902;217;Šulgánová Klára, THP (901), 2 úseky;;
+902;218;Chodba 1.patro - 2 úseky - ZZS (901/902/218);;
+902;219;RLP WC ženy (101);;1.12.2022
+902;220;ZZS Ing.Jindřich Fajka, Ing.R.Grossmannová (901);;
+902;221;ZZS Ing.Fajka, dřív Bc.Chochola, uzavřeno;;1.4.2024
+902;222;ZZS úklid 1.patro, dříve RLP WC muži (901);;
+902;223;RLP schodiště (101);;1.12.2022
+902;224;RLP kuchyňka (101) uzavřeno;;1.12.2022
+902;225;RLP pokoj vpravo řidiči (101) uzavřeno;;1.12.2022
+902;226;RLP pokoj vpravo sestry (101) uzavřeno;;1.12.2022
+902;227;RLP pokoj vpravo lékaři (101) uzavřeno;;1.12.2022
+902;228;RLP pokoj vpravo sestry (101) uzavřeno;;1.12.2022
+902;241;ZZS Bc.Dana Jirsová, Pavlína Stinková (901);;
+902;242;OS Fousková J. (130) přev.bud.904, uzavřeno;;1.12.2022
+902;301;ZZS MUDr.Sedláček, Mgr.Menšíková (901);;
+902;302;ZZS Martina Stolovská, Jana Kraftová (901);;
+902;303;ZZS Z.Ciplová, M.Matoušová, A.Kršková (901);;
+902;304;ZZS D.Kloták, E.Horáková, L.Škornová (901);;
+902;305;ZZS podatelna, nové 2025/09 (901);;
+902;306;ZZS ředitel MUDr.Rusý, D.Kvapilová, MUDr.Beranová;;
+902;307;ZZS zasedací místnost velká, kuchyňka (901);;
+902;308;ZZS Bc.Hylebrant, Bc.Nováková tisk.mluvčí (901);;
+902;309;ZZS M.Slezáčková, K.Veselá DiS (901);;
+902;310;ZZS ved.odd.úč.a rozp. (901);;
+902;311;ZZS Bc.Štěpánka Kachlířová DiS, Marie Tůmová (901);;
+902;312;ZZS náměstek NLP Mgr.Vít Dvořák (901);;
+902;313;ZZS V.Aulická, M.Křížová,T.Brodecká (901);;
+902;314;ZZS Ing.T.Bezoušková (901);;
+902;315;ZZS ekon.náměstkyně Ing.Tereza Balousová (901);;
+902;316;ZZS H.Broučková, J.Zahrádková, Z.Kosprtová (901);;
+902;317;ZZS KP, Ing.Nikola Konopásková (901);1.7.2022;
+902;318;ZZS veř.zak-Ing.Steklá Michaela (901);;
+902;319;ZZS veř.zak-Wlachová,Doksanská, a rozpočtáři (901);;
+902;320;ZZS trezorovna, sklad OOPP (901);;
+902;321;ZZS WC muži (901);;
+902;322;ZZS chodba 2.patro (901);;
+902;323;ZZS WC ženy (901);;
+902;324;ZZS kuchyňka II.p, nové 2025/09 (901);1.9.2025;
+902;325;ZZS Ing.Nováková audit, nové 2025/09 (901);;
+902;326;ZZS právník (901);;
+902;327;ZZS Mgr.Lucie Poláčková (901);;
+902;328;ZZS Bc.Kateřina Pávková (901);;
+902;400;ZZS SK sklad hlavní sestra V.Dvořák (901);;
+902;401;ZZS SK před budovou (901);;
+902;402;Octavia 9S8 1676 (901)-přev.202/1676-uzavřeno;;1.12.2022
+902;403;RLP garáže OS Kladno (101) uzavřeno;;1.12.2022
+902;404;ZZS SK úklid šatna zvenku (901);;
+902;405;ZZS SK vrátnice (901) - UZAVŘENO;;1.8.2022
+902;406;ZZS SK garáž - dílna Šulgán (901);;
+902;407;ZZS SK Odborová organizace (901) imag.;;1.9.2025
+902;408;garáž Pellichová J. (901), Chocholová J. (101);;
+902;409;ZZS SK chodba přízemí - hlavní vchod (901);;
+902;410;Letecká záchr. služba (901);;1.9.2025
+902;411;ASČR Zbraslav (901);;1.9.2025
+902;412;ZZS OIVT Ing.Černohorský, Ing.Jonášová, přízemí;;
+902;413;ZZS SK WC úklid přízemí (901);;
+902;414;ZZS SZM Zoltán Kyláczko (901);;
+902;415;VW Crafter 3SJ 3830 (od 07/22 míst.3830) UKONČENO;;1.7.2022
+902;416;ZZS SK budova Vančurova 1544 (901);;
+902;417;ZZS SK J. Pleva (901) imag.;;
+902;418;ZZS SK M. Vojta (901) imag.UZAVŘENO;;1.3.2025
+902;419;ZZS SK server (901) virtuální m.-zrušeno, přev.206;;1.10.2023
+902;420;ZZS SK Wolf - sklad odmontovaného DDM z vyřaz.aut;;
+902;421;ZZS SK mobil. telefony, tablety (901);;
+902;422;výměník ZOS - budova 902 UZAVŘENO;;1.11.2024
+902;423;ZZS SK Nemocnice Kladno (901);;1.9.2025
+902;424;ZZS SK Octavia 9S8 12 92 - prázdná místnost;;
+902;425;ZZS SK Octavia 8S4 1908 (auto vyř.05/2022) - prázd;;1.5.2022
+902;426;ZZS SK Passat PBI 75-33 OIVT - prázdná;;1.2.2024
+902;427;ZZS SK VW Tr. 7S6 8652 (901) - (auto vyř.05/2022);;
+902;428;ZZS SK Šulgán Š. (901) imag.PRÁZDNÉ,UZAVŘENO;;1.11.2024
+902;429;ZZS SK Sanitar s. r. o. Kladno (901);;1.9.2025
+902;430;ZZS SK Peugeot 1S7 7672 prázdná místnost;;
+902;431;ZZS SK VW Mult. 3S8 44 43 (auto vyř.05/2022) prázd;;1.9.2022
+902;432;ZZS SK VW Mult. 7S0 6939 (od 07/22 míst.6939) práz;;1.9.2022
+902;433;ZZS SK OIVT software (901);;
+902;434;ZZS SK Fabia 1SR 7186 (pův. 5S0 2835)(vyř.05/2022);;1.5.2022
+902;435;ZZS SK Kačengovi ordinace s. r. o., Benešov (901);;1.9.2025
+902;436;ZZS SK Nemocnice Mladá Boleslav (901);;1.9.2025
+902;437;ZZS SK TRANS HOSPITAL Řevnice (901);;1.9.2025
+902;438;ZZS SK SK Kladno a. s. (901);;1.9.2025
+902;439;ZZS SK Rallye rejvíz, o. s. (901);;1.9.2025
+902;440;ZZS SK Sbor dobrovolných hasičů Zdice (901);;1.9.2025
+902;441;ZZS SK Fabia 9S8 1557 (auto vyř.05/2022);;1.9.2022
+902;442;Středočeský kraj č.0051 (901);;
+902;443;Nemocnice R a S Benešov (901);;1.9.2025
+902;444;ASČR Kralupy n/Vlt (901);;1.9.2025
+902;445;Octavia 7S3 9870 -prázdná;;1.9.2022
+902;446;ZZS SK Fabia 3S5 5228 (auto vyř.05/2022);;1.5.2022
+902;447;Octavia 6S0 0116 (auto vyř.06/2022);;1.6.2022
+902;448;Ford Tr. 2S5 5565 (901);;
+902;449;mobilní telefony PKP (901);;
+902;450;VW T5 2SD 25 98 (901) - nepoužívat, VYŘAZENO;;1.12.2017
+902;451;ZZS SK stanoviště - nepoužívat, ZRUŠENO;;1.8.2022
+902;452;ZZS SK  ČESKÝ ČERVENÝ KŘÍŽ Příbram (901);;1.9.2025
+902;453;RLP MUDr. Šeblová - nepoužívat, prázdné, ZRUŠENO;;1.8.2022
+902;454;ZZS SK Burda J. kurýr (901) PRÁZDNÉ,UZAVŘENO;;1.11.2024
+902;455;ZZS SK AERO Vodochody AEROSPACE a. s. (901);;1.9.2025
+902;456;ZZS SK  E. R. S. (901) PRÁZDNÉ,UZAVŘENO;;1.11.2024
+902;457;RLP VW 2SD 25 81 XXL/113 (101), UZAVŘENO;;1.11.2024
+902;458;ZZS SK Octavia 8S4 1907, přev.ME, UZAVŘENO;;1.11.2024
+902;459;MOS Fiat Ducato 4SB 0155 (130) přev.904/0155,uzavř;;1.12.2022
+902;460;Obl. nemocnice Příbram (901);;1.9.2025
+902;461;UKM (901), PRÁZDNÉ, UZAVŘENO;;1.11.2024
+902;462;ORP Centrum s. r. o. (901), PRÁZDNÉ, UZAVŘENO;;1.11.2024
+902;463;JSDH Rožmitál pod Třemšínem (901);;1.9.2025
+902;464;Městská policie Milovice (901);;1.9.2025
+902;465;Městská policie Karlštejn (901);;1.9.2025
+902;466;Městská policie Votice (901);;1.9.2025
+902;467;HZS Jílové u Prahy (901);;1.9.2025
+902;468;HZS Hořovice (901);;1.9.2025
+902;469;HZS Rakovník (901);;1.9.2025
+902;470;Městská policie Vlašim (901);;1.9.2025
+902;471;Městská policie Brandýs n. Labem (901);;1.9.2025
+902;472;JSDH Roztoky u Křivoklátu (901);;1.9.2025
+902;473;ZZS Libereckého kraje (901);;1.9.2025
+902;474;Městská policie Kutná Hora (901);;1.9.2025
+902;475;Městská policie Kralupy n/Vltavou (901);;1.9.2025
+902;476;OS Sedláčková Patricia (901);;1.12.2022
+902;477;Městská policie Mnichovo Hradiště (901);;1.9.2025
+902;478;Městská policie Bystřice (901);;1.9.2025
+902;479;Městská policie Dobříš (901);;1.9.2025
+902;480;JSDH Dobrovice (901);;1.9.2025
+902;481;JSDH Lužná (901);;1.9.2025
+902;482;Kraj. ředitelství policie SK (901);;1.9.2025
+902;483;Městská policie Žebrák (901);;1.9.2025
+902;484;Městská policie Slaný (901);;1.9.2025
+902;485;SOŠ a SOU Dubská Kladno (901);;1.9.2025
+902;486;Městská policie Bakov nad Jizerou (901);;1.9.2025
+902;487;Obecní policie Velký Osek (901);;1.9.2025
+902;488;Městská policie Sedlčany (901);;1.9.2025
+902;489;Octavia KHH 85-25 (auto vyř.06/2022);;1.6.2022
+902;490;Městská policie Český Brod (901);;1.9.2025
+902;491;Městská policie Mělník (901);;1.9.2025
+902;492;HZS Středočeského kraje (901);;1.9.2025
+902;493;Ing. Jiří Pokorný, inspektor provozu (901);;
+902;494;Městská policie Zruč n/Sázavou (901);;1.9.2025
+902;495;Městská policie Hostivice (901);;1.9.2025
+902;496;Městská policie Kolín (901);;1.9.2025
+902;497;Městská policie Mladá Boleslav (901);;1.9.2025
+902;498;JSDH Jesenice (901);;1.9.2025
+902;499;Městská policie Beroun (901);;1.9.2025
+902;500;JSDH Chyňava (901);;1.9.2025
+902;501;Kopelent Pavel - nepoužívat, ZRUŠENO;;1.8.2022
+902;502;JSDH Čechtice (901);;1.9.2025
+902;503;sklad Ing.N.Konopásková, dříve Ing.Vachek (909);;
+902;504;Městská policie Černošice (901);;1.9.2025
+902;505;Subaru 9S8 1022 OIVT (901) (auto vyř.05/2022);;1.5.2022
+902;506;Škoda Kodiag 3SJ 3909 FZŠ (101) přev.903, uzavřeno;;1.12.2022
+902;507;2SD 2556/115(101) přev.903/2556, uzavřeno;;1.12.2022
+902;508;9S5 0680/121 (101) - zapůjčeno ZS ČR míst.527;;1.12.2022
+902;509;----;;1.12.2022
+902;510;3SZ 4976/118 (101) přev.903/4976, uzavřeno;;1.12.2022
+902;511;VW Transp. 3SU 6603 (101) přev.903/6603, uzavřeno;;1.12.2022
+902;512;IOP (923, inventarizovat s 901);;
+902;513;Obecní policie Líbeznice (901);;1.9.2025
+902;514;Městská policie Jesenice (901);;1.9.2025
+902;515;JSDH Neveklov (901);;1.9.2025
+902;516;Městská policie Kosmonosy (901);;1.9.2025
+902;517;JSDH Sedlec-Prčice (901);;1.9.2025
+902;518;Městská policie Hořovice (901);;1.9.2025
+902;519;Městská policie Veltrusy (901);;1.9.2025
+902;520;Městská policie Úvaly (901);;1.9.2025
+902;521;VW T6 3SV 7626 (901) (od 07/22 míst.7626);;1.7.2022
+902;522;CELNÍ ÚŘAD pro SčK (901);;1.9.2025
+902;523;Městská policie Benešov (901);;1.9.2025
+902;524;ČVUT v Praze, fakulta Kladno (901);;1.9.2025
+902;525;Městská spol.sport.a rekr. areály Ml. Bol. (901);;1.9.2025
+902;526;2SD 2597 školící vozidlo - Hylebrant M., nově 2579;;1.4.2024
+902;527;Záchranný sbor ČR (901);;1.9.2025
+902;528;JSDH Kolešov (901);;1.9.2025
+902;529;Městská policie Odolena Voda (901);;1.9.2025
+902;530;Město Sadská, JSDH Sadská (901);;1.9.2025
+902;531;JSDH Čerčany (901);;1.9.2025
+902;532;SDH Turkovice (901);;1.9.2025
+902;533;sklad  Vachek J. (901);;
+902;534;Octavia 9S8 1292 OIVT (901) převod Beroun, uzavřen;;1.11.2022
+902;535;Městská policie Březnice (901);;1.9.2025
+902;536;Jindřich Havelka kotrolor provozu (901);;
+902;537;VW Crafter 3SJ 3830 FZŠ-prázdná, UKONČENO;;1.10.2022
+902;538;Autoklub v AČR Slaný (901);;1.9.2025
+902;539;Medical service Davepo s.r.o. (901);;1.9.2025
+902;540;nová vozidla - výbava do vozidel před zařazením;;
+902;541;MUDr. Sirotek P., plastická chirurgie (901);;1.9.2025
+902;542;Yeti 1SK 3710 (auto vyř.10/2022);;1.5.2022
+902;543;Yeti 1SU 8564 OIVT, chyba, zrušeno;;1.1.2023
+902;544;Foubíková Helena, kancelář (901);;
+902;545;Obl. nemocnice Kolín (901);;1.9.2025
+902;546;VW 5SE 9098 FZŠ 112 (101) přev.903/9098, uzavřeno;;1.12.2022
+902;547;Město Mšeno, JSDH Mšeno (901);1.4.2022;1.9.2025
+902;548;Ubytovna Fr.Kloze - UKRAJINA (919);1.4.2022;
+902;549;byt Kladno, Komenského (130) přev.bud.904,uzavřeno;1.9.2022;1.12.2022
+902;550;Ubytovna Fr.Kloze - školící místnost (901);1.12.2022;
+902;551;Team 14 (909,901);1.11.2025;
+902;OL01;operativní leasing 2024 Raiffeisen 7x REF Hyundai;1.11.2024;
+902;OL02;operativní leasing 2025-28 Drivalia 11xREF Hyundai;1.12.2025;
+902;2038;Škoda Octavia 7A4 2038 (převod od PČR PK);1.2.2024;
+902;2254;Škoda Superb 5SJ 2254, všeobecné REF ŘZZS;1.5.2025;
+902;2326;MB Vito 5SL 2326 FZŠ (101) přev.903/2326, uzavřeno;1.8.2022;1.12.2022
+902;2559;VW Transp 2SD 2559 kurýr, Šulgán;1.9.2023;
+902;2597;VW Transp 2SD 2597 REF školící Hylebrand;1.4.2024;
+902;3217;Škoda Octavia 1E2 3217 (převod od PČR PK);1.2.2024;
+902;3437;Škoda Octavia 3SJ 3437 (901) převod KO;1.7.2022;1.1.2025
+902;3646;Škoda Superb 3SJ 3646 (901);1.7.2022;
+902;3708;Škoda Yeti 1SK 3708 (901);1.7.2022;
+902;3711;Škoda Yeti 1SK 3711 (901);1.7.2022;1.2.2024
+902;3830;VW Crafter 3SJ 3830  (101) přev.903/3830, uzavřeno;1.7.2022;1.12.2022
+902;4821;Škoda Octavia 1AX 4821 (převod od PČR PK);1.2.2024;
+902;5121;Škoda Superb 3SJ 5121 (901);1.7.2022;
+902;5141;Škoda Superb 3SJ 5141 (901 J.Roth) přev.701;1.7.2022;
+902;5632;Škoda Superb 5SY 5632 dosah.vel. (901);1.1.2023;
+902;5707;Škoda Octavia 2SZ 5707 (901, mluvčí MN) přev NB;1.7.2022;1.1.2025
+902;5776;Škoda Karoq 5SY 5776 dosah.ref. (901);1.1.2023;
+902;6322;Škoda Octavia 3SI 6322 (901) převod ME;1.7.2022;1.1.2025
+902;6323;Škoda Octavia 2SI 6323 (901, Stinková) přev.BE;1.7.2022;
+902;6524;VW Tran-Kombi 6SJ 6524 černé víceúčel.FIN/KP (909);1.4.2024;
+902;6571;Škoda Karoq 6SJ 6571 bílé velitelské FIN/KP (909);1.3.2024;
+902;6939;VW Multivan 7S0 6939 (901) do 10/25;1.7.2022;1.11.2025
+902;7048;Škoda Yeti 2SI 7048 (901) Krumphanzl smlouva;1.7.2022;
+902;7222;VW Transp 5SK 7222 FZŠ (101) přev.903/7222, uzavře;1.9.2022;1.12.2022
+902;7358;Škoda Octavia 2SY 7358 (901) přev.701/916 08/23;1.7.2022;
+902;7594;Škoda Octavia 2ST 7594 (901)-přev.701/998;1.7.2022;
+902;7595;Škoda Octavia 2ST 7595 (901 Himmel) přev.401;1.7.2022;
+902;7626;VW Transporter 3SV 7626 (901);1.7.2022;
+902;8564;Š.Yeti 1SU 8564, R.Holovský;1.10.2024;
+902;8773;Škoda Karoq 6SL 8773, ref.Tlustý, FZŠ;1.6.2024;
+902;9089;Škoda Yeti 3SE 9089 (901);1.7.2022;
+902;9674;Škoda Octavia 2S8 9674 Štěpař;1.9.2023;
+902;vp1903;MB Sprinter 1BV 1903 - výpůjčka od ZZS JMK;1.9.2025;1.10.2025
+902;vp4903;MB Sprinter 1BI 4903 - výpůjčka od ZZS JMK;1.9.2025;1.10.2025
+902;100601;ZZS Hl.města Prahy - výpůjčky;1.12.2022;1.9.2025
+902;100602;Energie stavební a báňská, Záchr.st.Pha - výpůjčk;1.1.2023;1.9.2025
+903;201;RLP pokoj vlevo RZP (101);1.12.2022;
+903;202;RLP pokoj vlevo lékaři (101);1.12.2022;
+903;203;RLP pokoj vlevo sestry (101);1.12.2022;
+903;204;RLP pokoj vlevo řidiči (101);1.12.2022;
+903;205;RLP denní místnost (101);1.12.2022;
+903;214;RLP šatna ženy (101);1.12.2022;
+903;215;RLP prádelna (101), 2 úseky;1.12.2022;
+903;216;RLP šatna muži (101);1.12.2022;
+903;217;RLP vrch.sestra, ved.řidičů (101), 2 úseky;1.12.2022;
+903;218;Chodba 1.patro - 2 úseky - RLP (101/903/218);1.12.2022;
+903;219;RLP WC ženy (101);1.12.2022;
+903;220;RLP primář MUDr.Rybáček (101) uzavřeno;1.12.2022;1.4.2024
+903;221;RLP primář MUDr.Rybáček (101);1.4.2024;
+903;223;RLP schodiště (101);1.12.2022;
+903;224;RLP kuchyňka (101);1.12.2022;
+903;225;RLP pokoj vpravo řidiči (101);1.12.2022;
+903;226;RLP pokoj vpravo sestry (101);1.12.2022;
+903;227;RLP pokoj vpravo lékaři (101);1.12.2022;
+903;228;RLP pokoj vpravo sestry (101);1.12.2022;
+903;403;RLP garáže OS Kladno (101);1.12.2022;
+903;408;garáž Chocholová J. (101), Pellichová J. (901);1.12.2022;
+903;0523;VW Transp 4SF 0523 RZP3, ZKL115;1.4.2024;
+903;1807;VW Transp. 5SB 1807 ZKL118, záloha Kladno;1.8.2025;
+903;2326;MB Vito 5SL 2326 RV, ZKL110, FZŠ, do 12/25;1.12.2022;
+903;2556;VW Transp 2SD 2556 RZP, ZKL115, převod 701 05/24;1.12.2022;
+903;2810;MAN TGE 7SF 2810 - Kladno;1.3.2026;
+903;3830;VW Crafter 3SJ 3830 HN, ZKL888, FZŠ;1.12.2022;
+903;3909;Š.Kodiaq 3SJ 3909 inspektor, ZKL130, FZŠ;1.12.2022;
+903;4807;VW Transp 6SR 4807, ZKL111, sanita C 2024, IROP925;1.11.2024;
+903;4976;VW Transp 3SZ 4976 RZP, ZKL118, přev.701/968 01/23;1.12.2022;1.1.2023
+903;6603;VW Transp 3SU 6603 RZP novorozenci, ZKL111, IOP923;1.12.2022;
+903;72EP;VW Multivan EL7 72EP, RLP, ZKL110, FZŠ2023;1.11.2025;
+903;7222;VW Transp 5SK 7222 RZP1, ZKL113, FZŠ;1.12.2022;
+903;8561;Š.Yeti 1SU 8561 REF, přev.ADBN 10/25;1.12.2022;
+903;9098;VW Transp 5SE 9098 RZP2, ZKL112, FZŠ;1.12.2022;
+903;vp1903;MB Sprinter 1BV 1903 - výpůjčka od ZZS JMK;1.10.2025;
+904;105;nový server přízemí - 2 úseky (130/904/105);1.12.2022;
+904;206;serverovna 1.patro - 2 úseky (130/904/206);1.12.2022;
+904;207;ZOS dispečink (130);1.12.2022;
+904;208;ZOS sklad (130);1.12.2022;
+904;209;ZOS kuchyňka (130);1.12.2022;
+904;210;ZOS šatna (130);1.12.2022;
+904;211;Covid 1.patro, ZOS (2 úseky 130+901);1.12.2022;
+904;212;ZOS Mgr.Bc.Čižmárik (2 úseky 130+901);1.10.2023;
+904;213;ZOS čelní kancelář Sedláčková (130);1.12.2022;
+904;215;RLP prádelna (130), 2 úseky;1.2.2025;
+904;242;ZOS vedoucí Labuťová Kateřina (130);1.12.2022;
+904;319;zasedací místnost malá - 2 úseky (130/904/319)-vyp;1.12.2022;
+904;412;kuchyňka ZOS přízemí - UZAVŘENO;1.12.2022;1.11.2024
+904;422;výměník ZOS (130);1.12.2022;
+904;549;byt Kladno, Komenského (130);1.12.2022;
+904;550;Ubytovna Fr.Kloze - školící místnost (130);1.10.2025;
+904;0155;Fiat Ducato 4SB 0155 mobilní oper.stř. (MOS);1.12.2022;
+905;407;ZZS SK Odborová organizace (901) imag.;1.9.2025;
+905;410;Letecká záchr. služba (901);1.9.2025;
+905;411;ASČR Zbraslav (901);1.9.2025;
+905;423;ZZS SK Nemocnice Kladno (901);1.9.2005;
+905;429;ZZS SK Sanitar s. r. o. Kladno (901);1.9.2025;
+905;435;ZZS SK Kačengovi ordinace s. r. o., Benešov (901);1.9.2025;
+905;436;ZZS SK Nemocnice Mladá Boleslav (901);1.9.2025;
+905;437;ZZS SK TRANS HOSPITAL Řevnice (901);1.9.2025;
+905;438;ZZS SK SK Kladno a. s. (901);1.9.2025;
+905;439;ZZS SK Rallye rejvíz, o. s. (901);1.9.2025;
+905;440;ZZS SK Sbor dobrovolných hasičů Zdice (901);1.9.2025;
+905;443;Nemocnice R a S Benešov (901);1.9.2025;
+905;444;ASČR Kralupy n/Vlt (901);1.9.2025;
+905;452;ZZS SK  ČESKÝ ČERVENÝ KŘÍŽ Příbram (901);1.9.2025;
+905;455;ZZS SK AERO Vodochody AEROSPACE a. s. (901);1.9.2025;
+905;460;Obl. nemocnice Příbram (901);1.9.2025;
+905;463;JSDH Rožmitál pod Třemšínem (901);1.9.2025;
+905;464;Městská policie Milovice (901);1.9.2025;
+905;465;Městská policie Karlštejn (901);1.9.2025;
+905;466;Městská policie Votice (901);1.9.2025;
+905;467;HZS Jílové u Prahy (901);1.9.2025;
+905;468;HZS Hořovice (901);1.9.2025;
+905;469;HZS Rakovník (901);1.9.2025;
+905;470;Městská policie Vlašim (901);1.9.2025;
+905;471;Městská policie Brandýs n. Labem (901);1.9.2025;
+905;472;JSDH Roztoky u Křivoklátu (901);1.9.2025;
+905;473;ZZS Libereckého kraje (901);1.9.2025;
+905;474;Městská policie Kutná Hora (901);1.9.2025;
+905;475;Městská policie Kralupy n/Vltavou (901);1.9.2025;
+905;477;Městská policie Mnichovo Hradiště (901);1.9.2025;
+905;478;Městská policie Bystřice (901);1.9.2025;
+905;479;Městská policie Dobříš (901);1.9.2025;
+905;480;JSDH Dobrovice (901);1.9.2025;
+905;481;JSDH Lužná (901);1.9.2025;
+905;482;Kraj. ředitelství policie SK (901);1.9.2025;
+905;483;Městská policie Žebrák (901);1.9.2025;
+905;484;Městská policie Slaný (901);1.9.2025;
+905;485;SOŠ a SOU Dubská Kladno (901);1.9.2025;
+905;486;Městská policie Bakov nad Jizerou (901);1.9.2025;
+905;487;Obecní policie Velký Osek (901);1.9.2025;
+905;488;Městská policie Sedlčany (901);1.9.2025;
+905;490;Městská policie Český Brod (901);1.9.2025;
+905;491;Městská policie Mělník (901);1.9.2025;
+905;492;HZS Středočeského kraje (901);1.9.2025;
+905;494;Městská policie Zruč n/Sázavou (901);1.9.2025;
+905;495;Městská policie Hostivice (901);1.9.2025;
+905;496;Městská policie Kolín (901);1.9.2025;
+905;497;Městská policie Mladá Boleslav (901);1.9.2025;
+905;498;JSDH Jesenice (901);1.9.2025;
+905;499;Městská policie Beroun (901);1.9.2025;
+905;500;JSDH Chyňava (901);1.9.2025;
+905;502;JSDH Čechtice (901);1.9.2025;
+905;504;Městská policie Černošice (901);1.9.2025;
+905;513;Obecní policie Líbeznice (901);1.9.2025;
+905;514;Městská policie Jesenice (901);1.9.2025;
+905;515;JSDH Neveklov (901);1.9.2025;
+905;516;Městská policie Kosmonosy (901);1.9.2025;
+905;517;JSDH Sedlec-Prčice (901);1.9.2025;
+905;518;Městská policie Hořovice (901);1.9.2025;
+905;519;Městská policie Veltrusy (901);1.9.2025;
+905;520;Městská policie Úvaly (901);1.9.2025;
+905;522;CELNÍ ÚŘAD pro SčK (901);1.9.2025;
+905;523;Městská policie Benešov (901);1.9.2025;
+905;524;ČVUT v Praze, fakulta Kladno (901);1.9.2025;
+905;525;Městská spol.sport.a rekr. areály Ml. Bol. (901);1.9.2025;
+905;527;Záchranný sbor ČR (901);1.9.2025;
+905;528;JSDH Kolešov (901);1.9.2025;
+905;529;Městská policie Odolena Voda (901);1.9.2025;
+905;530;Město Sadská, JSDH Sadská (901);1.9.2025;
+905;531;JSDH Čerčany (901);1.9.2025;
+905;532;SDH Turkovice (901);1.9.2025;
+905;535;Městská policie Březnice (901);1.9.2025;
+905;538;Autoklub v AČR Slaný (901);1.9.2025;
+905;539;Medical service Davepo s.r.o. (901);1.9.2025;
+905;541;MUDr. Sirotek P., plastická chirurgie (901);1.9.2025;
+905;545;Obl. nemocnice Kolín (901);1.9.2025;
+905;547;Město Mšeno, JSDH Mšeno (901);1.9.2025;
+905;601;ZZS Hl.města Prahy - výpůjčky;1.9.2025;
+905;602;Energie stavební a báňská, Záchr.st.Pha - výpůjčk;1.9.2025;
+905;100602;Energie stavební a báňská, Záchr.st.Pha - výpůjčk;;
+930;1;vstupní chodba;1.3.2024;
+930;2;společenská místnost;1.3.2024;
+930;3;ložnice;1.3.2024;
+930;4;WC;1.3.2024;
+930;5;sprcha;1.3.2024;
+930;6;sklad;1.3.2024;
+930;4823;VW Transporter 6SN 4823, ZKL108, sanita C, FZŠ;1.8.2024;
+930;6603;VW Transp 3SU 6603 RZP novorozenci, ZKL109, IOP923;1.11.2024;
+930;8993;VW Crafter 7J5 8993 RZP novorozenci, přev.107;1.5.2024;1.8.2025
