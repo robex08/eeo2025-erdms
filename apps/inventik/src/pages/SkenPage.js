@@ -1,7 +1,7 @@
 // Stránka pro skenování čárového kódu pomocí kamery
 import React, { useState, useEffect, useRef } from 'react';
 import { Html5Qrcode } from 'html5-qrcode';
-import { FaBarcode, FaCamera, FaCheckCircle, FaEdit, FaSave, FaTimes, FaExclamationTriangle } from 'react-icons/fa';
+import { FaBarcode, FaCamera, FaCheckCircle, FaEdit, FaSave, FaTimes, FaExclamationTriangle, FaRedo } from 'react-icons/fa';
 import './SkenPage.css';
 
 function SkenPage() {
@@ -10,6 +10,7 @@ function SkenPage() {
   const [scannedCode, setScannedCode] = useState(null);
   const [itemDetail, setItemDetail] = useState(null);
   const [loading, setLoading] = useState(false);
+  // eslint-disable-next-line no-unused-vars
   const [error, setError] = useState(null);
   const [editMode, setEditMode] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -38,11 +39,24 @@ function SkenPage() {
   // Načíst číselníky při načtení komponenty
   useEffect(() => {
     fetchCiselniky();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-start skenování - použít separátní useEffect s větším zpožděním
+  useEffect(() => {
+    // Počkat až Router dokončí transition a komponenta je plně ready
+    const timer = setTimeout(() => {
+      console.log('🚀 Auto-start: Spouštím skenování automaticky');
+      setScanning(true);
+    }, 500); // Větší zpoždění po mount pro zajištění, že Router transition je dokončen
+    
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Spustí se jen jednou při mountu komponenty
 
   const fetchCiselniky = async () => {
     try {
-      const isDev = window.location.pathname.startsWith('/dev/');
+      const isDev = process.env.NODE_ENV === 'development' || window.location.pathname.startsWith('/dev/');
       const apiUrl = isDev ? '/dev/api.inventik/api.php' : '/api.inventik/api.php';
       
       // Paralelní načtení všech číselníků
@@ -164,10 +178,27 @@ function SkenPage() {
     startScanner();
 
     return () => {
-      // Cleanup
-      if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
-        console.log('🛑 Zastavuji scanner');
-        html5QrcodeRef.current.stop().catch(err => console.error('Cleanup error:', err));
+      // Cleanup - bezpečné zastavení scanneru
+      const scanner = html5QrcodeRef.current;
+      if (scanner) {
+        try {
+          if (scanner.isScanning) {
+            console.log('🛑 Zastavuji scanner');
+            scanner.stop()
+              .then(() => {
+                try { scanner.clear(); } catch (e) {}
+              })
+              .catch(err => {
+                // Ignorovat "already under transition" - scanner se sám dokončí
+                if (!String(err).includes('transition')) {
+                  console.error('Cleanup error:', err);
+                }
+              });
+          }
+        } catch (err) {
+          // Ignoruj transition errors
+        }
+        html5QrcodeRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -244,19 +275,53 @@ function SkenPage() {
     startSerialScanner();
 
     return () => {
-      if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
-        html5QrcodeRef.current.stop().catch(err => console.error('Serial cleanup error:', err));
+      const scanner = html5QrcodeRef.current;
+      if (scanner) {
+        try {
+          if (scanner.isScanning) {
+            scanner.stop()
+              .then(() => {
+                try { scanner.clear(); } catch (e) {}
+              })
+              .catch(err => {
+                if (!String(err).includes('transition')) {
+                  console.error('Serial cleanup error:', err);
+                }
+              });
+          }
+        } catch (err) {
+          // Ignoruj transition errors
+        }
+        html5QrcodeRef.current = null;
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scanningSerialNumber]);
+
+  // Cleanup při unmount komponenty (přepnutí na jinou stránku)
+  useEffect(() => {
+    return () => {
+      const scanner = html5QrcodeRef.current;
+      if (scanner) {
+        try {
+          if (scanner.isScanning) {
+            scanner.stop().catch(() => {});
+          }
+          try { scanner.clear(); } catch (e) {}
+        } catch (err) {
+          // Ignoruj chyby při unmount
+        }
+        html5QrcodeRef.current = null;
+      }
+    };
+  }, []);
 
   const fetchItemDetail = async (code) => {
     setLoading(true);
     setError(null);
     
     try {
-      const isDev = window.location.pathname.startsWith('/dev/');
+      const isDev = process.env.NODE_ENV === 'development' || window.location.pathname.startsWith('/dev/');
       const apiUrl = isDev ? '/dev/api.inventik/api.php' : '/api.inventik/api.php';
       
       console.log('📦 Načítám detail majetku:', code);
@@ -309,7 +374,7 @@ function SkenPage() {
 
   const checkDuplicate = async (code) => {
     try {
-      const isDev = window.location.pathname.startsWith('/dev/');
+      const isDev = process.env.NODE_ENV === 'development' || window.location.pathname.startsWith('/dev/');
       const apiUrl = isDev ? '/dev/api.inventik/api.php' : '/api.inventik/api.php';
       
       console.log('🔍 Kontrola duplicity pro:', code);
@@ -351,12 +416,9 @@ function SkenPage() {
     if (html5QrcodeRef.current && html5QrcodeRef.current.isScanning) {
       html5QrcodeRef.current.stop().catch(err => console.error('Reset error:', err));
     }
-    setScanning(false);
-    setScannedCode(null);
-    setItemDetail(null);
-    setError(null);
-    setEditMode(false);
-    setDuplicateWarning(null);
+    // Resetovat stavy a rovnou spustit nové skenování
+    console.log('🔄 Reset scanneru a spuštění nového skenování');
+    startScanning();
   };
 
   const handleCancelScanning = () => {
@@ -389,14 +451,14 @@ function SkenPage() {
     const userName = localStorage.getItem('inventik_user_name');
     
     if (!userName) {
-      alert('Uživatel není přihlášen! Vraťte se na úvodní stránku.');
+      alert('Uživatel není přihlášen! Vraťte se na úvoďní stránku.');
       return;
     }
     
     setSaving(true);
     
     try {
-      const isDev = window.location.pathname.startsWith('/dev/');
+      const isDev = process.env.NODE_ENV === 'development' || window.location.pathname.startsWith('/dev/');
       const apiUrl = isDev ? '/dev/api.inventik/api.php' : '/api.inventik/api.php';
       
       const payload = {
@@ -569,7 +631,7 @@ function SkenPage() {
                   <FaEdit /> Upravit a uložit
                 </button>
                 <button className="btn-secondary btn-action" onClick={resetScanner}>
-                  Skenovat další
+                  <FaRedo /> Skenovat další
                 </button>
               </div>
             </div>
@@ -619,7 +681,7 @@ function SkenPage() {
                   <FaEdit /> Založit novou kartu
                 </button>
                 <button className="btn-secondary btn-action" onClick={resetScanner}>
-                  Skenovat další
+                  <FaRedo /> Skenovat další
                 </button>
               </div>
             </div>
@@ -697,7 +759,7 @@ function SkenPage() {
             />
             <datalist id="mist-list">
               {mistnosti
-                .filter(m => !formData.budt || m.budt == formData.budt)
+                .filter(m => !formData.budt || m.budt === formData.budt)
                 .map(item => (
                   <option key={item.id} value={item.mist}>
                     {item.mist} - {item.mistt}

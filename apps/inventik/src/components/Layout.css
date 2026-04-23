@@ -170,7 +170,8 @@
 /* Full width variant - for inventory table */
 .layout-content.content-full-width {
   max-width: 100%;
-  padding: 1rem 0;
+  width: 100%;
+  padding: 0.5rem;
 }
 
 /* Tablet & Desktop */
@@ -180,7 +181,7 @@
   }
   
   .layout-content.content-full-width {
-    padding: 2rem 0;
+    padding: 1rem;
   }
   
   .app-title {

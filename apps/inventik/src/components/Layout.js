@@ -9,7 +9,7 @@ function Layout({ children }) {
   const location = useLocation();
   
   // Full width pages
-  const isFullWidth = location.pathname === '/inventura';
+  const isFullWidth = ['/inventura', '/prehled', '/ciselniky'].includes(location.pathname);
 
   const toggleMenu = () => setMenuOpen(!menuOpen);
   const closeMenu = () => setMenuOpen(false);
@@ -32,7 +32,7 @@ function Layout({ children }) {
           {menuOpen ? <FaTimes /> : <FaBars />}
         </button>
         <div className="app-title-wrapper">
-          <h1 className="app-title">Inventik</h1>
+          <h1 className="app-title">Inventík</h1>
           <span className="app-subtitle">Pomocník při inventarizaci majetku</span>
         </div>
       </header>

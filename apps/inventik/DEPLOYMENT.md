@@ -1,8 +1,8 @@
-# Inventik - Deployment Guide
+# Inventík - Deployment Guide
 
 ## 📋 Přehled
 
-Aplikace Inventik je dostupná na:
+Aplikace Inventík je dostupná na:
 - **Production:** https://erdms.zachranka.cz/inventik/
 - **Development:** http://erdms.zachranka.cz/dev/inventik/ (React dev server na portu 3002)
 

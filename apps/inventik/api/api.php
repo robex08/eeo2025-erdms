@@ -69,30 +69,105 @@ try {
                         echo json_encode(['success' => false, 'error' => 'Not found']);
                     }
                 } else {
-                    // Seznam majetku
-                    $stmt = $pdo->prepare("
-                        SELECT m.id, m.cislo, m.nazev, m.cena_mj_num, m.datum_zarazeni,
-                               m.budt, m.mist, m.cinv,
-                               b.budovat as budova_nazev,
-                               mi.mistt as mistnost_nazev,
-                               iu.nazinv as inv_usek_nazev
+                    // Seznam majetku s informací o inventarizaci - paging + search
+                    $uzivatel = $_GET['uzivatel'] ?? null;
+                    $inventarizovano = $_GET['inventarizovano'] ?? null; // 'ano', 'ne', null = vse
+                    $search = trim($_GET['search'] ?? '');
+                    $page = max(1, (int)($_GET['page'] ?? 1));
+                    $perPage = min(200, max(10, (int)($_GET['per_page'] ?? 50)));
+                    $offset = ($page - 1) * $perPage;
+                    
+                    $where = [];
+                    $params = [];
+                    
+                    if ($uzivatel && $uzivatel !== 'all') {
+                        $where[] = "im.jmeno_uzivatele = :uzivatel";
+                        $params['uzivatel'] = $uzivatel;
+                    }
+                    
+                    if ($inventarizovano === 'ano') {
+                        $where[] = "im.cislo_majetku IS NOT NULL";
+                    } elseif ($inventarizovano === 'ne') {
+                        $where[] = "im.cislo_majetku IS NULL";
+                    }
+                    
+                    if ($search !== '') {
+                        $where[] = "(m.nazev LIKE :search OR m.cislo LIKE :search OR b.budovat LIKE :search OR mi.mistt LIKE :search OR iu.nazinv LIKE :search)";
+                        $params['search'] = '%' . $search . '%';
+                    }
+                    
+                    $whereSql = !empty($where) ? " WHERE " . implode(' AND ', $where) : "";
+                    
+                    $joinSql = "
                         FROM majetek m
                         LEFT JOIN budovy b ON m.budt = b.budt
                         LEFT JOIN mistnosti mi ON m.budt = mi.budt AND m.mist = mi.mist
                         LEFT JOIN inventarni_useky iu ON m.cinv = iu.cinv
-                        ORDER BY m.id DESC LIMIT :limit
+                        LEFT JOIN inventura_majetek im ON m.cislo = im.cislo_majetku
+                    ";
+                    
+                    // Total count pro paging
+                    $countStmt = $pdo->prepare("SELECT COUNT(*) " . $joinSql . $whereSql);
+                    foreach ($params as $key => $value) {
+                        $countStmt->bindValue(':' . $key, $value);
+                    }
+                    $countStmt->execute();
+                    $totalCount = (int)$countStmt->fetchColumn();
+                    
+                    // Stats - kolik je inventarizovano/neinventarizovano (bez search filtru pro celkove statistiky)
+                    $statsStmt = $pdo->prepare("
+                        SELECT 
+                            SUM(CASE WHEN im.cislo_majetku IS NOT NULL THEN 1 ELSE 0 END) as inventarizovano,
+                            SUM(CASE WHEN im.cislo_majetku IS NULL THEN 1 ELSE 0 END) as neinventarizovano,
+                            COUNT(*) as total
+                        FROM majetek m
+                        LEFT JOIN inventura_majetek im ON m.cislo = im.cislo_majetku
                     ");
-                    $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+                    $statsStmt->execute();
+                    $stats = $statsStmt->fetch();
+                    
+                    $sql = "
+                        SELECT m.id, m.cislo, m.nazev, m.cena_mj_num, m.datum_zarazeni,
+                               m.budt, m.mist, m.cinv,
+                               b.budovat as budova_nazev,
+                               mi.mistt as mistnost_nazev,
+                               iu.nazinv as inv_usek_nazev,
+                               im.jmeno_uzivatele as inventarizoval_uzivatel,
+                               im.datum_vytvoreni as inventarizoval_datum,
+                               (SELECT COUNT(*) FROM inventura_majetek WHERE cislo_majetku = m.cislo) as inventarizace_count
+                    " . $joinSql . $whereSql . " ORDER BY m.id DESC LIMIT :limit OFFSET :offset";
+                    
+                    $stmt = $pdo->prepare($sql);
+                    foreach ($params as $key => $value) {
+                        $stmt->bindValue(':' . $key, $value);
+                    }
+                    $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+                    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
                     $stmt->execute();
                     $results = $stmt->fetchAll();
                     
-                    echo json_encode(['success' => true, 'data' => $results, 'count' => count($results)]);
+                    echo json_encode([
+                        'success' => true, 
+                        'data' => $results, 
+                        'count' => count($results),
+                        'pagination' => [
+                            'page' => $page,
+                            'per_page' => $perPage,
+                            'total' => $totalCount,
+                            'total_pages' => (int)ceil($totalCount / $perPage)
+                        ],
+                        'stats' => [
+                            'total' => (int)$stats['total'],
+                            'inventarizovano' => (int)$stats['inventarizovano'],
+                            'neinventarizovano' => (int)$stats['neinventarizovano']
+                        ]
+                    ]);
                 }
             }
             break;
 
         case 'budovy':
-            $stmt = $pdo->query("SELECT budt, budovat, bmist, zaplf, koplf, datum_zapujceni, datum_ukonceni FROM budovy ORDER BY budovat");
+            $stmt = $pdo->query("SELECT budt, budovat, bmist, zaplf, koplf, datum_zapujceni, datum_ukonceni, created_at, updated_at FROM budovy ORDER BY budovat");
             echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
             break;
 
@@ -100,7 +175,7 @@ try {
             $budt = $_GET['budt'] ?? null;
             if ($budt) {
                 $stmt = $pdo->prepare("
-                    SELECT m.id, m.budt, m.mist, m.mistt, m.zaplf, m.koplf,
+                    SELECT m.id, m.budt, m.mist, m.mistt, m.zaplf, m.koplf, m.created_at, m.updated_at,
                            b.budovat as budova_nazev
                     FROM mistnosti m
                     LEFT JOIN budovy b ON m.budt = b.budt
@@ -110,7 +185,7 @@ try {
                 $stmt->execute(['budt' => $budt]);
             } else {
                 $stmt = $pdo->query("
-                    SELECT m.id, m.budt, m.mist, m.mistt, m.zaplf, m.koplf,
+                    SELECT m.id, m.budt, m.mist, m.mistt, m.zaplf, m.koplf, m.created_at, m.updated_at,
                            b.budovat as budova_nazev
                     FROM mistnosti m
                     LEFT JOIN budovy b ON m.budt = b.budt
@@ -122,12 +197,12 @@ try {
             break;
 
         case 'inventarni_useky':
-            $stmt = $pdo->query("SELECT cinv, nazinv, prac, zaplf, koplf FROM inventarni_useky ORDER BY nazinv");
+            $stmt = $pdo->query("SELECT cinv, nazinv, prac, zaplf, koplf, created_at, updated_at FROM inventarni_useky ORDER BY nazinv");
             echo json_encode(['success' => true, 'data' => $stmt->fetchAll()]);
             break;
 
         case 'inventura_list':
-            // Seznam všech naskenovaných položek s JOINy
+            // Seznam všech naskenovaných položek s JOINy + původní hodnoty z majetek
             if ($method === 'GET') {
                 $uzivatel = $_GET['uzivatel'] ?? null;
                 $limit = (int)($_GET['limit'] ?? 1000);
@@ -136,11 +211,21 @@ try {
                     SELECT im.*,
                            b.budovat as budova_nazev,
                            mi.mistt as mistnost_nazev,
-                           iu.nazinv as inv_usek_nazev
+                           iu.nazinv as inv_usek_nazev,
+                           m.budt as majetek_budt_original,
+                           m.mist as majetek_mist_original,
+                           m.cinv as majetek_cinv_original,
+                           b_orig.budovat as majetek_budova_nazev_original,
+                           mi_orig.mistt as majetek_mistnost_nazev_original,
+                           iu_orig.nazinv as majetek_inv_usek_nazev_original
                     FROM inventura_majetek im
                     LEFT JOIN budovy b ON im.budt = b.budt
                     LEFT JOIN mistnosti mi ON im.budt = mi.budt AND im.mist = mi.mist
                     LEFT JOIN inventarni_useky iu ON im.cinv = iu.cinv
+                    LEFT JOIN majetek m ON im.cislo_majetku = m.cislo
+                    LEFT JOIN budovy b_orig ON m.budt = b_orig.budt
+                    LEFT JOIN mistnosti mi_orig ON m.budt = mi_orig.budt AND m.mist = mi_orig.mist
+                    LEFT JOIN inventarni_useky iu_orig ON m.cinv = iu_orig.cinv
                 ";
                 
                 if ($uzivatel && $uzivatel !== 'all') {
@@ -342,6 +427,43 @@ try {
                 $stmt->execute(['id' => $id]);
                 
                 echo json_encode(['success' => true, 'deleted' => $stmt->rowCount()]);
+            }
+            break;
+
+        case 'majetek_inventarizace':
+            // Získání všech inventarizací pro dané číslo majetku (včetně duplicit)
+            if ($method === 'GET') {
+                $cislo = $_GET['cislo'] ?? null;
+                if (!$cislo) {
+                    http_response_code(400);
+                    echo json_encode(['success' => false, 'error' => 'Missing cislo parameter']);
+                    break;
+                }
+                
+                $stmt = $pdo->prepare("
+                    SELECT im.*,
+                           b.budovat as budova_nazev,
+                           mi.mistt as mistnost_nazev,
+                           iu.nazinv as inv_usek_nazev,
+                           m.nazev as majetek_nazev,
+                           m.cena_mj_num as majetek_cena
+                    FROM inventura_majetek im
+                    LEFT JOIN budovy b ON im.budt = b.budt
+                    LEFT JOIN mistnosti mi ON im.budt = mi.budt AND im.mist = mi.mist
+                    LEFT JOIN inventarni_useky iu ON im.cinv = iu.cinv
+                    LEFT JOIN majetek m ON im.cislo_majetku = m.cislo
+                    WHERE im.cislo_majetku = :cislo
+                    ORDER BY im.datum_vytvoreni ASC
+                ");
+                $stmt->execute(['cislo' => $cislo]);
+                $results = $stmt->fetchAll();
+                
+                echo json_encode([
+                    'success' => true, 
+                    'data' => $results,
+                    'count' => count($results),
+                    'has_duplicates' => count($results) > 1
+                ]);
             }
             break;
 

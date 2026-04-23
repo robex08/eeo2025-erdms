@@ -1,8 +1,8 @@
-# ✅ Inventik - Instalační Souhrn
+# ✅ Inventík - Instalační Souhrn
 
 ## 🎉 Úspěšně vytvořeno!
 
-Aplikace **Inventik** byla úspěšně vytvořena a nakonfigurována.
+Aplikace **Inventík** byla úspěšně vytvořena a nakonfigurována.
 
 ### 📂 Struktura projektu
 
@@ -19,7 +19,7 @@ apps/inventik/
 │   ├── index.html              # HTML template
 │   └── robots.txt              
 ├── src/                         # React source code
-│   ├── App.js                  # Main component - "Vítej v Inventik"
+│   ├── App.js                  # Main component - "Vítej v Inventík"
 │   ├── App.css                 # Styles
 │   ├── index.js                # Entry point
 │   └── index.css               # Global styles
@@ -134,7 +134,7 @@ Soubory v .gitignore (NEBUDOU commitnuty):
 
 Po spuštění `npm start` nebo v prohlížeči uvidíš:
 
-**"Vítej v aplikaci Inventik"**  
+**"Vítej v aplikaci Inventík"**  
 **"Systém pro inventuru majetku"**
 
 S krásnými animovanými ikonami 📦 📊 📋

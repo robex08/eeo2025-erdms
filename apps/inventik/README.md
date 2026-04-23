@@ -1,4 +1,4 @@
-# Inventik - Aplikace pro inventuru majetku
+# Inventík - Aplikace pro inventuru majetku
 
 Webová aplikace pro správu a inventuru majetku v organizaci.
 
