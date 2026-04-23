@@ -1,4 +1,4 @@
-# ✅ INVENTIK - IMPORT DOKONČEN
+# ✅ INVENTÍK - IMPORT DOKONČEN
 
 ## 📊 Souhrn importu
 

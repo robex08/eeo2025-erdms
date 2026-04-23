@@ -2,8 +2,7 @@
   "name": "inventik",
   "version": "1.0.0",
   "private": true,
-  "description": "Aplikace pro inventuru majetku",
-  "homepage": "/dev/inventik",
+  "description": "Inventík - Aplikace pro inventuru majetku",
   "dependencies": {
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
@@ -19,7 +18,7 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
-    "build:dev": "react-scripts build",
+    "build:dev": "PUBLIC_URL=/dev/inventik react-scripts build",
     "build:prod": "PUBLIC_URL=/inventik react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -41,5 +40,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "http-proxy-middleware": "^2.0.9"
   }
 }

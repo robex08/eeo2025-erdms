@@ -1,14 +1,13 @@
 // Úvodní stránka
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { FaBoxOpen, FaBarcode, FaClipboardList, FaUser, FaSignOutAlt } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
+import { FaBoxOpen, FaBarcode, FaClipboardList, FaList, FaCog, FaSignOutAlt } from 'react-icons/fa';
 import '../App.css';
 
 function HomePage() {
   const [userName, setUserName] = useState('');
   const [inputName, setInputName] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const navigate = useNavigate();
 
   // Načtení jména z localStorage při načtení stránky
   useEffect(() => {
@@ -36,16 +35,18 @@ function HomePage() {
   };
 
   if (!isLoggedIn) {
-    // Přihlašovací formulář
+    // Přihlašovací formulář s ikonami
     return (
       <div className="App">
         <header className="App-header">
           <div className="welcome-container">
             <div className="icon-group">
-              <FaUser className="welcome-icon" style={{ fontSize: '4rem' }} />
+              <FaBoxOpen className="welcome-icon" />
+              <FaBarcode className="welcome-icon" />
+              <FaClipboardList className="welcome-icon" />
             </div>
-            <h1>Přihlášení do Inventiku</h1>
-            <p className="subtitle">Zadejte své jméno pro vstup do aplikace</p>
+            <h1>Inventík</h1>
+            <p className="subtitle">Systém pro inventuru majetku</p>
             <div className="info-box" style={{ marginTop: '2rem' }}>
               <form onSubmit={handleLogin} style={{ width: '100%' }}>
                 <div style={{ marginBottom: '1.5rem' }}>
@@ -53,8 +54,9 @@ function HomePage() {
                     type="text"
                     value={inputName}
                     onChange={(e) => setInputName(e.target.value)}
-                    placeholder="Vaše jméno *"
+                    placeholder="Zadejte své jméno"
                     required
+                    autoFocus
                     style={{
                       width: '100%',
                       padding: '1rem',
@@ -69,44 +71,81 @@ function HomePage() {
                   />
                 </div>
                 <button type="submit" className="home-button" style={{ width: '100%' }}>
-                  <FaUser /> Vstoupit do aplikace
+                  Přihlásit se
                 </button>
               </form>
             </div>
+            <p className="version" style={{ marginTop: '2rem', color: '#94a3b8' }}>
+              Verze: {process.env.REACT_APP_VERSION || '1.0.0'}
+            </p>
           </div>
         </header>
       </div>
     );
   }
 
-  // Přihlášený uživatel - úvodní menu
+  // Přihlášený uživatel - dlaždice akcí
   return (
     <div className="App">
       <header className="App-header">
-        <div className="welcome-container">
-          <div className="icon-group">
-            <FaBoxOpen className="welcome-icon" />
-            <FaBarcode className="welcome-icon" />
-            <FaClipboardList className="welcome-icon" />
+        <div className="welcome-container" style={{ maxWidth: '800px' }}>
+          <h1 style={{ marginBottom: '0.5rem' }}>Vítej, {userName}!</h1>
+          <p className="subtitle" style={{ marginBottom: '2.5rem' }}>Vyberte akci, kterou chcete provést</p>
+          
+          {/* Grid dlaždic */}
+          <div className="tiles-grid">
+            <Link to="/sken" className="tile">
+              <div className="tile-icon">
+                <FaBarcode />
+              </div>
+              <h3>Skenování</h3>
+              <p>Naskenovat čárový kód majetku</p>
+            </Link>
+
+            <Link to="/inventura" className="tile">
+              <div className="tile-icon">
+                <FaClipboardList />
+              </div>
+              <h3>Inventura</h3>
+              <p>Přehled naskenovaného majetku</p>
+            </Link>
+
+            <Link to="/prehled" className="tile">
+              <div className="tile-icon">
+                <FaList />
+              </div>
+              <h3>Přehled</h3>
+              <p>Můj inventarizovaný majetek</p>
+            </Link>
+
+            <Link to="/ciselniky" className="tile">
+              <div className="tile-icon">
+                <FaCog />
+              </div>
+              <h3>Číselníky</h3>
+              <p>Budovy, místnosti, úseky</p>
+            </Link>
           </div>
-          <h1>Vítej, {userName}!</h1>
-          <p className="subtitle">Systém pro inventuru majetku</p>
-          <div className="info-box">
-            <p>Aplikace je připravena k použití</p>
-            <p className="version">Verze: {process.env.REACT_APP_VERSION || '1.0.0'}</p>
-            <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <Link to="/sken" className="home-button">
-                <FaBarcode /> Začít skenování
-              </Link>
-              <button 
-                onClick={handleLogout} 
-                className="home-button" 
-                style={{ backgroundColor: '#dc2626', borderColor: '#dc2626' }}
-              >
-                <FaSignOutAlt /> Odhlásit se
-              </button>
-            </div>
+
+          {/* Tlačítko odhlášení */}
+          <div style={{ marginTop: '2rem' }}>
+            <button 
+              onClick={handleLogout} 
+              className="home-button" 
+              style={{ 
+                backgroundColor: '#dc2626', 
+                borderColor: '#dc2626',
+                maxWidth: '300px',
+                margin: '0 auto'
+              }}
+            >
+              <FaSignOutAlt /> Odhlásit se
+            </button>
           </div>
+
+          <p className="version" style={{ marginTop: '1.5rem', color: '#94a3b8' }}>
+            Verze: {process.env.REACT_APP_VERSION || '1.0.0'}
+          </p>
         </div>
       </header>
     </div>
