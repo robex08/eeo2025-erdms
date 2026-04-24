@@ -14,53 +14,80 @@ import { prettyDate } from '../utils/format';
 // STYLED COMPONENTS
 // =============================================================================
 
-const Container = styled.div`
-  padding: 1.5rem;
-  max-width: 1400px;
-  margin: 0 auto;
+const PageContainer = styled.div`
+  padding: 1rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 `;
 
-const Header = styled.div`
-  background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
-  padding: 1.5rem 2rem;
-  margin: -1.5rem -1.5rem 1.5rem -1.5rem;
-  border-radius: 12px 12px 0 0;
-  color: white;
-  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+const TitlePanel = styled.div`
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
 `;
 
-const Title = styled.h1`
+const PageTitle = styled.h1`
   margin: 0;
-  font-size: 1.75rem;
+  font-size: calc(1.5rem + 3px);
   font-weight: 700;
+  color: white;
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 `;
 
-const TabsContainer = styled.div`
+const TabContainer = styled.div`
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  margin-bottom: 1rem;
+`;
+
+const TabHeader = styled.div`
   display: flex;
-  gap: 0.5rem;
-  border-bottom: 2px solid #e5e7eb;
-  margin-bottom: 1.5rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  overflow-x: auto;
+
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 `;
 
 const Tab = styled.button`
-  padding: 0.75rem 1.5rem;
+  flex: 0 0 auto;
+  min-width: 160px;
+  padding: 0.6rem 1.2rem;
+  background: ${props => props.$active ? 'white' : 'transparent'};
   border: none;
-  background: ${props => props.$active ? '#f59e0b' : 'transparent'};
-  color: ${props => props.$active ? 'white' : '#6b7280'};
-  font-weight: 600;
+  border-bottom: 3px solid ${props => props.$active ? '#3b82f6' : 'transparent'};
+  color: ${props => props.$active ? '#3b82f6' : '#64748b'};
+  font-weight: ${props => props.$active ? '600' : '500'};
   cursor: pointer;
-  border-radius: 8px 8px 0 0;
-  transition: all 0.2s ease;
+  transition: all 0.2s;
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  justify-content: center;
 
   &:hover {
-    background: ${props => props.$active ? '#f59e0b' : '#f3f4f6'};
-    color: ${props => props.$active ? 'white' : '#374151'};
+    background: ${props => props.$active ? 'white' : '#f1f5f9'};
+    color: ${props => props.$active ? '#3b82f6' : '#3b82f6'};
+  }
+
+  svg {
+    width: 18px;
+    height: 18px;
   }
 `;
 
@@ -70,6 +97,13 @@ const ActionBar = styled.div`
   margin-bottom: 1rem;
 `;
 
+const ContentArea = styled.div`
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 1rem;
+`;
+
 const Button = styled.button`
   display: flex;
   align-items: center;
@@ -77,16 +111,16 @@ const Button = styled.button`
   padding: 0.625rem 1.25rem;
   border: none;
   border-radius: 8px;
-  background: ${props => props.$variant === 'danger' ? '#dc2626' : '#f59e0b'};
+  background: ${props => props.$variant === 'danger' ? '#dc2626' : props.$variant === 'secondary' ? '#6b7280' : '#3b82f6'};
   color: white;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 
   &:hover {
-    background: ${props => props.$variant === 'danger' ? '#b91c1c' : '#d97706'};
+    background: ${props => props.$variant === 'danger' ? '#b91c1c' : props.$variant === 'secondary' ? '#4b5563' : '#2563eb'};
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25);
   }
 
   &:disabled {
@@ -246,8 +280,8 @@ const Input = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 `;
 
@@ -263,8 +297,8 @@ const Textarea = styled.textarea`
 
   &:focus {
     outline: none;
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 `;
 
@@ -292,8 +326,8 @@ const Select = styled.select`
 
   &:focus {
     outline: none;
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
 
   &:disabled {
@@ -456,64 +490,66 @@ const PlanningAdminPage = () => {
 
   if (!hasPermission('PLANNING_MANAGE')) {
     return (
-      <Container>
+      <PageContainer>
         <EmptyState>
           <FontAwesomeIcon icon={faCalendarAlt} size="3x" style={{ marginBottom: '1rem', opacity: 0.3 }} />
           <div>Nemáte oprávnění ke správě plánování</div>
         </EmptyState>
-      </Container>
+      </PageContainer>
     );
   }
 
   return (
-    <Container>
-      <Header>
-        <Title>
+    <PageContainer>
+      <TitlePanel>
+        <PageTitle>
           <FontAwesomeIcon icon={faCalendarAlt} />
           Správa plánování a rezervací
-        </Title>
-      </Header>
+        </PageTitle>
+      </TitlePanel>
 
-      <TabsContainer>
-        <Tab $active={activeTab === 'messages'} onClick={() => setActiveTab('messages')}>
-          <FontAwesomeIcon icon={faMessage} />
-          Dashboard zprávy
-        </Tab>
-        <Tab $active={activeTab === 'events'} onClick={() => setActiveTab('events')}>
-          <FontAwesomeIcon icon={faCalendarAlt} />
-          Kalendářové události
-        </Tab>
-      </TabsContainer>
+      <TabContainer>
+        <TabHeader>
+          <Tab $active={activeTab === 'messages'} onClick={() => setActiveTab('messages')}>
+            <FontAwesomeIcon icon={faMessage} />
+            Dashboard zprávy
+          </Tab>
+          <Tab $active={activeTab === 'events'} onClick={() => setActiveTab('events')}>
+            <FontAwesomeIcon icon={faCalendarAlt} />
+            Kalendářové události
+          </Tab>
+        </TabHeader>
 
-      <ActionBar>
-        <Button onClick={handleCreate}>
-          <FontAwesomeIcon icon={faPlus} />
-          {activeTab === 'messages' ? 'Nová zpráva' : 'Nová událost'}
-        </Button>
-      </ActionBar>
+        <ContentArea>
+          <ActionBar>
+            <Button onClick={handleCreate}>
+              <FontAwesomeIcon icon={faPlus} />
+              {activeTab === 'messages' ? 'Nová zpráva' : 'Nová událost'}
+            </Button>
+          </ActionBar>
 
-      <TableContainer>
-        {loading ? (
-          <EmptyState>Načítání...</EmptyState>
-        ) : currentData.length === 0 ? (
-          <EmptyState>
-            {activeTab === 'messages' ? 'Žádné zprávy' : 'Žádné události'}
-          </EmptyState>
-        ) : (
-          <Table>
-            <thead>
-              <tr>
-                <th>Název</th>
-                <th>{activeTab === 'messages' ? 'Obsah' : 'Popis'}</th>
-                <th>Datum od</th>
-                <th>Datum do</th>
-                <th>Příjemci</th>
-                <th>Hierarchie</th>
-                <th>Akce</th>
-              </tr>
-            </thead>
-            <tbody>
-              {currentData.map((item) => (
+          {loading ? (
+            <EmptyState>Načítání...</EmptyState>
+          ) : currentData.length === 0 ? (
+            <EmptyState>
+              {activeTab === 'messages' ? 'Žádné zprávy' : 'Žádné události'}
+            </EmptyState>
+          ) : (
+            <TableContainer>
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Název</th>
+                    <th>{activeTab === 'messages' ? 'Obsah' : 'Popis'}</th>
+                    <th>Datum od</th>
+                    <th>Datum do</th>
+                    <th>Příjemci</th>
+                    <th>Hierarchie</th>
+                    <th>Akce</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {currentData.map((item) => (
                 <tr key={item.id}>
                   <td><strong>{item.nazev}</strong></td>
                   <td>
@@ -548,8 +584,10 @@ const PlanningAdminPage = () => {
               ))}
             </tbody>
           </Table>
+          </TableContainer>
         )}
-      </TableContainer>
+        </ContentArea>
+      </TabContainer>
 
       {/* Modal pro vytváření/editaci */}
       {modalOpen && (
@@ -642,7 +680,7 @@ const PlanningAdminPage = () => {
             </ModalBody>
 
             <ModalFooter>
-              <Button style={{ background: '#6b7280' }} onClick={() => setModalOpen(false)}>
+              <Button $variant="secondary" onClick={() => setModalOpen(false)}>
                 <FontAwesomeIcon icon={faTimes} />
                 Zrušit
               </Button>
@@ -654,7 +692,7 @@ const PlanningAdminPage = () => {
           </ModalContent>
         </ModalOverlay>
       )}
-    </Container>
+    </PageContainer>
   );
 };
 
