@@ -1605,6 +1605,25 @@ switch ($endpoint) {
             echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
         }
         break;
+    
+    // Planning - helper endpointy pro výběr příjemců
+    case 'planning/recipients/roles':
+        if ($request_method === 'POST') {
+            handle_planning_recipients_roles($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/recipients/users':
+        if ($request_method === 'POST') {
+            handle_planning_recipients_users($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
 
     // ============ ZASTUPOVÁNÍ UŽIVATELŮ ============
     case 'substitution/list':

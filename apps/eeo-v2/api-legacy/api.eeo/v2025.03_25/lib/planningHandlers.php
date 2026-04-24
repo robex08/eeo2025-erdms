@@ -852,6 +852,130 @@ function handle_planning_events_create($input, $config) {
     }
 }
 
+// ==========================================
+// HELPER ENDPOINTY - NAČTENÍ PŘÍJEMCŮ
+// ==========================================
+
+/**
+ * GET seznam aktivních rolí pro výběr příjemců
+ * POST planning/recipients/roles
+ * Body: {token, username}
+ */
+function handle_planning_recipients_roles($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        $sql = "SELECT id, kod_role, nazev_role, Popis 
+                FROM " . TBL_ROLE . " 
+                WHERE aktivni = 1 
+                ORDER BY nazev_role ASC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $roles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => $roles,
+            'count' => count($roles)
+        ]);
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání rolí: ' . $e->getMessage()
+        ]);
+        error_log("[Planning] Exception in recipients/roles: " . $e->getMessage());
+    }
+}
+
+/**
+ * GET seznam aktivních uživatelů pro výběr příjemců
+ * POST planning/recipients/users
+ * Body: {token, username}
+ */
+function handle_planning_recipients_users($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        $sql = "SELECT id, jmeno, prijmeni, email 
+                FROM " . TBL_UZIVATELE . " 
+                WHERE aktivni = 1 
+                ORDER BY prijmeni ASC, jmeno ASC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute();
+        $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => $users,
+            'count' => count($users)
+        ]);
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání uživatelů: ' . $e->getMessage()
+        ]);
+        error_log("[Planning] Exception in recipients/users: " . $e->getMessage());
+    }
+}
+
 // Další event handlers (get, update, delete) - obdobné jako pro messages
 // Pro stručnost je vynechávám, budou přidány v další iteraci pokud potřeba
 

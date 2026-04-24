@@ -261,6 +261,40 @@ export const deleteEvent = async (id) => {
 };
 
 // =============================================================================
+// RECIPIENTS (PŘÍJEMCI) API
+// =============================================================================
+
+/**
+ * Seznam aktivních rolí pro výběr příjemců
+ * @returns {Promise<Object>} - { status, data: [{id, kod_role, nazev_role, Popis}], count }
+ */
+export const getActiveRoles = async () => {
+  try {
+    const auth = await getAuthData();
+    const response = await planningApi.post('/planning/recipients/roles', auth);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] getActiveRoles error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Seznam aktivních uživatelů pro výběr příjemců
+ * @returns {Promise<Object>} - { status, data: [{id, jmeno, prijmeni, email}], count }
+ */
+export const getActiveUsers = async () => {
+  try {
+    const auth = await getAuthData();
+    const response = await planningApi.post('/planning/recipients/users', auth);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] getActiveUsers error:', error);
+    throw error;
+  }
+};
+
+// =============================================================================
 // EXPORTS
 // =============================================================================
 
@@ -277,5 +311,9 @@ export default {
   getEvent,
   createEvent,
   updateEvent,
-  deleteEvent
+  deleteEvent,
+  
+  // Recipients
+  getActiveRoles,
+  getActiveUsers
 };
