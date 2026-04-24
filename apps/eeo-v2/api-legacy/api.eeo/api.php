@@ -1515,6 +1515,97 @@ switch ($endpoint) {
         }
         break;
 
+    // ============ PLÁNOVÁNÍ A REZERVACE ============
+    case 'planning/messages/list':
+        if ($request_method === 'POST') {
+            handle_planning_messages_list($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/messages/get':
+        if ($request_method === 'POST') {
+            handle_planning_messages_get($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/messages/create':
+        if ($request_method === 'POST') {
+            handle_planning_messages_create($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/messages/update':
+        if ($request_method === 'POST') {
+            handle_planning_messages_update($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/messages/delete':
+        if ($request_method === 'POST') {
+            handle_planning_messages_delete($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/events/list':
+        if ($request_method === 'POST') {
+            handle_planning_events_list($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/events/get':
+        if ($request_method === 'POST') {
+            handle_planning_events_get($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/events/create':
+        if ($request_method === 'POST') {
+            handle_planning_events_create($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/events/update':
+        if ($request_method === 'POST') {
+            handle_planning_events_update($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'planning/events/delete':
+        if ($request_method === 'POST') {
+            handle_planning_events_delete($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+
     // ============ ZASTUPOVÁNÍ UŽIVATELŮ ============
     case 'substitution/list':
         if ($request_method === 'POST') {
