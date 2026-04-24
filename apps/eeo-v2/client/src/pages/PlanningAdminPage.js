@@ -11,6 +11,7 @@ import * as planningApi from '../services/planningApi';
 import { prettyDate } from '../utils/format';
 import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
+import { CustomSelect } from '../components/CustomSelect';
 
 // =============================================================================
 // STYLED COMPONENTS
@@ -428,49 +429,6 @@ const EmptyState = styled.div`
   font-size: 0.875rem;
 `;
 
-// Recipients Selection Components
-const RecipientsList = styled.div`
-  border: 1.5px solid #e2e8f0;
-  border-radius: 9px;
-  max-height: 200px;
-  overflow-y: auto;
-  padding: 0.5rem;
-  background: #fafafa;
-`;
-
-const RecipientItem = styled.label`
-  display: flex;
-  align-items: center;
-  padding: 0.5rem 0.75rem;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background 0.15s;
-  font-size: 0.875rem;
-  color: #1e293b;
-
-  &:hover {
-    background: #f3f4f6;
-  }
-
-  input[type="checkbox"] {
-    margin-right: 0.5rem;
-    width: 16px;
-    height: 16px;
-    cursor: pointer;
-  }
-`;
-
-const RecipientName = styled.span`
-  flex: 1;
-  font-weight: 500;
-`;
-
-const RecipientDetail = styled.span`
-  font-size: 0.75rem;
-  color: #64748b;
-  margin-left: 0.5rem;
-`;
-
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -505,6 +463,11 @@ const PlanningAdminPage = () => {
   // Vybraní příjemci (separátní state pro lepší UX)
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
+
+  // CustomSelect state
+  const [selectStates, setSelectStates] = useState({});
+  const [searchStates, setSearchStates] = useState({});
+  const [touchedSelectFields, setTouchedSelectFields] = useState({});
 
   // Kontrola oprávnění
   useEffect(() => {
@@ -701,6 +664,50 @@ const PlanningAdminPage = () => {
     }
   };
 
+  // CustomSelect helper funkce
+  const toggleSelect = (field) => {
+    setSelectStates(prev => ({
+      ...prev,
+      [field]: !prev[field]
+    }));
+  };
+
+  const filterOptions = (options, searchTerm, field) => {
+    if (!searchTerm) return options;
+    const lowerSearch = searchTerm.toLowerCase();
+    
+    if (field === 'recipients_roles') {
+      return options.filter(role => 
+        (role.nazev_role || '').toLowerCase().includes(lowerSearch) ||
+        (role.kod_role || '').toLowerCase().includes(lowerSearch)
+      );
+    }
+    
+    if (field === 'recipients_users') {
+      return options.filter(user =>
+        (user.jmeno || '').toLowerCase().includes(lowerSearch) ||
+        (user.prijmeni || '').toLowerCase().includes(lowerSearch) ||
+        (user.email || '').toLowerCase().includes(lowerSearch)
+      );
+    }
+    
+    return options;
+  };
+
+  const getOptionLabel = (option, field) => {
+    if (!option) return '';
+    
+    if (field === 'recipients_roles') {
+      return `${option.nazev_role} (${option.kod_role})`;
+    }
+    
+    if (field === 'recipients_users') {
+      return `${option.prijmeni} ${option.jmeno} - ${option.email}`;
+    }
+    
+    return option.label || option.nazev || String(option);
+  };
+
   const currentData = activeTab === 'messages' ? messages : events;
 
   if (!hasPermission('PLANNING_MANAGE')) {
@@ -876,62 +883,46 @@ const PlanningAdminPage = () => {
 
               <FormGroup>
                 <Label>Role (příjemci)</Label>
-                <RecipientsList>
-                  {availableRoles.length === 0 ? (
-                    <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
-                      Načítání...
-                    </div>
-                  ) : (
-                    availableRoles.map(role => (
-                      <RecipientItem key={role.id}>
-                        <input
-                          type="checkbox"
-                          value={role.id}
-                          checked={selectedRoles.includes(role.id.toString())}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedRoles([...selectedRoles, role.id.toString()]);
-                            } else {
-                              setSelectedRoles(selectedRoles.filter(r => r !== role.id.toString()));
-                            }
-                          }}
-                        />
-                        <RecipientName>{role.nazev_role}</RecipientName>
-                        <RecipientDetail>{role.kod_role}</RecipientDetail>
-                      </RecipientItem>
-                    ))
-                  )}
-                </RecipientsList>
+                <CustomSelect
+                  value={selectedRoles}
+                  onChange={(newValues) => setSelectedRoles(newValues)}
+                  options={availableRoles}
+                  placeholder="-- Vyberte role --"
+                  field="recipients_roles"
+                  multiple={true}
+                  selectStates={selectStates}
+                  setSelectStates={setSelectStates}
+                  searchStates={searchStates}
+                  setSearchStates={setSearchStates}
+                  touchedSelectFields={touchedSelectFields}
+                  setTouchedSelectFields={setTouchedSelectFields}
+                  toggleSelect={toggleSelect}
+                  filterOptions={filterOptions}
+                  getOptionLabel={getOptionLabel}
+                  enableSearch={true}
+                />
               </FormGroup>
 
               <FormGroup>
                 <Label>Konkrétní uživatelé (příjemci)</Label>
-                <RecipientsList>
-                  {availableUsers.length === 0 ? (
-                    <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
-                      Načítání...
-                    </div>
-                  ) : (
-                    availableUsers.map(user => (
-                      <RecipientItem key={user.id}>
-                        <input
-                          type="checkbox"
-                          value={user.id}
-                          checked={selectedUsers.includes(user.id.toString())}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedUsers([...selectedUsers, user.id.toString()]);
-                            } else {
-                              setSelectedUsers(selectedUsers.filter(u => u !== user.id.toString()));
-                            }
-                          }}
-                        />
-                        <RecipientName>{user.prijmeni} {user.jmeno}</RecipientName>
-                        <RecipientDetail>{user.email}</RecipientDetail>
-                      </RecipientItem>
-                    ))
-                  )}
-                </RecipientsList>
+                <CustomSelect
+                  value={selectedUsers}
+                  onChange={(newValues) => setSelectedUsers(newValues)}
+                  options={availableUsers}
+                  placeholder="-- Vyberte uživatele --"
+                  field="recipients_users"
+                  multiple={true}
+                  selectStates={selectStates}
+                  setSelectStates={setSelectStates}
+                  searchStates={searchStates}
+                  setSearchStates={setSearchStates}
+                  touchedSelectFields={touchedSelectFields}
+                  setTouchedSelectFields={setTouchedSelectFields}
+                  toggleSelect={toggleSelect}
+                  filterOptions={filterOptions}
+                  getOptionLabel={getOptionLabel}
+                  enableSearch={true}
+                />
                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
                   <FontAwesomeIcon icon={faInfoCircle} style={{ marginRight: '0.25rem' }} />
                   Organizační hierarchie je řízena globálním nastavením systému
