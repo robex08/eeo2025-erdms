@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
@@ -451,7 +451,7 @@ const LoadingState = styled.div`
 // COMPONENT
 // =============================================================================
 
-export const NotificationDropdown = ({
+export const NotificationDropdown = React.forwardRef(({
   anchorRef,
   visible,
   onClose,
@@ -464,11 +464,26 @@ export const NotificationDropdown = ({
   onDismiss,
   onDismissAll,
   loading = false
-}) => {
+}, ref) => {
   const [position, setPosition] = useState({ top: 0, left: 0 });
   const [isPositioned, setIsPositioned] = useState(false);
   const dropdownRef = useRef(null);
   const navigate = useNavigate();
+
+  // Callback ref to set both internal and forwarded refs
+  const setRefs = useCallback((node) => {
+    // Set internal ref
+    dropdownRef.current = node;
+    
+    // Set forwarded ref if provided
+    if (ref) {
+      if (typeof ref === 'function') {
+        ref(node);
+      } else {
+        ref.current = node;
+      }
+    }
+  }, [ref]);
 
   // Calculate dropdown position relative to bell icon
   useEffect(() => {
@@ -677,7 +692,7 @@ export const NotificationDropdown = ({
     <>
       <DropdownOverlay $visible={visible} onClick={onClose} />
       <DropdownContainer
-        ref={dropdownRef}
+        ref={setRefs}
         $top={position.top}
         $left={position.left}
         $isPositioned={isPositioned}
@@ -860,6 +875,8 @@ export const NotificationDropdown = ({
   );
 
   return ReactDOM.createPortal(dropdownContent, document.body);
-};
+});
+
+NotificationDropdown.displayName = 'NotificationDropdown';
 
 export default NotificationDropdown;

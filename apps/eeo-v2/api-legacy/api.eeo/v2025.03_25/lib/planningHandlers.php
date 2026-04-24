@@ -37,6 +37,41 @@ require_once __DIR__ . '/queries.php';
 // ==========================================
 
 /**
+ * Načte globální nastavení pro plánování z tabulky 25a_nastaveni_globalni
+ * 
+ * @param PDO $db
+ * @return array ['use_hierarchy' => bool, 'hierarchy_profile_id' => int|null]
+ */
+function getPlanningGlobalSettings($db) {
+    $settings = [
+        'use_hierarchy' => false,
+        'hierarchy_profile_id' => null
+    ];
+    
+    try {
+        $stmt = $db->prepare("
+            SELECT klic, hodnota 
+            FROM 25a_nastaveni_globalni 
+            WHERE klic IN ('PLANNING_USE_HIERARCHY', 'PLANNING_HIERARCHY_PROFILE_ID')
+        ");
+        $stmt->execute();
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($rows as $row) {
+            if ($row['klic'] === 'PLANNING_USE_HIERARCHY') {
+                $settings['use_hierarchy'] = ($row['hodnota'] == '1');
+            } else if ($row['klic'] === 'PLANNING_HIERARCHY_PROFILE_ID') {
+                $settings['hierarchy_profile_id'] = $row['hodnota'] ? (int)$row['hodnota'] : null;
+            }
+        }
+    } catch (Exception $e) {
+        error_log("❌ getPlanningGlobalSettings: " . $e->getMessage());
+    }
+    
+    return $settings;
+}
+
+/**
  * Získá explicitní příjemce zprávy nebo události z databáze
  * @param PDO $db
  * @param int $record_id
@@ -170,9 +205,12 @@ function createPlanningNotifications($db, $record, $typ, $event_type) {
     // 1. Získat EXPLICITNÍ příjemce (role + konkrétní uživatelé z tabulky)
     $explicitRecipients = getPlanningRecipients($db, $record['id'], $typ);
     
-    // 2. POKUD je pouzit_hierarchii = 1 → získat příjemce i z hierarchie
+    // 2. Načíst GLOBÁLNÍ nastavení hierarchie
+    $globalSettings = getPlanningGlobalSettings($db);
+    
+    // 3. POKUD je globálně zapnuta hierarchie → získat příjemce i z hierarchie
     $hierarchyRecipients = [];
-    if (isset($record['pouzit_hierarchii']) && $record['pouzit_hierarchii'] == 1) {
+    if ($globalSettings['use_hierarchy']) {
         $hierarchyResult = resolveHierarchyNotificationRecipients(
             $db,
             $event_type,
@@ -181,7 +219,7 @@ function createPlanningNotifications($db, $record, $typ, $event_type) {
                 'nazev' => $record['nazev'],
                 'autor_id' => $record['autor_id']
             ],
-            $record['hierarchy_profile_id'] ?? null
+            $globalSettings['hierarchy_profile_id']
         );
         
         // ✅ FALLBACK: Pokud hierarchie nevrátí žádné příjemce → použít jen explicitní
@@ -192,11 +230,11 @@ function createPlanningNotifications($db, $record, $typ, $event_type) {
         //       → mergeRecipients vrátí pouze explicitRecipients
     }
     
-    // 3. MERGE příjemců (deduplikace, nejvyšší priorita)
+    // 4. MERGE příjemců (deduplikace, nejvyšší priorita)
     // Pokud hierarchyRecipients je prázdný → vrátí se jen explicitRecipients
     $allRecipients = mergeRecipients($explicitRecipients, $hierarchyRecipients);
     
-    // 4. Vytvořit notifikaci pro každého příjemce
+    // 5. Vytvořit notifikaci pro každého příjemce
     foreach ($allRecipients as $recipient) {
         createNotification($db, [
             ':typ' => $event_type,
@@ -264,12 +302,10 @@ function handle_planning_messages_list($input, $config) {
 
         $sql = "SELECT z.*, 
                        u.jmeno as autor_jmeno, u.prijmeni as autor_prijmeni,
-                       hp.nazev as hierarchy_profile_nazev,
                        COUNT(DISTINCT zp.id) as pocet_prijemcu,
                        COUNT(DISTINCT zo.id) as pocet_odpovedi
                 FROM " . TBL_PLAN_ZPRAVY . " z
                 LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = z.autor_id
-                LEFT JOIN " . TBL_HIERARCHIE_PROFILY . " hp ON hp.id = z.hierarchy_profile_id
                 LEFT JOIN " . TBL_PLAN_ZPRAVY_PRIJEMCI . " zp ON zp.zprava_id = z.id
                 LEFT JOIN " . TBL_PLAN_ZPRAVY_ODPOVEDI . " zo ON zo.zprava_id = z.id
                 WHERE z.aktivni = 1
@@ -393,7 +429,8 @@ function handle_planning_messages_get($input, $config) {
 /**
  * CREATE nová zpráva
  * POST planning/messages/create
- * Body: {token, username, nazev, obsah, dt_od, dt_do, pouzit_hierarchii, hierarchy_profile_id, prijemci: [{typ_prijemce, kod_role?, user_id?}]}
+ * Body: {token, username, nazev, obsah, dt_od, dt_do, prijemci: [{typ_prijemce, kod_role?, user_id?}]}
+ * Poznámka: Organizační hierarchie je řízena globálním nastavením v 25a_nastaveni_globalni
  */
 function handle_planning_messages_create($input, $config) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -438,8 +475,8 @@ function handle_planning_messages_create($input, $config) {
 
         // INSERT zprávy
         $sql = "INSERT INTO " . TBL_PLAN_ZPRAVY . " 
-                (nazev, obsah, dt_od, dt_do, pouzit_hierarchii, hierarchy_profile_id, autor_id, dt_created, aktivni)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)";
+                (nazev, obsah, dt_od, dt_do, autor_id, dt_created, aktivni)
+                VALUES (?, ?, ?, ?, ?, ?, 1)";
         
         $stmt = $db->prepare($sql);
         $stmt->execute([
@@ -447,8 +484,6 @@ function handle_planning_messages_create($input, $config) {
             $obsah,
             $input['dt_od'] ?? null,
             $input['dt_do'] ?? null,
-            $input['pouzit_hierarchii'] ?? 0,
-            $input['hierarchy_profile_id'] ?? null,
             $token_data['user_id'],
             $dt_created
         ]);
@@ -479,8 +514,6 @@ function handle_planning_messages_create($input, $config) {
             'nazev' => $nazev,
             'obsah' => $obsah,
             'autor_id' => $token_data['user_id'],
-            'pouzit_hierarchii' => $input['pouzit_hierarchii'] ?? 0,
-            'hierarchy_profile_id' => $input['hierarchy_profile_id'] ?? null,
             'dt_do' => $input['dt_do'] ?? null
         ];
         createPlanningNotifications($db, $zprava, 'zprava', 'PLANNING_MESSAGE_CREATED');
@@ -505,7 +538,8 @@ function handle_planning_messages_create($input, $config) {
 /**
  * UPDATE zpráva
  * POST planning/messages/update
- * Body: {token, username, id, nazev, obsah, dt_od, dt_do, pouzit_hierarchii, hierarchy_profile_id}
+ * Body: {token, username, id, nazev, obsah, dt_od, dt_do}
+ * Poznámka: Organizační hierarchie je řízena globálním nastavením
  */
 function handle_planning_messages_update($input, $config) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -546,8 +580,7 @@ function handle_planning_messages_update($input, $config) {
         TimezoneHelper::setMysqlTimezone($db);
 
         $sql = "UPDATE " . TBL_PLAN_ZPRAVY . " 
-                SET nazev = ?, obsah = ?, dt_od = ?, dt_do = ?, 
-                    pouzit_hierarchii = ?, hierarchy_profile_id = ?
+                SET nazev = ?, obsah = ?, dt_od = ?, dt_do = ?
                 WHERE id = ? AND aktivni = 1";
         
         $stmt = $db->prepare($sql);
@@ -556,8 +589,6 @@ function handle_planning_messages_update($input, $config) {
             $input['obsah'] ?? '',
             $input['dt_od'] ?? null,
             $input['dt_do'] ?? null,
-            $input['pouzit_hierarchii'] ?? 0,
-            $input['hierarchy_profile_id'] ?? null,
             $id
         ]);
 
@@ -682,12 +713,10 @@ function handle_planning_events_list($input, $config) {
 
         $sql = "SELECT u.*, 
                        us.jmeno as autor_jmeno, us.prijmeni as autor_prijmeni,
-                       hp.nazev as hierarchy_profile_nazev,
                        COUNT(DISTINCT up.id) as pocet_prijemcu,
                        COUNT(DISTINCT uo.id) as pocet_odpovedi
                 FROM " . TBL_PLAN_UDALOSTI . " u
                 LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id
-                LEFT JOIN " . TBL_HIERARCHIE_PROFILY . " hp ON hp.id = u.hierarchy_profile_id
                 LEFT JOIN " . TBL_PLAN_UDALOSTI_PRIJEMCI . " up ON up.udalost_id = u.id
                 LEFT JOIN " . TBL_PLAN_UDALOSTI_ODPOVEDI . " uo ON uo.udalost_id = u.id
                 WHERE u.aktivni = 1
@@ -718,7 +747,8 @@ function handle_planning_events_list($input, $config) {
 /**
  * CREATE nová událost
  * POST planning/events/create
- * Body: {token, username, nazev, popis, dt_od, dt_do, pouzit_hierarchii, hierarchy_profile_id, prijemci}
+ * Body: {token, username, nazev, popis, dt_od, dt_do, prijemci}
+ * Poznámka: Organizační hierarchie je řízena globálním nastavením
  */
 function handle_planning_events_create($input, $config) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -762,8 +792,8 @@ function handle_planning_events_create($input, $config) {
 
         // INSERT události
         $sql = "INSERT INTO " . TBL_PLAN_UDALOSTI . " 
-                (nazev, popis, dt_od, dt_do, pouzit_hierarchii, hierarchy_profile_id, autor_id, dt_created, aktivni)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)";
+                (nazev, popis, dt_od, dt_do, autor_id, dt_created, aktivni)
+                VALUES (?, ?, ?, ?, ?, ?, 1)";
         
         $stmt = $db->prepare($sql);
         $stmt->execute([
@@ -771,8 +801,6 @@ function handle_planning_events_create($input, $config) {
             $input['popis'] ?? '',
             $input['dt_od'] ?? null,
             $input['dt_do'] ?? null,
-            $input['pouzit_hierarchii'] ?? 0,
-            $input['hierarchy_profile_id'] ?? null,
             $token_data['user_id'],
             $dt_created
         ]);
@@ -803,8 +831,6 @@ function handle_planning_events_create($input, $config) {
             'nazev' => $nazev,
             'popis' => $input['popis'] ?? '',
             'autor_id' => $token_data['user_id'],
-            'pouzit_hierarchii' => $input['pouzit_hierarchii'] ?? 0,
-            'hierarchy_profile_id' => $input['hierarchy_profile_id'] ?? null,
             'dt_od' => $input['dt_od'] ?? null
         ];
         createPlanningNotifications($db, $udalost, 'udalost', 'PLANNING_EVENT_CREATED');
