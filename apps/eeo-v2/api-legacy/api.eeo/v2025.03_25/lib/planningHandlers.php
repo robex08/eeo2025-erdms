@@ -84,7 +84,7 @@ function getPlanningRecipients($db, $record_id, $typ) {
             }
         } else if ($row['typ_prijemce'] === 'user' && $row['user_id']) {
             // Získat konkrétního uživatele
-            $sql_user = "SELECT id, email FROM " . TBL_UZIVATELE . " WHERE id = ? AND u.aktivni = 1";
+            $sql_user = "SELECT id, email FROM " . TBL_UZIVATELE . " WHERE id = ? AND aktivni = 1";
             $stmt_user = $db->prepare($sql_user);
             $stmt_user->execute([$row['user_id']]);
             $user = $stmt_user->fetch(PDO::FETCH_ASSOC);
