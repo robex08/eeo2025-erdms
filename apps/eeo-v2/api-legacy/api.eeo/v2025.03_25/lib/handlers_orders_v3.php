@@ -196,7 +196,7 @@ function handle_orders_v3_detail($input, $config) {
         $stmt_items->execute(['order_id' => $order_id]);
         $items = $stmt_items->fetchAll(PDO::FETCH_ASSOC);
 
-        // Načtení faktur
+        // Načtení faktur + LP kódy
         $sql_invoices = "SELECT 
             f.id,
             f.fa_cislo_vema,
@@ -222,10 +222,19 @@ function handle_orders_v3_detail($input, $config) {
             uvs.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
             uvs.email as potvrdil_vecnou_spravnost_email,
             uvs.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
-            uvs.titul_za as potvrdil_vecnou_spravnost_titul_za
+            uvs.titul_za as potvrdil_vecnou_spravnost_titul_za,
+            lp_data.lp_kody_nazvy as fa_lp_kody
         FROM " . TBL_FAKTURY . " f
         LEFT JOIN " . TBL_UZIVATELE . " uv ON f.vytvoril_uzivatel_id = uv.id
         LEFT JOIN " . TBL_UZIVATELE . " uvs ON f.potvrdil_vecnou_spravnost_id = uvs.id
+        LEFT JOIN (
+            SELECT 
+                flp.faktura_id,
+                GROUP_CONCAT(DISTINCT CONCAT(lp.cislo_lp, '|', COALESCE(lp.nazev_uctu, '')) ORDER BY lp.cislo_lp SEPARATOR ';;') as lp_kody_nazvy
+            FROM " . TBL_FAKTURY_LP_CERPANI . " flp
+            LEFT JOIN " . TBL_LP_MASTER . " lp ON flp.lp_id = lp.id
+            GROUP BY flp.faktura_id
+        ) lp_data ON f.id = lp_data.faktura_id
         WHERE f.objednavka_id = :order_id
         AND f.aktivni = 1
         ORDER BY f.fa_datum_vystaveni DESC";
@@ -661,7 +670,7 @@ function handle_orders_v3_invoices($input, $config) {
             return;
         }
 
-        // Načtení faktur - EXPLICITNÍ VÝČET SLOUPCŮ + FA_STREDISKA_KOD
+        // Načtení faktur - EXPLICITNÍ VÝČET SLOUPCŮ + FA_STREDISKA_KOD + LP KÓDY
         $sql = "SELECT 
             f.id,
             f.fa_cislo_vema,
@@ -687,10 +696,19 @@ function handle_orders_v3_invoices($input, $config) {
             uvs.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
             uvs.email as potvrdil_vecnou_spravnost_email,
             uvs.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
-            uvs.titul_za as potvrdil_vecnou_spravnost_titul_za
+            uvs.titul_za as potvrdil_vecnou_spravnost_titul_za,
+            lp_data.lp_kody_nazvy as fa_lp_kody
         FROM " . TBL_FAKTURY . " f
         LEFT JOIN " . TBL_UZIVATELE . " uv ON f.vytvoril_uzivatel_id = uv.id
         LEFT JOIN " . TBL_UZIVATELE . " uvs ON f.potvrdil_vecnou_spravnost_id = uvs.id
+        LEFT JOIN (
+            SELECT 
+                flp.faktura_id,
+                GROUP_CONCAT(DISTINCT CONCAT(lp.cislo_lp, '|', COALESCE(lp.nazev_uctu, '')) ORDER BY lp.cislo_lp SEPARATOR ';;') as lp_kody_nazvy
+            FROM " . TBL_FAKTURY_LP_CERPANI . " flp
+            LEFT JOIN " . TBL_LP_MASTER . " lp ON flp.lp_id = lp.id
+            GROUP BY flp.faktura_id
+        ) lp_data ON f.id = lp_data.faktura_id
         WHERE f.objednavka_id = :order_id
         AND f.aktivni = 1
         ORDER BY f.fa_datum_vystaveni DESC";

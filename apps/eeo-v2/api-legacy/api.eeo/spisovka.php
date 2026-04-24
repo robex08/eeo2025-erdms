@@ -40,16 +40,34 @@ $spisovka_config = array(
     'database' => 'spisovka350'
 );
 
-// Regex pro filtrování faktur (s podporou diakritiky a variant)
-// Zachytává: faktura, fa č., fak č., zálohová, vyúčtování, vyúčtovací
-// Všechny varianty: velká/malá písmena, s/bez diakritiky
+// Regex pro filtrování faktur.
+// ⚠️ MySQL 5.5 REGEXP je BYTE-WISE – multibyte znaky (ň, ý, á, č, í, ú)
+//    uvnitř [char-class] NEFUNGUJÍ. Proto jsou varianty s/bez diakritiky
+//    napsány jako ALTERNACE celých slov (oddělené '|').
+//    Ve WHERE se používá LOWER(nazev) → case-insensitive.
+// Zachytává: faktura/faktury, fa č., fak č., zálohová, vyúčtovací/vyúčtování,
+//            daňový doklad, opravný daňový doklad, ODD
 define('FAKTURA_REGEX',
-    '[Ff]aktur[aáuúAÁUÚ]|' .
-    '[Ff][Aa][[:space:]\.]\*[cčCČ][[:space:]\.]\?|' .
-    '[Ff][Aa][Kk][[:space:]\.]\*[cčCČ][[:space:]\.]\?|' .
-    '^[Ff][Aa][[:space:]]|' .
-    '[Zz][áaÁA]lohov[áaÁA]|' .
-    '[Vv]y[úuÚU][čcČC]tov[aáácčAÁÁCČ][cčníCČNÍ][íiÍI]'
+    // faktura / faktury / fakturu
+    'faktur[auy]|' .
+    // fa č., fa., fa c.
+    'fa[[:space:]\.]+(c\.?|č\.?)?|' .
+    // fak č., fak.
+    'fak[[:space:]\.]+(c\.?|č\.?)?|' .
+    // "fa " na začátku názvu
+    '^fa[[:space:]]|' .
+    // zálohová / zalohova
+    'zálohová|zalohova|' .
+    // vyúčtovací / vyuctovaci
+    'vyúčtovací|vyuctovaci|' .
+    // vyúčtování / vyuctovani
+    'vyúčtování|vyuctovani|' .
+    // ✅ 2026-04-24: daňový doklad / danovy doklad
+    'daňový[[:space:]]+doklad|danovy[[:space:]]+doklad|' .
+    // opravný daňový doklad / opravny danovy doklad
+    'opravný[[:space:]]+daňový[[:space:]]+doklad|opravny[[:space:]]+danovy[[:space:]]+doklad|' .
+    // zkratka ODD jako samostatný token (LOWER → "odd")
+    '(^|[[:space:]\.])odd([[:space:]\.]|$)'
 );
 
 // Získání request metody a URI
@@ -106,8 +124,10 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     $search = isset($_GET['search']) ? trim($_GET['search']) : ''; // 🔍 Fulltext vyhledávání
     
     // Sestavení WHERE klauzule pro vyhledávání
+    // ⚠️ LOWER(d.nazev) – MySQL 5.5 REGEXP je byte-wise; kombinace s LOWER
+    //    a alternativami s/bez diakritiky v FAKTURA_REGEX dává case-insensitive match.
     $where_conditions = [
-        "d.nazev REGEXP '" . FAKTURA_REGEX . "'",
+        "LOWER(d.nazev) REGEXP '" . FAKTURA_REGEX . "'",
         "YEAR(d.datum_vzniku) = ?"
     ];
     $params = [$rok];
@@ -222,7 +242,7 @@ if ($endpoint === 'faktury' && $request_method === 'GET') {
     
     // Celkový počet faktur (použít stejné WHERE podmínky bez LIMITu)
     $count_where_conditions = [
-        "nazev REGEXP '" . FAKTURA_REGEX . "'",
+        "LOWER(nazev) REGEXP '" . FAKTURA_REGEX . "'",
         "YEAR(datum_vzniku) = ?"
     ];
     $count_params = [$rok];

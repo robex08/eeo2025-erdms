@@ -555,6 +555,12 @@ const InlineCommentsPanel = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* ✅ FIX 2026-04-24: Při nízkém okně panel nesmí zkolabovat pod NavigatorContent.
+     Minimální výška zajistí, že bude viditelný alespoň 1 komentář + textarea,
+     maximální výška drží panel v rozumné části viewportu. */
+  flex-shrink: 0;
+  min-height: 200px;
+  max-height: min(420px, 60vh);
 `;
 
 const InlineCommentsPanelHeader = styled.div`
@@ -569,7 +575,11 @@ const InlineCommentsPanelHeader = styled.div`
 `;
 
 const InlineCommentsList = styled.div`
-  max-height: 180px;
+  /* ✅ FIX 2026-04-24: List se flexibilně roztahuje uvnitř panelu,
+     ale vždy zůstane čitelný (min-height) a scrollovatelný. */
+  flex: 1 1 auto;
+  min-height: 80px;
+  max-height: 260px;
   overflow-y: auto;
   padding: 6px;
   display: flex;

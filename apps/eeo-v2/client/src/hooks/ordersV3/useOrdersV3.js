@@ -728,6 +728,12 @@ export function useOrdersV3({
         try {
           // console.log('📋 Loading subrow data for order:', orderId);
           
+          // ✅ KONTROLA: Musíme mít token, username a orderId
+          if (!token || !username || !orderId) {
+            console.warn('⚠️ Cannot load subrow data - missing auth or orderId', { token: !!token, username: !!username, orderId });
+            return;
+          }
+          
           // ✅ SKUTEČNÉ NAČTENÍ FAKTUR místo mockDetail
           const invoices = await getOrderInvoicesV3({ 
             token, 

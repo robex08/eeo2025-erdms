@@ -1905,9 +1905,14 @@ function Orders25ListV3() {
   }, []);
 
   // Handler pro rozbalení řádku
-  const handleRowExpand = (order) => {
-    handleToggleRow(order.id);
-  };
+  const handleRowExpand = useCallback((orderOrId) => {
+    const orderId = typeof orderOrId === 'object' && orderOrId !== null
+      ? orderOrId.id
+      : orderOrId;
+
+    if (!orderId) return;
+    handleToggleRow(orderId);
+  }, [handleToggleRow]);
 
   const handleHighlightOrder = useCallback((orderId, action) => {
     setHighlightOrderId(orderId);

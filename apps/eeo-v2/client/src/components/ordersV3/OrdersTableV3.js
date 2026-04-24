@@ -789,7 +789,7 @@ const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
-  table-layout: auto; /* Dynamická šířka sloupců */
+  table-layout: auto; /* Auto layout pro flexibilní EV číslo sloupec */
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   letter-spacing: -0.01em;
 `;
@@ -813,9 +813,6 @@ const TableHeaderCell = styled.th`
   transition: background-color 0.2s ease;
   position: relative;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
-  width: ${props => props.$width || 'auto'};
-  max-width: ${props => props.$width || 'none'};
-  min-width: ${props => props.$width || 'auto'};
 
   &:hover {
     background-color: ${props => props.$sortable ? '#e2e8f0' : 'transparent'};
@@ -855,26 +852,23 @@ const TableHeaderCell = styled.th`
       content: '';
       width: 3px;
       height: 60%;
-      background: transparent;
+      background: rgba(203, 213, 225, 0.5); /* Mírně viditelný */
       border-radius: 2px;
-      transition: background 0.15s ease;
+      transition: all 0.15s ease;
     }
     
     &:hover::before {
       background: #3b82f6;
+      width: 4px;
+      height: 70%;
     }
     
     &:active::before {
       background: #2563eb;
-      width: 4px;
+      width: 5px;
+      height: 80%;
     }
   }
-
-  /* Šířky sloupců */
-  width: ${props => {
-    if (props.$width) return props.$width;
-    return 'auto';
-  }};
 `;
 
 const HeaderContent = styled.div`
@@ -2044,6 +2038,85 @@ const mapUserStatusToSystemCode = (userStatus) => {
 };
 
 /**
+ * Formátuje LP kód s rokem z platne_do
+ * Např.: "203" + platneDo:"2025-12-31" → "203'25"
+ */
+const formatLpWithYear = (cisloLp, platneDo) => {
+  if (!cisloLp) return '';
+  if (!platneDo) return cisloLp;
+  
+  try {
+    const date = typeof platneDo === 'string' ? new Date(platneDo) : platneDo;
+    const year = date.getFullYear();
+    const shortYear = year.toString().slice(-2); // Poslední 2 číslice roku
+    return `${cisloLp}'${shortYear}`;
+  } catch (e) {
+    return cisloLp; // Fallback při chybě
+  }
+};
+
+/**
+ * Sestaví detailní tooltip text pro financování
+ */
+const getFinancovaniTooltip = (order) => {
+  if (!order.financovani || typeof order.financovani !== 'object' || Array.isArray(order.financovani)) {
+    return '';
+  }
+  
+  const typ = order.financovani.typ || '';
+  const typNazev = order.financovani.typ_nazev || typ;
+  
+  // LP - zobrazit detaily všech LP kódů
+  if (typ === 'LP') {
+    if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
+      const lpLines = order.financovani.lp_nazvy.map(lp => {
+        const kod = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+        const nazev = lp.nazev || '';
+        const prikazce = lp.prikazce_jmeno || '';
+        const usek = lp.usek_zkr || '';
+        
+        let line = `${kod}`;
+        if (nazev) line += ` - ${nazev}`;
+        if (prikazce) line += `\nPříkazce: ${prikazce}`;
+        if (usek) line += `\nÚsek: ${usek}`;
+        
+        return line;
+      }).join('\n\n');
+      
+      return `${typNazev}\n\n${lpLines}`;
+    }
+  }
+  
+  // Smlouva - zobrazit číslo smlouvy, název a úsek
+  if (typ === 'SMLOUVA') {
+    const cislo = order.financovani.cislo_smlouvy || '';
+    const nazev = order.financovani.nazev_smlouvy || '';
+    const usek = order.financovani.usek_zkr || '';
+    
+    let text = typNazev;
+    if (cislo) text += `\n\nČíslo: ${cislo}`;
+    if (nazev) text += `\nNázev: ${nazev}`;
+    if (usek) text += `\nÚsek: ${usek}`;
+    
+    return text;
+  }
+  
+  // Pojistná událost - zobrazit číslo
+  if (typ === 'POJISTNA_UDALOST') {
+    const cislo = order.financovani.pojistna_udalost_cislo || order.financovani.poznamka || '';
+    return typNazev + (cislo ? `\n\nČíslo: ${cislo}` : '');
+  }
+  
+  // Individuální schválení - zobrazit číslo (ne ID)
+  if (typ === 'INDIVIDUALNI_SCHVALENI') {
+    const cislo = order.financovani.individualni_schvaleni || '';
+    return typNazev + (cislo ? `\n\nČíslo: ${cislo}` : '');
+  }
+  
+  return typNazev;
+};
+
+/**
  * Formátuje financování podle OrderV2 logiky
  * Vrací název typu financování (zkrácený)
  */
@@ -2079,17 +2152,17 @@ const getFinancovaniDetail = (order) => {
   
   // LP - zobrazit jen LP kód (bez názvu/popisu)
   if (typ === 'LP') {
-    // Priorita 1: lp_nazvy array s kompletními daty - zobrazit jen kód
+    // Priorita 1: lp_nazvy array s kompletními daty - zobrazit jen kód s rokem
     if (order.financovani.lp_nazvy && Array.isArray(order.financovani.lp_nazvy) && order.financovani.lp_nazvy.length > 0) {
       const lpKody = order.financovani.lp_nazvy
-        .map(lp => lp.cislo_lp || lp.kod || '')
+        .map(lp => formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do))
         .filter(Boolean);
       
       if (lpKody.length > 0) {
         return lpKody.join(', ');
       }
     }
-    // Fallback: lp_kody array (jen kódy bez názvů)
+    // Fallback: lp_kody array (jen kódy bez názvů a bez platne_do)
     else if (order.financovani.lp_kody && Array.isArray(order.financovani.lp_kody) && order.financovani.lp_kody.length > 0) {
       return order.financovani.lp_kody.join(', ');
     }
@@ -2800,8 +2873,9 @@ const OrdersTableV3 = ({
         // Vymazat staré verze při prvním načtení
         localStorage.removeItem(`ordersV3_columnSizing_v2_${userId}`);
         localStorage.removeItem(`ordersV3_columnSizing_v3_${userId}`);
+        localStorage.removeItem(`ordersV3_columnSizing_v4_${userId}`);
         
-        const saved = localStorage.getItem(`ordersV3_columnSizing_v4_${userId}`);
+        const saved = localStorage.getItem(`ordersV3_columnSizing_v6_${userId}`);
         return saved ? JSON.parse(saved) : {};
       } catch {
         return {};
@@ -2810,10 +2884,13 @@ const OrdersTableV3 = ({
     return {};
   });
   
+  // State pro force re-render tabulky (při resetu)
+  const [tableResetKey, setTableResetKey] = useState(0);
+  
   // Uložit column sizing do localStorage při změně (per user)
   useEffect(() => {
     if (userId && Object.keys(columnSizing).length > 0) {
-      localStorage.setItem(`ordersV3_columnSizing_v4_${userId}`, JSON.stringify(columnSizing));
+      localStorage.setItem(`ordersV3_columnSizing_v6_${userId}`, JSON.stringify(columnSizing));
     }
   }, [columnSizing, userId]);
   
@@ -4225,9 +4302,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 160,
-        minSize: 140,
-        maxSize: 350,
+        size: 205,
+        minSize: 200,
+        maxSize: 240,
         enableSorting: true,
       },
       {
@@ -4238,30 +4315,34 @@ const OrdersTableV3 = ({
           const order = row.original;
           const financovaniText = getFinancovaniText(order); // Zkrácený název
           const detailText = getFinancovaniDetail(order);
-          
-          // Plný název pro title (tooltip)
-          const fullName = order.financovani?.typ_nazev || order.financovani?.typ || '';
+          const tooltipText = getFinancovaniTooltip(order); // Detailní tooltip
           
           return (
-            <div 
-              style={{ textAlign: 'left', whiteSpace: 'normal', lineHeight: '1.3' }}
-              title={fullName || undefined}
+            <SmartTooltip 
+              text={tooltipText} 
+              preferredPosition="right" 
+              multiline={true}
+              icon="none"
             >
-              <div style={{ fontWeight: 600, color: '#7c3aed' }}>{financovaniText}</div>
-              {detailText && (
-                <div style={{ 
-                  fontSize: '0.8em', 
-                  color: '#6b7280', 
-                  marginTop: '2px',
-                  fontWeight: 500
-                }}>
-                  {detailText}
-                </div>
-              )}
-            </div>
+              <div style={{ textAlign: 'left', whiteSpace: 'normal', lineHeight: '1.3' }}>
+                <div style={{ fontWeight: 600, color: '#7c3aed' }}>{financovaniText}</div>
+                {detailText && (
+                  <div style={{ 
+                    fontSize: '0.8em', 
+                    color: '#6b7280', 
+                    marginTop: '2px',
+                    fontWeight: 500
+                  }}>
+                    {detailText}
+                  </div>
+                )}
+              </div>
+            </SmartTooltip>
           );
         },
-        size: 110,
+        size: 145,
+        minSize: 140,
+        maxSize: 180,
         enableSorting: true,
       },
       {
@@ -4285,9 +4366,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 180,
-        minSize: 150,
-        maxSize: 280,
+        size: 165,
+        minSize: 140,
+        maxSize: 240,
         enableSorting: true,
       },
       {
@@ -4311,9 +4392,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 180,
-        minSize: 150,
-        maxSize: 280,
+        size: 165,
+        minSize: 140,
+        maxSize: 240,
         enableSorting: true,
       },
       {
@@ -4446,7 +4527,7 @@ const OrdersTableV3 = ({
           
           return badge;
         },
-        size: 130,
+        size: 170,
         enableSorting: true,
       },
       {
@@ -4586,7 +4667,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 150,
+        size: 125,
+        minSize: 120,
+        maxSize: 170,
         enableSorting: true,
       },
       {
@@ -4609,7 +4692,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 150,
+        size: 125,
+        minSize: 120,
+        maxSize: 170,
         enableSorting: true,
       },
       {
@@ -4636,7 +4721,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 150,
+        size: 125,
+        minSize: 120,
+        maxSize: 170,
         enableSorting: true,
       },
       {
@@ -4644,51 +4731,58 @@ const OrdersTableV3 = ({
         header: () => (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px', width: '100%', overflow: 'visible' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5em', position: 'relative' }}>
-              {hasActiveSorting && (
-                <SmartTooltip text="Zrušit třídění">
-                  <div
-                    style={{
-                      position: 'relative',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onClick={(e) => {
-                      e.stopPropagation();
+              <SmartTooltip text={hasActiveSorting ? "Zrušit třídění" : "Žádné aktivní třídění"}>
+                <div
+                  style={{
+                    position: 'relative',
+                    cursor: hasActiveSorting ? 'pointer' : 'not-allowed',
+                    transition: 'all 0.2s ease',
+                    opacity: hasActiveSorting ? 1 : 0.4
+                  }}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (hasActiveSorting) {
                       onSortingChange([]);
-                    }}
-                    onMouseEnter={(e) => {
+                      if (showToast) {
+                        showToast('✅ Třídění bylo resetováno', { type: 'success' });
+                      }
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    if (hasActiveSorting) {
                       e.currentTarget.style.transform = 'scale(1.15)';
                       const icon = e.currentTarget.querySelector('svg');
                       if (icon) icon.style.color = '#dc2626';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'scale(1)';
+                    const icon = e.currentTarget.querySelector('svg');
+                    if (icon) icon.style.color = '#9ca3af';
+                  }}
+                >
+                  <FontAwesomeIcon 
+                    icon={faSort} 
+                    style={{ 
+                      color: '#9ca3af',
+                      fontSize: '16px',
+                      transition: 'color 0.2s'
                     }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.transform = 'scale(1)';
-                      const icon = e.currentTarget.querySelector('svg');
-                      if (icon) icon.style.color = '#9ca3af';
+                  />
+                  <FontAwesomeIcon 
+                    icon={faTimes} 
+                    style={{ 
+                      position: 'absolute',
+                      top: '-2px',
+                      right: '-8px',
+                      color: '#dc2626',
+                      fontSize: '10px',
+                      fontWeight: 'bold'
                     }}
-                  >
-                    <FontAwesomeIcon 
-                      icon={faSort} 
-                      style={{ 
-                        color: '#9ca3af',
-                        fontSize: '16px',
-                        transition: 'color 0.2s'
-                      }}
-                    />
-                    <FontAwesomeIcon 
-                      icon={faTimes} 
-                      style={{ 
-                        position: 'absolute',
-                        top: '-2px',
-                        right: '-8px',
-                        color: '#dc2626',
-                        fontSize: '10px',
-                        fontWeight: 'bold'
-                      }}
-                    />
-                  </div>
-                </SmartTooltip>
-              )}
+                  />
+                </div>
+              </SmartTooltip>
               <SmartTooltip text="Reset šířky sloupců">
                 <div
                   style={{
@@ -4696,11 +4790,24 @@ const OrdersTableV3 = ({
                     cursor: 'pointer',
                     transition: 'all 0.2s ease'
                   }}
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
-                    setColumnSizing({});
+                    // Smazat localStorage pro všechny verze
                     if (userId) {
+                      localStorage.removeItem(`ordersV3_columnSizing_v2_${userId}`);
+                      localStorage.removeItem(`ordersV3_columnSizing_v3_${userId}`);
                       localStorage.removeItem(`ordersV3_columnSizing_v4_${userId}`);
+                      localStorage.removeItem(`ordersV3_columnSizing_v5_${userId}`);
+                      localStorage.removeItem(`ordersV3_columnSizing_v6_${userId}`);
+                    }
+                    // Reset state - prázdný objekt
+                    setColumnSizing({});
+                    // Force re-render tabulky změnou key
+                    setTableResetKey(prev => prev + 1);
+                    
+                    if (showToast) {
+                      showToast('✅ Šířka sloupců byla resetována', { type: 'success' });
                     }
                   }}
                   onMouseEnter={(e) => {
@@ -4742,6 +4849,7 @@ const OrdersTableV3 = ({
                     cursor: 'pointer',
                     transition: 'all 0.2s ease'
                   }}
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
                     if (userId) {
@@ -4898,6 +5006,7 @@ const OrdersTableV3 = ({
     onSortingChange,
     onColumnSizingChange: setColumnSizing,
     columnResizeMode: 'onChange',
+    enableColumnResizing: true,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableSortingRemoval: true, // Povolit 3-state sorting: asc -> desc -> none
@@ -5008,7 +5117,7 @@ const OrdersTableV3 = ({
     >
       {/* STICKY ZÁHLAVÍ - ukotvené pod horní navigací */}
       <StickyHeaderContainer ref={stickyHeaderRef}>
-      <Table style={{ tableLayout: 'fixed' }}>
+      <Table key={`header-${tableResetKey}`}>
         <TableHead>
           {table.getHeaderGroups().map(headerGroup => (
             <tr key={headerGroup.id}>
@@ -5016,18 +5125,37 @@ const OrdersTableV3 = ({
                 const columnId = header.column.id;
                 const canHide = columnId !== 'expander' && columnId !== 'actions' && columnId !== 'approve' && columnId !== 'kontrola_komentare';
                 
+                // ✨ EV číslo: flexibilní šířka pokud nemá uživatel vlastní nastavení
+                const isEvCislo = columnId === 'cislo_objednavky';
+                const userWidth = columnSizing[columnId];
+                const defaultWidth = header.column.columnDef.size ? `${header.column.columnDef.size}px` : undefined;
+                
                 return (
                   <TableHeaderCell
                     key={header.id}
                     $align={header.column.columnDef.meta?.align || 'left'}
                     $sortable={header.column.getCanSort()}
-                    $width={columnSizing[columnId] || (header.column.columnDef.size ? `${header.column.columnDef.size}px` : undefined)}
                     data-dragging={draggedColumn === columnId}
                     data-drag-over={dragOverColumn === columnId}
                     onDragOver={(e) => handleDragOver(e, columnId)}
                     onDragLeave={handleDragLeave}
                     onDrop={(e) => handleDrop(e, columnId)}
-                    style={header.column.columnDef.meta?.headerStyle || {}}
+                    style={
+                      isEvCislo && !userWidth
+                        ? {
+                            ...(header.column.columnDef.meta?.headerStyle || {}),
+                            // Flexibilní - roztáhne se podle dostupného místa
+                            minWidth: defaultWidth,
+                            width: 'auto'
+                          }
+                        : {
+                            ...(header.column.columnDef.meta?.headerStyle || {}),
+                            // Fixní šířka
+                            width: userWidth || defaultWidth,
+                            minWidth: userWidth || defaultWidth,
+                            maxWidth: userWidth || defaultWidth
+                          }
+                    }
                   >
                     <HeaderContent $align={header.column.columnDef.meta?.align || 'left'}>
                       {/* První řádek: název + sorting + akce */}
@@ -5233,7 +5361,7 @@ const OrdersTableV3 = ({
 
       {/* TĚLO TABULKY - scrollovatelné horizontálně */}
       <TableBodyScrollContainer ref={tableBodyScrollRef}>
-      <Table>
+      <Table key={`body-${tableResetKey}`}>
         <TableBody>
           {error ? (
             <ErrorRow>
@@ -5341,14 +5469,38 @@ const OrdersTableV3 = ({
                     onContextMenu={onTableContextMenu} // 🆕 Kontextové menu
                     onDoubleClick={() => onActionClick?.('edit', order)} // 🎯 Double-click pro editaci
                   >
-                    {row.getVisibleCells().map(cell => (
-                      <TableCell
-                        key={cell.id}
-                        $align={cell.column.columnDef.meta?.align || 'left'}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </TableCell>
-                    ))}
+                    {row.getVisibleCells().map(cell => {
+                      const columnId = cell.column.id;
+                      const userWidth = columnSizing[columnId];
+                      const defaultWidth = cell.column.columnDef.size ? `${cell.column.columnDef.size}px` : undefined;
+                      
+                      // ✨ EV číslo: flexibilní šířka pokud nemá uživatel vlastní nastavení
+                      const isEvCislo = columnId === 'cislo_objednavky';
+                      const cellWidth = userWidth || defaultWidth;
+                      
+                      return (
+                        <TableCell
+                          key={cell.id}
+                          $align={cell.column.columnDef.meta?.align || 'left'}
+                          style={
+                            isEvCislo && !userWidth
+                              ? {
+                                  // Flexibilní - roztáhne se podle dostupného místa
+                                  minWidth: defaultWidth,
+                                  width: 'auto'
+                                }
+                              : {
+                                  // Fixní šířka
+                                  width: cellWidth,
+                                  minWidth: cellWidth,
+                                  maxWidth: cellWidth
+                                }
+                          }
+                        >
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TableCell>
+                      );
+                    })}
                   </tr>
                   {expanded && (
                     <OrderExpandedRowV3
@@ -6596,6 +6748,12 @@ const OrdersTableV3 = ({
             localStorage.removeItem(`${storagePrefix}_columnOrder_${userId}`);
             localStorage.removeItem(`${storagePrefix}_columnSizing_${userId}`);
             localStorage.removeItem(`${storagePrefix}_preferences_${userId}`);
+            // Vyčistit i nový column sizing klíč (všechny verze)
+            localStorage.removeItem(`ordersV3_columnSizing_v2_${userId}`);
+            localStorage.removeItem(`ordersV3_columnSizing_v3_${userId}`);
+            localStorage.removeItem(`ordersV3_columnSizing_v4_${userId}`);
+            localStorage.removeItem(`ordersV3_columnSizing_v5_${userId}`);
+            localStorage.removeItem(`ordersV3_columnSizing_v6_${userId}`);
             window.location.reload();
           }
           setResetColumnsConfirm(false);

@@ -239,7 +239,13 @@ function handle_dashboard_data($input, $config, $queries) {
 
         // === STATISTIKY FAKTUR ===
         if ($has_cap('DASHBOARD_INVOICES_STATS')) {
+            // Uživatel s právem na celou statistiku - vrátit vše
             $result['invoices_stats'] = _dashboard_get_invoice_stats($db, $user_id, $is_invoice_admin, $is_invoice_admin, $usek_id, $perm_codes);
+        } elseif ($has_cap('DASHBOARD_INVOICES_CONFIRM')) {
+            // Uživatel s právem na widget "Faktury k potvrzení" - vrátit jen osobní data pro QuickTile ikonu
+            $result['invoices_stats'] = [
+                'moje_nezkontrolovane' => _dashboard_get_my_unchecked_invoices_count($db, $user_id)
+            ];
         }
 
         // === KONTAKTY - počet zaměstnanců + dodavatelů ===
@@ -2060,6 +2066,25 @@ function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_man
     $stmt = $db->prepare($sql);
     $stmt->execute($params);
     return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Počet faktur k věcné kontrole pro aktuálního uživatele
+ * Používá se pro QuickTile ikonu i pro běžné uživatele bez práva DASHBOARD_INVOICES_STATS
+ */
+function _dashboard_get_my_unchecked_invoices_count($db, $user_id) {
+    $uid = (int)$user_id;
+    $sql = "
+        SELECT COUNT(*) as count
+        FROM `" . TBL_FAKTURY . "` f
+        WHERE f.aktivni = 1
+          AND f.fa_predana_zam_id = :user_id
+          AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0)
+    ";
+    $stmt = $db->prepare($sql);
+    $stmt->execute([':user_id' => $uid]);
+    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+    return (int)($result['count'] ?? 0);
 }
 
 // ============================================================================

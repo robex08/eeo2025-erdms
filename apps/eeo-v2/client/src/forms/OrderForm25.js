@@ -20745,7 +20745,7 @@ function OrderForm25() {
                           style={{ fontWeight: 700, color: '#1e40af', fontSize: '0.7rem', cursor: 'help' }}
                           title={tooltipText}
                         >
-                          {lpCislo}
+                          {lpCisloWithYear}
                         </div>
                         <div style={{ fontWeight: 700, color: isNegative ? '#dc2626' : '#059669', fontSize: '0.7rem' }}>
                           {zbyva < 0 && '−'}
