@@ -2891,6 +2891,30 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         $objectType = getObjectTypeFromEvent($eventType);
         error_log("✅ [NotificationRouter] Object type: $objectType");
         
+        // ✅ GUARD 2026-04-24: Nikdy neposílat 'INVOICE_MATERIAL_CHECK_REQUESTED' pro
+        //    fakturu, která už má věcnou správnost potvrzenou. Eliminuje opakované
+        //    notifikace uživatelům, kteří fakturu v minulosti potvrdili.
+        if ($eventType === 'INVOICE_MATERIAL_CHECK_REQUESTED' && $objectType === 'invoices') {
+            try {
+                $stmt = $db->prepare("SELECT vecna_spravnost_potvrzeno FROM " . TBL_FAKTURY . " WHERE id = ? LIMIT 1");
+                $stmt->execute(array($objectId));
+                $inv = $stmt->fetch(PDO::FETCH_ASSOC);
+                if ($inv && (int)$inv['vecna_spravnost_potvrzeno'] === 1) {
+                    error_log("🛑 [NotificationRouter] SKIP INVOICE_MATERIAL_CHECK_REQUESTED – faktura #{$objectId} už má potvrzenou věcnou správnost. Notifikace se neposílá.");
+                    if ($debugMode) {
+                        $debugInfo['skipped_reason'] = 'invoice already has vecna_spravnost_potvrzeno=1';
+                        $result['debug_info'] = $debugInfo;
+                    }
+                    $result['success'] = true;
+                    $result['skipped'] = 'already_confirmed';
+                    return $result;
+                }
+            } catch (Exception $e) {
+                error_log("⚠️ [NotificationRouter] Guard check failed: " . $e->getMessage());
+                // Pokračujeme dál – neblokovat kvůli chybě guard kontroly
+            }
+        }
+        
         // DEBUG do DB
         try {
             $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");

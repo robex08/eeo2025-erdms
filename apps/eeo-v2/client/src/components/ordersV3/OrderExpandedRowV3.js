@@ -1,5 +1,6 @@
 /** @jsxImportSource @emotion/react */
 import React, { useEffect, useMemo, useState, useCallback, useContext, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -765,13 +766,13 @@ const getFileIcon = (fileName) => {
   
   const ext = fileName.split('.').pop().toLowerCase();
   
-  if (['pdf'].includes(ext)) return faFilePdf;
-  if (['doc', 'docx'].includes(ext)) return faFileWord;
-  if (['xls', 'xlsx'].includes(ext)) return faFileExcel;
-  if (['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(ext)) return faFileImage;
-  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return faFileArchive;
+  if (['pdf'].includes(ext)) return faFilePdf || faFile;
+  if (['doc', 'docx'].includes(ext)) return faFileWord || faFile;
+  if (['xls', 'xlsx'].includes(ext)) return faFileExcel || faFile;
+  if (['jpg', 'jpeg', 'png', 'gif', 'svg'].includes(ext)) return faFileImage || faFile;
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return faFileArchive || faFile;
   
-  return faFileAlt;
+  return faFileAlt || faFile;
 };
 
 const getFileIconColor = (fileName) => {
@@ -1031,6 +1032,8 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 
 const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog, canApproveOrder, onLoadComments, onAddComment, onDeleteComment }) => {
   const { userDetail, hasAdminRole } = useContext(AuthContext);
+  const navigate = useNavigate();
+  
   const canSeeWorkflowDebug = useMemo(() => {
     if (typeof hasAdminRole === 'function' && hasAdminRole()) return true;
     return userDetail?.roles?.some(role => {
@@ -2765,12 +2768,74 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   return (
                   <InvoiceItem key={index}>
                     <InvoiceHeader>
-                      <InvoiceNumber>
-                        FA VS: {invoice.fa_cislo_vema || invoice.id || 'N/A'}
-                        {invoice.fa_vema_kod && (
-                          <span style={{ fontFamily: "'Roboto', sans-serif", color: '#3b82f6', fontWeight: 500 }}> / FA VEMA číslo: {invoice.fa_vema_kod}</span>
-                        )}
-                      </InvoiceNumber>
+                      <div>
+                        <InvoiceNumber>
+                          FA VS: {invoice.fa_cislo_vema || invoice.id || 'N/A'}
+                          {invoice.fa_vema_kod && (
+                            <span style={{ fontFamily: "'Roboto', sans-serif", color: '#3b82f6', fontWeight: 500 }}> / FA VEMA číslo: {invoice.fa_vema_kod}</span>
+                          )}
+                          {/* ✏️ Ikona pro editaci faktury */}
+                          <FontAwesomeIcon 
+                            icon={faEdit} 
+                            onClick={() => {
+                              navigate('/invoice-evidence', { 
+                                state: { 
+                                  editInvoiceId: invoice.id,
+                                  orderIdForLoad: order.id || null
+                                } 
+                              });
+                            }}
+                            style={{
+                              marginLeft: '8px',
+                              fontSize: '0.85em',
+                              color: '#6b7280',
+                              cursor: 'pointer',
+                              transition: 'color 0.2s',
+                              position: 'relative',
+                              top: '-1px'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.color = '#3b82f6'}
+                            onMouseLeave={(e) => e.currentTarget.style.color = '#6b7280'}
+                            title="Editovat fakturu"
+                          />
+                        </InvoiceNumber>
+                        
+                        {/* 🟣 LP KÓDY FAKTURY - HNED POD FA VS */}
+                        {invoice.fa_lp_kody && invoice.fa_lp_kody.trim() !== '' && (() => {
+                          // Parsování LP kódů z formátu: "LP001|Název;;LP002|Název 2"
+                          const lpItems = invoice.fa_lp_kody.split(';;').filter(item => item.trim() !== '');
+                          if (lpItems.length === 0) return null;
+                          
+                          return (
+                            <div style={{ 
+                              marginTop: '0.25rem', 
+                              display: 'flex', 
+                              flexWrap: 'wrap', 
+                              gap: '0.375rem'
+                            }}>
+                              {lpItems.map((lpItem, lpIdx) => {
+                                const [lpCislo, lpNazev] = lpItem.split('|');
+                                return (
+                                  <span key={lpIdx} style={{
+                                    display: 'inline-block',
+                                    padding: '3px 8px',
+                                    fontSize: '0.7em',
+                                    fontWeight: 500,
+                                    backgroundColor: '#f3e8ff',
+                                    color: '#6b21a8',
+                                    borderRadius: '4px',
+                                    border: '1px solid #d8b4fe',
+                                    whiteSpace: 'nowrap' // Text se neláme uvnitř badge
+                                  }}>
+                                    {lpCislo}{lpNazev && lpNazev.trim() !== '' ? ` - ${lpNazev}` : ''}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.25rem' }}>
                         <InvoiceAmount>
                           {formatCurrency(invoice.fa_castka)}
@@ -2788,11 +2853,13 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         )}
                       </div>
                     </InvoiceHeader>
+                    
                     {(invoice.vytvoril_jmeno || invoice.vytvoril_prijmeni) && (
-                      <InvoiceDetail>
+                      <InvoiceDetail style={{ marginTop: '0.75rem' }}>
                         <span style={{ fontFamily: "'Roboto', sans-serif", color: '#6b7280', fontWeight: 600 }}>Evidoval:</span> <span style={{ fontFamily: "'Roboto', sans-serif", color: '#1e293b', fontWeight: 600 }}>{formatUserName(invoice.vytvoril_jmeno, invoice.vytvoril_prijmeni, invoice.vytvoril_titul_pred, invoice.vytvoril_titul_za)}</span>
                       </InvoiceDetail>
                     )}
+                    
                     {(invoice.fa_datum_doruceni || invoice.fa_datum_vystaveni || invoice.fa_datum_splatnosti) && (
                       <InvoiceDetail>
                         {invoice.fa_datum_doruceni && (

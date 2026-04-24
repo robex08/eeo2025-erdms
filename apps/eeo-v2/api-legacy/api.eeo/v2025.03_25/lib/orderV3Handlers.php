@@ -402,6 +402,9 @@ function getLPDetailyBatch($db, $lp_ids) {
     $lp_ids = array_unique(array_map('intval', array_filter($lp_ids)));
     if (empty($lp_ids)) return array();
     
+    // ✅ Přeindexovat pole od 0 (PDO vyžaduje sekvenční klíče)
+    $lp_ids = array_values($lp_ids);
+    
     try {
         $placeholders = implode(',', array_fill(0, count($lp_ids), '?'));
         $stmt = $db->prepare("
@@ -411,6 +414,7 @@ function getLPDetailyBatch($db, $lp_ids) {
                 lp.cislo_uctu,
                 lp.nazev_uctu,
                 lp.vyse_financniho_kryti,
+                lp.platne_do,
                 u.usek_zkr,
                 TRIM(CONCAT(COALESCE(uz.jmeno, ''), ' ', COALESCE(uz.prijmeni, ''))) AS prikazce_jmeno
             FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
@@ -446,24 +450,29 @@ function getSmlouvyBatch($db, $cisla_smluv) {
     $cisla_smluv = array_unique(array_filter($cisla_smluv));
     if (empty($cisla_smluv)) return array();
     
+    // ✅ Přeindexovat pole od 0 (PDO vyžaduje sekvenční klíče)
+    $cisla_smluv = array_values($cisla_smluv);
+    
     try {
         $placeholders = implode(',', array_fill(0, count($cisla_smluv), '?'));
         $stmt = $db->prepare("
             SELECT 
-                cislo_smlouvy,
-                hodnota_s_dph as hodnota,
-                cerpano_pozadovano,
-                cerpano_planovano,
-                cerpano_skutecne,
-                zbyva_pozadovano,
-                zbyva_planovano,
-                zbyva_skutecne,
-                nazev_firmy,
-                ico,
-                nazev_smlouvy
-            FROM " . TBL_SMLOUVY . " 
-            WHERE cislo_smlouvy IN ($placeholders)
-              AND aktivni = 1
+                s.cislo_smlouvy,
+                s.hodnota_s_dph as hodnota,
+                s.cerpano_pozadovano,
+                s.cerpano_planovano,
+                s.cerpano_skutecne,
+                s.zbyva_pozadovano,
+                s.zbyva_planovano,
+                s.zbyva_skutecne,
+                s.nazev_firmy,
+                s.ico,
+                s.nazev_smlouvy,
+                u.usek_zkr
+            FROM " . TBL_SMLOUVY . " s
+            LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
+            WHERE s.cislo_smlouvy IN ($placeholders)
+              AND s.aktivni = 1
         ");
         $stmt->execute($cisla_smluv);
         $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -491,6 +500,9 @@ function getCerpanoVProceseBatch($db, $cisla_smluv) {
     
     $cisla_smluv = array_unique(array_filter($cisla_smluv));
     if (empty($cisla_smluv)) return array();
+    
+    // ✅ Přeindexovat pole od 0 (PDO vyžaduje sekvenční klíče)
+    $cisla_smluv = array_values($cisla_smluv);
     
     try {
         $v_procesu_stavy = array('Schválená', 'Odeslaná', 'Potvrzená', 'Fakturace', 'Ke zveřejnění');
@@ -545,6 +557,9 @@ function loadOrderInvoicesBatch($db, $order_ids) {
     
     $order_ids = array_unique(array_map('intval', array_filter($order_ids)));
     if (empty($order_ids)) return array();
+    
+    // ✅ Přeindexovat pole od 0 (PDO vyžaduje sekvenční klíče)
+    $order_ids = array_values($order_ids);
     
     try {
         $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
@@ -602,6 +617,9 @@ function getAttachmentStatusBatch($db, $order_ids) {
     $order_ids = array_unique(array_map('intval', array_filter($order_ids)));
     if (empty($order_ids)) return array();
     
+    // ✅ Přeindexovat pole od 0 (PDO vyžaduje sekvenční klíče)
+    $order_ids = array_values($order_ids);
+    
     try {
         $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
         
@@ -635,6 +653,9 @@ function getAttachmentStatusBatch($db, $order_ids) {
         // 3. Načti přílohy faktur (pokud existují)
         $invoice_attachments = array();
         if (!empty($invoice_ids)) {
+            // ✅ Přeindexovat pole od 0 (pro jistotu)
+            $invoice_ids = array_values($invoice_ids);
+            
             $placeholders_fa = implode(',', array_fill(0, count($invoice_ids), '?'));
             $stmt_fa = $db->prepare("
                 SELECT faktura_id, typ_prilohy 
@@ -740,6 +761,7 @@ function getLPDetailyV3($db, $lp_id) {
                 lp.cislo_uctu,
                 lp.nazev_uctu,
                 lp.vyse_financniho_kryti,
+                lp.platne_do,
                 u.usek_zkr,
                 TRIM(CONCAT(COALESCE(uz.jmeno, ''), ' ', COALESCE(uz.prijmeni, ''))) AS prikazce_jmeno
             FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
@@ -796,6 +818,7 @@ function enrichFinancovaniV3($db, &$order) {
                     'cislo_uctu' => isset($lp['cislo_uctu']) ? $lp['cislo_uctu'] : null,
                     'kod' => $lp['cislo_lp'],
                     'nazev' => $lp['nazev_uctu'],
+                    'platne_do' => isset($lp['platne_do']) ? $lp['platne_do'] : null,
                     'usek_zkr' => isset($lp['usek_zkr']) ? $lp['usek_zkr'] : null,
                     'prikazce_jmeno' => isset($lp['prikazce_jmeno']) ? trim($lp['prikazce_jmeno']) : null,
                     'vyse_financniho_kryti' => isset($lp['vyse_financniho_kryti']) ? $lp['vyse_financniho_kryti'] : null
@@ -815,19 +838,21 @@ function enrichFinancovaniV3($db, &$order) {
         try {
             $stmt = $db->prepare("
                 SELECT 
-                    hodnota_s_dph as hodnota,
-                    cerpano_pozadovano,
-                    cerpano_planovano,
-                    cerpano_skutecne,
-                    zbyva_pozadovano,
-                    zbyva_planovano,
-                    zbyva_skutecne,
-                    nazev_firmy,
-                    ico,
-                    nazev_smlouvy
-                FROM " . TBL_SMLOUVY . " 
-                WHERE cislo_smlouvy = ?
-                AND aktivni = 1
+                    s.hodnota_s_dph as hodnota,
+                    s.cerpano_pozadovano,
+                    s.cerpano_planovano,
+                    s.cerpano_skutecne,
+                    s.zbyva_pozadovano,
+                    s.zbyva_planovano,
+                    s.zbyva_skutecne,
+                    s.nazev_firmy,
+                    s.ico,
+                    s.nazev_smlouvy,
+                    u.usek_zkr
+                FROM " . TBL_SMLOUVY . " s
+                LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
+                WHERE s.cislo_smlouvy = ?
+                AND s.aktivni = 1
                 LIMIT 1
             ");
             $stmt->execute(array($cislo_smlouvy));
@@ -860,6 +885,14 @@ function enrichFinancovaniV3($db, &$order) {
                 $stmt_vp->execute(array_merge([$cislo_smlouvy], $v_procesu_stavy_e));
                 $vp_row = $stmt_vp->fetch(PDO::FETCH_ASSOC);
                 $cerpano_v_procesu = $vp_row ? (float)$vp_row['cerpano_v_procesu'] : 0.0;
+
+                // Přidat název smlouvy a úsek přímo do financovani pro snadný přístup
+                if (isset($smlouva['nazev_smlouvy']) && !empty($smlouva['nazev_smlouvy'])) {
+                    $order['financovani']['nazev_smlouvy'] = $smlouva['nazev_smlouvy'];
+                }
+                if (isset($smlouva['usek_zkr']) && !empty($smlouva['usek_zkr'])) {
+                    $order['financovani']['usek_zkr'] = $smlouva['usek_zkr'];
+                }
 
                 $order['_enriched']['smlouva_info'] = array(
                     'cislo_smlouvy' => $cislo_smlouvy,
@@ -1117,6 +1150,7 @@ function enrichOrdersV3Batch($db, &$orders) {
                         'cislo_uctu' => isset($lp['cislo_uctu']) ? $lp['cislo_uctu'] : null,
                         'kod' => $lp['cislo_lp'],
                         'nazev' => $lp['nazev_uctu'],
+                        'platne_do' => isset($lp['platne_do']) ? $lp['platne_do'] : null,
                         'usek_zkr' => isset($lp['usek_zkr']) ? $lp['usek_zkr'] : null,
                         'prikazce_jmeno' => isset($lp['prikazce_jmeno']) ? trim($lp['prikazce_jmeno']) : null,
                         'vyse_financniho_kryti' => isset($lp['vyse_financniho_kryti']) ? $lp['vyse_financniho_kryti'] : null
@@ -1140,6 +1174,14 @@ function enrichOrdersV3Batch($db, &$orders) {
             if (isset($smlouvy_data[$cislo_smlouvy])) {
                 $smlouva = $smlouvy_data[$cislo_smlouvy];
                 $cerpano_v_procesu = isset($cerpano_data[$cislo_smlouvy]) ? $cerpano_data[$cislo_smlouvy] : 0.0;
+                
+                // Přidat název smlouvy a úsek přímo do financovani pro snadný přístup
+                if (isset($smlouva['nazev_smlouvy']) && !empty($smlouva['nazev_smlouvy'])) {
+                    $order['financovani']['nazev_smlouvy'] = $smlouva['nazev_smlouvy'];
+                }
+                if (isset($smlouva['usek_zkr']) && !empty($smlouva['usek_zkr'])) {
+                    $order['financovani']['usek_zkr'] = $smlouva['usek_zkr'];
+                }
                 
                 $order['_enriched']['smlouva_info'] = array(
                     'cislo_smlouvy' => $cislo_smlouvy,
@@ -1183,21 +1225,10 @@ function enrichOrdersV3Batch($db, &$orders) {
         
         $order['faktury_count'] = count($order['faktury']);
         
-        // Celková částka z faktur
-        $celkova_castka_faktur_s_dph = 0.0;
-        foreach ($order['faktury'] as $faktura) {
-            $castka = null;
-            if (isset($faktura['castka_s_dph']) && is_numeric($faktura['castka_s_dph'])) {
-                $castka = (float)$faktura['castka_s_dph'];
-            } elseif (isset($faktura['fa_castka']) && is_numeric($faktura['fa_castka'])) {
-                $castka = (float)$faktura['fa_castka'];
-            }
-            
-            if ($castka !== null) {
-                $celkova_castka_faktur_s_dph += $castka;
-            }
-        }
-        $order['faktury_celkova_castka_s_dph'] = $celkova_castka_faktur_s_dph;
+        // ⚠️ DŮLEŽITÉ: Částka faktur je JIŽ spočítaná v hlavním SELECT jako subquery!
+        // NEPŘEPISOVAT ji, protože by se ztratila správná hodnota z DB.
+        // Původní enrichment logika přepisovala hodnotu na 0, pokud faktury nebyly v batchi.
+        // -> Zachovat hodnotu z hlavního SELECT
         
         // Celková cena objednávky (podle priority: faktury > položky > max cena)
         $order['celkova_cena_s_dph'] = calculateOrderTotalPrice($order);
