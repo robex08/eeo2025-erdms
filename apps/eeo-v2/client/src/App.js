@@ -54,6 +54,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
+const PlanningAdminPage = lazy(() => import('./pages/PlanningAdminPage'));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
 const SplashScreen = lazy(() => import('./components/SplashScreen'));
 // PostLoginModal je importován přímo (ne lazy) kvůli rychlému zobrazení po loginu
@@ -1115,6 +1116,7 @@ function App() {
                   ) && <Route path="/material-overview" element={<Navigate to="/majetek-overview" replace />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/app-settings" element={<AppSettings />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
+                  {isLoggedIn && hasPermission && hasPermission('PLANNING_MANAGE') && <Route path="/planning" element={<PlanningAdminPage />} />}
                   {isLoggedIn && (
                     (hasAdminRole && hasAdminRole()) ||
                     (hasPermission && (

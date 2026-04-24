@@ -2476,8 +2476,8 @@ export const NotificationsPage = () => {
                         borderLeft: threadCount > 0 ? '4px solid #3b82f6' : undefined
                       }}
                     >
-                      <NotificationContent style={(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order' || mainNotification.objekt_typ === 'invoices' || mainNotification.objekt_typ === 'invoice' || mainNotification.objekt_typ === 'objednavka' || mainNotification.objekt_typ === 'zastupovani') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
-                        {/* Badge OBJ/FAK/KOM/ZASTUP přes celou výšku */}
+                      <NotificationContent style={(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order' || mainNotification.objekt_typ === 'invoices' || mainNotification.objekt_typ === 'invoice' || mainNotification.objekt_typ === 'objednavka' || mainNotification.objekt_typ === 'zastupovani' || mainNotification.objekt_typ === 'planning_message' || mainNotification.objekt_typ === 'planning_event') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
+                        {/* Badge OBJ/FAK/KOM/ZASTUP/REZ přes celou výšku */}
                         {(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order') && (
                           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #3b82f6, #2563eb)', color: '#fff', fontSize: '0.6em', fontWeight: '800', letterSpacing: '0.12em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(37,99,235,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>OBJ</span>
                         )}
@@ -2489,6 +2489,9 @@ export const NotificationsPage = () => {
                         )}
                         {mainNotification.objekt_typ === 'zastupovani' && (
                           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #0891b2, #0e7490)', color: '#fff', fontSize: '0.5em', fontWeight: '800', letterSpacing: '0.08em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(8,145,178,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>ZASTUP</span>
+                        )}
+                        {(mainNotification.objekt_typ === 'planning_message' || mainNotification.objekt_typ === 'planning_event') && (
+                          <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #f59e0b, #f97316)', color: '#fff', fontSize: '0.6em', fontWeight: '800', letterSpacing: '0.12em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(245,158,11,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>REZ</span>
                         )}
                         <NotificationHeader>
                           <NotificationTitle $isUnread={isUnread}>
