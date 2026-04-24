@@ -233,6 +233,14 @@ define('TBL_NOTIFIKACE_SABLONY', '25_notifikace_sablony');
 define('TBL_NOTIFIKACE_TYPY_UDALOSTI', '25_notifikace_typy_udalosti');
 define('TBL_NOTIFIKACE_UZIVATELE_NASTAVENI', '25_notifikace_uzivatele_nastaveni');
 
+// DATABASE TABLE NAMES - PLÁNOVÁNÍ
+define('TBL_PLAN_ZPRAVY', '25_plan_zpravy');
+define('TBL_PLAN_ZPRAVY_PRIJEMCI', '25_plan_zpravy_prijemci');
+define('TBL_PLAN_ZPRAVY_ODPOVEDI', '25_plan_zpravy_odpovedi');
+define('TBL_PLAN_UDALOSTI', '25_plan_udalosti');
+define('TBL_PLAN_UDALOSTI_PRIJEMCI', '25_plan_udalosti_prijemci');
+define('TBL_PLAN_UDALOSTI_ODPOVEDI', '25_plan_udalosti_odpovedi');
+
 // DATABASE TABLE NAMES - CHAT
 define('TBL_CHAT_KONVERZACE', '25_chat_konverzace');
 define('TBL_CHAT_ZPRAVY', '25_chat_zpravy');
@@ -272,6 +280,7 @@ require_once __DIR__ . '/v2025.03_25/lib/docxOrderDataHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/importHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/hierarchyHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/hierarchyTriggers.php';
+require_once __DIR__ . '/v2025.03_25/lib/planningHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/lpHandlers.php';
 
 // ORDER V2 - Standardized API endpoints
