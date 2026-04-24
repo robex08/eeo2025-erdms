@@ -55,6 +55,15 @@ if (!defined('TBL_HIERARCHIE_VZTAHY')) define('TBL_HIERARCHIE_VZTAHY', '25_hiera
 if (!defined('TBL_NASTAVENI_GLOBALNI')) define('TBL_NASTAVENI_GLOBALNI', '25a_nastaveni_globalni');
 if (!defined('TBL_UZIVATEL_NASTAVENI')) define('TBL_UZIVATEL_NASTAVENI', '25_uzivatel_nastaveni');
 
+// PLÁNOVÁNÍ
+if (!defined('TBL_PLAN_ZPRAVY')) define('TBL_PLAN_ZPRAVY', '25_plan_zpravy');
+if (!defined('TBL_PLAN_ZPRAVY_PRIJEMCI')) define('TBL_PLAN_ZPRAVY_PRIJEMCI', '25_plan_zpravy_prijemci');
+if (!defined('TBL_PLAN_ZPRAVY_ODPOVEDI')) define('TBL_PLAN_ZPRAVY_ODPOVEDI', '25_plan_zpravy_odpovedi');
+if (!defined('TBL_PLAN_UDALOSTI')) define('TBL_PLAN_UDALOSTI', '25_plan_udalosti');
+if (!defined('TBL_PLAN_UDALOSTI_PRIJEMCI')) define('TBL_PLAN_UDALOSTI_PRIJEMCI', '25_plan_udalosti_prijemci');
+if (!defined('TBL_PLAN_UDALOSTI_ODPOVEDI')) define('TBL_PLAN_UDALOSTI_ODPOVEDI', '25_plan_udalosti_odpovedi');
+if (!defined('TBL_PLAN_UDALOSTI_TERMINY')) define('TBL_PLAN_UDALOSTI_TERMINY', '25_plan_udalosti_terminy');
+
 // ČÍSELNÍKY
 if (!defined('TBL_POZICE')) define('TBL_POZICE', '25_pozice');
 if (!defined('TBL_CISELNIK_STAVY')) define('TBL_CISELNIK_STAVY', '25_ciselnik_stavy');

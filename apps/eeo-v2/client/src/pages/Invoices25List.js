@@ -360,8 +360,8 @@ const SearchPanel = styled.div`
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   border: 2px solid #e2e8f0;
   border-radius: 12px;
-  padding: 1.25rem;
-  margin-bottom: 1.5rem;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 `;
 
@@ -369,13 +369,13 @@ const SearchPanelHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
 `;
 
 const SearchPanelTitle = styled.h3`
   margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 700;
   color: #1e293b;
   display: flex;
   align-items: center;
@@ -390,10 +390,10 @@ const ClearAllButton = styled.button`
   background: #ef4444;
   color: white;
   border: none;
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 0.75rem;
   border-radius: 6px;
-  font-size: 0.875rem;
-  font-weight: 500;
+  font-size: 0.75rem;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -453,22 +453,22 @@ const SearchInputWrapper = styled.div`
   
   > svg:first-of-type {
     position: absolute;
-    left: 1rem;
+    left: 0.85rem;
     top: 50%;
     transform: translateY(-50%);
     color: #64748b;
     z-index: 1;
     pointer-events: none;
-    font-size: 1.1rem;
+    font-size: 0.9rem;
   }
 `;
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 0.875rem 3rem 0.875rem 3rem;
+  padding: 0.6rem 2.5rem 0.6rem 2.4rem;
   border: 2px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 0.95rem !important;
+  font-size: 0.82rem !important;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
   transition: all 0.2s ease;
   background: white;
@@ -486,14 +486,14 @@ const SearchInput = styled.input`
 
 const SearchClearButton = styled.button`
   position: absolute;
-  right: 1rem;
+  right: 0.7rem;
   top: 50%;
   transform: translateY(-50%);
   background: transparent;
   border: none;
   color: #64748b;
   cursor: pointer;
-  padding: 0.5rem;
+  padding: 0.4rem;
   display: flex;
   align-items: center;
   justify-content: center;
