@@ -8,6 +8,9 @@ import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
 import CalendarPanel from './panels/CalendarPanel';
 import NotificationDropdown from './NotificationDropdown';
+import SlideInDetailPanel from './UniversalSearch/SlideInDetailPanel';
+import * as planningApi from '../services/planningApi';
+import PlanningEventDetailPanel from './PlanningEventPanel';
 import SystemInfoService from '../services/systemInfoService';
 import SmartTooltip from '../styles/SmartTooltip';
 // translation logic moved to utils/translate
@@ -17,7 +20,7 @@ import { saveCurrentLocation } from '../utils/logoutCleanup';
 import { ProgressContext } from '../context/ProgressContext';
 import { DebugContext } from '../context/DebugContext'; // Use DebugContext
 import { useBackgroundTasks as useBgTasksContext } from '../context/BackgroundTasksContext';
-import { css, Global } from '@emotion/react';
+import { css, Global, keyframes } from '@emotion/react';
 import styled from '@emotion/styled';
 // Extracted floating panels
 import { TodoPanel, NotesPanel, ChatPanel } from './panels';
@@ -1254,9 +1257,11 @@ const HeaderTitle = styled.h1`
   text-rendering: optimizeLegibility;
 `;
 
+// ============================================================================
 // Notification Bell Wrapper - 100% BACKEND API
 // VŠE načítá z backend API - žádné lokální TODO alarmy!
 // Hover = zobrazí dropdown, Click = přejde na stránku /notifications
+// ============================================================================
 const NotificationBellWrapper = ({ userId }) => {
   const bgTasks = useBgTasksContext();
   const navigate = useNavigate();
@@ -1266,11 +1271,18 @@ const NotificationBellWrapper = ({ userId }) => {
   const unreadCount = bgTasks?.unreadNotificationsCount || 0;
   const badgeColor = bgTasks?.notificationsBadgeColor || 'gray';
 
-
   const [dropdownVisible, setDropdownVisible] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
   const [draftConfirm, setDraftConfirm] = useState({ isOpen: false, message: '', onConfirm: null });
+  
+  // Planning panel state
+  const [planningPanelOpen, setPlanningPanelOpen] = useState(false);
+  const [selectedPlanningEvent, setSelectedPlanningEvent] = useState(null);
+  const [planningLoading, setPlanningLoading] = useState(false);
+  const [termNotes, setTermNotes] = useState({});
+  const [flashState, setFlashState] = useState({});
+  
   const buttonRef = useRef(null);
   const dropdownRef = useRef(null);
   const containerRef = useRef(null);
@@ -1342,6 +1354,34 @@ const NotificationBellWrapper = ({ userId }) => {
     const isUnread = !notification.precteno || notification.precteno === 0;
     if (isUnread) {
       await handleMarkAsRead(notification.id);
+    }
+
+    // ✅ PLANNING EVENT - načíst kompletní data z DB včetně ověření přístupu
+    if (notification.objekt_typ === 'planning_event' || notification.objekt_typ === 'planning_message') {
+      const eventId = notification.objekt_id;
+      if (!eventId) {
+        console.error('❌ Chybí ID události v planning notifikaci');
+        return;
+      }
+
+      try {
+        setPlanningLoading(true);
+        const response = await planningApi.getEvent(eventId);
+        
+        if (!response || !response.data) {
+          console.error('❌ Událost nebyla nalezena');
+          return;
+        }
+
+        setSelectedPlanningEvent(response.data);
+        setPlanningPanelOpen(true);
+        setDropdownVisible(false); // Zavřít dropdown
+      } catch (error) {
+        console.error('❌ Chyba při načítání události:', error);
+      } finally {
+        setPlanningLoading(false);
+      }
+      return;
     }
 
     // Navigace podle typu
@@ -1602,6 +1642,47 @@ const NotificationBellWrapper = ({ userId }) => {
     }
   };
 
+  // Planning panel - odpověď na termín
+  const handlePlanningRespond = async (event, term, type) => {
+    if (!term?.id || !(typeof term.id === 'number' || /^\d+$/.test(String(term.id)))) {
+      console.error('❌ Termín nemá platné ID');
+      return;
+    }
+
+    const terminId = Number(term.id);
+    const poznamka = (termNotes[terminId] || '').trim();
+
+    try {
+      await planningApi.respondToEvent({
+        id: event.id,
+        termin_id: terminId,
+        typ_odpovedi: type,
+        poznamka
+      });
+
+      const dtOdpovedi = new Date().toISOString();
+      const newResponse = { typ_odpovedi: type, poznamka, dt_odpovedi: dtOdpovedi, termin_id: terminId };
+
+      // Flash efekt
+      setFlashState(prev => ({ ...prev, [terminId]: `${type}-${Date.now()}` }));
+      setTimeout(() => {
+        setFlashState(prev => {
+          const copy = { ...prev };
+          delete copy[terminId];
+          return copy;
+        });
+      }, 1300);
+
+      // Aktualizovat událost v panelu
+      const updatedEvent = await planningApi.getEvent(event.id);
+      if (updatedEvent && updatedEvent.data) {
+        setSelectedPlanningEvent(updatedEvent.data);
+      }
+    } catch (error) {
+      console.error('❌ Chyba při odpovědi na termín:', error);
+    }
+  };
+
   const handleViewAllClick = () => {
     setDropdownVisible(false);
     navigate('/notifications');
@@ -1676,6 +1757,27 @@ const NotificationBellWrapper = ({ userId }) => {
       >
         {draftConfirm.message}
       </ConfirmDialog>
+    )}
+
+    {/* Planning Event Detail Panel */}
+    {planningPanelOpen && selectedPlanningEvent && (
+      <SlideInDetailPanel
+        isOpen={planningPanelOpen}
+        onClose={() => {
+          setPlanningPanelOpen(false);
+          setSelectedPlanningEvent(null);
+        }}
+        entityType="planning_event"
+      >
+        <PlanningEventDetailPanel
+          event={selectedPlanningEvent}
+          onRespond={handlePlanningRespond}
+          flashState={flashState}
+          termNotes={termNotes}
+          onTermNoteChange={(id, note) => setTermNotes(prev => ({ ...prev, [id]: note }))}
+          showAuthor={false}
+        />
+      </SlideInDetailPanel>
     )}
     </>
   );

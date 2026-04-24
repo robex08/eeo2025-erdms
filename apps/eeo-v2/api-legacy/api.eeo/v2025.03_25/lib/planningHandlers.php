@@ -459,6 +459,18 @@ function getEventResponseDeadline($event, $term) {
  * @param string $event_type Typ eventu pro notifikaci
  */
 function createPlanningNotifications($db, $record, $typ, $event_type) {
+    // Načíst jméno autora
+    $organizator = null;
+    if (!empty($record['autor_id'])) {
+        $sqlAutor = "SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM " . TBL_UZIVATELE . " WHERE uzivatel_id = ?";
+        $stmtAutor = $db->prepare($sqlAutor);
+        $stmtAutor->execute([$record['autor_id']]);
+        $autorData = $stmtAutor->fetch(PDO::FETCH_ASSOC);
+        if ($autorData) {
+            $organizator = $autorData['full_name'];
+        }
+    }
+    
     // 1. Získat EXPLICITNÍ příjemce (role + konkrétní uživatelé z tabulky)
     $explicitRecipients = getPlanningRecipients($db, $record['id'], $typ);
     
@@ -491,7 +503,41 @@ function createPlanningNotifications($db, $record, $typ, $event_type) {
     // Pokud hierarchyRecipients je prázdný → vrátí se jen explicitRecipients
     $allRecipients = mergeRecipients($explicitRecipients, $hierarchyRecipients);
     
-    // 5. Vytvořit notifikaci pro každého příjemce
+    // 5. Načíst termíny události (pokud je to udalost)
+    $terminyData = [];
+    if ($typ === 'udalost') {
+        $sqlTerminy = "SELECT id, dt_od, dt_do, poradi, poznamka, kapacita 
+                      FROM `" . TBL_PLAN_UDALOSTI_TERMINY . "`
+                      WHERE udalost_id = ? 
+                      ORDER BY poradi ASC, id ASC";
+        $stmtTerminy = $db->prepare($sqlTerminy);
+        $stmtTerminy->execute([$record['id']]);
+        $terminyData = $stmtTerminy->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Načíst počty accepted pro každý termín
+        if (!empty($terminyData)) {
+            $terminIds = array_column($terminyData, 'id');
+            $placeholders = implode(',', array_fill(0, count($terminIds), '?'));
+            $sqlAccepted = "SELECT termin_id, COUNT(*) as accepted_count 
+                           FROM " . TBL_PLAN_UDALOSTI_ODPOVEDI . "
+                           WHERE termin_id IN ($placeholders) AND typ_odpovedi = 'accepted'
+                           GROUP BY termin_id";
+            $stmtAccepted = $db->prepare($sqlAccepted);
+            $stmtAccepted->execute($terminIds);
+            $acceptedCounts = [];
+            foreach ($stmtAccepted->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $acceptedCounts[$row['termin_id']] = (int)$row['accepted_count'];
+            }
+            
+            // Přidat accepted_count k termínům
+            foreach ($terminyData as &$termin) {
+                $termin['accepted_count'] = $acceptedCounts[$termin['id']] ?? 0;
+                $termin['is_full'] = !empty($termin['kapacita']) && $termin['accepted_count'] >= $termin['kapacita'];
+            }
+        }
+    }
+    
+    // 6. Vytvořit notifikaci pro každého příjemce
     foreach ($allRecipients as $recipient) {
         createNotification($db, [
             ':typ' => $event_type,
@@ -499,7 +545,12 @@ function createPlanningNotifications($db, $record, $typ, $event_type) {
             ':zprava' => $typ === 'zprava' ? ($record['obsah'] ?? '') : ($record['popis'] ?? ''),
             ':data_json' => json_encode([
                 'record_id' => $record['id'],
-                'typ' => $typ
+                'typ' => $typ,
+                'dt_od' => $record['dt_od'] ?? null,
+                'dt_do' => $record['dt_do'] ?? null,
+                'nazev' => $record['nazev'] ?? null,
+                'organizator' => $organizator,
+                'terminy' => $terminyData
             ]),
             ':od_uzivatele_id' => $record['autor_id'],
             ':pro_uzivatele_id' => $recipient['user_id'],
@@ -585,6 +636,13 @@ function handle_planning_messages_list($input, $config) {
             $where[] = 'z.nazev LIKE ?';
             $params[] = '%' . $filter_nazev . '%';
         }
+        if ($filter_organizator !== '') {
+            $where[] = '(u.jmeno LIKE ? OR u.prijmeni LIKE ? OR CONCAT(u.prijmeni, " ", u.jmeno) LIKE ?)';
+            $like = '%' . $filter_organizator . '%';
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
+        }
         if ($filter_text !== '') {
             $where[] = 'z.obsah LIKE ?';
             $params[] = '%' . $filter_text . '%';
@@ -600,10 +658,32 @@ function handle_planning_messages_list($input, $config) {
 
         $whereSql = empty($where) ? '1=1' : implode(' AND ', $where);
 
-        $countSql = "SELECT COUNT(*) FROM " . TBL_PLAN_ZPRAVY . " z WHERE $whereSql";
+        $countSql = "SELECT COUNT(*) FROM " . TBL_PLAN_ZPRAVY . " z 
+                     LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = z.autor_id 
+                     WHERE $whereSql";
         $stmtCount = $db->prepare($countSql);
         $stmtCount->execute($params);
         $total = (int)$stmtCount->fetchColumn();
+
+        // Třídění - validace a mapování
+        $sort_field = trim((string)($input['sort_field'] ?? 'dt_updated'));
+        $sort_direction = strtoupper(trim((string)($input['sort_direction'] ?? 'DESC')));
+        
+        // Povolené sloupce pro třídění zpráv
+        $allowed_sort_fields = [
+            'nazev' => 'z.nazev',
+            'obsah' => 'z.obsah',
+            'dt_od' => 'z.dt_od',
+            'dt_do' => 'z.dt_do',
+            'dt_created' => 'z.dt_created',
+            'dt_updated' => 'z.dt_updated',
+            'dt_aktualizace' => 'z.dt_updated', // alias pro kompatibilitu
+            'autor' => 'u.prijmeni', // třídění podle jména organizátora
+            'organizator' => 'u.prijmeni' // alias
+        ];
+        
+        $sort_column = $allowed_sort_fields[$sort_field] ?? 'z.dt_updated';
+        $sort_dir = in_array($sort_direction, ['ASC', 'DESC']) ? $sort_direction : 'DESC';
 
         $sql = "SELECT z.*, 
                        u.jmeno as autor_jmeno, u.prijmeni as autor_prijmeni,
@@ -615,7 +695,7 @@ function handle_planning_messages_list($input, $config) {
                 LEFT JOIN " . TBL_PLAN_ZPRAVY_ODPOVEDI . " zo ON zo.zprava_id = z.id
                 WHERE $whereSql
                 GROUP BY z.id
-                ORDER BY z.dt_created DESC
+                ORDER BY $sort_column $sort_dir
                 LIMIT $per_page OFFSET $offset";
 
         $stmt = $db->prepare($sql);
@@ -1154,6 +1234,7 @@ function handle_planning_events_list($input, $config) {
 
         $search_term = trim((string)($input['search_term'] ?? ''));
         $filter_nazev = trim((string)($input['filter_nazev'] ?? ''));
+        $filter_organizator = trim((string)($input['filter_organizator'] ?? ''));
         $filter_text = trim((string)($input['filter_text'] ?? ''));
         $filter_dt_od = trim((string)($input['filter_dt_od'] ?? ''));
         $filter_dt_do = trim((string)($input['filter_dt_do'] ?? ''));
@@ -1175,6 +1256,13 @@ function handle_planning_events_list($input, $config) {
             $where[] = 'u.nazev LIKE ?';
             $params[] = '%' . $filter_nazev . '%';
         }
+        if ($filter_organizator !== '') {
+            $where[] = '(us.jmeno LIKE ? OR us.prijmeni LIKE ? OR CONCAT(us.prijmeni, " ", us.jmeno) LIKE ?)';
+            $like = '%' . $filter_organizator . '%';
+            $params[] = $like;
+            $params[] = $like;
+            $params[] = $like;
+        }
         if ($filter_text !== '') {
             $where[] = 'u.popis LIKE ?';
             $params[] = '%' . $filter_text . '%';
@@ -1190,22 +1278,44 @@ function handle_planning_events_list($input, $config) {
 
         $whereSql = empty($where) ? '1=1' : implode(' AND ', $where);
 
-        $countSql = "SELECT COUNT(*) FROM " . TBL_PLAN_UDALOSTI . " u WHERE $whereSql";
+        $countSql = "SELECT COUNT(*) FROM " . TBL_PLAN_UDALOSTI . " u 
+                     LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id 
+                     WHERE $whereSql";
         $stmtCount = $db->prepare($countSql);
         $stmtCount->execute($params);
         $total = (int)$stmtCount->fetchColumn();
 
+        // Třídění - validace a mapování
+        $sort_field = trim((string)($input['sort_field'] ?? 'dt_updated'));
+        $sort_direction = strtoupper(trim((string)($input['sort_direction'] ?? 'DESC')));
+        
+        // Povolené sloupce pro třídění událostí
+        $allowed_sort_fields = [
+            'nazev' => 'u.nazev',
+            'popis' => 'u.popis',
+            'dt_od' => 'u.dt_od',
+            'dt_do' => 'u.dt_do',
+            'dt_created' => 'u.dt_created',
+            'dt_updated' => 'u.dt_updated',
+            'dt_aktualizace' => 'u.dt_updated', // alias pro kompatibilitu
+            'autor' => 'us.prijmeni', // třídění podle jména organizátora
+            'organizator' => 'us.prijmeni' // alias
+        ];
+        
+        $sort_column = $allowed_sort_fields[$sort_field] ?? 'u.dt_updated';
+        $sort_dir = in_array($sort_direction, ['ASC', 'DESC']) ? $sort_direction : 'DESC';
+
         $sql = "SELECT u.*, 
                        us.jmeno as autor_jmeno, us.prijmeni as autor_prijmeni,
                        COUNT(DISTINCT up.id) as pocet_prijemcu,
-                       COUNT(DISTINCT uo.id) as pocet_odpovedi
+                       COUNT(DISTINCT CASE WHEN uo.typ_odpovedi = 'accepted' THEN uo.id END) as accepted_count
                 FROM " . TBL_PLAN_UDALOSTI . " u
                 LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id
                 LEFT JOIN " . TBL_PLAN_UDALOSTI_PRIJEMCI . " up ON up.udalost_id = u.id
                 LEFT JOIN " . TBL_PLAN_UDALOSTI_ODPOVEDI . " uo ON uo.udalost_id = u.id
                 WHERE $whereSql
                 GROUP BY u.id
-                ORDER BY u.dt_od DESC
+                ORDER BY $sort_column $sort_dir
                 LIMIT $per_page OFFSET $offset";
 
         $stmt = $db->prepare($sql);
@@ -1216,7 +1326,7 @@ function handle_planning_events_list($input, $config) {
         if (!empty($udalosti)) {
             $ids = array_map(fn($u) => (int)$u['id'], $udalosti);
             $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            $sqlTerm = "SELECT udalost_id, id, dt_od, dt_do, poradi, poznamka
+            $sqlTerm = "SELECT udalost_id, id, dt_od, dt_do, poradi, poznamka, kapacita
                         FROM `" . TBL_PLAN_UDALOSTI_TERMINY . "`
                         WHERE udalost_id IN ($placeholders)
                         ORDER BY udalost_id, poradi ASC, id ASC";
@@ -1230,6 +1340,18 @@ function handle_planning_events_list($input, $config) {
             }
             foreach ($udalosti as &$u) {
                 $u['terminy'] = $terminyByEvent[$u['id']] ?? [];
+                
+                // Spočítat max_kapacita (maximum ze všech termínů)
+                $max_kapacita = null;
+                foreach ($u['terminy'] as $term) {
+                    $kap = $term['kapacita'];
+                    if ($kap !== null && $kap > 0) {
+                        if ($max_kapacita === null || $kap > $max_kapacita) {
+                            $max_kapacita = $kap;
+                        }
+                    }
+                }
+                $u['max_kapacita'] = $max_kapacita;
             }
             unset($u);
         }
@@ -1323,13 +1445,77 @@ function handle_planning_events_get($input, $config) {
         $stmt_prijemci->execute([$id]);
         $udalost['prijemci'] = $stmt_prijemci->fetchAll(PDO::FETCH_ASSOC);
 
-        $sql_term = "SELECT id, dt_od, dt_do, poradi, poznamka
+        $sql_term = "SELECT id, dt_od, dt_do, poradi, poznamka, kapacita
                      FROM `" . TBL_PLAN_UDALOSTI_TERMINY . "`
                      WHERE udalost_id = ?
                      ORDER BY poradi ASC, id ASC";
         $stmt_term = $db->prepare($sql_term);
         $stmt_term->execute([$id]);
         $terminyVse = $stmt_term->fetchAll(PDO::FETCH_ASSOC);
+
+        // ✅ Načíst počty accepted odpovědí pro všechny termíny
+        $acceptedCounts = [];
+        if (!empty($terminyVse)) {
+            $termIds = array_column($terminyVse, 'id');
+            $termPlaceholders = implode(',', array_fill(0, count($termIds), '?'));
+            $sqlAccepted = "SELECT termin_id, COUNT(*) as accepted_count 
+                           FROM " . TBL_PLAN_UDALOSTI_ODPOVEDI . "
+                           WHERE termin_id IN ($termPlaceholders) AND typ_odpovedi = 'accepted'
+                           GROUP BY termin_id";
+            $stmtAccepted = $db->prepare($sqlAccepted);
+            $stmtAccepted->execute($termIds);
+            $acceptedRows = $stmtAccepted->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($acceptedRows as $row) {
+                $acceptedCounts[$row['termin_id']] = (int)$row['accepted_count'];
+            }
+        }
+
+        // ✅ Načíst odpovědi aktuálního uživatele
+        $respByTerm = [];
+        if (!empty($terminyVse)) {
+            $termIds = array_column($terminyVse, 'id');
+            $termPlaceholders = implode(',', array_fill(0, count($termIds), '?'));
+            $sqlResp = "SELECT termin_id, typ_odpovedi, poznamka, dt_odpovedi
+                        FROM " . TBL_PLAN_UDALOSTI_ODPOVEDI . "
+                        WHERE user_id = ? AND termin_id IN ($termPlaceholders)";
+            $stmtResp = $db->prepare($sqlResp);
+            $stmtResp->execute(array_merge([$token_data['id']], $termIds));
+            $respRows = $stmtResp->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($respRows as $row) {
+                $respByTerm[$row['termin_id']] = $row;
+            }
+        }
+
+        // ✅ Přidat informace k termínům
+        $now = parseCzechDateTime(TimezoneHelper::getCzechDateTime());
+        foreach ($terminyVse as &$term) {
+            $termId = $term['id'];
+            
+            // Přidat odpověď uživatele
+            if (isset($respByTerm[$termId])) {
+                $term['moje_odpoved'] = $respByTerm[$termId];
+            }
+
+            // Přidat deadline a can_change
+            $deadline = getEventResponseDeadline($udalost, $term);
+            if ($deadline) {
+                $term['deadline'] = $deadline->format('Y-m-d H:i:s');
+                $term['can_change'] = $now ? ($now <= $deadline) : true;
+            } else {
+                $term['deadline'] = null;
+                $term['can_change'] = true;
+            }
+
+            // Přidat informace o kapacitě a obsazenosti
+            $term['kapacita'] = $term['kapacita'] !== null ? (int)$term['kapacita'] : null;
+            $term['accepted_count'] = $acceptedCounts[$termId] ?? 0;
+            $term['is_full'] = false;
+            if ($term['kapacita'] !== null && $term['kapacita'] > 0) {
+                $term['is_full'] = ($term['accepted_count'] >= $term['kapacita']);
+            }
+        }
+        unset($term);
+
         $udalost['terminy'] = $terminyVse;
         // Zpetna kompatibilita
         $udalost['terminy_vse'] = $terminyVse;
@@ -1397,15 +1583,53 @@ function handle_planning_events_create($input, $config) {
         TimezoneHelper::setMysqlTimezone($db);
         $dt_created = TimezoneHelper::getCzechDateTime();
 
-        // INSERT události (dt_od/dt_do necháme NULL – triggery je dopočítají z terminů)
+        // Sestavit všechny termíny
+        $allTerms = [];
+        if (!empty($input['dt_od'])) {
+            $allTerms[] = [
+                'dt_od' => $input['dt_od'], 
+                'dt_do' => $input['dt_do'] ?? null, 
+                'poznamka' => null,
+                'kapacita' => null
+            ];
+        }
+        if (isset($input['terminy']) && is_array($input['terminy'])) {
+            foreach ($input['terminy'] as $t) {
+                if (empty($t['dt_od'])) continue;
+                $allTerms[] = [
+                    'dt_od' => $t['dt_od'], 
+                    'dt_do' => $t['dt_do'] ?? null, 
+                    'poznamka' => $t['poznamka'] ?? null,
+                    'kapacita' => isset($t['kapacita']) && $t['kapacita'] !== null && $t['kapacita'] !== '' ? (int)$t['kapacita'] : null
+                ];
+            }
+        }
+
+        // dt_od/dt_do události nastavit z prvního termínu (pokud existuje)
+        $udalost_dt_od = null;
+        $udalost_dt_do = null;
+        if (!empty($allTerms)) {
+            $udalost_dt_od = $allTerms[0]['dt_od'];
+            $udalost_dt_do = $allTerms[0]['dt_do'];
+        }
+
+        // INSERT události - dt_od je POVINNÉ (pokud není termín, nelze vytvořit)
+        if (!$udalost_dt_od) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Chybí alespoň jeden termín události']);
+            return;
+        }
+
         $sql = "INSERT INTO " . TBL_PLAN_UDALOSTI . "
                 (nazev, popis, dt_od, dt_do, autor_id, dt_created, aktivni)
-                VALUES (?, ?, NULL, NULL, ?, ?, 1)";
+                VALUES (?, ?, ?, ?, ?, ?, 1)";
 
         $stmt = $db->prepare($sql);
         $stmt->execute([
             $nazev,
             $input['popis'] ?? '',
+            $udalost_dt_od,
+            $udalost_dt_do,
             $token_data['id'],
             $dt_created
         ]);
@@ -1430,24 +1654,13 @@ function handle_planning_events_create($input, $config) {
             }
         }
 
-        // INSERT všech termínů (rovnocenně). Akceptujeme i legacy vstup:
-        // dt_od/dt_do události se přidá jako první termín (pro zpětnou kompatibilitu s FE).
+        // INSERT všech termínů (rovnocenně) - allTerms už sestaveny výše
         $sql_term = "INSERT INTO `" . TBL_PLAN_UDALOSTI_TERMINY . "`
-                     (udalost_id, dt_od, dt_do, poradi, poznamka, dt_created)
-                     VALUES (?, ?, ?, ?, ?, ?)";
+                     (udalost_id, dt_od, dt_do, poradi, poznamka, kapacita, dt_created)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt_term = $db->prepare($sql_term);
         $poradi = 0;
 
-        $allTerms = [];
-        if (!empty($input['dt_od'])) {
-            $allTerms[] = ['dt_od' => $input['dt_od'], 'dt_do' => $input['dt_do'] ?? null, 'poznamka' => null];
-        }
-        if (isset($input['terminy']) && is_array($input['terminy'])) {
-            foreach ($input['terminy'] as $t) {
-                if (empty($t['dt_od'])) continue;
-                $allTerms[] = ['dt_od' => $t['dt_od'], 'dt_do' => $t['dt_do'] ?? null, 'poznamka' => $t['poznamka'] ?? null];
-            }
-        }
         foreach ($allTerms as $t) {
             $stmt_term->execute([
                 $udalost_id,
@@ -1455,6 +1668,7 @@ function handle_planning_events_create($input, $config) {
                 $t['dt_do'] ?? null,
                 $poradi++,
                 $t['poznamka'],
+                $t['kapacita'],
                 $dt_created
             ]);
         }
@@ -1583,23 +1797,25 @@ function handle_planning_events_update($input, $config) {
         $inputTerms = is_array($input['terminy'] ?? null) ? $input['terminy'] : [];
         $keptIds = [];
         $sql_upd_term = "UPDATE `" . TBL_PLAN_UDALOSTI_TERMINY . "`
-                        SET dt_od = ?, dt_do = ?, poradi = ?, poznamka = ?
+                        SET dt_od = ?, dt_do = ?, poradi = ?, poznamka = ?, kapacita = ?
                         WHERE id = ? AND udalost_id = ?";
         $sql_ins_term = "INSERT INTO `" . TBL_PLAN_UDALOSTI_TERMINY . "`
-                        (udalost_id, dt_od, dt_do, poradi, poznamka, dt_created)
-                        VALUES (?, ?, ?, ?, ?, ?)";
+                        (udalost_id, dt_od, dt_do, poradi, poznamka, kapacita, dt_created)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)";
         $stmt_upd_term = $db->prepare($sql_upd_term);
         $stmt_ins_term = $db->prepare($sql_ins_term);
         $poradi = 0;
         foreach ($inputTerms as $term) {
             if (empty($term['dt_od'])) continue;
             $termId = !empty($term['id']) && is_numeric($term['id']) ? (int)$term['id'] : null;
+            $kapacita = isset($term['kapacita']) && $term['kapacita'] !== null && $term['kapacita'] !== '' ? (int)$term['kapacita'] : null;
             if ($termId && in_array($termId, $oldTermIds)) {
                 $stmt_upd_term->execute([
                     $term['dt_od'],
                     $term['dt_do'] ?? null,
                     $poradi++,
                     $term['poznamka'] ?? null,
+                    $kapacita,
                     $termId,
                     $id
                 ]);
@@ -1611,6 +1827,7 @@ function handle_planning_events_update($input, $config) {
                     $term['dt_do'] ?? null,
                     $poradi++,
                     $term['poznamka'] ?? null,
+                    $kapacita,
                     $dt_created
                 ]);
             }
@@ -1695,9 +1912,10 @@ function handle_planning_events_delete($input, $config) {
         $stmtDelResponses = $db->prepare($sqlDelResponses);
         $stmtDelResponses->execute([$id]);
 
-        $sqlDelTerms = "DELETE FROM " . TBL_PLAN_UDALOSTI_TERMINY . " WHERE udalost_id = ?";
-        $stmtDelTerms = $db->prepare($sqlDelTerms);
-        $stmtDelTerms->execute([$id]);
+        // POZNÁMKA: Termíny NEMAZAT ručně! Mají foreign key s ON DELETE CASCADE,
+        // takže se smažou automaticky. Pokud bychom je mazali ručně, spustilo by se
+        // DELETE trigger, který aktualizuje dt_od/dt_do v hlavní tabulce na NULL
+        // (protože by nebyly žádné termíny) a to je zakázané (dt_od je NOT NULL).
 
         $notifSql = "SELECT id FROM " . TBL_NOTIFIKACE . " WHERE objekt_typ = ? AND objekt_id = ?";
         $stmtNotif = $db->prepare($notifSql);
@@ -1894,7 +2112,7 @@ function handle_planning_events_calendar($input, $config) {
             return;
         }
 
-        $sqlTerms = "SELECT id, udalost_id, dt_od, dt_do, poradi, poznamka
+        $sqlTerms = "SELECT id, udalost_id, dt_od, dt_do, poradi, poznamka, kapacita
                      FROM `" . TBL_PLAN_UDALOSTI_TERMINY . "`
                      WHERE udalost_id IN ($placeholders)
                      ORDER BY poradi ASC, id ASC";
@@ -1905,6 +2123,23 @@ function handle_planning_events_calendar($input, $config) {
         $termsByEvent = [];
         foreach ($terms as $term) {
             $termsByEvent[$term['udalost_id']][] = $term;
+        }
+
+        // ✅ Načíst počty accepted odpovědí pro všechny termíny
+        $termIds = array_column($terms, 'id');
+        $acceptedCounts = [];
+        if (!empty($termIds)) {
+            $termPlaceholders = implode(',', array_fill(0, count($termIds), '?'));
+            $sqlAccepted = "SELECT termin_id, COUNT(*) as accepted_count 
+                           FROM " . TBL_PLAN_UDALOSTI_ODPOVEDI . "
+                           WHERE termin_id IN ($termPlaceholders) AND typ_odpovedi = 'accepted'
+                           GROUP BY termin_id";
+            $stmtAccepted = $db->prepare($sqlAccepted);
+            $stmtAccepted->execute($termIds);
+            $acceptedRows = $stmtAccepted->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($acceptedRows as $row) {
+                $acceptedCounts[$row['termin_id']] = (int)$row['accepted_count'];
+            }
         }
 
         $respByTerm = [];
@@ -1941,6 +2176,14 @@ function handle_planning_events_calendar($input, $config) {
                 } else {
                     $term['deadline'] = null;
                     $term['can_change'] = true;
+                }
+
+                // ✅ Přidat informace o kapacitě a obsazenosti
+                $term['kapacita'] = $term['kapacita'] !== null ? (int)$term['kapacita'] : null;
+                $term['accepted_count'] = $acceptedCounts[$termId] ?? 0;
+                $term['is_full'] = false;
+                if ($term['kapacita'] !== null && $term['kapacita'] > 0) {
+                    $term['is_full'] = ($term['accepted_count'] >= $term['kapacita']);
                 }
             }
             unset($term);
@@ -2059,6 +2302,27 @@ function handle_planning_events_respond($input, $config) {
             http_response_code(400);
             echo json_encode(['status' => 'error', 'message' => 'Změna rozhodnutí už není možná']);
             return;
+        }
+
+        // ✅ KONTROLA KAPACITY TERMÍNU při akceptaci (accepted)
+        if ($typOdpovedi === 'accepted' && $term['kapacita'] !== null && $term['kapacita'] > 0) {
+            // Spočítat aktuální počet accepted odpovědí (kromě aktuálního uživatele)
+            $sqlCountAccepted = "SELECT COUNT(*) FROM " . TBL_PLAN_UDALOSTI_ODPOVEDI . " 
+                                WHERE termin_id = ? AND typ_odpovedi = 'accepted' AND user_id != ?";
+            $stmtCount = $db->prepare($sqlCountAccepted);
+            $stmtCount->execute([$terminId, $token_data['id']]);
+            $currentAccepted = (int)$stmtCount->fetchColumn();
+            
+            // Zkontrolovat, zda ještě je volné místo
+            if ($currentAccepted >= $term['kapacita']) {
+                http_response_code(400);
+                echo json_encode([
+                    'status' => 'error', 
+                    'message' => 'Termín je plně obsazen',
+                    'detail' => sprintf('Kapacita: %d/%d', $currentAccepted, $term['kapacita'])
+                ]);
+                return;
+            }
         }
 
         $dtOdpovedi = TimezoneHelper::getCzechDateTime();

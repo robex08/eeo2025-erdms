@@ -18,7 +18,8 @@ import {
   faExclamation,
   faExclamationTriangle,
   faUserShield,
-  faUsers
+  faUsers,
+  faCalendarAlt
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -299,6 +300,39 @@ const NotificationMessage = styled.div`
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+
+  /* HTML formatting support */
+  b, strong {
+    font-weight: 700;
+    color: #374151;
+  }
+
+  i, em {
+    font-style: italic;
+  }
+
+  u {
+    text-decoration: underline;
+  }
+
+  br {
+    display: block;
+    content: "";
+    margin-top: 0.25em;
+  }
+
+  p {
+    margin: 0;
+    padding: 0;
+  }
+
+  a {
+    color: #3b82f6;
+    text-decoration: none;
+    &:hover {
+      text-decoration: underline;
+    }
+  }
 `;
 
 const NotificationMeta = styled.div`
@@ -636,8 +670,13 @@ export const NotificationDropdown = React.forwardRef(({
     return cleanedTitle;
   };
 
-  const getPriorityIcon = (priority, nadpis = '', notificationType = '') => {
+  const getPriorityIcon = (priority, nadpis = '', notificationType = '', objTyp = '') => {
     const normalizedPriority = (priority || 'INFO').toUpperCase();
+    
+    // 🌟 SPECIÁLNÍ: PLANNING - ikona kalendáře
+    if (objTyp === 'planning_event' || objTyp === 'planning_message') {
+      return faCalendarAlt;
+    }
     
     // 🌟 SPECIÁLNÍ: ADMIN_MESSAGE - ikona štítu
     if (notificationType === 'ADMIN_MESSAGE') {
@@ -780,16 +819,18 @@ export const NotificationDropdown = React.forwardRef(({
                   onClick={() => handleNotificationClick(notification)}
                 >
                   <NotificationIcon $priority={priority}>
-                    <FontAwesomeIcon icon={getPriorityIcon(priority, notification.nadpis, notification.typ)} />
+                    <FontAwesomeIcon icon={getPriorityIcon(priority, notification.nadpis, notification.typ, notification.objekt_typ)} />
                   </NotificationIcon>
                   <NotificationContent>
                     <NotificationTitle $isUnread={isUnread} $priority={priority}>
                       {cleanNotificationTitle(notification.nadpis) || notification.app_title || 'Bez názvu'}
                     </NotificationTitle>
                     {(notification.zprava || notification.app_message) && (
-                      <NotificationMessage>
-                        {notification.zprava || notification.app_message}
-                      </NotificationMessage>
+                      <NotificationMessage 
+                        dangerouslySetInnerHTML={{ 
+                          __html: notification.zprava || notification.app_message 
+                        }}
+                      />
                     )}
                     <NotificationMeta>
                       <NotificationTime>
@@ -838,6 +879,19 @@ export const NotificationDropdown = React.forwardRef(({
                           </span>
                         );
                       })()}
+                      {/* Zobraz organizátora pro PLANNING událost - oranžový badge */}
+                      {(notification.objekt_typ === 'planning_event' || notification.objekt_typ === 'planning_message') && notificationData?.organizator && (
+                        <span style={{
+                          background: '#fed7aa',
+                          color: '#c2410c',
+                          padding: '2px 7px',
+                          borderRadius: '4px',
+                          fontSize: '11px',
+                          fontWeight: '600'
+                        }}>
+                          👤 {notificationData.organizator}
+                        </span>
+                      )}
                     </NotificationMeta>
                   </NotificationContent>
                   <NotificationActions>

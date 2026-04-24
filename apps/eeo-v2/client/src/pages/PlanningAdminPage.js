@@ -6,8 +6,8 @@ import {
   faCalendarAlt, faMessage, faPlus, faEdit, faTrash, faSave, faTimes,
   faSearch, faEraser, faExclamationTriangle, faExpand, faCompress,
   faBold, faItalic, faUnderline, faListUl, faListOl, faLink, faUnlink, faCode,
-  faEye, faEyeSlash, faCheckCircle, faTimesCircle,
-  faTrophy, faMinus, faSortAlphaDown, faFilter
+  faEye, faEyeSlash, faCheckCircle, faTimesCircle, faUser,
+  faTrophy, faMinus, faSortAlphaDown, faFilter, faBolt
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -316,6 +316,15 @@ const TableHeader = styled.th`
   }
 `;
 
+const SortableHeader = styled(TableHeader)`
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+
+  &:hover {
+    background-color: #f8fafc;
+  }
+`;
+
 const TableCell = styled.td`
   padding: 0.45rem 0.6rem;
   border-bottom: 1px solid #f1f5f9;
@@ -464,7 +473,7 @@ const ModalOverlay = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2147483647;
+  z-index: 5000;
   padding: ${props => props.$fullScreen ? '0' : '1rem'};
   animation: fadeInBg 0.2s ease;
 
@@ -576,7 +585,7 @@ const RecipientsRow = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0.85rem;
-  margin-bottom: 0.9rem;
+  margin-bottom: 0.5rem;
 
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
@@ -662,6 +671,24 @@ const TerminAddBtn = styled.button`
   }
 `;
 
+const ValidationError = styled.div`
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #dc2626;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  svg {
+    flex-shrink: 0;
+  }
+`;
+
 const TerminIndexBadge = styled.span`
   display: inline-flex;
   align-items: center;
@@ -689,7 +716,7 @@ const Label = styled.label`
 const Input = styled.input`
   width: 100%;
   padding: 0.55rem 0.75rem;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid ${props => props.$hasError ? '#dc2626' : '#e2e8f0'};
   border-radius: 9px;
   font-size: 0.85rem;
   color: #1e293b;
@@ -698,8 +725,8 @@ const Input = styled.input`
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+    border-color: ${props => props.$hasError ? '#dc2626' : '#3b82f6'};
+    box-shadow: 0 0 0 3px ${props => props.$hasError ? 'rgba(220, 38, 38, 0.12)' : 'rgba(59, 130, 246, 0.12)'};
   }
 
   &::placeholder {
@@ -732,7 +759,7 @@ const Textarea = styled.textarea`
 `;
 
 const EditorContainer = styled.div`
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid ${props => props.$hasError ? '#dc2626' : '#e2e8f0'};
   border-radius: 9px;
   background: white;
   overflow: hidden;
@@ -841,7 +868,7 @@ const DateTimeWrapper = styled.div`
     padding: 0 0.625rem !important;
     padding-left: 2rem !important;
     padding-right: ${props => props.$hasValue ? '3rem' : '0.625rem'} !important;
-    border: 1.5px solid #e2e8f0 !important;
+    border: 1.5px solid ${props => props.$error ? '#dc2626' : '#e2e8f0'} !important;
     border-radius: 9px !important;
     font-size: 0.85rem !important;
     font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
@@ -878,7 +905,7 @@ const DateTimeWrapper = styled.div`
     padding: 0 0.625rem !important;
     padding-left: 2rem !important;
     padding-right: ${props => props.$hasValue ? '4.5rem' : '2.5rem'} !important;
-    border: 1.5px solid #e2e8f0 !important;
+    border: 1.5px solid ${props => props.$error ? '#dc2626' : '#e2e8f0'} !important;
     border-radius: 9px !important;
     font-size: 0.85rem !important;
     font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
@@ -974,12 +1001,14 @@ const PlanningAdminPage = () => {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [columnFilters, setColumnFilters] = useState({
     nazev: '',
+    organizator: '',
     text: '',
     dt_od: '',
     dt_do: ''
   });
   const [debouncedColumnFilters, setDebouncedColumnFilters] = useState({
     nazev: '',
+    organizator: '',
     text: '',
     dt_od: '',
     dt_do: ''
@@ -990,6 +1019,18 @@ const PlanningAdminPage = () => {
   const [totalPages, setTotalPages] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
   const [includeInactive, setIncludeInactive] = useState(true);
+  
+  // Třídění tabulky - výchozí dle dt_updated DESC
+  const [sortField, setSortField] = useState('dt_updated');
+  const [sortDirection, setSortDirection] = useState('DESC');
+  
+  // Sort ikona jako v Invoices25List
+  const sortIcon = (field) => (
+    <span style={{ marginLeft: '0.2rem', fontSize: '0.65rem', opacity: sortField === field ? 1 : 0.3, color: sortField === field ? '#2563eb' : 'inherit' }}>
+      {sortField !== field ? '⇅' : sortDirection === 'ASC' ? '↑' : '↓'}
+    </span>
+  );
+
   const [eventResponses, setEventResponses] = useState({});
   const [expandedEvents, setExpandedEvents] = useState(() => {
     try {
@@ -1051,8 +1092,11 @@ const PlanningAdminPage = () => {
   // Termíny pro události (pole - může být více termínů)
   // Pro zprávy se používá jen první termín (terminy[0])
   const [terminy, setTerminy] = useState([
-    { dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '' }
+    { dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '', kapacita: null }
   ]);
+
+  // Validační chyby
+  const [validationErrors, setValidationErrors] = useState({});
 
   // CustomSelect state
   const [selectStates, setSelectStates] = useState({});
@@ -1127,31 +1171,27 @@ const PlanningAdminPage = () => {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const params = {
+        page: currentPage,
+        per_page: itemsPerPage,
+        search_term: debouncedSearchTerm,
+        filter_nazev: debouncedColumnFilters.nazev,
+        filter_organizator: debouncedColumnFilters.organizator,
+        filter_text: debouncedColumnFilters.text,
+        filter_dt_od: debouncedColumnFilters.dt_od,
+        filter_dt_do: debouncedColumnFilters.dt_do,
+        include_inactive: includeInactive ? 1 : 0,
+        sort_field: sortField,
+        sort_direction: sortDirection
+      };
+      
       if (activeTab === 'messages') {
-        const response = await planningApi.getMessagesList({
-          page: currentPage,
-          per_page: itemsPerPage,
-          search_term: debouncedSearchTerm,
-          filter_nazev: debouncedColumnFilters.nazev,
-          filter_text: debouncedColumnFilters.text,
-          filter_dt_od: debouncedColumnFilters.dt_od,
-          filter_dt_do: debouncedColumnFilters.dt_do,
-          include_inactive: includeInactive ? 1 : 0
-        });
+        const response = await planningApi.getMessagesList(params);
         setMessages(response.data || []);
         setTotalItems(response.pagination?.total || response.count || 0);
         setTotalPages(response.pagination?.total_pages || 0);
       } else {
-        const response = await planningApi.getEventsList({
-          page: currentPage,
-          per_page: itemsPerPage,
-          search_term: debouncedSearchTerm,
-          filter_nazev: debouncedColumnFilters.nazev,
-          filter_text: debouncedColumnFilters.text,
-          filter_dt_od: debouncedColumnFilters.dt_od,
-          filter_dt_do: debouncedColumnFilters.dt_do,
-          include_inactive: includeInactive ? 1 : 0
-        });
+        const response = await planningApi.getEventsList(params);
         setEvents(response.data || []);
         setTotalItems(response.pagination?.total || response.count || 0);
         setTotalPages(response.pagination?.total_pages || 0);
@@ -1164,16 +1204,39 @@ const PlanningAdminPage = () => {
     } finally {
       setLoading(false);
     }
-  }, [activeTab, currentPage, itemsPerPage, debouncedSearchTerm, debouncedColumnFilters, includeInactive, showToast]);
+  }, [activeTab, currentPage, itemsPerPage, debouncedSearchTerm, debouncedColumnFilters, includeInactive, sortField, sortDirection, showToast]);
 
   const handleClearFilters = () => {
     setSearchTerm('');
     setColumnFilters({
       nazev: '',
+      organizator: '',
       text: '',
       dt_od: '',
       dt_do: ''
     });
+    setCurrentPage(1);
+  };
+
+  // Třídění: null → ASC → DESC → null
+  const handleSort = (field) => {
+    if (sortField !== field) {
+      // Nový sloupec - začni na ASC
+      setSortField(field);
+      setSortDirection('ASC');
+    } else {
+      // Stejný sloupec - cykluj: ASC → DESC → null
+      if (sortDirection === 'ASC') {
+        setSortDirection('DESC');
+      } else if (sortDirection === 'DESC') {
+        // Zrušit třídění - vrátit na výchozí
+        setSortField('dt_updated');
+        setSortDirection('DESC');
+      } else {
+        // Nemělo by nastat
+        setSortDirection('ASC');
+      }
+    }
     setCurrentPage(1);
   };
 
@@ -1262,7 +1325,7 @@ const PlanningAdminPage = () => {
       dt_do_time: '',
       prijemci: []
     });
-    setTerminy([{ dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '' }]);
+    setTerminy([{ dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '', kapacita: null }]);
     setSelectedRoles([]);
     setSelectedUsers([]);
     setIsHtmlView(false);
@@ -1290,6 +1353,15 @@ const PlanningAdminPage = () => {
   // Aktualizace jednoho termínu v poli - BEZ auto-fill (jen set value).
   // Auto-fill DO+60 se řeší přes completeTerminTime (po výběru minut v TimePickeru).
   const updateTermin = (index, field, newValue) => {
+    // Vyčistit validační chyby při změně
+    if (validationErrors.terminy) {
+      setValidationErrors(prev => {
+        const next = { ...prev };
+        delete next.terminy;
+        return next;
+      });
+    }
+    
     setTerminy(prev => {
       const next = [...prev];
       next[index] = { ...next[index], [field]: newValue };
@@ -1320,7 +1392,7 @@ const PlanningAdminPage = () => {
   const addTermin = () => {
     setTerminy(prev => [
       ...prev,
-      { dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '' }
+      { dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '', kapacita: null }
     ]);
   };
 
@@ -1411,7 +1483,8 @@ const PlanningAdminPage = () => {
             dt_od_time: termOd.time,
             dt_do_date: termDo.date,
             dt_do_time: termDo.time,
-            poznamka: t.poznamka || ''
+            poznamka: t.poznamka || '',
+            kapacita: t.kapacita !== null && t.kapacita !== undefined ? t.kapacita : null
           };
         });
       } else {
@@ -1419,7 +1492,8 @@ const PlanningAdminPage = () => {
           dt_od_date,
           dt_od_time,
           dt_do_date,
-          dt_do_time
+          dt_do_time,
+          kapacita: null
         }];
       }
       setTerminy(parsedTerminy);
@@ -1482,10 +1556,34 @@ const PlanningAdminPage = () => {
       let dt_do = null;
       let terminyPayload = [];
 
+      // Vyčistit předchozí validační chyby
+      setValidationErrors({});
+
+      // Validace: Název je povinný
+      if (!formData.nazev || !formData.nazev.trim()) {
+        setValidationErrors({ nazev: 'Název je povinný' });
+        return;
+      }
+
+      // Validace: Obsah/Popis je povinný
+      if (activeTab === 'messages') {
+        if (!formData.obsah || !formData.obsah.trim()) {
+          setValidationErrors({ obsah: 'Obsah zprávy je povinný' });
+          return;
+        }
+      }
+      // Popis události je NEPOVINNÝ (již bez validace)
+
+      // Validace: Alespoň jedna role NEBO jeden uživatel
+      if (selectedRoles.length === 0 && selectedUsers.length === 0) {
+        setValidationErrors({ prijemci: 'Vyberte alespoň jednu roli nebo jednoho uživatele' });
+        return;
+      }
+
       if (activeTab === 'events') {
         const validTerminy = terminy.filter(t => t.dt_od_date && t.dt_od_time);
         if (validTerminy.length === 0) {
-          showToast('Zadejte alespoň jeden termín (datum a čas od)', 'error');
+          setValidationErrors({ terminy: 'Zadejte alespoň jeden termín s datem a časem od' });
           return;
         }
         terminyPayload = validTerminy.map(t => {
@@ -1494,7 +1592,8 @@ const PlanningAdminPage = () => {
             ...(t.id ? { id: t.id } : {}),
             dt_od: mapped.dt_od,
             dt_do: mapped.dt_do,
-            poznamka: t.poznamka || null
+            poznamka: t.poznamka || null,
+            kapacita: t.kapacita !== null && t.kapacita !== undefined && t.kapacita !== '' ? parseInt(t.kapacita) : null
           };
         });
       } else {
@@ -1544,7 +1643,7 @@ const PlanningAdminPage = () => {
       loadData();
     } catch (error) {
       console.error('❌ Chyba ukládání:', error);
-      showToast('Chyba při ukládání', 'error');
+      // Toast jen pro obecné chyby (network apod.), validace řešena inline
     } finally {
       setIsSaving(false);
     }
@@ -1769,6 +1868,7 @@ const PlanningAdminPage = () => {
       termin_id: Number(t.id),
       dt_od: t.dt_od,
       dt_do: t.dt_do,
+      kapacita: t.kapacita !== null && t.kapacita !== undefined ? Number(t.kapacita) : null,
       accepted: acceptedByTerm.get(Number(t.id)) || 0,
       declined: declinedByTerm.get(Number(t.id)) || 0
     }));
@@ -1908,13 +2008,37 @@ const PlanningAdminPage = () => {
                         );
                       })()}
                     </TableHeader>
-                    <TableHeader>Název</TableHeader>
-                    <TableHeader>{activeTab === 'messages' ? 'Obsah' : 'Popis'}</TableHeader>
-                    <TableHeader>Datum od</TableHeader>
-                    <TableHeader>Datum do</TableHeader>
+                    <SortableHeader
+                      onClick={() => handleSort('nazev')}
+                    >
+                      Název{sortIcon('nazev')}
+                    </SortableHeader>
+                    <SortableHeader
+                      onClick={() => handleSort('organizator')}
+                    >
+                      Organizátor{sortIcon('organizator')}
+                    </SortableHeader>
+                    <SortableHeader
+                      onClick={() => handleSort(activeTab === 'messages' ? 'obsah' : 'popis')}
+                    >
+                      {activeTab === 'messages' ? 'Obsah' : 'Popis'}{sortIcon(activeTab === 'messages' ? 'obsah' : 'popis')}
+                    </SortableHeader>
+                    <SortableHeader
+                      onClick={() => handleSort('dt_od')}
+                    >
+                      Datum od{sortIcon('dt_od')}
+                    </SortableHeader>
+                    <SortableHeader
+                      onClick={() => handleSort('dt_do')}
+                    >
+                      Datum do{sortIcon('dt_do')}
+                    </SortableHeader>
+                    {activeTab === 'events' && <TableHeader className="center">Kapacita</TableHeader>}
                     <TableHeader className="center">Příjemci</TableHeader>
                     {activeTab === 'events' && <TableHeader className="center">Reakce</TableHeader>}
-                    <TableHeader className="center">Akce</TableHeader>
+                    <TableHeader>
+                      <FontAwesomeIcon icon={faBolt} style={{ color: '#f59e0b', fontSize: '0.95rem' }} />
+                    </TableHeader>
                   </TableRow>
                   <TableRow className="filter-row">
                     <TableHeader className="filter-cell" />
@@ -1932,6 +2056,26 @@ const PlanningAdminPage = () => {
                           <button
                             className="filter-clear"
                             onClick={() => setColumnFilters(prev => ({ ...prev, nazev: '' }))}
+                          >
+                            <FontAwesomeIcon icon={faTimes} />
+                          </button>
+                        )}
+                      </div>
+                    </TableHeader>
+                    <TableHeader className="filter-cell">
+                      <div className="text-filter-wrapper">
+                        <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                        <input
+                          type="text"
+                          className="filter-input"
+                          placeholder="Organizátor..."
+                          value={columnFilters.organizator || ''}
+                          onChange={(e) => setColumnFilters(prev => ({ ...prev, organizator: e.target.value }))}
+                        />
+                        {columnFilters.organizator && (
+                          <button
+                            className="filter-clear"
+                            onClick={() => setColumnFilters(prev => ({ ...prev, organizator: '' }))}
                           >
                             <FontAwesomeIcon icon={faTimes} />
                           </button>
@@ -1980,16 +2124,18 @@ const PlanningAdminPage = () => {
                         />
                       </div>
                     </TableHeader>
+                    {activeTab === 'events' && <TableHeader className="filter-cell" />}
                     <TableHeader className="filter-cell" />
                     <TableHeader className="filter-cell" />
                     {activeTab === 'events' && <TableHeader className="filter-cell" />}
+                    <TableHeader className="filter-cell" />
                     <TableHeader className="filter-cell" />
                   </TableRow>
                 </TableHead>
                 <tbody>
                   {currentData.length === 0 ? (
                     <TableRow>
-                      <TableCell className="center" colSpan={activeTab === 'events' ? 8 : 7}>
+                      <TableCell className="center" colSpan={activeTab === 'events' ? 10 : 8}>
                         {activeTab === 'messages' ? 'Žádné zprávy' : 'Žádné události'}
                       </TableCell>
                     </TableRow>
@@ -2017,7 +2163,7 @@ const PlanningAdminPage = () => {
                       const declinedCount = responses.filter(r => r.typ_odpovedi === 'declined').length;
                       const isExpanded = expandedEvents.has(item.id);
                       const agreement = activeTab === 'events' ? buildTermAgreement(item, responses) : [];
-                      const colCount = activeTab === 'events' ? 8 : 7;
+                      const colCount = activeTab === 'events' ? 10 : 8;
                       return (
                         <React.Fragment key={item.id}>
                           <TableRow style={rowStyle}>
@@ -2032,6 +2178,18 @@ const PlanningAdminPage = () => {
                               )}
                             </TableCell>
                             <TableCell style={cellStyle}><strong>{item.nazev}</strong></TableCell>
+                            <TableCell style={cellStyle}>
+                              <div style={{ fontSize: '0.82rem' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '0.15rem' }}>
+                                  {item.autor_prijmeni && item.autor_jmeno
+                                    ? `${item.autor_prijmeni} ${item.autor_jmeno}`
+                                    : (item.autor_jmeno || item.autor_prijmeni || '—')}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                                  {item.dt_created ? prettyDate(item.dt_created) : '—'}
+                                </div>
+                              </div>
+                            </TableCell>
                             <TableCell style={cellStyle}>
                               <HtmlPreviewBox>
                                 {previewHtml ? (
@@ -2057,6 +2215,22 @@ const PlanningAdminPage = () => {
                               )}
                             </TableCell>
                             <TableCell style={cellStyle}>{item.dt_do ? prettyDate(item.dt_do) : '-'}</TableCell>
+                            {activeTab === 'events' && (
+                              <TableCell className="center">
+                                {(() => {
+                                  const accepted = parseInt(item.accepted_count) || 0;
+                                  const maxKap = item.max_kapacita;
+                                  const isFull = maxKap && accepted >= maxKap;
+                                  const badgeColor = isFull ? '#dc2626' : (maxKap ? '#3b82f6' : '#64748b');
+                                  const displayText = maxKap ? `${accepted}/${maxKap}` : `${accepted}/∞`;
+                                  return (
+                                    <Badge $type="user" style={{ background: badgeColor, color: 'white' }}>
+                                      {displayText}
+                                    </Badge>
+                                  );
+                                })()}
+                              </TableCell>
+                            )}
                             <TableCell className="center">
                               {recipientsTooltip ? (
                                 <SmartTooltip
@@ -2173,21 +2347,32 @@ const PlanningAdminPage = () => {
                                             }}
                                           >
                                             <span style={{ fontWeight: 700, color: '#475569', minWidth: '1.5rem' }}>{idx + 1}.</span>
-                                            <span style={{ flex: 1, color: '#1e293b' }}>
+                                            <span style={{ color: '#1e293b', minWidth: '15rem' }}>
                                               {formatResponseDate(row.dt_od)}{row.dt_do ? ` – ${formatResponseDate(row.dt_do)}` : ''}
                                             </span>
-                                            <span style={{ color: '#16a34a', fontWeight: 600 }}>
-                                              <FontAwesomeIcon icon={faCheckCircle} /> {row.accepted}
+                                            <span style={{ 
+                                              fontSize: '0.85rem', 
+                                              fontWeight: 600,
+                                              color: row.kapacita && row.accepted >= row.kapacita ? '#dc2626' : '#64748b',
+                                              minWidth: '4rem',
+                                              maxWidth: '4rem'
+                                            }}>
+                                              {row.kapacita ? `${row.accepted}/${row.kapacita}` : `${row.accepted}/∞`}
+                                              {row.kapacita && row.accepted >= row.kapacita && ' 🔴'}
                                             </span>
-                                            <span style={{ color: '#dc2626', fontWeight: 600 }}>
-                                              <FontAwesomeIcon icon={faTimesCircle} /> {row.declined}
-                                            </span>
+                                            <span style={{ flex: 1 }} />
                                             {row.isWinner && row.accepted > 0 && (
                                               <Badge $type="role" style={{ background: '#16a34a', color: '#fff' }}>
                                                 <FontAwesomeIcon icon={faTrophy} style={{ marginRight: '0.25rem' }} />
                                                 NEJVĚTŠÍ SHODA
                                               </Badge>
                                             )}
+                                            <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                                              <FontAwesomeIcon icon={faCheckCircle} /> {row.accepted}
+                                            </span>
+                                            <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                                              <FontAwesomeIcon icon={faTimesCircle} /> {row.declined}
+                                            </span>
                                           </div>
                                         ))}
                                       </div>
@@ -2237,10 +2422,10 @@ const PlanningAdminPage = () => {
                                       <thead>
                                         <tr style={{ background: '#f1f5f9', color: '#334155' }}>
                                           <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Uživatel</th>
-                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Reakce</th>
+                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Odpověď</th>
                                           <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Datum odpovědi</th>
                                           <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Termín</th>
-                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Odpověď</th>
+                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Poznámka</th>
                                         </tr>
                                       </thead>
                                       <tbody>
@@ -2422,12 +2607,19 @@ const PlanningAdminPage = () => {
                   onChange={(e) => setFormData({ ...formData, nazev: e.target.value })}
                   placeholder="Zadejte název"
                   required
+                  $hasError={!!validationErrors.nazev}
                 />
+                {validationErrors.nazev && (
+                  <ValidationError>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                    {validationErrors.nazev}
+                  </ValidationError>
+                )}
               </FormGroup>
 
               <FormGroup>
                 <Label>{editorLabel}</Label>
-                <EditorContainer>
+                <EditorContainer $hasError={!!validationErrors[editorField]}>
                   <EditorToolbar>
                     <EditorGroup>
                       <EditorButton type="button" onClick={() => applyEditorCommand('bold')} title="Tučné">
@@ -2479,17 +2671,25 @@ const PlanningAdminPage = () => {
                     />
                   )}
                 </EditorContainer>
+                {validationErrors[editorField] && (
+                  <ValidationError>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                    {validationErrors[editorField]}
+                  </ValidationError>
+                )}
               </FormGroup>
 
               {activeTab === 'events' ? (
                 <>
                   <Label>Termíny ({terminy.length})</Label>
                   <TerminyList>
-                    {terminy.map((t, idx) => (
+                    {terminy.map((t, idx) => {
+                      const hasError = validationErrors.terminy && (!t.dt_od_date || !t.dt_od_time);
+                      return (
                       <TerminRow key={idx}>
                         <div>
                           <Label><TerminIndexBadge>{idx + 1}</TerminIndexBadge>Datum od</Label>
-                          <DateTimeWrapper $hasValue={!!t.dt_od_date}>
+                          <DateTimeWrapper $hasValue={!!t.dt_od_date} $error={hasError}>
                             <DatePicker
                               value={t.dt_od_date}
                               onChange={(newDate) => updateTermin(idx, 'dt_od_date', newDate)}
@@ -2499,7 +2699,7 @@ const PlanningAdminPage = () => {
                         </div>
                         <div>
                           <Label>Čas od</Label>
-                          <DateTimeWrapper $hasValue={!!t.dt_od_time}>
+                          <DateTimeWrapper $hasValue={!!t.dt_od_time} $error={hasError}>
                             <TimePicker
                               value={t.dt_od_time}
                               onChange={(newTime) => updateTermin(idx, 'dt_od_time', newTime)}
@@ -2528,6 +2728,19 @@ const PlanningAdminPage = () => {
                             />
                           </DateTimeWrapper>
                         </div>
+                        <div>
+                          <Label>Kapacita</Label>
+                          <SmartTooltip text="Ponechte prázdné nebo 0 = neomezeno" icon="info">
+                            <Input
+                              type="number"
+                              min="0"
+                              value={t.kapacita ?? ''}
+                              onChange={(e) => updateTermin(idx, 'kapacita', e.target.value ? parseInt(e.target.value) : null)}
+                              placeholder="0"
+                              style={{ width: '5rem', textAlign: 'right' }}
+                            />
+                          </SmartTooltip>
+                        </div>
                         <TerminRemoveBtn
                           type="button"
                           onClick={() => removeTermin(idx)}
@@ -2537,8 +2750,15 @@ const PlanningAdminPage = () => {
                           <FontAwesomeIcon icon={faTrash} />
                         </TerminRemoveBtn>
                       </TerminRow>
-                    ))}
+                      );
+                    })}
                   </TerminyList>
+                  {validationErrors.terminy && (
+                    <ValidationError>
+                      <FontAwesomeIcon icon={faExclamationTriangle} />
+                      {validationErrors.terminy}
+                    </ValidationError>
+                  )}
                   <TerminAddBtn type="button" onClick={addTermin}>
                     <FontAwesomeIcon icon={faPlus} />
                     Přidat další termín
@@ -2604,48 +2824,58 @@ const PlanningAdminPage = () => {
               <RecipientsRow>
                 <FormGroup>
                   <Label>Role (příjemci)</Label>
-                  <CustomSelect
-                    value={selectedRoles}
-                    onChange={(newValues) => setSelectedRoles(newValues)}
-                    options={availableRoles}
-                    placeholder="-- Vyberte role --"
-                    field="recipients_roles"
-                    multiple={true}
-                    selectStates={selectStates}
-                    setSelectStates={setSelectStates}
-                    searchStates={searchStates}
-                    setSearchStates={setSearchStates}
-                    touchedSelectFields={touchedSelectFields}
-                    setTouchedSelectFields={setTouchedSelectFields}
-                    toggleSelect={toggleSelect}
-                    filterOptions={filterOptions}
-                    getOptionLabel={getOptionLabel}
-                    enableSearch={true}
-                  />
+                  <div style={validationErrors.prijemci ? { border: '2px solid #dc2626', borderRadius: '6px' } : {}}>
+                    <CustomSelect
+                      value={selectedRoles}
+                      onChange={(newValues) => setSelectedRoles(newValues)}
+                      options={availableRoles}
+                      placeholder="-- Vyberte role --"
+                      field="recipients_roles"
+                      multiple={true}
+                      selectStates={selectStates}
+                      setSelectStates={setSelectStates}
+                      searchStates={searchStates}
+                      setSearchStates={setSearchStates}
+                      touchedSelectFields={touchedSelectFields}
+                      setTouchedSelectFields={setTouchedSelectFields}
+                      toggleSelect={toggleSelect}
+                      filterOptions={filterOptions}
+                      getOptionLabel={getOptionLabel}
+                      enableSearch={true}
+                    />
+                  </div>
                 </FormGroup>
 
                 <FormGroup>
                   <Label>Konkrétní uživatelé (příjemci)</Label>
-                  <CustomSelect
-                    value={selectedUsers}
-                    onChange={(newValues) => setSelectedUsers(newValues)}
-                    options={availableUsers}
-                    placeholder="-- Vyberte uživatele --"
-                    field="recipients_users"
-                    multiple={true}
-                    selectStates={selectStates}
-                    setSelectStates={setSelectStates}
-                    searchStates={searchStates}
-                    setSearchStates={setSearchStates}
-                    touchedSelectFields={touchedSelectFields}
-                    setTouchedSelectFields={setTouchedSelectFields}
-                    toggleSelect={toggleSelect}
-                    filterOptions={filterOptions}
-                    getOptionLabel={getOptionLabel}
-                    enableSearch={true}
-                  />
+                  <div style={validationErrors.prijemci ? { border: '2px solid #dc2626', borderRadius: '6px' } : {}}>
+                    <CustomSelect
+                      value={selectedUsers}
+                      onChange={(newValues) => setSelectedUsers(newValues)}
+                      options={availableUsers}
+                      placeholder="-- Vyberte uživatele --"
+                      field="recipients_users"
+                      multiple={true}
+                      selectStates={selectStates}
+                      setSelectStates={setSelectStates}
+                      searchStates={searchStates}
+                      setSearchStates={setSearchStates}
+                      touchedSelectFields={touchedSelectFields}
+                      setTouchedSelectFields={setTouchedSelectFields}
+                      toggleSelect={toggleSelect}
+                      filterOptions={filterOptions}
+                      getOptionLabel={getOptionLabel}
+                      enableSearch={true}
+                    />
+                  </div>
                 </FormGroup>
               </RecipientsRow>
+              {validationErrors.prijemci && (
+                <ValidationError>
+                  <FontAwesomeIcon icon={faExclamationTriangle} />
+                  {validationErrors.prijemci}
+                </ValidationError>
+              )}
             </ModalBody>
 
             <ModalFooter>

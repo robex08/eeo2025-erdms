@@ -58,6 +58,7 @@ const PanelContainer = styled.div`
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  pointer-events: auto;
 
   @media (max-width: 768px) {
     width: 100vw;

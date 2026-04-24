@@ -579,24 +579,24 @@ const CustomSelect = ({
     }
   }, [isOpen, options.length]);
 
-  // Scroll highlighted option do view
-  useEffect(() => {
-    if (isOpen && highlightedIndex >= 0 && optionRefs.current[highlightedIndex]) {
-      const optionElement = optionRefs.current[highlightedIndex];
-      if (optionElement && dropdownRef.current) {
-        const dropdown = dropdownRef.current;
-        const optionRect = optionElement.getBoundingClientRect();
-        const dropdownRect = dropdown.getBoundingClientRect();
+  // Scroll highlighted option do view - VYPNUTO (nechceme auto-scroll při výběru)
+  // useEffect(() => {
+  //   if (isOpen && highlightedIndex >= 0 && optionRefs.current[highlightedIndex]) {
+  //     const optionElement = optionRefs.current[highlightedIndex];
+  //     if (optionElement && dropdownRef.current) {
+  //       const dropdown = dropdownRef.current;
+  //       const optionRect = optionElement.getBoundingClientRect();
+  //       const dropdownRect = dropdown.getBoundingClientRect();
 
-        // Scroll pouze pokud option není viditelná
-        if (optionRect.top < dropdownRect.top) {
-          optionElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        } else if (optionRect.bottom > dropdownRect.bottom) {
-          optionElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-        }
-      }
-    }
-  }, [highlightedIndex, isOpen]);
+  //       // Scroll pouze pokud option není viditelná
+  //       if (optionRect.top < dropdownRect.top) {
+  //         optionElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  //       } else if (optionRect.bottom > dropdownRect.bottom) {
+  //         optionElement.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  //       }
+  //     }
+  //   }
+  // }, [highlightedIndex, isOpen]);
 
   const handleClear = (e) => {
     e.stopPropagation(); // Prevent opening dropdown
