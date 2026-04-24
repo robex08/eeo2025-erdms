@@ -202,60 +202,119 @@ const IconButton = styled.button`
   }
 `;
 
+// Animace
+const fadeInBg = `
+  @keyframes fadeInBg {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+`;
+
+const slideInUp = `
+  @keyframes slideInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+`;
+
 // Modal Components
 const ModalOverlay = styled.div`
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  padding: 2rem;
+  padding: 1rem;
+  animation: fadeInBg 0.2s ease;
+
+  @keyframes fadeInBg {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 `;
 
 const ModalContent = styled.div`
   background: white;
-  border-radius: 12px;
-  max-width: 800px;
+  border-radius: 16px;
   width: 100%;
-  max-height: 90vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  max-width: 620px;
+  max-height: 92vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.15);
+  animation: slideInUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes slideInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
 `;
 
 const ModalHeader = styled.div`
-  padding: 1.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 1.25rem 1.5rem;
+  background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+  color: white;
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-shrink: 0;
 `;
 
-const ModalTitle = styled.h2`
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: #1f2937;
+const ModalTitle = styled.div`
+  h3 {
+    margin: 0 0 0.2rem;
+    font-size: 1.05rem;
+    font-weight: 700;
+  }
+  p {
+    margin: 0;
+    font-size: 0.8rem;
+    opacity: 0.82;
+  }
+`;
+
+const CloseBtn = styled.button`
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.28);
+  }
 `;
 
 const ModalBody = styled.div`
   padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
 `;
 
 const ModalFooter = styled.div`
-  padding: 1.5rem;
-  border-top: 1px solid #e5e7eb;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #f1f5f9;
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
+  gap: 0.65rem;
+  background: #fafafa;
+  flex-shrink: 0;
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.1rem;
 
   &:last-child {
     margin-bottom: 0;
@@ -264,41 +323,56 @@ const FormGroup = styled.div`
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 0.5rem;
-  font-weight: 600;
-  color: #374151;
-  font-size: 0.875rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 `;
 
 const Input = styled.input`
   width: 100%;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
   font-size: 0.875rem;
-  transition: all 0.2s ease;
+  color: #1e293b;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
 
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  }
+
+  &::placeholder {
+    color: #94a3b8;
   }
 `;
 
 const Textarea = styled.textarea`
   width: 100%;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
   font-size: 0.875rem;
+  color: #1e293b;
   resize: vertical;
-  min-height: 100px;
-  transition: all 0.2s ease;
+  min-height: 68px;
+  font-family: inherit;
+  line-height: 1.5;
+  transition: border-color 0.15s, box-shadow 0.15s;
 
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  }
+
+  &::placeholder {
+    color: #94a3b8;
   }
 `;
 
@@ -317,17 +391,19 @@ const CheckboxLabel = styled.label`
 
 const Select = styled.select`
   width: 100%;
-  padding: 0.625rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
   font-size: 0.875rem;
+  color: #1e293b;
   background: white;
-  transition: all 0.2s ease;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
 
   &:focus {
     outline: none;
     border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
   }
 
   &:disabled {
@@ -595,11 +671,14 @@ const PlanningAdminPage = () => {
           <ModalContent onClick={(e) => e.stopPropagation()}>
             <ModalHeader>
               <ModalTitle>
-                {editingItem ? 'Upravit' : 'Vytvořit'} {activeTab === 'messages' ? 'zprávu' : 'událost'}
+                <h3>
+                  {editingItem ? 'Upravit' : 'Vytvořit'} {activeTab === 'messages' ? 'zprávu' : 'událost'}
+                </h3>
+                <p>Vyplňte požadované informace</p>
               </ModalTitle>
-              <IconButton onClick={() => setModalOpen(false)}>
+              <CloseBtn onClick={() => setModalOpen(false)}>
                 <FontAwesomeIcon icon={faTimes} />
-              </IconButton>
+              </CloseBtn>
             </ModalHeader>
 
             <ModalBody>
