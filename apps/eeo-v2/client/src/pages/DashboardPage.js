@@ -44,6 +44,7 @@ import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
 import SendQuickMessageModal from '../components/dashboard/SendQuickMessageModal';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
+import PlanningEventDetailPanel from '../components/PlanningEventPanel';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler);
 
@@ -1575,8 +1576,14 @@ const PlanningTickerTitle = styled.div`
   margin-bottom: 0.35rem;
 `;
 
-const PlanningTickerRestart = styled.button`
+const PlanningTickerActions = styled.div`
   margin-left: auto;
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+`;
+
+const PlanningTickerRestart = styled.button`
   background: none;
   border: none;
   color: #fde68a;
@@ -1642,122 +1649,12 @@ const PlanningTickerHtml = styled.div`
   color: #fde68a;
 `;
 
-const EventCard = styled.div`
-  border: 1px solid #e2e8f0;
-  border-radius: 12px;
-  padding: 0.85rem 0.9rem;
+const PlanningFullscreenScroll = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  background: #f8fafc;
-`;
-
-const EventMeta = styled.div`
-  font-size: 0.72rem;
-  color: #64748b;
-`;
-
-const EventName = styled.div`
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #0f172a;
-`;
-
-const EventDescription = styled.div`
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: #334155;
-
-  p { margin: 0 0 0.35rem; }
-  ul, ol { margin: 0 0 0.35rem; padding-left: 1.1rem; }
-`;
-
-const EventTerms = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-`;
-
-const EventTermRow = styled.div`
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.55rem 0.6rem;
-  border-radius: 10px;
-  background: ${p => p.$selected ? '#eef2ff' : '#ffffff'};
-  border: 1px solid ${p => p.$selected ? '#93c5fd' : '#e2e8f0'};
-`;
-
-const EventTermLabel = styled.div`
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #0f172a;
-`;
-
-const EventTermStatus = styled.div`
-  font-size: 0.72rem;
-  color: #475569;
-`;
-
-const EventActions = styled.div`
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-`;
-
-const EventActionButton = styled.button`
-  border: none;
-  border-radius: 999px;
-  padding: 0.3rem 0.7rem;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: ${p => p.$variant === 'decline' ? '#991b1b' : '#166534'};
-  background: ${p => p.$variant === 'decline' ? '#fee2e2' : '#dcfce7'};
-  opacity: ${p => p.disabled ? 0.5 : 1};
-  cursor: ${p => p.disabled ? 'not-allowed' : 'pointer'};
-  transition: transform 0.12s, box-shadow 0.12s, background 0.2s;
-  &:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
-  }
-  &:active:not(:disabled) {
-    transform: translateY(0);
-  }
-`;
-
-const flashAccept = keyframes`
-  0%   { background: #dcfce7; box-shadow: 0 0 0 3px rgba(22,163,74,0.45); }
-  60%  { background: #bbf7d0; box-shadow: 0 0 0 6px rgba(22,163,74,0.25); }
-  100% { background: #ffffff; box-shadow: 0 0 0 0 rgba(22,163,74,0); }
-`;
-
-const flashDecline = keyframes`
-  0%   { background: #fee2e2; box-shadow: 0 0 0 3px rgba(220,38,38,0.45); }
-  60%  { background: #fecaca; box-shadow: 0 0 0 6px rgba(220,38,38,0.25); }
-  100% { background: #ffffff; box-shadow: 0 0 0 0 rgba(220,38,38,0); }
-`;
-
-const EventTermFlash = styled.div`
-  animation: ${p => p.$type === 'accepted' ? flashAccept : flashDecline} 1.2s ease-out;
-  border-radius: 10px;
-`;
-
-const EventTermNoteInput = styled.textarea`
-  width: 100%;
-  min-height: 48px;
-  resize: vertical;
-  padding: 0.4rem 0.55rem;
-  font-size: 0.72rem;
-  font-family: inherit;
-  color: #0f172a;
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  outline: none;
-  &:focus {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
-  }
+  gap: 2rem;
+  animation: ${tickerRoll} var(--ticker-duration, 20s) linear forwards;
+  will-change: transform;
 `;
 
 const WelcomeDivider = styled.hr`
@@ -4214,13 +4111,17 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
             tooltipLines.push(line);
           });
           if (hasEvents) {
-            if (tooltipLines.length > 0) tooltipLines.push('---');
-            dayEvents.forEach(({ event, term }) => {
+            if (tooltipLines.length > 0) tooltipLines.push('──────────────────────────────');
+            dayEvents.forEach(({ event, term }, idx) => {
               const resp = term?.moje_odpoved?.typ_odpovedi;
               let line = `Událost: ${event.nazev}`;
               if (term?.dt_od) line += `\nTermín: ${getTermLabel(term)}`;
               if (resp) line += `\nOdpověď: ${formatResponseLabel(resp)}`;
               tooltipLines.push(line);
+              // Oddělovač mezi událostmi (ne po poslední)
+              if (idx < dayEvents.length - 1) {
+                tooltipLines.push('──────────────────────────────');
+              }
             });
           }
           const tooltipText = tooltipLines.join('\n');
@@ -4262,7 +4163,8 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
             }
           }
 
-          if (hasEvents && !today_) {
+          // Obrys podle barvy odpovědí - i když je today_ (modrý den)
+          if (hasEvents) {
             outline = `2px solid ${outlineColor}`;
           }
 
@@ -4279,6 +4181,19 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
               }}
               onClick={() => {
                 if (hasEvents) {
+                  // ✅ Kontrola zda VŠECHNY termíny jsou plné a uživatel není přihlášen
+                  const allTermsFull = dayEvents.every(({ term }) => {
+                    const isFull = term?.is_full === true;
+                    const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
+                    return isFull && !isUserAccepted;
+                  });
+
+                  if (allTermsFull && dayEvents.length > 0) {
+                    // Zobrazit dialog místo otevření panelu
+                    alert('Všechny termíny v tento den jsou plně obsazeny.\n\nZkuste jiný termín nebo kontaktujte organizátora.');
+                    return;
+                  }
+
                   setPanelDayKey(dayKey);
                   setPanelOpen(true);
                 }
@@ -4340,25 +4255,19 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div>
-              <EventName>Události {panelDateLabel}</EventName>
-              <EventMeta>{panelEvents.length} položek</EventMeta>
+              <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#0f172a' }}>Události {panelDateLabel}</div>
+              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>{panelEvents.length} položek</div>
             </div>
 
             {panelEvents.length === 0 && (
-              <EventMeta>Žádné události v tento den.</EventMeta>
+              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>Žádné události v tento den.</div>
             )}
 
             {panelEvents.map(({ event }) => {
-              const authorName = [event.autor_jmeno, event.autor_prijmeni].filter(Boolean).join(' ');
-              const description = event.popis_html || event.popis || '';
-              // Tlačítka Potvrdit/Odmítnout VŽDY zobrazit – uživatel musí mít možnost
-              // reagovat ke každému termínu (disabled stav řeší canChange podle deadline).
-              const requiresResponse = true;
               const displayTerms = Array.isArray(event.terminy) ? [...event.terminy] : [];
-              if (displayTerms.length === 0) {
-                return null;
-              }
+              if (displayTerms.length === 0) return null;
 
+              // Seřadit termíny - vybrané nahoře
               displayTerms.sort((a, b) => {
                 const aSelected = isTermOnSelectedDay(a, event) ? 0 : 1;
                 const bSelected = isTermOnSelectedDay(b, event) ? 0 : 1;
@@ -4367,78 +4276,15 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
               });
 
               return (
-                <EventCard key={event.id}>
-                  <EventMeta>
-                    {authorName ? `Autor: ${authorName}` : 'Autor neuveden'}
-                  </EventMeta>
-                  <EventName>{event.nazev}</EventName>
-                  {description && (
-                    <EventDescription dangerouslySetInnerHTML={{ __html: description }} />
-                  )}
-
-                  <EventTerms>
-                    {displayTerms.map(term => {
-                      const response = term?.moje_odpoved?.typ_odpovedi;
-                      const responseTime = term?.moje_odpoved?.dt_odpovedi;
-                      const deadline = getResponseDeadline(event, term);
-                      const canChange = requiresResponse ? canChangeResponse(event, term) : false;
-                      const termLabel = getTermLabel(term);
-                      const isSelected = isTermOnSelectedDay(term, event);
-                      const flashKey = flashState[term.id];
-                      const flashType = flashKey ? flashKey.split('-')[0] : null;
-
-                      const rowContent = (
-                        <EventTermRow key={term.id} $selected={isSelected}>
-                          <EventTermLabel>
-                            {termLabel}
-                            {isSelected && <span style={{ color: '#1d4ed8' }}> (vybráno)</span>}
-                          </EventTermLabel>
-                          <EventTermStatus>
-                            Odpověď: {formatResponseLabel(response)}
-                            {responseTime ? ` • ${formatCzDateTime(responseTime)}` : ''}
-                          </EventTermStatus>
-                          {requiresResponse && deadline && (
-                            <EventMeta>{canChange ? `Změna do ${formatCzDateTime(deadline.toISOString())}` : 'Změna už není možná'}</EventMeta>
-                          )}
-                          {requiresResponse && (
-                            <>
-                              <EventTermNoteInput
-                                placeholder="Poznámka k odpovědi (nepovinné)"
-                                value={termNotes[term.id] ?? (term?.moje_odpoved?.poznamka || '')}
-                                onChange={(e) => setTermNotes(prev => ({ ...prev, [term.id]: e.target.value }))}
-                                disabled={!canChange}
-                              />
-                              <EventActions>
-                                <EventActionButton
-                                  type="button"
-                                  $variant="accept"
-                                  disabled={!canChange}
-                                  onClick={() => handleRespond(event, term, 'accepted')}
-                                >
-                                  Potvrdit
-                                </EventActionButton>
-                                <EventActionButton
-                                  type="button"
-                                  $variant="decline"
-                                  disabled={!canChange}
-                                  onClick={() => handleRespond(event, term, 'declined')}
-                                >
-                                  Odmítnout
-                                </EventActionButton>
-                              </EventActions>
-                            </>
-                          )}
-                        </EventTermRow>
-                      );
-
-                      return flashType ? (
-                        <EventTermFlash key={`flash-${term.id}-${flashKey}`} $type={flashType}>
-                          {rowContent}
-                        </EventTermFlash>
-                      ) : rowContent;
-                    })}
-                  </EventTerms>
-                </EventCard>
+                <PlanningEventDetailPanel
+                  key={event.id}
+                  event={{ ...event, terminy: displayTerms }}
+                  onRespond={handleRespond}
+                  flashState={flashState}
+                  termNotes={termNotes}
+                  onTermNoteChange={(id, note) => setTermNotes(prev => ({ ...prev, [id]: note }))}
+                  isTermSelected={isTermOnSelectedDay}
+                />
               );
             })}
           </div>
@@ -4479,6 +4325,7 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
   const [tickerVisible, setTickerVisible] = useState(false);
   const [tickerAnimating, setTickerAnimating] = useState(false);
   const [tickerKey, setTickerKey] = useState(0);
+  const [tickerFullscreen, setTickerFullscreen] = useState(false);
   const tickerTimerRef = useRef(null);
   const activeMessagesRef = useRef([]);
 
@@ -4626,7 +4473,25 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
     activeMessagesRef.current = activePlanningMessages;
   }, [activePlanningMessages]);
 
-  const tickerDuration = Math.max(16, activePlanningMessages.length * 10);
+  // Výpočet doby scrollování podle počtu a délky zpráv (pomalejší pro více/delší zprávy)
+  const tickerDuration = useMemo(() => {
+    if (activePlanningMessages.length === 0) return 20;
+    
+    // Počet zpráv krát 15 sekund na zprávu (minimum 20s)
+    const baseDuration = activePlanningMessages.length * 15;
+    
+    // Bonus za dlouhé zprávy - přidáme 0.05s za každý znak nad 100 znaků
+    const lengthBonus = activePlanningMessages.reduce((sum, msg) => {
+      const contentText = (msg.obsah || '').replace(/<[^>]*>/g, '').trim();
+      const extraChars = Math.max(0, contentText.length - 100);
+      return sum + (extraChars * 0.05);
+    }, 0);
+    
+    const totalDuration = baseDuration + lengthBonus;
+    
+    // Minimum 20s, maximum 150s
+    return Math.min(150, Math.max(20, totalDuration));
+  }, [activePlanningMessages]);
 
   const beginAnimation = useCallback((delayMs) => {
     if (tickerTimerRef.current) {
@@ -4690,6 +4555,11 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
     beginAnimation(150);
   };
 
+  const openTickerFullscreen = () => {
+    restartTickerNow();
+    setTickerFullscreen(true);
+  };
+
   const NEWS_ICON_MAP = {
     'shopping-cart': { icon: faShoppingCart, color: '#2563eb', bg: '#dbeafe' },
     'gavel': { icon: faGavel, color: '#dc2626', bg: '#fef2f2' },
@@ -4707,6 +4577,7 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
   const sinceFormatted = newsSinceLogin?.since_formatted || '';
 
   return (
+    <>
     <WidgetBody>
       <WelcomeRow>
         <AvatarCircle>
@@ -4767,9 +4638,14 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
             <PlanningTickerTitle>
               <FontAwesomeIcon icon={faInfoCircle} />
               Informační zprávy
-              <PlanningTickerRestart type="button" onClick={restartTickerNow} title="Znovu spustit rolování">
-                <FontAwesomeIcon icon={faSync} />
-              </PlanningTickerRestart>
+              <PlanningTickerActions>
+                <PlanningTickerRestart type="button" onClick={restartTickerNow} title="Znovu spustit rolování">
+                  <FontAwesomeIcon icon={faSync} />
+                </PlanningTickerRestart>
+                <PlanningTickerRestart type="button" onClick={openTickerFullscreen} title="Zobrazit na celou obrazovku">
+                  <FontAwesomeIcon icon={faExpand} />
+                </PlanningTickerRestart>
+              </PlanningTickerActions>
             </PlanningTickerTitle>
             <PlanningTickerViewport>
               <PlanningTickerContent
@@ -4932,6 +4808,54 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
         )}
       </NewsSection>
     </WidgetBody>
+
+    {tickerFullscreen && ReactDOM.createPortal(
+      <ChartOverlay onClick={(e) => { if (e.target === e.currentTarget) setTickerFullscreen(false); }}>
+        <ChartFullscreenBox>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '2px solid #e2e8f0', paddingBottom: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <FontAwesomeIcon icon={faInfoCircle} style={{ color: '#3b82f6' }} />
+              <span style={{ fontWeight: 700, fontSize: '1.05rem', color: '#1e293b' }}>Informační zprávy</span>
+            </div>
+            <button onClick={() => setTickerFullscreen(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.1rem', color: '#64748b', padding: '0.25rem 0.5rem', borderRadius: '4px' }} title="Zavřít (ESC)">
+              <FontAwesomeIcon icon={faCompress} />
+            </button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', padding: '2rem 3rem', background: '#f8fafc' }}>
+            {activePlanningMessages.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '3rem', color: '#9ca3af' }}>Žádné aktivní zprávy</div>
+            ) : (
+              <PlanningFullscreenScroll
+                key={tickerKey}
+                style={{
+                  '--ticker-duration': `${tickerDuration * 0.5}s`,
+                  '--ticker-start': 'calc(100% - 3rem)',
+                  ...(tickerAnimating
+                    ? {}
+                    : { opacity: 0, animation: 'none', transform: 'translateY(var(--ticker-start))' })
+                }}
+              >
+                {activePlanningMessages.map((msg, idx) => (
+                  <div key={msg.id || idx} style={{ background: '#ffffff', borderRadius: '12px', padding: '1.5rem 2rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                    {msg.nazev && (
+                      <h3 style={{ margin: '0 0 1rem 0', fontSize: '1.3rem', fontWeight: 700, color: '#1e293b', borderBottom: '2px solid #3b82f6', paddingBottom: '0.5rem' }}>
+                        {msg.nazev}
+                      </h3>
+                    )}
+                    <div 
+                      style={{ fontSize: '1.05rem', lineHeight: 1.6, color: '#475569' }}
+                      dangerouslySetInnerHTML={{ __html: msg.obsah || '' }}
+                    />
+                  </div>
+                ))}
+              </PlanningFullscreenScroll>
+            )}
+          </div>
+        </ChartFullscreenBox>
+      </ChartOverlay>,
+      document.body
+    )}
+    </>
   );
 }
 
