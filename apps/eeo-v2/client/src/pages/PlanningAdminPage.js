@@ -3,7 +3,7 @@ import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCalendarAlt, faMessage, faPlus, faEdit, faTrash, faSave, faTimes,
-  faUsers, faUserTie, faSitemap, faCheckSquare
+  faUsers, faUserTie, faSitemap, faCheckSquare, faInfoCircle
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -419,6 +419,49 @@ const EmptyState = styled.div`
   font-size: 0.875rem;
 `;
 
+// Recipients Selection Components
+const RecipientsList = styled.div`
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  background: #fafafa;
+`;
+
+const RecipientItem = styled.label`
+  display: flex;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-size: 0.875rem;
+  color: #1e293b;
+
+  &:hover {
+    background: #f3f4f6;
+  }
+
+  input[type="checkbox"] {
+    margin-right: 0.5rem;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+  }
+`;
+
+const RecipientName = styled.span`
+  flex: 1;
+  font-weight: 500;
+`;
+
+const RecipientDetail = styled.span`
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-left: 0.5rem;
+`;
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -434,6 +477,10 @@ const PlanningAdminPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
 
+  // Seznamy pro výběr příjemců
+  const [availableRoles, setAvailableRoles] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
+  
   // Form state
   const [formData, setFormData] = useState({
     nazev: '',
@@ -441,10 +488,12 @@ const PlanningAdminPage = () => {
     popis: '', // pro události
     dt_od: '',
     dt_do: '',
-    pouzit_hierarchii: false,
-    hierarchy_profile_id: null,
     prijemci: []
   });
+  
+  // Vybraní příjemci (separátní state pro lepší UX)
+  const [selectedRoles, setSelectedRoles] = useState([]);
+  const [selectedUsers, setSelectedUsers] = useState([]);
 
   // Kontrola oprávnění
   useEffect(() => {
@@ -460,6 +509,13 @@ const PlanningAdminPage = () => {
       loadData();
     }
   }, [activeTab, hasPermission]);
+
+  // Načtení seznamu rolí a uživatelů při otevření modálu
+  useEffect(() => {
+    if (modalOpen) {
+      loadRecipientOptions();
+    }
+  }, [modalOpen]);
 
   const loadData = async () => {
     setLoading(true);
@@ -479,6 +535,21 @@ const PlanningAdminPage = () => {
     }
   };
 
+  const loadRecipientOptions = async () => {
+    try {
+      const [rolesResponse, usersResponse] = await Promise.all([
+        planningApi.getActiveRoles(),
+        planningApi.getActiveUsers()
+      ]);
+      
+      setAvailableRoles(rolesResponse.data || []);
+      setAvailableUsers(usersResponse.data || []);
+    } catch (error) {
+      console.error('❌ Chyba načítání příjemců:', error);
+      showToast('Chyba při načítání seznamu příjemců', 'error');
+    }
+  };
+
   const handleCreate = () => {
     setEditingItem(null);
     setFormData({
@@ -489,6 +560,8 @@ const PlanningAdminPage = () => {
       dt_do: '',
       prijemci: []
     });
+    setSelectedRoles([]);
+    setSelectedUsers([]);
     setModalOpen(true);
   };
 
@@ -502,12 +575,35 @@ const PlanningAdminPage = () => {
       dt_do: item.dt_do || '',
       prijemci: item.prijemci || []
     });
+    
+    // TODO: Načíst existující příjemce z DB (pokud jsou v item.prijemci)
+    // Pro teď vynulujeme - v další iteraci načteme z DB
+    setSelectedRoles([]);
+    setSelectedUsers([]);
+    
     setModalOpen(true);
   };
 
   const handleSave = async () => {
     try {
-      const data = { ...formData };
+      // Sestavit pole prijemci z vybraných rolí a uživatelů
+      const prijemci = [
+        ...selectedRoles.map(roleId => ({
+          typ_prijemce: 'role',
+          kod_role: availableRoles.find(r => r.id === parseInt(roleId))?.kod_role,
+          user_id: null
+        })),
+        ...selectedUsers.map(userId => ({
+          typ_prijemce: 'user',
+          kod_role: null,
+          user_id: parseInt(userId)
+        }))
+      ];
+      
+      const data = { 
+        ...formData,
+        prijemci 
+      };
 
       if (activeTab === 'messages') {
         if (editingItem) {
@@ -709,10 +805,66 @@ const PlanningAdminPage = () => {
               </FormGroup>
 
               <FormGroup>
-                <Label>Explicitní příjemci</Label>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  Výběr konkrétních uživatelů nebo rolí bude implementován v další verzi.
-                  Organizační hierarchie je řízena globálním nastavením systému.
+                <Label>Role (příjemci)</Label>
+                <RecipientsList>
+                  {availableRoles.length === 0 ? (
+                    <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
+                      Načítání...
+                    </div>
+                  ) : (
+                    availableRoles.map(role => (
+                      <RecipientItem key={role.id}>
+                        <input
+                          type="checkbox"
+                          value={role.id}
+                          checked={selectedRoles.includes(role.id.toString())}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedRoles([...selectedRoles, role.id.toString()]);
+                            } else {
+                              setSelectedRoles(selectedRoles.filter(r => r !== role.id.toString()));
+                            }
+                          }}
+                        />
+                        <RecipientName>{role.nazev_role}</RecipientName>
+                        <RecipientDetail>{role.kod_role}</RecipientDetail>
+                      </RecipientItem>
+                    ))
+                  )}
+                </RecipientsList>
+              </FormGroup>
+
+              <FormGroup>
+                <Label>Konkrétní uživatelé (příjemci)</Label>
+                <RecipientsList>
+                  {availableUsers.length === 0 ? (
+                    <div style={{ padding: '1rem', textAlign: 'center', color: '#9ca3af', fontSize: '0.75rem' }}>
+                      Načítání...
+                    </div>
+                  ) : (
+                    availableUsers.map(user => (
+                      <RecipientItem key={user.id}>
+                        <input
+                          type="checkbox"
+                          value={user.id}
+                          checked={selectedUsers.includes(user.id.toString())}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedUsers([...selectedUsers, user.id.toString()]);
+                            } else {
+                              setSelectedUsers(selectedUsers.filter(u => u !== user.id.toString()));
+                            }
+                          }}
+                        />
+                        <RecipientName>{user.prijmeni} {user.jmeno}</RecipientName>
+                        <RecipientDetail>{user.email}</RecipientDetail>
+                      </RecipientItem>
+                    ))
+                  )}
+                </RecipientsList>
+                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
+                  <FontAwesomeIcon icon={faInfoCircle} style={{ marginRight: '0.25rem' }} />
+                  Organizační hierarchie je řízena globálním nastavením systému
                 </div>
               </FormGroup>
             </ModalBody>
