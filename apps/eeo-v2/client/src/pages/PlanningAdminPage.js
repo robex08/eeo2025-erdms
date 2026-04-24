@@ -22,6 +22,7 @@ const PageContainer = styled.div`
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
 `;
 
 const TitlePanel = styled.div`
@@ -76,6 +77,8 @@ const Tab = styled.button`
   border-bottom: 3px solid ${props => props.$active ? '#3b82f6' : 'transparent'};
   color: ${props => props.$active ? '#3b82f6' : '#64748b'};
   font-weight: ${props => props.$active ? '600' : '500'};
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s;
   display: flex;
@@ -117,6 +120,8 @@ const Button = styled.button`
   background: ${props => props.$variant === 'danger' ? '#dc2626' : props.$variant === 'secondary' ? '#6b7280' : '#3b82f6'};
   color: white;
   font-weight: 600;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
 
@@ -175,6 +180,7 @@ const Badge = styled.span`
   border-radius: 12px;
   font-size: 0.75rem;
   font-weight: 600;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   background: ${props => {
     if (props.$type === 'role') return '#dbeafe';
     if (props.$type === 'user') return '#dcfce7';
@@ -244,7 +250,7 @@ const ModalContent = styled.div`
   background: white;
   border-radius: 16px;
   width: 100%;
-  max-width: 620px;
+  max-width: 950px;
   max-height: 92vh;
   overflow: hidden;
   display: flex;
@@ -259,7 +265,7 @@ const ModalContent = styled.div`
 `;
 
 const ModalHeader = styled.div`
-  padding: 1.25rem 1.5rem;
+  padding: 1rem 1.5rem;
   background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
   color: white;
   display: flex;
@@ -271,13 +277,13 @@ const ModalHeader = styled.div`
 
 const ModalTitle = styled.div`
   h3 {
-    margin: 0 0 0.2rem;
-    font-size: 1.05rem;
+    margin: 0 0 0.15rem;
+    font-size: 0.95rem;
     font-weight: 700;
   }
   p {
     margin: 0;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     opacity: 0.82;
   }
 `;
@@ -301,13 +307,13 @@ const CloseBtn = styled.button`
 `;
 
 const ModalBody = styled.div`
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
   overflow-y: auto;
   flex: 1;
 `;
 
 const ModalFooter = styled.div`
-  padding: 1rem 1.5rem;
+  padding: 0.85rem 1.5rem;
   border-top: 1px solid #f1f5f9;
   display: flex;
   justify-content: flex-end;
@@ -317,7 +323,7 @@ const ModalFooter = styled.div`
 `;
 
 const FormGroup = styled.div`
-  margin-bottom: 1.1rem;
+  margin-bottom: 0.9rem;
 
   &:last-child {
     margin-bottom: 0;
@@ -326,15 +332,15 @@ const FormGroup = styled.div`
 
 const FormRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-  margin-bottom: 1.1rem;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 0.85rem;
+  margin-bottom: 0.9rem;
 `;
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.7rem;
+  margin-bottom: 0.35rem;
+  font-size: 0.68rem;
   font-weight: 700;
   color: #475569;
   text-transform: uppercase;
@@ -343,10 +349,10 @@ const Label = styled.label`
 
 const Input = styled.input`
   width: 100%;
-  padding: 0.6rem 0.85rem;
+  padding: 0.55rem 0.75rem;
   border: 1.5px solid #e2e8f0;
   border-radius: 9px;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: #1e293b;
   font-family: inherit;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -364,13 +370,13 @@ const Input = styled.input`
 
 const Textarea = styled.textarea`
   width: 100%;
-  padding: 0.6rem 0.85rem;
+  padding: 0.55rem 0.75rem;
   border: 1.5px solid #e2e8f0;
   border-radius: 9px;
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: #1e293b;
   resize: vertical;
-  min-height: 68px;
+  min-height: 62px;
   font-family: inherit;
   line-height: 1.5;
   transition: border-color 0.15s, box-shadow 0.15s;
@@ -397,6 +403,44 @@ const CheckboxLabel = styled.label`
   color: #4b5563;
   cursor: pointer;
   user-select: none;
+`;
+
+// Wrapper pro sladění výšky DatePicker a TimePicker s Input
+const DateTimeWrapper = styled.div`
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* Přepsání stylů pro DatePicker input */
+  input {
+    padding: 0.55rem 0.75rem !important;
+    padding-left: 2.5rem !important;
+    padding-right: ${props => props.$hasValue ? '3.5rem' : '0.75rem'} !important;
+    border: 1.5px solid #e2e8f0 !important;
+    border-radius: 9px !important;
+    font-size: 0.85rem !important;
+    font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+
+  /* Přepsání stylů pro TimePicker hlavní button (ne clear/now tlačítka!) */
+  > div > button:first-of-type {
+    padding: 0.55rem 0.75rem !important;
+    padding-left: 2.5rem !important;
+    padding-right: ${props => props.$hasValue ? '3.5rem' : '0.75rem'} !important;
+    border: 1.5px solid #e2e8f0 !important;
+    border-radius: 9px !important;
+    font-size: 0.85rem !important;
+    font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+
+  /* Ikony - zarovnat s novým paddingem (pouze ikonky kalendáře a hodin, ne clear/now tlačítka) */
+  > div > div > svg {
+    left: 0.65rem !important;
+    width: 16px !important;
+    height: 16px !important;
+  }
 `;
 
 const Select = styled.select`
@@ -437,7 +481,7 @@ const PlanningAdminPage = () => {
   const { hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
-  const [activeTab, setActiveTab] = useState('messages'); // 'messages' | 'events'
+  const [activeTab, setActiveTab] = useState('events'); // 'messages' | 'events'
   const [messages, setMessages] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -732,13 +776,13 @@ const PlanningAdminPage = () => {
 
       <TabContainer>
         <TabHeader>
-          <Tab $active={activeTab === 'messages'} onClick={() => setActiveTab('messages')}>
-            <FontAwesomeIcon icon={faMessage} />
-            Dashboard zprávy
-          </Tab>
           <Tab $active={activeTab === 'events'} onClick={() => setActiveTab('events')}>
             <FontAwesomeIcon icon={faCalendarAlt} />
             Kalendářové události
+          </Tab>
+          <Tab $active={activeTab === 'messages'} onClick={() => setActiveTab('messages')}>
+            <FontAwesomeIcon icon={faMessage} />
+            Dashboard zprávy
           </Tab>
         </TabHeader>
 
@@ -803,8 +847,8 @@ const PlanningAdminPage = () => {
 
       {/* Modal pro vytváření/editaci */}
       {modalOpen && (
-        <ModalOverlay onClick={() => setModalOpen(false)}>
-          <ModalContent onClick={(e) => e.stopPropagation()}>
+        <ModalOverlay>
+          <ModalContent>
             <ModalHeader>
               <ModalTitle>
                 <h3>
@@ -846,38 +890,43 @@ const PlanningAdminPage = () => {
               <FormRow>
                 <div>
                   <Label>Datum od</Label>
-                  <DatePicker
-                    value={formData.dt_od_date}
-                    onChange={(newDate) => setFormData({ ...formData, dt_od_date: newDate })}
-                    placeholder="Vyberte datum"
-                  />
+                  <DateTimeWrapper $hasValue={!!formData.dt_od_date}>
+                    <DatePicker
+                      value={formData.dt_od_date}
+                      onChange={(newDate) => setFormData({ ...formData, dt_od_date: newDate })}
+                      placeholder="Vyberte datum"
+                    />
+                  </DateTimeWrapper>
                 </div>
                 <div>
                   <Label>Čas od</Label>
-                  <TimePicker
-                    value={formData.dt_od_time}
-                    onChange={(newTime) => setFormData({ ...formData, dt_od_time: newTime })}
-                    placeholder="Vyberte čas"
-                  />
+                  <DateTimeWrapper $hasValue={!!formData.dt_od_time}>
+                    <TimePicker
+                      value={formData.dt_od_time}
+                      onChange={(newTime) => setFormData({ ...formData, dt_od_time: newTime })}
+                      placeholder="Vyberte čas"
+                    />
+                  </DateTimeWrapper>
                 </div>
-              </FormRow>
-
-              <FormRow>
                 <div>
                   <Label>Datum do</Label>
-                  <DatePicker
-                    value={formData.dt_do_date}
-                    onChange={(newDate) => setFormData({ ...formData, dt_do_date: newDate })}
-                    placeholder="Vyberte datum"
-                  />
+                  <DateTimeWrapper $hasValue={!!formData.dt_do_date}>
+                    <DatePicker
+                      value={formData.dt_do_date}
+                      onChange={(newDate) => setFormData({ ...formData, dt_do_date: newDate })}
+                      placeholder="Vyberte datum"
+                    />
+                  </DateTimeWrapper>
                 </div>
                 <div>
                   <Label>Čas do</Label>
-                  <TimePicker
-                    value={formData.dt_do_time}
-                    onChange={(newTime) => setFormData({ ...formData, dt_do_time: newTime })}
-                    placeholder="Vyberte čas"
-                  />
+                  <DateTimeWrapper $hasValue={!!formData.dt_do_time}>
+                    <TimePicker
+                      value={formData.dt_do_time}
+                      onChange={(newTime) => setFormData({ ...formData, dt_do_time: newTime })}
+                      placeholder="Vyberte čas"
+                    />
+                  </DateTimeWrapper>
                 </div>
               </FormRow>
 
