@@ -240,6 +240,7 @@ define('TBL_PLAN_ZPRAVY_ODPOVEDI', '25_plan_zpravy_odpovedi');
 define('TBL_PLAN_UDALOSTI', '25_plan_udalosti');
 define('TBL_PLAN_UDALOSTI_PRIJEMCI', '25_plan_udalosti_prijemci');
 define('TBL_PLAN_UDALOSTI_ODPOVEDI', '25_plan_udalosti_odpovedi');
+define('TBL_PLAN_UDALOSTI_TERMINY', '25_plan_udalosti_terminy');
 
 // DATABASE TABLE NAMES - CHAT
 define('TBL_CHAT_KONVERZACE', '25_chat_konverzace');
@@ -1560,6 +1561,15 @@ switch ($endpoint) {
             echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
         }
         break;
+
+    case 'planning/messages/set-active':
+        if ($request_method === 'POST') {
+            handle_planning_messages_set_active($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
     
     case 'planning/events/list':
         if ($request_method === 'POST') {
@@ -1600,6 +1610,42 @@ switch ($endpoint) {
     case 'planning/events/delete':
         if ($request_method === 'POST') {
             handle_planning_events_delete($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+
+    case 'planning/events/set-active':
+        if ($request_method === 'POST') {
+            handle_planning_events_set_active($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+
+    case 'planning/events/calendar':
+        if ($request_method === 'POST') {
+            handle_planning_events_calendar($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+
+    case 'planning/events/respond':
+        if ($request_method === 'POST') {
+            handle_planning_events_respond($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+
+    case 'planning/events/responses/list':
+        if ($request_method === 'POST') {
+            handle_planning_events_responses_list($input, $config);
         } else {
             http_response_code(405);
             echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));

@@ -1,9 +1,13 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCalendarAlt, faMessage, faPlus, faEdit, faTrash, faSave, faTimes,
-  faUsers, faUserTie, faSitemap, faCheckSquare, faInfoCircle
+  faSearch, faEraser, faExclamationTriangle, faExpand, faCompress,
+  faBold, faItalic, faUnderline, faListUl, faListOl, faLink, faUnlink, faCode,
+  faEye, faEyeSlash, faCheckCircle, faTimesCircle,
+  faTrophy, faMinus, faSortAlphaDown, faFilter
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -12,6 +16,9 @@ import { prettyDate } from '../utils/format';
 import DatePicker from '../components/DatePicker';
 import TimePicker from '../components/TimePicker';
 import { CustomSelect } from '../components/CustomSelect';
+import ConfirmDialog from '../components/ConfirmDialog';
+import SmartTooltip from '../styles/SmartTooltip';
+import '../styles/tableFiltersImprovement.css';
 
 // =============================================================================
 // STYLED COMPONENTS
@@ -138,7 +145,119 @@ const Button = styled.button`
   }
 `;
 
+const SearchPanel = styled.div`
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 2px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+`;
+
+const SearchPanelHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  gap: 1rem;
+`;
+
+const SearchPanelTitle = styled.h3`
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e293b;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  > svg {
+    color: #3b82f6;
+  }
+`;
+
+const ClearAllButton = styled.button`
+  background: #ef4444;
+  color: white;
+  border: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #dc2626;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(239, 68, 68, 0.3);
+  }
+`;
+
+const SearchInputWrapper = styled.div`
+  position: relative;
+  width: 100%;
+
+  > svg:first-of-type {
+    position: absolute;
+    left: 0.9rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #64748b;
+    pointer-events: none;
+    font-size: 1rem;
+  }
+`;
+
+const SearchInput = styled.input`
+  width: 100%;
+  padding: 0.6rem 2.3rem 0.6rem 2.4rem;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.82rem !important;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
+  transition: all 0.2s ease;
+  background: white;
+
+  &:focus {
+    outline: none;
+    border-color: #94a3b8;
+    box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.12);
+  }
+
+  &::placeholder {
+    color: #94a3b8;
+  }
+`;
+
+const SearchClearButton = styled.button`
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f1f5f9;
+    color: #334155;
+  }
+`;
+
 const TableContainer = styled.div`
+  position: relative;
+  width: 100%;
   background: white;
   border-radius: 12px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
@@ -146,32 +265,156 @@ const TableContainer = styled.div`
 `;
 
 const Table = styled.table`
+  min-width: 100%;
   width: 100%;
   border-collapse: collapse;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.9rem;
 
-  thead {
-    background: #f9fafb;
-    border-bottom: 2px solid #e5e7eb;
+  tbody tr {
+    border-bottom: 1px solid #e5e7eb;
+    background: white;
   }
 
-  th {
-    padding: 1rem;
-    text-align: left;
-    font-weight: 600;
-    color: #374151;
-    font-size: 0.875rem;
-    text-transform: uppercase;
-  }
-
-  td {
-    padding: 1rem;
-    border-bottom: 1px solid #f3f4f6;
-    color: #4b5563;
+  tbody tr:nth-of-type(even) {
+    background: #f8fafc;
   }
 
   tbody tr:hover {
-    background: #f9fafb;
+    background-color: #f3f4f6 !important;
   }
+`;
+
+const TableHead = styled.thead`
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+`;
+
+const TableRow = styled.tr`
+  border-bottom: 1px solid #e5e7eb;
+  transition: background-color 0.2s ease;
+`;
+
+const TableHeader = styled.th`
+  padding: 0.35rem 0.5rem 0.2rem 0.5rem;
+  text-align: left;
+  font-weight: 600;
+  color: #334155 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 0.7rem !important;
+  white-space: nowrap;
+  user-select: none;
+
+  &.center {
+    text-align: center;
+  }
+
+  &.filter-cell {
+    padding: 0rem 0.35rem 0.35rem 0.35rem;
+    background: transparent !important;
+  }
+`;
+
+const TableCell = styled.td`
+  padding: 0.45rem 0.6rem;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1f2937;
+  vertical-align: middle;
+
+  &.center {
+    text-align: center;
+  }
+`;
+
+const HtmlPreviewBox = styled.div`
+  border: 1px solid #e2e8f0;
+  background: #f8fafc;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.8rem;
+  color: #1f2937;
+`;
+
+const HtmlPreviewContent = styled.div`
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  line-height: 1.35;
+  max-height: calc(1.35em * 3);
+
+  p,
+  ul,
+  ol {
+    margin: 0;
+  }
+
+  ul,
+  ol {
+    padding-left: 1.1rem;
+  }
+
+  a {
+    color: #2563eb;
+    text-decoration: none;
+  }
+`;
+
+const HtmlPreviewEmpty = styled.div`
+  color: #94a3b8;
+  font-style: italic;
+`;
+
+const PaginationContainer = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+`;
+
+const PaginationInfo = styled.div`
+  font-size: 0.875rem;
+  color: #64748b;
+`;
+
+const PaginationControls = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+
+const PageButton = styled.button`
+  padding: 0.5rem 1rem;
+  border: 1px solid #e5e7eb;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background: #f3f4f6;
+    border-color: #3b82f6;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+`;
+
+const PageSizeSelect = styled.select`
+  padding: 0.5rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  background: white;
+  font-size: 0.875rem;
+  cursor: pointer;
 `;
 
 const Badge = styled.span`
@@ -211,33 +454,18 @@ const IconButton = styled.button`
   }
 `;
 
-// Animace
-const fadeInBg = `
-  @keyframes fadeInBg {
-    from { opacity: 0; }
-    to { opacity: 1; }
-  }
-`;
-
-const slideInUp = `
-  @keyframes slideInUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-`;
-
 // Modal Components
 const ModalOverlay = styled.div`
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
-  padding: 1rem;
+  z-index: 2147483647;
+  padding: ${props => props.$fullScreen ? '0' : '1rem'};
   animation: fadeInBg 0.2s ease;
 
   @keyframes fadeInBg {
@@ -248,10 +476,11 @@ const ModalOverlay = styled.div`
 
 const ModalContent = styled.div`
   background: white;
-  border-radius: 16px;
-  width: 100%;
-  max-width: 950px;
-  max-height: 92vh;
+  border-radius: ${props => props.$fullScreen ? '0' : '16px'};
+  width: ${props => props.$fullScreen ? '100vw' : '100%'};
+  max-width: ${props => props.$fullScreen ? '100vw' : '950px'};
+  height: ${props => props.$fullScreen ? '100vh' : 'auto'};
+  max-height: ${props => props.$fullScreen ? '100vh' : 'calc(100vh - 2rem)'};
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -306,8 +535,14 @@ const CloseBtn = styled.button`
   }
 `;
 
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
 const ModalBody = styled.div`
-  padding: 1.25rem 1.5rem;
+  padding: 1rem 1.25rem;
   overflow-y: auto;
   flex: 1;
 `;
@@ -335,6 +570,110 @@ const FormRow = styled.div`
   grid-template-columns: 1fr 1fr 1fr 1fr;
   gap: 0.85rem;
   margin-bottom: 0.9rem;
+`;
+
+const RecipientsRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-bottom: 0.9rem;
+
+  @media (max-width: 900px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+// Řádek s termínem (4 pickery + tlačítko odebrat)
+const TerminRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+  padding: 0.45rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+`;
+
+const TerminyList = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 38vh;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+
+  @media (max-height: 800px) {
+    max-height: 32vh;
+  }
+`;
+
+const TerminRemoveBtn = styled.button`
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  height: 38px;
+  width: 38px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+
+  &:hover:not(:disabled) {
+    background: #fecaca;
+    border-color: #f87171;
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+`;
+
+const TerminAddBtn = styled.button`
+  width: 100%;
+  margin-top: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: transparent;
+  border: 2px dashed #10b981;
+  border-radius: 8px;
+  color: #10b981;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #f0fdf4;
+    border-color: #059669;
+  }
+
+  &:hover {
+    background: #bfdbfe;
+    border-color: #60a5fa;
+  }
+`;
+
+const TerminIndexBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #3b82f6;
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-right: 0.35rem;
 `;
 
 const Label = styled.label`
@@ -392,6 +731,85 @@ const Textarea = styled.textarea`
   }
 `;
 
+const EditorContainer = styled.div`
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
+  background: white;
+  overflow: hidden;
+`;
+
+const EditorToolbar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+`;
+
+const EditorGroup = styled.div`
+  display: flex;
+  gap: 0.25rem;
+  align-items: center;
+`;
+
+const EditorButton = styled.button`
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: none;
+  background: ${props => props.$active ? '#dbeafe' : 'transparent'};
+  color: ${props => props.$active ? '#1d4ed8' : '#64748b'};
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+
+  &:hover {
+    background: #e2e8f0;
+    color: #1f2937;
+  }
+`;
+
+const EditorArea = styled.div`
+  min-height: 140px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #1e293b;
+  outline: none;
+
+  &:focus {
+    box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.15);
+  }
+
+  &:empty:before {
+    content: attr(data-placeholder);
+    color: #94a3b8;
+  }
+
+  ul,
+  ol {
+    padding-left: 1.2rem;
+    margin: 0.35rem 0;
+  }
+`;
+
+const EditorSource = styled.textarea`
+  width: 100%;
+  min-height: 140px;
+  padding: 0.6rem 0.75rem;
+  border: none;
+  outline: none;
+  font-size: 0.8rem;
+  font-family: 'Courier New', monospace;
+  line-height: 1.5;
+  color: #1f2937;
+  resize: vertical;
+`;
+
 const Checkbox = styled.input`
   margin-right: 0.5rem;
 `;
@@ -408,61 +826,113 @@ const CheckboxLabel = styled.label`
 // Wrapper pro sladění výšky DatePicker a TimePicker s Input
 const DateTimeWrapper = styled.div`
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  width: 100%;
+  position: relative;
 
-  /* Přepsání stylů pro DatePicker input */
+  /* Všechny přímé děti i potomci roztaženi na 100% */
+  & > div,
+  & > div > div {
+    width: 100% !important;
+  }
+
+  /* Přepsání stylů pro DatePicker input - FIXNÍ výška 38px */
   input {
-    padding: 0.55rem 0.75rem !important;
-    padding-left: 2.5rem !important;
-    padding-right: ${props => props.$hasValue ? '3.5rem' : '0.75rem'} !important;
+    width: 100% !important;
+    padding: 0 0.625rem !important;
+    padding-left: 2rem !important;
+    padding-right: ${props => props.$hasValue ? '3rem' : '0.625rem'} !important;
     border: 1.5px solid #e2e8f0 !important;
     border-radius: 9px !important;
     font-size: 0.85rem !important;
     font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    height: auto !important;
-    min-height: auto !important;
+    color: #111827 !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+    line-height: 38px !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+    outline: none !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
   }
 
-  /* Přepsání stylů pro TimePicker hlavní button (ne clear/now tlačítka!) */
-  > div > button:first-of-type {
-    padding: 0.55rem 0.75rem !important;
-    padding-left: 2.5rem !important;
-    padding-right: ${props => props.$hasValue ? '3.5rem' : '0.75rem'} !important;
+  /* Focus a hover efekty - čistý border bez dvojitého ohraničení */
+  input:hover:not(:disabled) {
+    border-color: #cbd5e1 !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  input:focus,
+  input:focus-visible {
+    border-color: #3b82f6 !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  /* TimePicker hlavní input button - padding-right dle počtu akčních tlačítek */
+  button[data-time-input="true"] {
+    width: 100% !important;
+    padding: 0 0.625rem !important;
+    padding-left: 2rem !important;
+    padding-right: ${props => props.$hasValue ? '4.5rem' : '2.5rem'} !important;
     border: 1.5px solid #e2e8f0 !important;
     border-radius: 9px !important;
     font-size: 0.85rem !important;
     font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif !important;
-    height: auto !important;
-    min-height: auto !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+    line-height: 1 !important;
+    box-sizing: border-box !important;
   }
 
-  /* Ikony - zarovnat s novým paddingem (pouze ikonky kalendáře a hodin, ne clear/now tlačítka) */
-  > div > div > svg {
-    left: 0.65rem !important;
+  /* TimePicker button focus/hover - bez dvojitého ohraničení */
+  button[data-time-input="true"]:hover:not(:disabled),
+  button[data-time-input="true"]:focus {
+    border-color: #3b82f6 !important;
+    box-shadow: none !important;
+    outline: none !important;
+  }
+
+  /* Ikony kalendáře/hodin vlevo */
+  div > div > svg {
+    left: 0.625rem !important;
     width: 16px !important;
     height: 16px !important;
   }
-`;
 
-const Select = styled.select`
-  width: 100%;
-  padding: 0.6rem 0.85rem;
-  border: 1.5px solid #e2e8f0;
-  border-radius: 9px;
-  font-size: 0.875rem;
-  color: #1e293b;
-  background: white;
-  font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
-
-  &:focus {
-    outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+  /* DatePicker clear button - VŽDY na pravý kraj inputu */
+  div > div > button[title="Smazat datum"] {
+    right: 6px !important;
+    left: auto !important;
+    color: #94a3b8 !important;
+    opacity: 0.7 !important;
+    font-size: 18px !important;
+    font-weight: 500 !important;
+    z-index: 10 !important;
+    background: white !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
   }
 
-  &:disabled {
-    background: #f3f4f6;
-    cursor: not-allowed;
+  div > div > button[title="Smazat datum"]:hover {
+    opacity: 0.9 !important;
+    color: #64748b !important;
+  }
+
+  /* TimePicker clear button - VŽDY na pravý kraj inputu */
+  div > div > button[title="Smazat čas"] {
+    right: 6px !important;
+    left: auto !important;
+  }
+
+  /* TimePicker "Nyní" button - těsně vedle × (nebo na kraj pokud není ×) */
+  div > div > button[title="Aktuální čas"] {
+    right: ${props => props.$hasValue ? '36px' : '6px'} !important;
+    left: auto !important;
   }
 `;
 
@@ -481,12 +951,73 @@ const PlanningAdminPage = () => {
   const { hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
-  const [activeTab, setActiveTab] = useState('events'); // 'messages' | 'events'
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planning_active_tab');
+      return saved === 'messages' ? 'messages' : 'events';
+    } catch (e) {
+      return 'events';
+    }
+  }); // 'messages' | 'events'
   const [messages, setMessages] = useState([]);
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [confirmDelete, setConfirmDelete] = useState({ open: false, id: null, type: null, name: '' });
+  const [isModalFullScreen, setIsModalFullScreen] = useState(false);
+  const [isHtmlView, setIsHtmlView] = useState(false);
+  const editorRef = useRef(null);
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [columnFilters, setColumnFilters] = useState({
+    nazev: '',
+    text: '',
+    dt_od: '',
+    dt_do: ''
+  });
+  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState({
+    nazev: '',
+    text: '',
+    dt_od: '',
+    dt_do: ''
+  });
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
+  const [includeInactive, setIncludeInactive] = useState(true);
+  const [eventResponses, setEventResponses] = useState({});
+  const [expandedEvents, setExpandedEvents] = useState(() => {
+    try {
+      const raw = localStorage.getItem('planning_admin_expanded_events_v1');
+      if (raw) return new Set(JSON.parse(raw));
+    } catch (e) { /* ignore */ }
+    return new Set();
+  });
+  // Sort odpovedi v sub-radku: { [eventId]: 'name' | 'type' }
+  const [responsesSort, setResponsesSort] = useState(() => {
+    try {
+      const raw = localStorage.getItem('planning_admin_responses_sort_v1');
+      if (raw) return JSON.parse(raw);
+    } catch (e) { /* ignore */ }
+    return {};
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('planning_admin_expanded_events_v1', JSON.stringify(Array.from(expandedEvents)));
+    } catch (e) { /* ignore */ }
+  }, [expandedEvents]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('planning_admin_responses_sort_v1', JSON.stringify(responsesSort));
+    } catch (e) { /* ignore */ }
+  }, [responsesSort]);
 
   // Seznamy pro výběr příjemců
   const [availableRoles, setAvailableRoles] = useState([]);
@@ -503,10 +1034,25 @@ const PlanningAdminPage = () => {
     dt_do_time: '',
     prijemci: []
   });
+
+  const isMessagesTab = activeTab === 'messages';
+  const editorField = isMessagesTab ? 'obsah' : 'popis';
+  const editorValue = formData[editorField] || '';
+  const editorLabel = isMessagesTab ? 'Obsah *' : 'Popis';
+  const editorPlaceholder = isMessagesTab
+    ? 'Zadejte obsah zprávy (HTML)'
+    : 'Zadejte popis události (HTML)';
+  const editorSourcePlaceholder = '<p>HTML kód...</p>';
   
   // Vybraní příjemci (separátní state pro lepší UX)
   const [selectedRoles, setSelectedRoles] = useState([]);
   const [selectedUsers, setSelectedUsers] = useState([]);
+
+  // Termíny pro události (pole - může být více termínů)
+  // Pro zprávy se používá jen první termín (terminy[0])
+  const [terminy, setTerminy] = useState([
+    { dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '' }
+  ]);
 
   // CustomSelect state
   const [selectStates, setSelectStates] = useState({});
@@ -521,12 +1067,13 @@ const PlanningAdminPage = () => {
     }
   }, [hasPermission, showToast]);
 
-  // Načtení dat
   useEffect(() => {
-    if (hasPermission('PLANNING_MANAGE')) {
-      loadData();
+    try {
+      localStorage.setItem('planning_active_tab', activeTab);
+    } catch (e) {
+      // ignore storage errors
     }
-  }, [activeTab, hasPermission]);
+  }, [activeTab]);
 
   // Načtení seznamu rolí a uživatelů při otevření modálu
   useEffect(() => {
@@ -535,23 +1082,158 @@ const PlanningAdminPage = () => {
     }
   }, [modalOpen]);
 
-  const loadData = async () => {
+  useEffect(() => {
+    if (!modalOpen && isModalFullScreen) {
+      setIsModalFullScreen(false);
+    }
+  }, [modalOpen, isModalFullScreen]);
+
+  useEffect(() => {
+    if (modalOpen) {
+      setIsHtmlView(false);
+    }
+  }, [modalOpen, activeTab]);
+
+  useEffect(() => {
+    if (!isHtmlView && editorRef.current) {
+      if (editorRef.current.innerHTML !== editorValue) {
+        editorRef.current.innerHTML = editorValue;
+      }
+    }
+  }, [editorValue, isHtmlView, modalOpen, activeTab]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedColumnFilters(columnFilters);
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [columnFilters]);
+
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [activeTab, searchTerm, columnFilters, includeInactive]);
+
+  const loadData = useCallback(async () => {
     setLoading(true);
     try {
       if (activeTab === 'messages') {
-        const response = await planningApi.getMessagesList();
+        const response = await planningApi.getMessagesList({
+          page: currentPage,
+          per_page: itemsPerPage,
+          search_term: debouncedSearchTerm,
+          filter_nazev: debouncedColumnFilters.nazev,
+          filter_text: debouncedColumnFilters.text,
+          filter_dt_od: debouncedColumnFilters.dt_od,
+          filter_dt_do: debouncedColumnFilters.dt_do,
+          include_inactive: includeInactive ? 1 : 0
+        });
         setMessages(response.data || []);
+        setTotalItems(response.pagination?.total || response.count || 0);
+        setTotalPages(response.pagination?.total_pages || 0);
       } else {
-        const response = await planningApi.getEventsList();
+        const response = await planningApi.getEventsList({
+          page: currentPage,
+          per_page: itemsPerPage,
+          search_term: debouncedSearchTerm,
+          filter_nazev: debouncedColumnFilters.nazev,
+          filter_text: debouncedColumnFilters.text,
+          filter_dt_od: debouncedColumnFilters.dt_od,
+          filter_dt_do: debouncedColumnFilters.dt_do,
+          include_inactive: includeInactive ? 1 : 0
+        });
         setEvents(response.data || []);
+        setTotalItems(response.pagination?.total || response.count || 0);
+        setTotalPages(response.pagination?.total_pages || 0);
       }
     } catch (error) {
       console.error('❌ Chyba načítání dat:', error);
       showToast('Chyba při načítání dat', 'error');
+      setTotalItems(0);
+      setTotalPages(0);
     } finally {
       setLoading(false);
     }
+  }, [activeTab, currentPage, itemsPerPage, debouncedSearchTerm, debouncedColumnFilters, includeInactive, showToast]);
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setColumnFilters({
+      nazev: '',
+      text: '',
+      dt_od: '',
+      dt_do: ''
+    });
+    setCurrentPage(1);
   };
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  const handleItemsPerPageChange = (value) => {
+    setItemsPerPage(value);
+    setCurrentPage(1);
+  };
+
+  const applyEditorCommand = (command, value = null) => {
+    if (isHtmlView) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand(command, false, value);
+    setFormData(prev => ({ ...prev, [editorField]: editor.innerHTML }));
+  };
+
+  const handleInsertLink = () => {
+    const url = window.prompt('Zadejte URL odkazu');
+    if (!url) return;
+    applyEditorCommand('createLink', url);
+  };
+
+  const handleEditorInput = (event) => {
+    const html = event.currentTarget ? event.currentTarget.innerHTML : '';
+    setFormData(prev => ({ ...prev, [editorField]: html }));
+  };
+
+  // Načtení dat
+  useEffect(() => {
+    if (hasPermission('PLANNING_MANAGE')) {
+      loadData();
+    }
+  }, [hasPermission, loadData]);
+
+  useEffect(() => {
+    if (activeTab !== 'events') {
+      setEventResponses({});
+      return;
+    }
+
+    if (!events || events.length === 0) {
+      setEventResponses({});
+      return;
+    }
+
+    const ids = events.map(e => e.id).filter(Boolean);
+    planningApi.getEventResponsesList(ids)
+      .then((response) => {
+        setEventResponses(response.data || {});
+      })
+      .catch((error) => {
+        console.error('❌ Chyba načítání odpovědí:', error);
+        setEventResponses({});
+      });
+  }, [activeTab, events]);
 
   const loadRecipientOptions = async () => {
     try {
@@ -580,49 +1262,193 @@ const PlanningAdminPage = () => {
       dt_do_time: '',
       prijemci: []
     });
+    setTerminy([{ dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '' }]);
     setSelectedRoles([]);
     setSelectedUsers([]);
+    setIsHtmlView(false);
     setModalOpen(true);
   };
 
-  const handleEdit = (item) => {
-    setEditingItem(item);
-    
-    // Parse datetime do date a time
-    let dt_od_date = '', dt_od_time = '';
-    if (item.dt_od) {
-      const dtOd = new Date(item.dt_od);
-      dt_od_date = dtOd.toISOString().split('T')[0];
-      dt_od_time = dtOd.toTimeString().slice(0, 5);
-    }
-    
-    let dt_do_date = '', dt_do_time = '';
-    if (item.dt_do) {
-      const dtDo = new Date(item.dt_do);
-      dt_do_date = dtDo.toISOString().split('T')[0];
-      dt_do_time = dtDo.toTimeString().slice(0, 5);
-    }
-    
-    setFormData({
-      nazev: item.nazev || '',
-      obsah: item.obsah || '',
-      popis: item.popis || '',
-      dt_od_date,
-      dt_od_time,
-      dt_do_date,
-      dt_do_time,
-      prijemci: item.prijemci || []
+  // ========================================================================
+  // Helper funkce pro termíny (události mohou mít více termínů)
+  // ========================================================================
+
+  // Přičte X minut k času "HH:MM" a vrátí { date, time } s případným přesahem do dalšího dne
+  const addMinutesToDateTime = (dateStr, timeStr, minutesToAdd) => {
+    if (!dateStr || !timeStr) return { date: '', time: '' };
+    const [h, m] = timeStr.split(':').map(Number);
+    const d = new Date(dateStr);
+    d.setHours(h, m + minutesToAdd, 0, 0);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mi = String(d.getMinutes()).padStart(2, '0');
+    return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${mi}` };
+  };
+
+  // Aktualizace jednoho termínu v poli - BEZ auto-fill (jen set value).
+  // Auto-fill DO+60 se řeší přes completeTerminTime (po výběru minut v TimePickeru).
+  const updateTermin = (index, field, newValue) => {
+    setTerminy(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: newValue };
+      return next;
     });
-    
-    // TODO: Načíst existující příjemce z DB (pokud jsou v item.prijemci)
-    // Pro teď vynulujeme - v další iteraci načteme z DB
+  };
+
+  // Volá se až když je čas kompletně vybraný (hodiny + minuty) v TimePickeru.
+  // Pokud byl zrovna doplněn dt_od a "DO" je prázdné → automaticky vyplň +60 min.
+  const completeTerminTime = (index, field, newTime) => {
+    setTerminy(prev => {
+      const next = [...prev];
+      const term = { ...next[index], [field]: newTime };
+
+      const hasOd = term.dt_od_date && term.dt_od_time;
+      const hasDo = term.dt_do_date || term.dt_do_time;
+      if (hasOd && !hasDo && field === 'dt_od_time') {
+        const plus60 = addMinutesToDateTime(term.dt_od_date, term.dt_od_time, 60);
+        term.dt_do_date = plus60.date;
+        term.dt_do_time = plus60.time;
+      }
+
+      next[index] = term;
+      return next;
+    });
+  };
+
+  const addTermin = () => {
+    setTerminy(prev => [
+      ...prev,
+      { dt_od_date: '', dt_od_time: '', dt_do_date: '', dt_do_time: '' }
+    ]);
+  };
+
+  const removeTermin = (index) => {
+    setTerminy(prev => prev.length <= 1 ? prev : prev.filter((_, i) => i !== index));
+  };
+
+  const parseDateTimeParts = (value) => {
+    if (!value) return { date: '', time: '' };
+    if (value instanceof Date && !isNaN(value)) {
+      const yyyy = value.getFullYear();
+      const mm = String(value.getMonth() + 1).padStart(2, '0');
+      const dd = String(value.getDate()).padStart(2, '0');
+      const hh = String(value.getHours()).padStart(2, '0');
+      const mi = String(value.getMinutes()).padStart(2, '0');
+      return { date: `${yyyy}-${mm}-${dd}`, time: `${hh}:${mi}` };
+    }
+
+    const raw = String(value);
+    let datePart = '';
+    let timePart = '';
+
+    if (raw.includes('T')) {
+      [datePart, timePart] = raw.split('T');
+    } else if (raw.includes(' ')) {
+      [datePart, timePart] = raw.split(' ');
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      datePart = raw;
+    }
+
+    return {
+      date: datePart ? datePart.slice(0, 10) : '',
+      time: timePart ? timePart.slice(0, 5) : ''
+    };
+  };
+
+  const handleEdit = async (item) => {
+    setEditingItem(item);
+    setIsHtmlView(false);
     setSelectedRoles([]);
     setSelectedUsers([]);
-    
     setModalOpen(true);
+
+    try {
+      const [detailResponse, rolesResponse, usersResponse] = await Promise.all([
+        activeTab === 'messages' ? planningApi.getMessage(item.id) : planningApi.getEvent(item.id),
+        planningApi.getActiveRoles(),
+        planningApi.getActiveUsers()
+      ]);
+
+      const detail = detailResponse?.data || item;
+      const roles = rolesResponse?.data || [];
+      const users = usersResponse?.data || [];
+
+      setAvailableRoles(roles);
+      setAvailableUsers(users);
+
+      // Parse datetime do date/time bez posunu časové zóny
+      const parsedOd = parseDateTimeParts(detail.dt_od);
+      const parsedDo = parseDateTimeParts(detail.dt_do);
+      const dt_od_date = parsedOd.date;
+      const dt_od_time = parsedOd.time;
+      const dt_do_date = parsedDo.date;
+      const dt_do_time = parsedDo.time;
+
+      setFormData({
+        nazev: detail.nazev || '',
+        obsah: detail.obsah || '',
+        popis: detail.popis || '',
+        dt_od_date,
+        dt_od_time,
+        dt_do_date,
+        dt_do_time,
+        prijemci: detail.prijemci || []
+      });
+
+      // Načti termíny (pouze pro události) – backend vrací všechny rovnocenné termíny
+      // v `detail.terminy`. Pokud by byl prázdný seznam (legacy nebo chyba), fallback na
+      // dt_od/dt_do události.
+      let parsedTerminy = [];
+      if (Array.isArray(detail.terminy) && detail.terminy.length > 0) {
+        parsedTerminy = detail.terminy.map(t => {
+          const termOd = parseDateTimeParts(t.dt_od);
+          const termDo = parseDateTimeParts(t.dt_do);
+          return {
+            id: t.id,
+            dt_od_date: termOd.date,
+            dt_od_time: termOd.time,
+            dt_do_date: termDo.date,
+            dt_do_time: termDo.time,
+            poznamka: t.poznamka || ''
+          };
+        });
+      } else {
+        parsedTerminy = [{
+          dt_od_date,
+          dt_od_time,
+          dt_do_date,
+          dt_do_time
+        }];
+      }
+      setTerminy(parsedTerminy);
+
+      const prijemci = Array.isArray(detail.prijemci) ? detail.prijemci : [];
+      const selectedRoleIds = prijemci
+        .filter((p) => p.typ_prijemce === 'role' && p.kod_role)
+        .map((p) => roles.find((role) => role.kod_role === p.kod_role)?.id)
+        .filter((id) => id != null)
+        .map((id) => Number(id));
+
+      const selectedUserIds = prijemci
+        .filter((p) => p.typ_prijemce === 'user' && p.user_id)
+        .map((p) => Number(p.user_id));
+
+      setSelectedRoles(selectedRoleIds);
+      setSelectedUsers(selectedUserIds);
+    } catch (error) {
+      console.error('❌ Chyba načítání detailu:', error);
+      showToast('Chyba při načítání detailu', 'error');
+    }
   };
 
   const handleSave = async () => {
+    if (isSaving) {
+      return;
+    }
+
+    setIsSaving(true);
     try {
       // Sestavit pole prijemci z vybraných rolí a uživatelů
       const prijemci = [
@@ -638,28 +1464,62 @@ const PlanningAdminPage = () => {
         }))
       ];
       
-      // Spojit date a time do datetime formátu pro backend
+      // Helper: převede term { dt_od_date, dt_od_time, dt_do_date, dt_do_time } na { dt_od, dt_do }
+      const termToDatetime = (t) => {
+        let dod = null;
+        if (t.dt_od_date && t.dt_od_time) dod = `${t.dt_od_date} ${t.dt_od_time}:00`;
+        else if (t.dt_od_date) dod = `${t.dt_od_date} 00:00:00`;
+        let ddo = null;
+        if (t.dt_do_date && t.dt_do_time) ddo = `${t.dt_do_date} ${t.dt_do_time}:00`;
+        else if (t.dt_do_date) ddo = `${t.dt_do_date} 23:59:59`;
+        return { dt_od: dod, dt_do: ddo };
+      };
+
+      // Pro UDÁLOSTI: všechny termíny jsou rovnocenné, posíláme je jako pole `terminy`.
+      // Backend si sám z MIN/MAX dopočítá dt_od/dt_do události (DB triggery).
+      // Pro ZPRÁVY používáme formData (klasický interval).
       let dt_od = null;
-      if (formData.dt_od_date && formData.dt_od_time) {
-        dt_od = `${formData.dt_od_date} ${formData.dt_od_time}:00`;
-      } else if (formData.dt_od_date) {
-        dt_od = `${formData.dt_od_date} 00:00:00`;
-      }
-      
       let dt_do = null;
-      if (formData.dt_do_date && formData.dt_do_time) {
-        dt_do = `${formData.dt_do_date} ${formData.dt_do_time}:00`;
-      } else if (formData.dt_do_date) {
-        dt_do = `${formData.dt_do_date} 23:59:59`;
+      let terminyPayload = [];
+
+      if (activeTab === 'events') {
+        const validTerminy = terminy.filter(t => t.dt_od_date && t.dt_od_time);
+        if (validTerminy.length === 0) {
+          showToast('Zadejte alespoň jeden termín (datum a čas od)', 'error');
+          return;
+        }
+        terminyPayload = validTerminy.map(t => {
+          const mapped = termToDatetime(t);
+          return {
+            ...(t.id ? { id: t.id } : {}),
+            dt_od: mapped.dt_od,
+            dt_do: mapped.dt_do,
+            poznamka: t.poznamka || null
+          };
+        });
+      } else {
+        // ZPRÁVY - použij formData
+        if (formData.dt_od_date && formData.dt_od_time) {
+          dt_od = `${formData.dt_od_date} ${formData.dt_od_time}:00`;
+        } else if (formData.dt_od_date) {
+          dt_od = `${formData.dt_od_date} 00:00:00`;
+        }
+        if (formData.dt_do_date && formData.dt_do_time) {
+          dt_do = `${formData.dt_do_date} ${formData.dt_do_time}:00`;
+        } else if (formData.dt_do_date) {
+          dt_do = `${formData.dt_do_date} 23:59:59`;
+        }
       }
-      
-      const data = { 
+
+      const data = {
         nazev: formData.nazev,
         obsah: formData.obsah,
         popis: formData.popis,
         dt_od,
         dt_do,
-        prijemci 
+        prijemci,
+        // Pro události: všechny termíny rovnocenně
+        ...(activeTab === 'events' ? { terminy: terminyPayload } : {})
       };
 
       if (activeTab === 'messages') {
@@ -685,26 +1545,68 @@ const PlanningAdminPage = () => {
     } catch (error) {
       console.error('❌ Chyba ukládání:', error);
       showToast('Chyba při ukládání', 'error');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Opravdu chcete smazat tuto položku?')) {
+  const handleToggleActive = async (item) => {
+    const currentState = Number(item?.aktivni) === 1 ? 1 : 0;
+    const nextState = currentState === 1 ? 0 : 1;
+
+    try {
+      if (activeTab === 'messages') {
+        await planningApi.setMessageActive(item.id, nextState);
+        showToast(nextState === 1 ? 'Zpráva aktivována' : 'Zpráva deaktivována', 'success');
+      } else {
+        await planningApi.setEventActive(item.id, nextState);
+        showToast(nextState === 1 ? 'Událost aktivována' : 'Událost deaktivována', 'success');
+      }
+
+      if (nextState === 0 && !includeInactive) {
+        setIncludeInactive(true);
+      }
+
+      loadData();
+    } catch (error) {
+      console.error('❌ Chyba změny stavu:', error);
+      showToast('Chyba při změně stavu', 'error');
+    }
+  };
+
+  const openDeleteConfirm = (item) => {
+    setConfirmDelete({
+      open: true,
+      id: item.id,
+      type: activeTab,
+      name: item.nazev || ''
+    });
+  };
+
+  const closeDeleteConfirm = () => {
+    setConfirmDelete({ open: false, id: null, type: null, name: '' });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmDelete.id || !confirmDelete.type) {
+      closeDeleteConfirm();
       return;
     }
 
     try {
-      if (activeTab === 'messages') {
-        await planningApi.deleteMessage(id);
+      if (confirmDelete.type === 'messages') {
+        await planningApi.deleteMessage(confirmDelete.id);
         showToast('Zpráva smazána', 'success');
       } else {
-        await planningApi.deleteEvent(id);
+        await planningApi.deleteEvent(confirmDelete.id);
         showToast('Událost smazána', 'success');
       }
       loadData();
     } catch (error) {
       console.error('❌ Chyba mazání:', error);
       showToast('Chyba při mazání', 'error');
+    } finally {
+      closeDeleteConfirm();
     }
   };
 
@@ -752,6 +1654,144 @@ const PlanningAdminPage = () => {
     return option.label || option.nazev || String(option);
   };
 
+  const formatTooltipDateTime = (dt) => {
+    if (!dt) return '-';
+    const d = new Date(dt);
+    if (isNaN(d)) return String(dt);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+  };
+
+  const buildEventDatesTooltip = (item) => {
+    // Událost má N rovnocenných termínů. Zobrazujeme pouze ty
+    // (dt_od/dt_do události je pouze MIN/MAX agregát dopočtený DB triggery).
+    const dates = Array.isArray(item?.terminy) ? item.terminy : [];
+    if (dates.length === 0) return '';
+
+    return dates.map((term, index) => {
+      const od = formatTooltipDateTime(term?.dt_od);
+      const doVal = term?.dt_do ? formatTooltipDateTime(term.dt_do) : '';
+      const range = doVal ? `${od} - ${doVal}` : od;
+      return `${index + 1}. ${range}`;
+    }).join('\n');
+  };
+
+  const buildRecipientsTooltip = (item) => {
+    const roles = Array.isArray(item?.prijemci_roles) ? item.prijemci_roles : [];
+    const users = Array.isArray(item?.prijemci_users) ? item.prijemci_users : [];
+    if (roles.length === 0 && users.length === 0) {
+      return '';
+    }
+
+    // Ostranit email (text za " - " nebo obsahujici "@") a duplicity
+    const cleanName = (raw) => {
+      if (!raw) return '';
+      let str = String(raw);
+      // Oddelit email pokud je za " - " nebo " – "
+      str = str.split(/\s[-–]\s/)[0];
+      // Smazat emaily v textu
+      str = str.replace(/\S+@\S+\.\S+/g, '').trim();
+      // Smazat koncove oddelovace
+      str = str.replace(/[-–—,;]+\s*$/g, '').trim();
+      return str;
+    };
+
+    const uniqueSorted = (arr) => {
+      const set = new Set();
+      arr.forEach(v => {
+        const c = cleanName(v);
+        if (c) set.add(c);
+      });
+      return Array.from(set).sort((a, b) => a.localeCompare(b, 'cs'));
+    };
+
+    const cleanedRoles = uniqueSorted(roles);
+    const cleanedUsers = uniqueSorted(users);
+
+    const lines = [];
+    if (cleanedRoles.length > 0) {
+      lines.push(`Role (${cleanedRoles.length}):`);
+      cleanedRoles.forEach((role) => lines.push(`  • ${role}`));
+    }
+    if (cleanedUsers.length > 0) {
+      if (lines.length > 0) lines.push('');
+      lines.push(`Uživatelé (${cleanedUsers.length}):`);
+      cleanedUsers.forEach((user) => lines.push(`  • ${user}`));
+    }
+    return lines.join('\n');
+  };
+
+  const formatResponseType = (type) => {
+    if (type === 'accepted') return 'Akceptováno';
+    if (type === 'declined') return 'Odmítnuto';
+    return type || '-';
+  };
+
+  const formatResponseDate = (value) => {
+    if (!value) return '-';
+    const d = new Date(value);
+    if (isNaN(d)) return String(value);
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+  };
+
+  const formatTermLabel = (resp) => {
+    if (!resp?.dt_od) return 'Termín';
+    const start = formatResponseDate(resp.dt_od);
+    const end = resp.dt_do ? formatResponseDate(resp.dt_do) : '';
+    return end ? `${start} – ${end}` : start;
+  };
+
+  // Vyhodnoceni shody terminu - kolik uzivatelu akceptovalo ktery termin
+  const buildTermAgreement = (item, responses) => {
+    const terms = Array.isArray(item?.terminy) ? item.terminy : [];
+    if (terms.length === 0) return [];
+    const acceptedByTerm = new Map();
+    const declinedByTerm = new Map();
+    (responses || []).forEach(r => {
+      const tid = Number(r.termin_id);
+      if (!tid) return;
+      if (r.typ_odpovedi === 'accepted') {
+        acceptedByTerm.set(tid, (acceptedByTerm.get(tid) || 0) + 1);
+      } else if (r.typ_odpovedi === 'declined') {
+        declinedByTerm.set(tid, (declinedByTerm.get(tid) || 0) + 1);
+      }
+    });
+    const rows = terms.map(t => ({
+      termin_id: Number(t.id),
+      dt_od: t.dt_od,
+      dt_do: t.dt_do,
+      accepted: acceptedByTerm.get(Number(t.id)) || 0,
+      declined: declinedByTerm.get(Number(t.id)) || 0
+    }));
+    const maxAccepted = rows.reduce((m, r) => Math.max(m, r.accepted), 0);
+    rows.forEach(r => { r.isWinner = maxAccepted > 0 && r.accepted === maxAccepted; });
+    // Seradit podle datumu terminu (dt_od) vzestupne
+    rows.sort((a, b) => {
+      const ta = a.dt_od ? new Date(a.dt_od).getTime() : 0;
+      const tb = b.dt_od ? new Date(b.dt_od).getTime() : 0;
+      return ta - tb;
+    });
+    return rows;
+  };
+
+  const toggleExpandEvent = (id) => {
+    setExpandedEvents(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const currentData = activeTab === 'messages' ? messages : events;
 
   if (!hasPermission('PLANNING_MANAGE')) {
@@ -794,61 +1834,568 @@ const PlanningAdminPage = () => {
             </Button>
           </ActionBar>
 
+          <SearchPanel>
+            <SearchPanelHeader>
+              <SearchPanelTitle>
+                <FontAwesomeIcon icon={faSearch} />
+                Filtry a vyhledávání
+              </SearchPanelTitle>
+              <ClearAllButton onClick={handleClearFilters}>
+                <FontAwesomeIcon icon={faEraser} />
+                Vymazat filtry
+              </ClearAllButton>
+            </SearchPanelHeader>
+            <SearchInputWrapper>
+              <FontAwesomeIcon icon={faSearch} />
+              <SearchInput
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Hledat v názvu a textu..."
+              />
+              {searchTerm && (
+                <SearchClearButton onClick={() => setSearchTerm('')}>
+                  <FontAwesomeIcon icon={faTimes} />
+                </SearchClearButton>
+              )}
+            </SearchInputWrapper>
+            <div style={{ marginTop: '0.5rem' }}>
+              <CheckboxLabel htmlFor="planning-include-inactive">
+                <Checkbox
+                  id="planning-include-inactive"
+                  type="checkbox"
+                  checked={includeInactive}
+                  onChange={(e) => setIncludeInactive(e.target.checked)}
+                />
+                Zobrazit neaktivní
+              </CheckboxLabel>
+            </div>
+          </SearchPanel>
+
           {loading ? (
             <EmptyState>Načítání...</EmptyState>
-          ) : currentData.length === 0 ? (
-            <EmptyState>
-              {activeTab === 'messages' ? 'Žádné zprávy' : 'Žádné události'}
-            </EmptyState>
           ) : (
             <TableContainer>
               <Table>
-                <thead>
-                  <tr>
-                    <th>Název</th>
-                    <th>{activeTab === 'messages' ? 'Obsah' : 'Popis'}</th>
-                    <th>Datum od</th>
-                    <th>Datum do</th>
-                    <th>Příjemci</th>
-                    <th>Akce</th>
-                  </tr>
-                </thead>
+                <TableHead>
+                  <TableRow className="header-row">
+                    <TableHeader style={{ width: '36px', textAlign: 'center' }}>
+                      {activeTab === 'events' && (() => {
+                        const eventsWithResponses = events.filter(ev => (eventResponses[ev.id] || []).length > 0);
+                        if (eventsWithResponses.length === 0) return null;
+                        const anyExpanded = eventsWithResponses.some(ev => expandedEvents.has(ev.id));
+                        const toggleAll = () => {
+                          setExpandedEvents(prev => {
+                            if (anyExpanded) {
+                              // sbalit vse
+                              const next = new Set(prev);
+                              eventsWithResponses.forEach(ev => next.delete(ev.id));
+                              return next;
+                            }
+                            // rozbalit vse
+                            const next = new Set(prev);
+                            eventsWithResponses.forEach(ev => next.add(ev.id));
+                            return next;
+                          });
+                        };
+                        return (
+                          <IconButton
+                            onClick={toggleAll}
+                            title={anyExpanded ? 'Sbalit vše' : 'Rozbalit vše'}
+                          >
+                            <FontAwesomeIcon icon={anyExpanded ? faMinus : faPlus} />
+                          </IconButton>
+                        );
+                      })()}
+                    </TableHeader>
+                    <TableHeader>Název</TableHeader>
+                    <TableHeader>{activeTab === 'messages' ? 'Obsah' : 'Popis'}</TableHeader>
+                    <TableHeader>Datum od</TableHeader>
+                    <TableHeader>Datum do</TableHeader>
+                    <TableHeader className="center">Příjemci</TableHeader>
+                    {activeTab === 'events' && <TableHeader className="center">Reakce</TableHeader>}
+                    <TableHeader className="center">Akce</TableHeader>
+                  </TableRow>
+                  <TableRow className="filter-row">
+                    <TableHeader className="filter-cell" />
+                    <TableHeader className="filter-cell">
+                      <div className="text-filter-wrapper">
+                        <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                        <input
+                          type="text"
+                          className="filter-input"
+                          placeholder="Název..."
+                          value={columnFilters.nazev}
+                          onChange={(e) => setColumnFilters(prev => ({ ...prev, nazev: e.target.value }))}
+                        />
+                        {columnFilters.nazev && (
+                          <button
+                            className="filter-clear"
+                            onClick={() => setColumnFilters(prev => ({ ...prev, nazev: '' }))}
+                          >
+                            <FontAwesomeIcon icon={faTimes} />
+                          </button>
+                        )}
+                      </div>
+                    </TableHeader>
+                    <TableHeader className="filter-cell">
+                      <div className="text-filter-wrapper">
+                        <FontAwesomeIcon icon={faSearch} className="filter-icon" />
+                        <input
+                          type="text"
+                          className="filter-input"
+                          placeholder={activeTab === 'messages' ? 'Obsah...' : 'Popis...'}
+                          value={columnFilters.text}
+                          onChange={(e) => setColumnFilters(prev => ({ ...prev, text: e.target.value }))}
+                        />
+                        {columnFilters.text && (
+                          <button
+                            className="filter-clear"
+                            onClick={() => setColumnFilters(prev => ({ ...prev, text: '' }))}
+                          >
+                            <FontAwesomeIcon icon={faTimes} />
+                          </button>
+                        )}
+                      </div>
+                    </TableHeader>
+                    <TableHeader className="filter-cell">
+                      <div className="date-filter-wrapper">
+                        <DatePicker
+                          fieldName="filter_dt_od"
+                          value={columnFilters.dt_od}
+                          onChange={(value) => setColumnFilters(prev => ({ ...prev, dt_od: value }))}
+                          placeholder="Datum od"
+                          variant="compact"
+                        />
+                      </div>
+                    </TableHeader>
+                    <TableHeader className="filter-cell">
+                      <div className="date-filter-wrapper">
+                        <DatePicker
+                          fieldName="filter_dt_do"
+                          value={columnFilters.dt_do}
+                          onChange={(value) => setColumnFilters(prev => ({ ...prev, dt_do: value }))}
+                          placeholder="Datum do"
+                          variant="compact"
+                        />
+                      </div>
+                    </TableHeader>
+                    <TableHeader className="filter-cell" />
+                    <TableHeader className="filter-cell" />
+                    {activeTab === 'events' && <TableHeader className="filter-cell" />}
+                    <TableHeader className="filter-cell" />
+                  </TableRow>
+                </TableHead>
                 <tbody>
-                  {currentData.map((item) => (
-                <tr key={item.id}>
-                  <td><strong>{item.nazev}</strong></td>
-                  <td>
-                    {activeTab === 'messages' 
-                      ? (item.obsah || '').substring(0, 50) + (item.obsah?.length > 50 ? '...' : '')
-                      : (item.popis || '').substring(0, 50) + (item.popis?.length > 50 ? '...' : '')
-                    }
-                  </td>
-                  <td>{item.dt_od ? prettyDate(item.dt_od) : '-'}</td>
-                  <td>{item.dt_do ? prettyDate(item.dt_do) : '-'}</td>
-                  <td>
-                    <Badge $type="user">{item.pocet_prijemcu || 0}</Badge>
-                  </td>
-                  <td>
-                    <IconButton onClick={() => handleEdit(item)} title="Upravit">
-                      <FontAwesomeIcon icon={faEdit} />
-                    </IconButton>
-                    <IconButton $variant="danger" onClick={() => handleDelete(item.id)} title="Smazat">
-                      <FontAwesomeIcon icon={faTrash} />
-                    </IconButton>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-          </TableContainer>
-        )}
+                  {currentData.length === 0 ? (
+                    <TableRow>
+                      <TableCell className="center" colSpan={activeTab === 'events' ? 8 : 7}>
+                        {activeTab === 'messages' ? 'Žádné zprávy' : 'Žádné události'}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    currentData.map((item) => {
+                      const extraTermCount = activeTab === 'events' && Array.isArray(item.terminy) ? item.terminy.length : 0;
+                      const previewHtml = activeTab === 'messages' ? item.obsah : item.popis;
+                      const isActive = Number(item.aktivni) === 1;
+                      const rowStyle = isActive ? undefined : { opacity: 0.65, color: '#94a3b8' };
+                      const cellStyle = isActive ? undefined : { color: '#94a3b8' };
+                      const toggleIconColor = isActive ? '#065f46' : '#9ca3af';
+                      const recipientsTooltip = buildRecipientsTooltip(item);
+                      const rolesCount = Array.isArray(item?.prijemci_roles) ? item.prijemci_roles.length : 0;
+                      const usersCount = Array.isArray(item?.prijemci_users) ? item.prijemci_users.length : 0;
+                      const fallbackRecipientsCount = rolesCount + usersCount;
+                      const numericRecipientsCount = Number.isFinite(Number(item.pocet_prijemcu))
+                        ? Number(item.pocet_prijemcu)
+                        : 0;
+                      const recipientsCount = fallbackRecipientsCount > 0
+                        ? fallbackRecipientsCount
+                        : numericRecipientsCount;
+                      const responses = activeTab === 'events' ? (eventResponses[item.id] || []) : [];
+                      const responsesCount = responses.length;
+                      const acceptedCount = responses.filter(r => r.typ_odpovedi === 'accepted').length;
+                      const declinedCount = responses.filter(r => r.typ_odpovedi === 'declined').length;
+                      const isExpanded = expandedEvents.has(item.id);
+                      const agreement = activeTab === 'events' ? buildTermAgreement(item, responses) : [];
+                      const colCount = activeTab === 'events' ? 8 : 7;
+                      return (
+                        <React.Fragment key={item.id}>
+                          <TableRow style={rowStyle}>
+                            <TableCell className="center" style={{ width: '36px', padding: '0.25rem' }}>
+                              {activeTab === 'events' && responsesCount > 0 && (
+                                <IconButton
+                                  onClick={() => toggleExpandEvent(item.id)}
+                                  title={isExpanded ? 'Sbalit' : 'Rozbalit'}
+                                >
+                                  <FontAwesomeIcon icon={isExpanded ? faMinus : faPlus} />
+                                </IconButton>
+                              )}
+                            </TableCell>
+                            <TableCell style={cellStyle}><strong>{item.nazev}</strong></TableCell>
+                            <TableCell style={cellStyle}>
+                              <HtmlPreviewBox>
+                                {previewHtml ? (
+                                  <HtmlPreviewContent style={cellStyle} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                                ) : (
+                                  <HtmlPreviewEmpty>—</HtmlPreviewEmpty>
+                                )}
+                              </HtmlPreviewBox>
+                            </TableCell>
+                            <TableCell style={cellStyle}>
+                              {item.dt_od ? prettyDate(item.dt_od) : '-'}
+                              {extraTermCount > 0 && (
+                                <SmartTooltip
+                                  text={buildEventDatesTooltip(item)}
+                                  icon="calendar"
+                                  multiline
+                                  preferredPosition="top"
+                                >
+                                  <Badge $type="role" style={{ marginLeft: '0.5rem' }}>
+                                    +{extraTermCount}
+                                  </Badge>
+                                </SmartTooltip>
+                              )}
+                            </TableCell>
+                            <TableCell style={cellStyle}>{item.dt_do ? prettyDate(item.dt_do) : '-'}</TableCell>
+                            <TableCell className="center">
+                              {recipientsTooltip ? (
+                                <SmartTooltip
+                                  text={recipientsTooltip}
+                                  icon="info"
+                                  multiline
+                                  preferredPosition="top"
+                                >
+                                  <Badge $type="user">{recipientsCount}</Badge>
+                                </SmartTooltip>
+                              ) : (
+                                <Badge $type="user">{recipientsCount}</Badge>
+                              )}
+                            </TableCell>
+                            {activeTab === 'events' && (
+                              <TableCell className="center">
+                                {responsesCount === 0 ? (
+                                  <Badge $type="user" style={{ opacity: 0.5 }}>0</Badge>
+                                ) : (
+                                  <div style={{ display: 'inline-flex', gap: '0.3rem', alignItems: 'center' }}>
+                                    {(() => {
+                                      const uniqueUsers = Array.from(new Map(
+                                        responses.map(r => [r.user_id, `${(r.prijmeni || '').trim()} ${(r.jmeno || '').trim()}`.trim() || `Uživatel #${r.user_id}`])
+                                      ).values()).sort((a, b) => a.localeCompare(b, 'cs'));
+                                      const winners = agreement.filter(a => a.isWinner && a.accepted > 0);
+                                      const fmtShort = (dt) => {
+                                        if (!dt) return '';
+                                        const d = new Date(dt);
+                                        if (isNaN(d)) return String(dt);
+                                        const dd = String(d.getDate()).padStart(2, '0');
+                                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                                        const hh = String(d.getHours()).padStart(2, '0');
+                                        const mi = String(d.getMinutes()).padStart(2, '0');
+                                        return `${dd}.${mm}. ${hh}:${mi}`;
+                                      };
+                                      const winnerLines = winners.map(w => {
+                                        const od = fmtShort(w.dt_od);
+                                        const doo = w.dt_do ? fmtShort(w.dt_do) : '';
+                                        const range = doo ? `${od}–${doo}` : od;
+                                        return `🏆 ${range} (${w.accepted}×)`;
+                                      });
+                                      const parts = [];
+                                      if (winnerLines.length > 0) {
+                                        parts.push('Nejvíce akceptováno:');
+                                        parts.push(...winnerLines);
+                                        parts.push('');
+                                      }
+                                      if (uniqueUsers.length > 0) {
+                                        parts.push(`Reagovali (${uniqueUsers.length}):`);
+                                        parts.push(...uniqueUsers.map(n => `• ${n}`));
+                                      }
+                                      const tooltipText = parts.join('\n');
+                                      return tooltipText ? (
+                                        <SmartTooltip text={tooltipText} icon="user" multiline preferredPosition="top">
+                                          <Badge $type="user">{responsesCount}</Badge>
+                                        </SmartTooltip>
+                                      ) : (
+                                        <Badge $type="user">{responsesCount}</Badge>
+                                      );
+                                    })()}
+                                    {acceptedCount > 0 && (
+                                      <span title="Akceptováno" style={{ color: '#16a34a', fontSize: '0.78rem', fontWeight: 600 }}>
+                                        <FontAwesomeIcon icon={faCheckCircle} /> {acceptedCount}
+                                      </span>
+                                    )}
+                                    {declinedCount > 0 && (
+                                      <span title="Odmítnuto" style={{ color: '#dc2626', fontSize: '0.78rem', fontWeight: 600 }}>
+                                        <FontAwesomeIcon icon={faTimesCircle} /> {declinedCount}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </TableCell>
+                            )}
+                            <TableCell className="center">
+                              <IconButton
+                                onClick={() => handleToggleActive(item)}
+                                title={isActive ? 'Deaktivovat' : 'Aktivovat'}
+                              >
+                                <FontAwesomeIcon icon={isActive ? faEye : faEyeSlash} style={{ color: toggleIconColor }} />
+                              </IconButton>
+                              <IconButton onClick={() => handleEdit(item)} title="Upravit">
+                                <FontAwesomeIcon icon={faEdit} />
+                              </IconButton>
+                              <IconButton $variant="danger" onClick={() => openDeleteConfirm(item)} title="Smazat">
+                                <FontAwesomeIcon icon={faTrash} />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                          {activeTab === 'events' && isExpanded && responsesCount > 0 && (
+                            <TableRow style={{ background: '#f8fafc' }}>
+                              <TableCell colSpan={colCount} style={{ padding: 0 }}>
+                                <div style={{ padding: '0.75rem 1rem 0.75rem 3rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', borderLeft: '3px solid #3b82f6' }}>
+                                  {/* Shoda terminu */}
+                                  {agreement.length > 0 && (
+                                    <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.5rem 0.75rem' }}>
+                                      <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '0.4rem', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                        <FontAwesomeIcon icon={faTrophy} style={{ color: '#eab308', marginRight: '0.4rem' }} />
+                                        Shoda termínů – nejvíce akceptováno
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        {agreement.map((row, idx) => (
+                                          <div
+                                            key={row.termin_id}
+                                            style={{
+                                              display: 'flex',
+                                              gap: '0.75rem',
+                                              alignItems: 'center',
+                                              padding: '0.35rem 0.6rem',
+                                              borderRadius: '4px',
+                                              background: row.isWinner ? '#dcfce7' : '#f8fafc',
+                                              border: row.isWinner ? '1px solid #86efac' : '1px solid transparent',
+                                              fontSize: '0.8rem'
+                                            }}
+                                          >
+                                            <span style={{ fontWeight: 700, color: '#475569', minWidth: '1.5rem' }}>{idx + 1}.</span>
+                                            <span style={{ flex: 1, color: '#1e293b' }}>
+                                              {formatResponseDate(row.dt_od)}{row.dt_do ? ` – ${formatResponseDate(row.dt_do)}` : ''}
+                                            </span>
+                                            <span style={{ color: '#16a34a', fontWeight: 600 }}>
+                                              <FontAwesomeIcon icon={faCheckCircle} /> {row.accepted}
+                                            </span>
+                                            <span style={{ color: '#dc2626', fontWeight: 600 }}>
+                                              <FontAwesomeIcon icon={faTimesCircle} /> {row.declined}
+                                            </span>
+                                            {row.isWinner && row.accepted > 0 && (
+                                              <Badge $type="role" style={{ background: '#16a34a', color: '#fff' }}>
+                                                <FontAwesomeIcon icon={faTrophy} style={{ marginRight: '0.25rem' }} />
+                                                NEJVĚTŠÍ SHODA
+                                              </Badge>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Seznam odpovedi */}
+                                  <div style={{ fontSize: '0.78rem', color: '#475569', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                    {(() => {
+                                      const sortMode = responsesSort[item.id] || 'type';
+                                      const toggleSort = () => setResponsesSort(prev => ({ ...prev, [item.id]: (prev[item.id] === 'type' ? 'name' : 'type') }));
+                                      const isName = sortMode === 'name';
+                                      const tooltip = isName
+                                        ? 'Řazeno podle jména (kliknutím přepnout na reakci)'
+                                        : 'Řazeno podle reakce (kliknutím přepnout na jméno)';
+                                      return (
+                                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
+                                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                                            Reakce ({responsesCount})
+                                          </div>
+                                          <SmartTooltip text={tooltip} preferredPosition="top">
+                                            <button
+                                              type="button"
+                                              onClick={toggleSort}
+                                              style={{
+                                                background: '#3b82f6',
+                                                color: '#fff',
+                                                border: '1px solid #3b82f6',
+                                                borderRadius: '4px',
+                                                padding: '0.25rem 0.45rem',
+                                                fontSize: '0.75rem',
+                                                cursor: 'pointer',
+                                                display: 'inline-flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                lineHeight: 1
+                                              }}
+                                              aria-label={tooltip}
+                                            >
+                                              <FontAwesomeIcon icon={isName ? faSortAlphaDown : faFilter} />
+                                            </button>
+                                          </SmartTooltip>
+                                        </div>
+                                      );
+                                    })()}
+                                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                                      <thead>
+                                        <tr style={{ background: '#f1f5f9', color: '#334155' }}>
+                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Uživatel</th>
+                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Reakce</th>
+                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Datum odpovědi</th>
+                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Termín</th>
+                                          <th style={{ textAlign: 'left', padding: '0.35rem 0.6rem', fontWeight: 700, borderBottom: '1px solid #e2e8f0' }}>Odpověď</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {(() => {
+                                          const sortMode = responsesSort[item.id] || 'type';
+                                          const sorted = [...responses].sort((a, b) => {
+                                            if (sortMode === 'type') {
+                                              // accepted -> declined -> jine; pak jmeno
+                                              const order = { accepted: 0, declined: 1 };
+                                              const oa = order[a.typ_odpovedi] ?? 2;
+                                              const ob = order[b.typ_odpovedi] ?? 2;
+                                              if (oa !== ob) return oa - ob;
+                                            }
+                                            const na = `${(a.prijmeni || '').trim()} ${(a.jmeno || '').trim()}`.trim().toLowerCase();
+                                            const nb = `${(b.prijmeni || '').trim()} ${(b.jmeno || '').trim()}`.trim().toLowerCase();
+                                            return na.localeCompare(nb, 'cs');
+                                          });
+                                          return sorted.map((resp, idx) => {
+                                          const isAccepted = resp.typ_odpovedi === 'accepted';
+                                          const isDeclined = resp.typ_odpovedi === 'declined';
+                                          const rowBg = isAccepted ? '#dcfce7' : (isDeclined ? '#fef2f2' : '#ffffff');
+                                          const respColor = isAccepted ? '#15803d' : (isDeclined ? '#b91c1c' : '#475569');
+                                          const tdStyle = { padding: '0.35rem 0.6rem', borderBottom: '1px solid #e2e8f0', verticalAlign: 'top' };
+                                          return (
+                                            <tr key={`${item.id}-${resp.user_id}-${resp.termin_id}-${idx}`} style={{ background: rowBg }}>
+                                              <td style={{ ...tdStyle, color: '#1f2937' }}>
+                                                <div style={{ fontWeight: 600 }}>
+                                                  {(resp.prijmeni || '').trim()} {(resp.jmeno || '').trim()}
+                                                </div>
+                                                {(resp.email || resp.telefon) && (
+                                                  <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.15rem', display: 'flex', gap: '0.6rem', flexWrap: 'wrap' }}>
+                                                    {resp.email && (
+                                                      <a href={`mailto:${resp.email}`} style={{ color: '#64748b', textDecoration: 'none' }}>
+                                                        ✉ {resp.email}
+                                                      </a>
+                                                    )}
+                                                    {resp.telefon && (
+                                                      <a href={`tel:${resp.telefon}`} style={{ color: '#64748b', textDecoration: 'none' }}>
+                                                        ☎ {resp.telefon}
+                                                      </a>
+                                                    )}
+                                                  </div>
+                                                )}
+                                              </td>
+                                              <td style={{ ...tdStyle, color: respColor, fontWeight: 600 }}>
+                                                <FontAwesomeIcon icon={isAccepted ? faCheckCircle : (isDeclined ? faTimesCircle : faCalendarAlt)} style={{ marginRight: '0.3rem' }} />
+                                                {formatResponseType(resp.typ_odpovedi)}
+                                              </td>
+                                              <td style={{ ...tdStyle, color: '#64748b' }}>{formatResponseDate(resp.dt_odpovedi)}</td>
+                                              <td style={{ ...tdStyle, color: '#334155' }}>{formatTermLabel(resp)}</td>
+                                              <td style={{ ...tdStyle, color: '#334155', fontStyle: resp.poznamka ? 'italic' : 'normal' }}>
+                                                {resp.poznamka ? `„${resp.poznamka}"` : '—'}
+                                              </td>
+                                            </tr>
+                                          );
+                                        });
+                                        })()}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </React.Fragment>
+                      );
+                    })
+                  )}
+                </tbody>
+              </Table>
+
+              {totalItems > 0 && (
+                <PaginationContainer>
+                  <PaginationInfo>
+                    Zobrazeno {totalItems === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}-
+                    {Math.min(currentPage * itemsPerPage, totalItems)} z {totalItems.toLocaleString('cs-CZ')} {activeTab === 'messages' ? 'zpráv' : 'událostí'}
+                  </PaginationInfo>
+                  <PaginationControls>
+                    <span style={{ fontSize: '0.875rem', color: '#64748b', marginRight: '0.5rem' }}>
+                      Zobrazit:
+                    </span>
+                    <PageSizeSelect
+                      value={itemsPerPage}
+                      onChange={(e) => handleItemsPerPageChange(parseInt(e.target.value, 10))}
+                      disabled={loading}
+                    >
+                      <option value={10}>10</option>
+                      <option value={25}>25</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                      <option value={200}>200</option>
+                    </PageSizeSelect>
+
+                    <PageButton
+                      onClick={() => handlePageChange(1)}
+                      disabled={currentPage === 1 || loading}
+                      title="První stránka"
+                    >
+                      ««
+                    </PageButton>
+
+                    <PageButton
+                      onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                      disabled={currentPage === 1 || loading}
+                      title="Předchozí stránka"
+                    >
+                      ‹
+                    </PageButton>
+
+                    <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0.75rem' }}>
+                      Stránka {currentPage} z {Math.max(totalPages, 1)}
+                    </span>
+
+                    <PageButton
+                      onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                      disabled={currentPage >= totalPages || loading}
+                      title="Další stránka"
+                    >
+                      ›
+                    </PageButton>
+
+                    <PageButton
+                      onClick={() => handlePageChange(totalPages)}
+                      disabled={currentPage >= totalPages || loading}
+                      title="Poslední stránka"
+                    >
+                      ››
+                    </PageButton>
+                  </PaginationControls>
+                </PaginationContainer>
+              )}
+            </TableContainer>
+          )}
         </ContentArea>
       </TabContainer>
 
+      <ConfirmDialog
+        isOpen={confirmDelete.open}
+        onClose={closeDeleteConfirm}
+        onConfirm={executeDelete}
+        title="Opravdu chcete smazat?"
+        message={
+          `${confirmDelete.type === 'messages' ? 'Zpráva' : 'Událost'}` +
+          `${confirmDelete.name ? ` "${confirmDelete.name}"` : ''} bude smazána.`
+        }
+        icon={faExclamationTriangle}
+        variant="danger"
+        cancelText="Zrušit"
+        confirmText="Smazat"
+      />
+
       {/* Modal pro vytváření/editaci */}
-      {modalOpen && (
-        <ModalOverlay>
-          <ModalContent>
+      {modalOpen && typeof document !== 'undefined' && createPortal(
+        <ModalOverlay $fullScreen={isModalFullScreen}>
+          <ModalContent $fullScreen={isModalFullScreen}>
             <ModalHeader>
               <ModalTitle>
                 <h3>
@@ -856,9 +2403,14 @@ const PlanningAdminPage = () => {
                 </h3>
                 <p>Vyplňte požadované informace</p>
               </ModalTitle>
-              <CloseBtn onClick={() => setModalOpen(false)}>
-                <FontAwesomeIcon icon={faTimes} />
-              </CloseBtn>
+              <HeaderActions>
+                <CloseBtn type="button" onClick={() => setIsModalFullScreen(prev => !prev)} title={isModalFullScreen ? 'Zmenšit' : 'Fullscreen'}>
+                  <FontAwesomeIcon icon={isModalFullScreen ? faCompress : faExpand} />
+                </CloseBtn>
+                <CloseBtn type="button" onClick={() => setModalOpen(false)} title="Zavřít">
+                  <FontAwesomeIcon icon={faTimes} />
+                </CloseBtn>
+              </HeaderActions>
             </ModalHeader>
 
             <ModalBody>
@@ -874,109 +2426,226 @@ const PlanningAdminPage = () => {
               </FormGroup>
 
               <FormGroup>
-                <Label>{activeTab === 'messages' ? 'Obsah *' : 'Popis'}</Label>
-                <Textarea
-                  value={activeTab === 'messages' ? formData.obsah : formData.popis}
-                  onChange={(e) => 
-                    setFormData({ 
-                      ...formData, 
-                      [activeTab === 'messages' ? 'obsah' : 'popis']: e.target.value 
-                    })
-                  }
-                  placeholder={activeTab === 'messages' ? 'Zadejte obsah zprávy' : 'Zadejte popis události'}
-                />
+                <Label>{editorLabel}</Label>
+                <EditorContainer>
+                  <EditorToolbar>
+                    <EditorGroup>
+                      <EditorButton type="button" onClick={() => applyEditorCommand('bold')} title="Tučné">
+                        <FontAwesomeIcon icon={faBold} />
+                      </EditorButton>
+                      <EditorButton type="button" onClick={() => applyEditorCommand('italic')} title="Kurzíva">
+                        <FontAwesomeIcon icon={faItalic} />
+                      </EditorButton>
+                      <EditorButton type="button" onClick={() => applyEditorCommand('underline')} title="Podtržení">
+                        <FontAwesomeIcon icon={faUnderline} />
+                      </EditorButton>
+                      <EditorButton type="button" onClick={() => applyEditorCommand('insertUnorderedList')} title="Seznam">
+                        <FontAwesomeIcon icon={faListUl} />
+                      </EditorButton>
+                      <EditorButton type="button" onClick={() => applyEditorCommand('insertOrderedList')} title="Číslovaný seznam">
+                        <FontAwesomeIcon icon={faListOl} />
+                      </EditorButton>
+                      <EditorButton type="button" onClick={handleInsertLink} title="Vložit odkaz">
+                        <FontAwesomeIcon icon={faLink} />
+                      </EditorButton>
+                      <EditorButton type="button" onClick={() => applyEditorCommand('unlink')} title="Odebrat odkaz">
+                        <FontAwesomeIcon icon={faUnlink} />
+                      </EditorButton>
+                    </EditorGroup>
+                    <EditorGroup>
+                      <EditorButton
+                        type="button"
+                        onClick={() => setIsHtmlView(prev => !prev)}
+                        title={isHtmlView ? 'Zpět na editor' : 'HTML kód'}
+                        $active={isHtmlView}
+                      >
+                        <FontAwesomeIcon icon={faCode} />
+                      </EditorButton>
+                    </EditorGroup>
+                  </EditorToolbar>
+                  {isHtmlView ? (
+                    <EditorSource
+                      value={editorValue}
+                      onChange={(e) => setFormData(prev => ({ ...prev, [editorField]: e.target.value }))}
+                      placeholder={editorSourcePlaceholder}
+                    />
+                  ) : (
+                    <EditorArea
+                      ref={editorRef}
+                      contentEditable
+                      onInput={handleEditorInput}
+                      data-placeholder={editorPlaceholder}
+                      suppressContentEditableWarning
+                    />
+                  )}
+                </EditorContainer>
               </FormGroup>
 
-              <FormRow>
-                <div>
-                  <Label>Datum od</Label>
-                  <DateTimeWrapper $hasValue={!!formData.dt_od_date}>
-                    <DatePicker
-                      value={formData.dt_od_date}
-                      onChange={(newDate) => setFormData({ ...formData, dt_od_date: newDate })}
-                      placeholder="Vyberte datum"
-                    />
-                  </DateTimeWrapper>
-                </div>
-                <div>
-                  <Label>Čas od</Label>
-                  <DateTimeWrapper $hasValue={!!formData.dt_od_time}>
-                    <TimePicker
-                      value={formData.dt_od_time}
-                      onChange={(newTime) => setFormData({ ...formData, dt_od_time: newTime })}
-                      placeholder="Vyberte čas"
-                    />
-                  </DateTimeWrapper>
-                </div>
-                <div>
-                  <Label>Datum do</Label>
-                  <DateTimeWrapper $hasValue={!!formData.dt_do_date}>
-                    <DatePicker
-                      value={formData.dt_do_date}
-                      onChange={(newDate) => setFormData({ ...formData, dt_do_date: newDate })}
-                      placeholder="Vyberte datum"
-                    />
-                  </DateTimeWrapper>
-                </div>
-                <div>
-                  <Label>Čas do</Label>
-                  <DateTimeWrapper $hasValue={!!formData.dt_do_time}>
-                    <TimePicker
-                      value={formData.dt_do_time}
-                      onChange={(newTime) => setFormData({ ...formData, dt_do_time: newTime })}
-                      placeholder="Vyberte čas"
-                    />
-                  </DateTimeWrapper>
-                </div>
-              </FormRow>
+              {activeTab === 'events' ? (
+                <>
+                  <Label>Termíny ({terminy.length})</Label>
+                  <TerminyList>
+                    {terminy.map((t, idx) => (
+                      <TerminRow key={idx}>
+                        <div>
+                          <Label><TerminIndexBadge>{idx + 1}</TerminIndexBadge>Datum od</Label>
+                          <DateTimeWrapper $hasValue={!!t.dt_od_date}>
+                            <DatePicker
+                              value={t.dt_od_date}
+                              onChange={(newDate) => updateTermin(idx, 'dt_od_date', newDate)}
+                              placeholder="Datum"
+                            />
+                          </DateTimeWrapper>
+                        </div>
+                        <div>
+                          <Label>Čas od</Label>
+                          <DateTimeWrapper $hasValue={!!t.dt_od_time}>
+                            <TimePicker
+                              value={t.dt_od_time}
+                              onChange={(newTime) => updateTermin(idx, 'dt_od_time', newTime)}
+                              onTimeComplete={(newTime) => completeTerminTime(idx, 'dt_od_time', newTime)}
+                              placeholder="Čas"
+                            />
+                          </DateTimeWrapper>
+                        </div>
+                        <div>
+                          <Label>Datum do</Label>
+                          <DateTimeWrapper $hasValue={!!t.dt_do_date}>
+                            <DatePicker
+                              value={t.dt_do_date}
+                              onChange={(newDate) => updateTermin(idx, 'dt_do_date', newDate)}
+                              placeholder="Datum"
+                            />
+                          </DateTimeWrapper>
+                        </div>
+                        <div>
+                          <Label>Čas do</Label>
+                          <DateTimeWrapper $hasValue={!!t.dt_do_time}>
+                            <TimePicker
+                              value={t.dt_do_time}
+                              onChange={(newTime) => updateTermin(idx, 'dt_do_time', newTime)}
+                              placeholder="Čas"
+                            />
+                          </DateTimeWrapper>
+                        </div>
+                        <TerminRemoveBtn
+                          type="button"
+                          onClick={() => removeTermin(idx)}
+                          disabled={terminy.length <= 1}
+                          title="Odebrat termín"
+                        >
+                          <FontAwesomeIcon icon={faTrash} />
+                        </TerminRemoveBtn>
+                      </TerminRow>
+                    ))}
+                  </TerminyList>
+                  <TerminAddBtn type="button" onClick={addTermin}>
+                    <FontAwesomeIcon icon={faPlus} />
+                    Přidat další termín
+                  </TerminAddBtn>
+                </>
+              ) : (
+                <FormRow>
+                  <div>
+                    <Label>Datum od</Label>
+                    <DateTimeWrapper $hasValue={!!formData.dt_od_date}>
+                      <DatePicker
+                        value={formData.dt_od_date}
+                        onChange={(newDate) => setFormData(prev => ({ ...prev, dt_od_date: newDate }))}
+                        placeholder="Vyberte datum"
+                      />
+                    </DateTimeWrapper>
+                  </div>
+                  <div>
+                    <Label>Čas od</Label>
+                    <DateTimeWrapper $hasValue={!!formData.dt_od_time}>
+                      <TimePicker
+                        value={formData.dt_od_time}
+                        onChange={(newTime) => setFormData(prev => ({ ...prev, dt_od_time: newTime }))}
+                        onTimeComplete={(newTime) => {
+                          // Auto-fill DO +60min teprve po výběru minut (kompletní čas)
+                          setFormData(prev => {
+                            const nf = { ...prev, dt_od_time: newTime };
+                            if (newTime && prev.dt_od_date && !prev.dt_do_date && !prev.dt_do_time) {
+                              const plus = addMinutesToDateTime(prev.dt_od_date, newTime, 60);
+                              nf.dt_do_date = plus.date;
+                              nf.dt_do_time = plus.time;
+                            }
+                            return nf;
+                          });
+                        }}
+                        placeholder="Vyberte čas"
+                      />
+                    </DateTimeWrapper>
+                  </div>
+                  <div>
+                    <Label>Datum do</Label>
+                    <DateTimeWrapper $hasValue={!!formData.dt_do_date}>
+                      <DatePicker
+                        value={formData.dt_do_date}
+                        onChange={(newDate) => setFormData({ ...formData, dt_do_date: newDate })}
+                        placeholder="Vyberte datum"
+                      />
+                    </DateTimeWrapper>
+                  </div>
+                  <div>
+                    <Label>Čas do</Label>
+                    <DateTimeWrapper $hasValue={!!formData.dt_do_time}>
+                      <TimePicker
+                        value={formData.dt_do_time}
+                        onChange={(newTime) => setFormData({ ...formData, dt_do_time: newTime })}
+                        placeholder="Vyberte čas"
+                      />
+                    </DateTimeWrapper>
+                  </div>
+                </FormRow>
+              )}
 
-              <FormGroup>
-                <Label>Role (příjemci)</Label>
-                <CustomSelect
-                  value={selectedRoles}
-                  onChange={(newValues) => setSelectedRoles(newValues)}
-                  options={availableRoles}
-                  placeholder="-- Vyberte role --"
-                  field="recipients_roles"
-                  multiple={true}
-                  selectStates={selectStates}
-                  setSelectStates={setSelectStates}
-                  searchStates={searchStates}
-                  setSearchStates={setSearchStates}
-                  touchedSelectFields={touchedSelectFields}
-                  setTouchedSelectFields={setTouchedSelectFields}
-                  toggleSelect={toggleSelect}
-                  filterOptions={filterOptions}
-                  getOptionLabel={getOptionLabel}
-                  enableSearch={true}
-                />
-              </FormGroup>
+              <RecipientsRow>
+                <FormGroup>
+                  <Label>Role (příjemci)</Label>
+                  <CustomSelect
+                    value={selectedRoles}
+                    onChange={(newValues) => setSelectedRoles(newValues)}
+                    options={availableRoles}
+                    placeholder="-- Vyberte role --"
+                    field="recipients_roles"
+                    multiple={true}
+                    selectStates={selectStates}
+                    setSelectStates={setSelectStates}
+                    searchStates={searchStates}
+                    setSearchStates={setSearchStates}
+                    touchedSelectFields={touchedSelectFields}
+                    setTouchedSelectFields={setTouchedSelectFields}
+                    toggleSelect={toggleSelect}
+                    filterOptions={filterOptions}
+                    getOptionLabel={getOptionLabel}
+                    enableSearch={true}
+                  />
+                </FormGroup>
 
-              <FormGroup>
-                <Label>Konkrétní uživatelé (příjemci)</Label>
-                <CustomSelect
-                  value={selectedUsers}
-                  onChange={(newValues) => setSelectedUsers(newValues)}
-                  options={availableUsers}
-                  placeholder="-- Vyberte uživatele --"
-                  field="recipients_users"
-                  multiple={true}
-                  selectStates={selectStates}
-                  setSelectStates={setSelectStates}
-                  searchStates={searchStates}
-                  setSearchStates={setSearchStates}
-                  touchedSelectFields={touchedSelectFields}
-                  setTouchedSelectFields={setTouchedSelectFields}
-                  toggleSelect={toggleSelect}
-                  filterOptions={filterOptions}
-                  getOptionLabel={getOptionLabel}
-                  enableSearch={true}
-                />
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem' }}>
-                  <FontAwesomeIcon icon={faInfoCircle} style={{ marginRight: '0.25rem' }} />
-                  Organizační hierarchie je řízena globálním nastavením systému
-                </div>
-              </FormGroup>
+                <FormGroup>
+                  <Label>Konkrétní uživatelé (příjemci)</Label>
+                  <CustomSelect
+                    value={selectedUsers}
+                    onChange={(newValues) => setSelectedUsers(newValues)}
+                    options={availableUsers}
+                    placeholder="-- Vyberte uživatele --"
+                    field="recipients_users"
+                    multiple={true}
+                    selectStates={selectStates}
+                    setSelectStates={setSelectStates}
+                    searchStates={searchStates}
+                    setSearchStates={setSearchStates}
+                    touchedSelectFields={touchedSelectFields}
+                    setTouchedSelectFields={setTouchedSelectFields}
+                    toggleSelect={toggleSelect}
+                    filterOptions={filterOptions}
+                    getOptionLabel={getOptionLabel}
+                    enableSearch={true}
+                  />
+                </FormGroup>
+              </RecipientsRow>
             </ModalBody>
 
             <ModalFooter>
@@ -984,13 +2653,14 @@ const PlanningAdminPage = () => {
                 <FontAwesomeIcon icon={faTimes} />
                 Zrušit
               </Button>
-              <Button onClick={handleSave} disabled={!formData.nazev || (activeTab === 'messages' && !formData.obsah)}>
+              <Button onClick={handleSave} disabled={isSaving || !formData.nazev || (activeTab === 'messages' && !formData.obsah)}>
                 <FontAwesomeIcon icon={faSave} />
-                Uložit
+                {isSaving ? 'Ukládám...' : 'Uložit'}
               </Button>
             </ModalFooter>
           </ModalContent>
-        </ModalOverlay>
+        </ModalOverlay>,
+        document.body
       )}
     </PageContainer>
   );

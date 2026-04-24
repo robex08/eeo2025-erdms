@@ -22,7 +22,7 @@ const SelectWithIcon = styled.div`
 
   svg.prefix-icon {
     position: absolute;
-    left: 0.75rem;
+    left: 0.625rem;
     top: 50%;
     transform: translateY(-50%);
     color: #9ca3af;
@@ -35,12 +35,14 @@ const SelectWithIcon = styled.div`
 
 const CustomSelectButton = styled.div`
   width: 100%;
-  height: 48px;
+  height: 38px;
   box-sizing: border-box;
-  padding: ${props => props.hasIcon ? '1px 2.5rem 1px 2.5rem' : '1px 2.5rem 1px 0.875rem'};
-  border: 2px solid ${props => props.hasError ? '#dc2626' : props.$active ? '#f59e0b' : '#e2e8f0'};
-  border-radius: 8px;
-  font-size: 0.95rem;
+  padding: ${props => props.hasIcon ? '0 2.25rem 0 2rem' : '0 2.25rem 0 0.75rem'};
+  padding-left: ${props => props.hasIcon ? '2rem' : '0.75rem'};
+  padding-right: 2.25rem;
+  border: 1.5px solid ${props => props.hasError ? '#dc2626' : props.$active ? '#f59e0b' : '#e2e8f0'};
+  border-radius: 9px;
+  font-size: 0.85rem;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   background: ${props => props.hasError ? '#fee2e2' : (props.disabled ? '#f9fafb' : (props.$active ? '#fffbeb' : '#ffffff'))};
   cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
@@ -66,49 +68,23 @@ const CustomSelectButton = styled.div`
   display: flex;
   align-items: center;
   position: relative;
-  transition: all 0.2s ease;
-
-  ${props => props.$active && `
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
-  `}
-
-  /* Custom arrow - větší a lépe viditelná */
-  appearance: none;
-  -moz-appearance: none;
-  -webkit-appearance: none;
-  background-image: ${props => {
-    if (props.disabled) {
-      return props.isOpen
-        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
-        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
-    } else if (props.hasError) {
-      return props.isOpen
-        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
-        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23b91c1c' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
-    } else {
-      return props.isOpen
-        ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='18 15 12 9 6 15'%3E%3C/polyline%3E%3C/svg%3E")`
-        : `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`;
-    }
-  }};
-  background-repeat: no-repeat;
-  background-position: right 0.75rem center;
-  background-size: 20px 20px;
+  transition: border-color 0.15s ease;
+  box-shadow: none;
 
   &:hover {
-    border-color: ${props => props.disabled ? '#e5e7eb' : (props.hasError ? '#dc2626' : '#3b82f6')};
+    border-color: ${props => props.disabled ? '#e5e7eb' : (props.hasError ? '#dc2626' : '#94a3b8')};
   }
 
   &:focus {
     outline: none;
-    border-color: ${props => props.hasError ? '#dc2626' : '#3b82f6'};
-    box-shadow: 0 0 0 3px ${props => props.hasError ? 'rgba(220, 38, 38, 0.1)' : 'rgba(59, 130, 246, 0.1)'};
+    border-color: ${props => props.hasError ? '#dc2626' : '#2563eb'};
+    box-shadow: none;
   }
 `;
 
 const CustomSelectDropdown = styled.div`
   position: fixed;
-  z-index: 99999;
+  z-index: 2147483647;
   background: white;
   border: 1px solid #e5e7eb;
   border-radius: 6px;
@@ -210,14 +186,19 @@ const SearchBox = styled.div`
   border-bottom: 1px solid #e5e7eb;
   background: white;
   border-radius: 8px 8px 0 0;
+  /* Wrapper pro relativní pozicování ikony lupy uvnitř inputu */
+  & > div[data-search-icon-wrapper] {
+    position: relative;
+  }
 `;
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+  padding: 0.5rem 0.625rem 0.5rem 1.875rem;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 0.875rem;
+  box-sizing: border-box;
 
   &:focus {
     outline: none;
@@ -228,11 +209,14 @@ const SearchInput = styled.input`
 
 const SearchIcon = styled.div`
   position: absolute;
-  left: 1rem;
+  left: 0.5rem;
   top: 50%;
   transform: translateY(-50%);
   color: #6b7280;
   pointer-events: none;
+  display: flex;
+  align-items: center;
+  z-index: 1;
 `;
 
 const SelectedValue = styled.span`
@@ -271,7 +255,7 @@ const TwoLineLabel = styled.div`
 
 const ClearButton = styled.span`
   position: absolute;
-  right: 32px;
+  right: 28px;
   top: 50%;
   transform: translateY(-50%);
   background: none;
@@ -282,10 +266,10 @@ const ClearButton = styled.span`
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   border-radius: 4px;
-  transition: all 0.2s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
   z-index: 2;
   
   &:hover {
@@ -298,8 +282,8 @@ const ClearButton = styled.span`
   }
   
   svg {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
   }
 `;
 
@@ -323,6 +307,8 @@ const MultiSelectOption = styled.div`
   input[type="checkbox"] {
     margin-right: 8px;
     cursor: pointer;
+    /* Klik přes checkbox propadne na parent MultiSelectOption - jinak nativní checkbox zachytí event a readOnly checkbox nereaguje */
+    pointer-events: none;
   }
 
   span {
@@ -486,7 +472,15 @@ const CustomSelect = ({
         ? (value.length === 1
             ? (() => {
                 const option = options.find(opt => (opt.id || opt.kod || opt.value) === value[0]);
-                const rawLabel = option ? (option.label || option.cislo_lp || option.nazev || value[0]) : value[0];
+                if (!option) return String(value[0]);
+                // Zkus getOptionLabel (pokud je custom)
+                if (typeof getOptionLabel === 'function') {
+                  const customLabel = getOptionLabel(option, field);
+                  if (customLabel && customLabel !== String(value[0])) {
+                    return typeof customLabel === 'string' ? customLabel.replace(/\s*\n\s*/g, ' ') : String(customLabel);
+                  }
+                }
+                const rawLabel = option.label || option.cislo_lp || option.nazev || option.nazev_role || option.prijmeni || value[0];
                 return typeof rawLabel === 'string' ? rawLabel.replace(/\s*\n\s*/g, ' ') : String(rawLabel);
               })()
             : `Vybráno: ${value.length}`)
@@ -694,8 +688,10 @@ const CustomSelect = ({
     }
 
     const currentValues = Array.isArray(value) ? value : [];
-    const newValues = currentValues.includes(optionValue)
-      ? currentValues.filter(v => v !== optionValue)
+    // OPRAVA: Porovnávej s type-coercion (== místo ===) kvůli string/number nekonzistenci z API
+    const isAlreadySelected = currentValues.some(v => v == optionValue);
+    const newValues = isAlreadySelected
+      ? currentValues.filter(v => v != optionValue)
       : [...currentValues, optionValue];
 
     // Zachovat scroll pozici před změnou
@@ -860,7 +856,13 @@ const CustomSelect = ({
           multiple && Array.isArray(value) && value.length > 1
             ? value.map(val => {
                 const opt = options.find(o => (o.id || o.user_id || o.value || o.kod) === val);
-                return opt ? (opt.label || opt.nazev || opt.cislo_lp || String(val)) : String(val);
+                if (!opt) return String(val);
+                // Použij getOptionLabel pokud je definován
+                if (typeof getOptionLabel === 'function') {
+                  const lbl = getOptionLabel(opt, field);
+                  if (lbl && lbl !== String(val)) return lbl;
+                }
+                return opt.label || opt.nazev || opt.nazev_role || (opt.prijmeni ? `${opt.prijmeni} ${opt.jmeno || ''}`.trim() : null) || opt.cislo_lp || String(val);
               }).join('\n')
             : undefined
         }>
@@ -885,10 +887,10 @@ const CustomSelect = ({
         {!disabled && (
           <span style={{
             position: 'absolute',
-            right: '12px',
+            right: '10px',
             top: '50%',
             transform: `translateY(-50%) rotate(${isOpen ? '180deg' : '0deg'})`,
-            transition: 'transform 0.2s ease',
+            transition: 'transform 0.15s ease',
             color: '#6b7280',
             pointerEvents: 'none',
             display: 'flex',
@@ -911,6 +913,7 @@ const CustomSelect = ({
         >
           {enableSearch && options.length > 5 && (
             <SearchBox>
+              <div data-search-icon-wrapper>
               <SearchIcon>
                 <FontAwesomeIcon icon={faSearch} size="sm" />
               </SearchIcon>
@@ -993,6 +996,7 @@ const CustomSelect = ({
                   }
                 }}
               />
+              </div>
             </SearchBox>
           )}
 
@@ -1013,7 +1017,7 @@ const CustomSelect = ({
               }
 
               const isSelected = multiple
-                ? (Array.isArray(value) ? value.includes(option.id || option.user_id || option.value || option.kod || option) : false)
+                ? (Array.isArray(value) ? value.some(v => v == (option.id || option.user_id || option.value || option.kod || option)) : false)
                 : field === 'statusFilter'
                 ? ((option.kod_stavu || option.kod) === value || option === value)
                 : field === 'pageSize'

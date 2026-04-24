@@ -11,6 +11,7 @@
  * - POST /planning/messages/create - Vytvořit zprávu
  * - POST /planning/messages/update - Aktualizovat zprávu
  * - POST /planning/messages/delete - Smazat zprávu
+ * - POST /planning/messages/set-active - Aktivovat/deaktivovat zprávu
  *
  * UDÁLOSTI (Calendar events):
  * - POST /planning/events/list - Seznam událostí
@@ -18,6 +19,10 @@
  * - POST /planning/events/create - Vytvořit událost
  * - POST /planning/events/update - Aktualizovat událost
  * - POST /planning/events/delete - Smazat událost
+ * - POST /planning/events/set-active - Aktivovat/deaktivovat událost
+ * - POST /planning/events/calendar - Události pro kalendář (uživatel)
+ * - POST /planning/events/respond - Odpověď na termín události
+ * - POST /planning/events/responses/list - Odpovědi na události (admin)
  *
  * @author GitHub Copilot
  * @date 2026-04-24
@@ -76,12 +81,14 @@ const handleApiResponse = (response) => {
 
 /**
  * Seznam zpráv
- * @returns {Promise<Object>} - { status, data: [], count }
+ * @param {Object} params - Volitelné filtry a stránkování
+ * @returns {Promise<Object>} - { status, data: [], count, pagination }
  */
-export const getMessagesList = async () => {
+export const getMessagesList = async (params = {}) => {
   try {
     const auth = await getAuthData();
-    const response = await planningApi.post('/planning/messages/list', auth);
+    const payload = { ...auth, ...params };
+    const response = await planningApi.post('/planning/messages/list', payload);
     return handleApiResponse(response);
   } catch (error) {
     console.error('❌ [Planning] getMessagesList error:', error);
@@ -165,18 +172,38 @@ export const deleteMessage = async (id) => {
   }
 };
 
+/**
+ * Aktivace/deaktivace zprávy
+ * @param {number} id - ID zprávy
+ * @param {number} aktivni - 1/0
+ * @returns {Promise<Object>} - { status, message }
+ */
+export const setMessageActive = async (id, aktivni) => {
+  try {
+    const auth = await getAuthData();
+    const payload = { ...auth, id, aktivni };
+    const response = await planningApi.post('/planning/messages/set-active', payload);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] setMessageActive error:', error);
+    throw error;
+  }
+};
+
 // =============================================================================
 // EVENTS API
 // =============================================================================
 
 /**
  * Seznam událostí
- * @returns {Promise<Object>} - { status, data: [], count }
+ * @param {Object} params - Volitelné filtry a stránkování
+ * @returns {Promise<Object>} - { status, data: [], count, pagination }
  */
-export const getEventsList = async () => {
+export const getEventsList = async (params = {}) => {
   try {
     const auth = await getAuthData();
-    const response = await planningApi.post('/planning/events/list', auth);
+    const payload = { ...auth, ...params };
+    const response = await planningApi.post('/planning/events/list', payload);
     return handleApiResponse(response);
   } catch (error) {
     console.error('❌ [Planning] getEventsList error:', error);
@@ -260,6 +287,73 @@ export const deleteEvent = async (id) => {
   }
 };
 
+/**
+ * Aktivace/deaktivace události
+ * @param {number} id - ID události
+ * @param {number} aktivni - 1/0
+ * @returns {Promise<Object>} - { status, message }
+ */
+export const setEventActive = async (id, aktivni) => {
+  try {
+    const auth = await getAuthData();
+    const payload = { ...auth, id, aktivni };
+    const response = await planningApi.post('/planning/events/set-active', payload);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] setEventActive error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Události pro kalendář uživatele
+ * @param {Object} params - {year, month}
+ * @returns {Promise<Object>} - { status, data: [] }
+ */
+export const getCalendarEvents = async (params = {}) => {
+  try {
+    const auth = await getAuthData();
+    const payload = { ...auth, ...params };
+    const response = await planningApi.post('/planning/events/calendar', payload);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] getCalendarEvents error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Odpověď na termín události
+ * @param {Object} payload - {id, termin_id, typ_odpovedi, poznamka}
+ * @returns {Promise<Object>} - { status, message, data }
+ */
+export const respondToEvent = async (payload) => {
+  try {
+    const auth = await getAuthData();
+    const response = await planningApi.post('/planning/events/respond', { ...auth, ...payload });
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] respondToEvent error:', error);
+    throw error;
+  }
+};
+
+/**
+ * Odpovědi na události (pro admin tabulku)
+ * @param {Array<number>} ids - IDs událostí
+ * @returns {Promise<Object>} - { status, data: { [id]: [] } }
+ */
+export const getEventResponsesList = async (ids = []) => {
+  try {
+    const auth = await getAuthData();
+    const response = await planningApi.post('/planning/events/responses/list', { ...auth, ids });
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] getEventResponsesList error:', error);
+    throw error;
+  }
+};
+
 // =============================================================================
 // RECIPIENTS (PŘÍJEMCI) API
 // =============================================================================
@@ -312,6 +406,9 @@ export default {
   createEvent,
   updateEvent,
   deleteEvent,
+  getCalendarEvents,
+  respondToEvent,
+  getEventResponsesList,
   
   // Recipients
   getActiveRoles,

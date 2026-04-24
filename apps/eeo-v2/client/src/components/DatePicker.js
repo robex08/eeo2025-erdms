@@ -576,11 +576,11 @@ const InputWithIcon = styled.div`
 
   svg {
     position: absolute;
-    left: 0.75rem;
+    left: 0.625rem;
     top: 50%;
     transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     color: #6b7280;
     pointer-events: none;
     z-index: 1;
@@ -590,9 +590,9 @@ const InputWithIcon = styled.div`
 const DateInputField = styled.input`
   width: 100%;
   display: block;
-  padding: ${props => props.$variant === 'compact' ? '0.375rem 0.625rem' : '0.5rem 2.75rem'};
-  padding-left: ${props => props.$variant === 'compact' ? '0.625rem' : '2.75rem'};
-  padding-right: ${props => props.$variant === 'compact' && props.$hasValue ? '1.5rem' : props.$variant === 'compact' ? '0.625rem' : '0.75rem'};
+  padding: ${props => props.$variant === 'compact' ? '0.375rem 0.625rem' : '0.5rem 2rem'};
+  padding-left: ${props => props.$variant === 'compact' ? '0.625rem' : '2rem'};
+  padding-right: ${props => props.$variant === 'compact' && props.$hasValue ? '1.5rem' : props.$variant === 'compact' ? '0.625rem' : '0.625rem'};
   border: 1px solid ${props => props.hasError ? '#ef4444' : props.$highlight ? '#f59e0b' : '#cbd5e1'};
   border-radius: 6px;
   background: ${props => props.disabled ? '#f1f5f9' : props.$highlight ? '#fffbeb' : 'white'};
@@ -604,7 +604,7 @@ const DateInputField = styled.input`
   box-sizing: border-box;
 
   ${props => props.$highlight && `
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+    box-shadow: none;
   `}
 
   &::placeholder {
@@ -613,14 +613,14 @@ const DateInputField = styled.input`
   }
 
   &:hover:not(:disabled) {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #94a3b8;
+    box-shadow: none;
   }
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #2563eb;
+    box-shadow: none;
   }
 `;
 
@@ -630,7 +630,7 @@ const ClearButtonCompact = styled.button`
   top: 50%;
   transform: translateY(-50%);
   background: transparent;
-  color: #94a3b8;
+  color: #9ca3af;
   border: none;
   border-radius: ${props => props.$variant === 'compact' ? '3px' : '4px'};
   width: ${props => props.$variant === 'compact' ? '18px' : '24px'};
@@ -639,23 +639,22 @@ const ClearButtonCompact = styled.button`
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  font-size: ${props => props.$variant === 'compact' ? '16px' : '18px'};
-  font-weight: normal;
+  font-size: ${props => props.$variant === 'compact' ? '14px' : '16px'};
+  font-weight: 500;
   line-height: 1;
   transition: all 0.15s ease;
   z-index: 2;
   padding: 0;
-  opacity: 0.7;
+  opacity: 0.6;
 
   &:hover {
     background: transparent;
-    color: #64748b;
-    transform: translateY(-50%) scale(1.15);
+    color: #6b7280;
     opacity: 1;
   }
 
   &:active {
-    transform: translateY(-50%) scale(0.9);
+    transform: translateY(-50%);
   }
 `;
 
@@ -716,7 +715,7 @@ const DateCalendarPopup = styled.div`
   position: fixed;
   top: 0;
   left: 0;
-  z-index: 999999;
+  z-index: 2147483647;
   background: white;
   border: 2px solid #3b82f6;
   border-radius: 8px;
@@ -755,7 +754,6 @@ const CalendarNav = styled.button`
   &:hover {
     background: #3b82f6;
     color: white;
-    transform: scale(1.1);
   }
 `;
 
@@ -801,7 +799,6 @@ const CalendarDate = styled.button`
 
   &:hover {
     background: ${props => props.isSelected ? '#2563eb' : '#f3f4f6'};
-    transform: scale(1.1);
     color: ${props => props.isSelected ? 'white' : '#111827'};
   }
 `;

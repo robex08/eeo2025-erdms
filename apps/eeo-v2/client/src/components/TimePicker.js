@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import styled from '@emotion/styled';
 import { Clock } from 'lucide-react';
 
@@ -20,11 +21,11 @@ const InputWithIcon = styled.div`
 
   svg {
     position: absolute;
-    left: 0.75rem;
+    left: 0.625rem;
     top: 50%;
     transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     color: #9ca3af;
     z-index: 1;
     pointer-events: none;
@@ -37,8 +38,8 @@ const TimeInputButton = styled.button`
   align-items: center;
   justify-content: space-between;
   padding: 0.75rem;
-  padding-left: 2.75rem;
-  padding-right: ${props => props.hasValue ? '4rem' : '0.75rem'};
+  padding-left: 2rem;
+  padding-right: ${props => props.hasValue ? '4rem' : '0.625rem'};
   border: 1px solid ${props => props.hasError ? '#ef4444' : '#d1d5db'};
   border-radius: 8px;
   background: ${props => props.disabled ? '#f3f4f6' : 'white'};
@@ -62,7 +63,7 @@ const TimeInputButton = styled.button`
 
 const TimeClearButton = styled.button`
   position: absolute;
-  right: 36px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   background: #ef4444;
@@ -82,13 +83,12 @@ const TimeClearButton = styled.button`
 
   &:hover {
     background: #dc2626;
-    transform: translateY(-50%) scale(1.1);
   }
 `;
 
 const TimeNowButton = styled.button`
   position: absolute;
-  right: 8px;
+  right: 36px;
   top: 50%;
   transform: translateY(-50%);
   background: #10b981;
@@ -108,16 +108,14 @@ const TimeNowButton = styled.button`
 
   &:hover {
     background: #059669;
-    transform: translateY(-50%) scale(1.1);
   }
 `;
 
 const TimePopup = styled.div`
-  position: absolute;
-  top: calc(100% + 4px);
+  position: fixed;
+  top: 0;
   left: 0;
-  right: 0;
-  z-index: 10001;
+  z-index: 2147483647;
   background: white;
   border: 2px solid #3b82f6;
   border-radius: 12px;
@@ -126,6 +124,10 @@ const TimePopup = styled.div`
   display: flex;
   justify-content: center;
   align-items: center;
+  opacity: ${props => props.$isPositioned ? 1 : 0};
+  pointer-events: ${props => props.$isPositioned ? 'auto' : 'none'};
+  transition: opacity 0.15s ease;
+  will-change: transform;
 `;
 
 // Levá strana - ciferník
@@ -178,11 +180,10 @@ const ClockNumber = styled.button`
   background: ${props => props.isSelected ? '#3b82f6' : 'transparent'};
   color: ${props => props.isSelected ? 'white' : '#374151'};
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
 
   &:hover {
     background: ${props => props.isSelected ? '#2563eb' : '#e0f2fe'};
-    transform: scale(1.1);
   }
 `;
 
@@ -206,24 +207,24 @@ const DropdownLabel = styled.div`
 
 const TimeDropdown = styled.select`
   width: 100%;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  font-size: 1rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.85rem;
   background: white;
   cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: 'Courier New', monospace;
-  font-weight: 600;
+  transition: border-color 0.15s ease;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 500;
 
   &:hover {
-    border-color: #3b82f6;
+    border-color: #94a3b8;
   }
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #2563eb;
+    box-shadow: none;
   }
 `;
 
@@ -274,13 +275,26 @@ const QuickButton = styled.button`
  * @param {boolean} props.hasError - Zda má picker chybový stav
  * @param {string} props.placeholder - Placeholder text
  */
-function TimePicker({ value, onChange, disabled = false, hasError = false, placeholder = 'Vyberte čas' }) {
+function TimePicker({ value, onChange, onTimeComplete, disabled = false, hasError = false, placeholder = 'Vyberte čas' }) {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState('hours'); // 'hours' or 'minutes'
   const wrapperRef = useRef(null);
+  const popupRef = useRef(null);
+  const positionRef = useRef({ top: 0, left: 0, width: 0 });
+  const [isPositioned, setIsPositioned] = useState(false);
 
   // Parse value to hours and minutes
-  const [hours, minutes] = value ? value.split(':').map(Number) : [0, 0];
+  const [parsedHours, parsedMinutes] = value ? value.split(':').map(Number) : [0, 0];
+  const [localHours, setLocalHours] = useState(parsedHours);
+  const [localMinutes, setLocalMinutes] = useState(parsedMinutes);
+  const selectedHourRef = useRef(parsedHours);
+
+  // Sync local state with external value
+  useEffect(() => {
+    setLocalHours(parsedHours);
+    setLocalMinutes(parsedMinutes);
+    selectedHourRef.current = parsedHours;
+  }, [parsedHours, parsedMinutes]);
 
   // Reset mode to hours when opening popup
   useEffect(() => {
@@ -292,7 +306,9 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
   // Close popup when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+      const clickedInsideWrapper = wrapperRef.current && wrapperRef.current.contains(event.target);
+      const clickedInsidePopup = popupRef.current && popupRef.current.contains(event.target);
+      if (!clickedInsideWrapper && !clickedInsidePopup) {
         setIsOpen(false);
       }
     };
@@ -302,6 +318,56 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
     }
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setIsPositioned(false);
+      return;
+    }
+
+    const updatePosition = () => {
+      if (!wrapperRef.current || !popupRef.current) return;
+
+      const buttonRect = wrapperRef.current.getBoundingClientRect();
+      const popupHeight = popupRef.current.offsetHeight || 280;
+      const popupWidth = Math.max(260, Math.round(buttonRect.width || 0));
+      const buffer = 12;
+
+      const spaceBelow = window.innerHeight - buttonRect.bottom - buffer;
+      const spaceAbove = buttonRect.top - buffer;
+      const shouldOpenUpwards = spaceBelow < popupHeight && spaceAbove > spaceBelow;
+
+      const top = shouldOpenUpwards
+        ? buttonRect.top - popupHeight - 4
+        : buttonRect.bottom + 4;
+      let left = buttonRect.left;
+
+      if (left + popupWidth > window.innerWidth) {
+        left = window.innerWidth - popupWidth - 10;
+      }
+      if (left < 10) left = 10;
+
+      positionRef.current = { top, left, width: popupWidth };
+      popupRef.current.style.transform = `translate(${left}px, ${top}px)`;
+      popupRef.current.style.width = `${popupWidth}px`;
+
+      if (!isPositioned) {
+        setIsPositioned(true);
+      }
+    };
+
+    requestAnimationFrame(updatePosition);
+
+    const handleScroll = () => updatePosition();
+
+    window.addEventListener('scroll', handleScroll, { passive: true, capture: true });
+    window.addEventListener('resize', updatePosition, { passive: true });
+
+    return () => {
+      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [isOpen, isPositioned]);
 
   // Format time for display
   const formatDisplayTime = (time) => {
@@ -319,20 +385,34 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
   };
 
   const handleHourClick = (hour) => {
-    handleTimeChange(hour, minutes);
+    selectedHourRef.current = hour;
+    setLocalHours(hour);
+    handleTimeChange(hour, localMinutes);
     setMode('minutes'); // Switch to minutes after selecting hour
   };
 
   const handleMinuteClick = (minute) => {
-    handleTimeChange(hours, minute);
+    const hourToUse = selectedHourRef.current ?? localHours;
+    setLocalMinutes(minute);
+    handleTimeChange(hourToUse, minute);
     // Close popup after selecting minute
     setIsOpen(false);
+    // Notify parent that time is fully selected (hours + minutes)
+    if (onTimeComplete) {
+      onTimeComplete(formatTime(hourToUse, minute));
+    }
   };
 
   const handleNow = () => {
     const now = new Date();
+    selectedHourRef.current = now.getHours();
+    setLocalHours(now.getHours());
+    setLocalMinutes(now.getMinutes());
     onChange(formatTime(now.getHours(), now.getMinutes()));
     setIsOpen(false);
+    if (onTimeComplete) {
+      onTimeComplete(formatTime(now.getHours(), now.getMinutes()));
+    }
   };
 
   const handleClear = () => {
@@ -343,7 +423,9 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
   // Get clock number positions (12 numbers around circle)
   const getClockPosition = (number, total = 12) => {
     // Pozice: 12 je nahoře (0°), čísla jdou po směru hodinových ručiček
-    const angle = ((number === 0 ? 12 : number) * 360 / total - 90) * Math.PI / 180;
+    // Normalizuj do rozsahu 0..(total-1) aby 12 bylo nahoře
+    const normalizedNumber = ((number % total) + total) % total;
+    const angle = (normalizedNumber * 360 / total - 90) * Math.PI / 180;
     const radius = 75; // Distance from center (zvětšeno z 55 na 75 pro 200px ciferník)
     return {
       left: `calc(50% + ${Math.cos(angle) * radius}px - 18px)`, // -18px pro 36px široká tlačítka
@@ -357,7 +439,7 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
       // 24-hodinový formát: 0-23
       // CSS rotate: 0° je vpravo, 90° je dole, 180° vlevo, 270° nahoře (-90°)
       // Chceme, aby 12/0 hodin bylo nahoře (-90° nebo 270°)
-      const hour12 = hours % 12; // 0-11
+      const hour12 = localHours % 12; // 0-11
       // Pro 12/0 chceme -90° (270°), pro 1 chceme -60° (300°), pro 2 chceme -30° (330°)
       // Pro 3 chceme 0°, pro 6 chceme 90°, pro 9 chceme 180°, pro 11 chceme -120° (240°)
       const angle = hour12 * 30 - 90;
@@ -365,7 +447,7 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
     } else {
       // Minuty: 0-59
       // 0 minut ukazuje nahoru (na 12), pak po směru hodinových ručiček
-      const angle = Math.floor(minutes / 5) * 30 - 90;
+      const angle = Math.floor(localMinutes / 5) * 30 - 90;
       return angle;
     }
   };
@@ -384,6 +466,7 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
           disabled={disabled}
           hasError={hasError}
           hasValue={!!value}
+          data-time-input="true"
         >
           {formatDisplayTime(value)}
         </TimeInputButton>
@@ -417,8 +500,15 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
         )}
       </InputWithIcon>
 
-      {isOpen && !disabled && (
-        <TimePopup>
+      {isOpen && !disabled && createPortal(
+        <TimePopup
+          ref={popupRef}
+          $isPositioned={isPositioned}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
           {/* Levá strana - Ciferník */}
           <ClockFace>
             <ClockCenter />
@@ -440,8 +530,8 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
                     <ClockNumber
                       key={`outer-${i}`}
                       onClick={() => handleHourClick(hour)}
-                      isSelected={hours === hour}
-                      style={getClockPosition(i === 0 ? 12 : i)}
+                      isSelected={localHours === hour}
+                      style={getClockPosition(i)}
                     >
                       {displayHour}
                     </ClockNumber>
@@ -453,12 +543,12 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
                   const hour = i; // 0, 1, 2, ..., 11
                   const displayHour = i === 0 ? '00' : i; // Zobraz 00 místo 0
                   const innerRadius = 38; // Menší radius pro vnitřní čísla (zvětšeno z 28 na 38)
-                  const angle = ((i === 0 ? 12 : i) * 360 / 12 - 90) * Math.PI / 180;
+                  const angle = (i * 360 / 12 - 90) * Math.PI / 180;
                   return (
                     <ClockNumber
                       key={`inner-${i}`}
                       onClick={() => handleHourClick(hour)}
-                      isSelected={hours === hour}
+                      isSelected={localHours === hour}
                       style={{
                         left: `calc(50% + ${Math.cos(angle) * innerRadius}px - 18px)`,
                         top: `calc(50% + ${Math.sin(angle) * innerRadius}px - 18px)`,
@@ -475,12 +565,13 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
               // Minuty: 0, 5, 10, 15, ..., 55
               [...Array(12)].map((_, i) => {
                 const minute = i * 5;
+                const displayMinute = minute.toString().padStart(2, '0');
                 return (
                   <ClockNumber
                     key={i}
                     onClick={() => handleMinuteClick(minute)}
-                    isSelected={Math.floor(minutes / 5) === i}
-                    style={getClockPosition(i === 0 ? 12 : i)}
+                    isSelected={Math.floor(localMinutes / 5) === i}
+                    style={getClockPosition(i)}
                   >
                     {minute === 0 ? '00' : String(minute).padStart(2, '0')}
                   </ClockNumber>
@@ -488,7 +579,8 @@ function TimePicker({ value, onChange, disabled = false, hasError = false, place
               })
             )}
           </ClockFace>
-        </TimePopup>
+        </TimePopup>,
+        document.body
       )}
     </TimePickerWrapper>
   );

@@ -10,6 +10,7 @@ import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboard
 import { getAdminMessagesUnreadCount } from '../services/notificationsApi';
 import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi';
 import { fetchMySubstitutions, fetchCurrentlySubstituting } from '../services/apiSubstitution';
+import * as planningApi from '../services/planningApi';
 import { theme } from '../theme/theme';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
@@ -42,6 +43,7 @@ import { Cloud, Sun, CloudRain, CloudSnow, CloudDrizzle, Wind, Droplets, MapPin,
 import { SmartTooltip } from '../styles/SmartTooltip';
 import DashboardPermissionsModal from '../components/dashboard/DashboardPermissionsModal';
 import SendQuickMessageModal from '../components/dashboard/SendQuickMessageModal';
+import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler);
 
@@ -167,6 +169,11 @@ const refreshFlashAnim = keyframes`
   0%, 100% { opacity: 0.75; }
   20%, 60%  { opacity: 0.05; }
   40%, 80%  { opacity: 1; }
+`;
+
+const tickerRoll = keyframes`
+  from { transform: translateY(var(--ticker-start, 0)); }
+  to { transform: translateY(-100%); }
 `;
 
 // ============================================================================
@@ -1542,6 +1549,215 @@ const WelcomeNameday = styled.div`
   color: #7c3aed;
   margin-top: 0.25rem;
   svg { margin-right: 0.3rem; }
+`;
+
+const WelcomeTickerRow = styled.div`
+  margin-top: 0.4rem;
+`;
+
+const PlanningTicker = styled.div`
+  margin-top: 0.55rem;
+  padding: 0.5rem 0.65rem;
+  border-radius: 10px;
+  border: 1px solid #b91c1c;
+  background: #991b1b;
+`;
+
+const PlanningTickerTitle = styled.div`
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #fde68a;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.35rem;
+`;
+
+const PlanningTickerRestart = styled.button`
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: #fde68a;
+  cursor: pointer;
+  padding: 0.1rem 0.2rem;
+  font-size: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+
+  &:hover {
+    background: rgba(253, 230, 138, 0.15);
+  }
+`;
+
+const PlanningTickerViewport = styled.div`
+  max-height: calc(1.35em * 3 + 0.2rem);
+  overflow: hidden;
+  position: relative;
+`;
+
+const PlanningTickerContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  animation: ${tickerRoll} var(--ticker-duration, 16s) linear forwards;
+  will-change: transform;
+`;
+
+const PlanningTickerItem = styled.div`
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #fde68a;
+  padding-top: 0.4rem;
+  border-top: 1px solid rgba(253, 230, 138, 0.35);
+
+  &:first-of-type {
+    padding-top: 0;
+    border-top: none;
+  }
+
+  p, ul, ol {
+    margin: 0;
+    padding: 0;
+  }
+
+  ul, ol {
+    padding-left: 1.1rem;
+  }
+`;
+
+const PlanningTickerItemTitle = styled.div`
+  font-weight: 700;
+  font-size: 0.78rem;
+  color: #fde68a;
+  margin-bottom: 0.1rem;
+`;
+
+const PlanningTickerHtml = styled.div`
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: #fde68a;
+`;
+
+const EventCard = styled.div`
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 0.85rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  background: #f8fafc;
+`;
+
+const EventMeta = styled.div`
+  font-size: 0.72rem;
+  color: #64748b;
+`;
+
+const EventName = styled.div`
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+`;
+
+const EventDescription = styled.div`
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: #334155;
+
+  p { margin: 0 0 0.35rem; }
+  ul, ol { margin: 0 0 0.35rem; padding-left: 1.1rem; }
+`;
+
+const EventTerms = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+`;
+
+const EventTermRow = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.6rem;
+  border-radius: 10px;
+  background: ${p => p.$selected ? '#eef2ff' : '#ffffff'};
+  border: 1px solid ${p => p.$selected ? '#93c5fd' : '#e2e8f0'};
+`;
+
+const EventTermLabel = styled.div`
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0f172a;
+`;
+
+const EventTermStatus = styled.div`
+  font-size: 0.72rem;
+  color: #475569;
+`;
+
+const EventActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+`;
+
+const EventActionButton = styled.button`
+  border: none;
+  border-radius: 999px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: ${p => p.$variant === 'decline' ? '#991b1b' : '#166534'};
+  background: ${p => p.$variant === 'decline' ? '#fee2e2' : '#dcfce7'};
+  opacity: ${p => p.disabled ? 0.5 : 1};
+  cursor: ${p => p.disabled ? 'not-allowed' : 'pointer'};
+  transition: transform 0.12s, box-shadow 0.12s, background 0.2s;
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.12);
+  }
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+`;
+
+const flashAccept = keyframes`
+  0%   { background: #dcfce7; box-shadow: 0 0 0 3px rgba(22,163,74,0.45); }
+  60%  { background: #bbf7d0; box-shadow: 0 0 0 6px rgba(22,163,74,0.25); }
+  100% { background: #ffffff; box-shadow: 0 0 0 0 rgba(22,163,74,0); }
+`;
+
+const flashDecline = keyframes`
+  0%   { background: #fee2e2; box-shadow: 0 0 0 3px rgba(220,38,38,0.45); }
+  60%  { background: #fecaca; box-shadow: 0 0 0 6px rgba(220,38,38,0.25); }
+  100% { background: #ffffff; box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+`;
+
+const EventTermFlash = styled.div`
+  animation: ${p => p.$type === 'accepted' ? flashAccept : flashDecline} 1.2s ease-out;
+  border-radius: 10px;
+`;
+
+const EventTermNoteInput = styled.textarea`
+  width: 100%;
+  min-height: 48px;
+  resize: vertical;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.72rem;
+  font-family: inherit;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  outline: none;
+  &:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59,130,246,0.15);
+  }
 `;
 
 const WelcomeDivider = styled.hr`
@@ -3593,6 +3809,14 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
   const today = new Date();
   const [viewYear, setViewYear]   = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const [calendarEvents, setCalendarEvents] = useState([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarError, setCalendarError] = useState(false);
+  const [panelDayKey, setPanelDayKey] = useState(null);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [termNotes, setTermNotes] = useState({}); // { [termId]: 'poznamka' }
+  const [flashState, setFlashState] = useState({}); // { [termId]: 'accepted' | 'declined' }
+  const [toast, setToast] = useState(null); // { type, message }
 
   // Zjisti, zda datum (rok, měsíc, den) spadá do rozsahu zastupování
   const checkDay = (year, month, day) => {
@@ -3606,6 +3830,148 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
     return { asZastupovany, asZastupce };
   };
 
+  const parseSqlDateTime = (value) => {
+    if (!value) return null;
+    if (value.length === 10) {
+      const d = new Date(`${value}T00:00:00`);
+      return isNaN(d) ? null : d;
+    }
+    const d = new Date(value.replace(' ', 'T'));
+    return isNaN(d) ? null : d;
+  };
+
+  const formatCzDate = (dateStr) => {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}.${m}.${y}`;
+  };
+
+  const formatCzDateTime = (value) => {
+    const d = parseSqlDateTime(value);
+    if (!d) return '';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+  };
+
+  const formatResponseLabel = (value) => {
+    if (value === 'accepted') return 'Akceptováno';
+    if (value === 'declined') return 'Odmítnuto';
+    return value || '—';
+  };
+
+  const getTermLabel = (term) => {
+    if (!term?.dt_od) return 'Termín';
+    const start = formatCzDateTime(term.dt_od);
+    const end = term.dt_do ? formatCzDateTime(term.dt_do) : '';
+    return end ? `${start} – ${end}` : start;
+  };
+
+  const getResponseDeadline = (event, term) => {
+    if (term?.deadline) {
+      return parseSqlDateTime(term.deadline);
+    }
+    const start = parseSqlDateTime(term?.dt_od || event?.dt_od);
+    if (!start) return null;
+    const end = parseSqlDateTime(term?.dt_do);
+    const created = parseSqlDateTime(event?.dt_vytvoreno || event?.dt_create || event?.dt_created);
+    const startDate = new Date(start);
+    // Pravidla (vztažena k dt_od termínu):
+    // - událost vytvořená ten samý den jako dt_od => dt_od - 1h
+    // - vícedenní (konec je jiný den než začátek)  => dt_od - 24h
+    // - jednodenní (default)                        => dt_od - 12h
+    const isMultiDay = end && startDate.toDateString() !== new Date(end).toDateString();
+    const sameDayCreated = created && new Date(created).toDateString() === startDate.toDateString();
+
+    let deadline = new Date(startDate);
+    if (sameDayCreated) {
+      deadline.setHours(deadline.getHours() - 1);
+    } else if (isMultiDay) {
+      deadline.setHours(deadline.getHours() - 24);
+    } else {
+      deadline.setHours(deadline.getHours() - 12);
+    }
+    return deadline;
+  };
+
+  const canChangeResponse = (event, term) => {
+    if (term?.can_change !== undefined && term?.can_change !== null) {
+      return Boolean(term.can_change);
+    }
+    const deadline = getResponseDeadline(event, term);
+    if (!deadline) return true;
+    return new Date() <= deadline;
+  };
+
+  const handleRespond = async (event, term, type) => {
+    if (!term?.id || !(typeof term.id === 'number' || /^\d+$/.test(String(term.id)))) {
+      setToast({ type: 'error', message: 'Termín nemá platné ID' });
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    const terminId = Number(term.id);
+    const poznamka = (termNotes[terminId] || '').trim();
+    try {
+      await planningApi.respondToEvent({
+        id: event.id,
+        termin_id: terminId,
+        typ_odpovedi: type,
+        poznamka
+      });
+
+      const dtOdpovedi = new Date().toISOString();
+      const newResponse = { typ_odpovedi: type, poznamka, dt_odpovedi: dtOdpovedi, termin_id: terminId };
+
+      // Flash efekt
+      setFlashState(prev => ({ ...prev, [terminId]: `${type}-${Date.now()}` }));
+      setTimeout(() => {
+        setFlashState(prev => {
+          const copy = { ...prev };
+          delete copy[terminId];
+          return copy;
+        });
+      }, 1300);
+
+      // Toast hláška
+      setToast({
+        type,
+        message: type === 'accepted' ? '✓ Termín potvrzen' : '✕ Termín odmítnut'
+      });
+      setTimeout(() => setToast(null), 2200);
+
+      setCalendarEvents(prev => prev.map(ev => {
+        if (ev.id !== event.id) return ev;
+        const existingTerms = Array.isArray(ev.terminy) ? [...ev.terminy] : [];
+        const idx = existingTerms.findIndex(t => Number(t.id) === terminId);
+        if (idx >= 0) {
+          existingTerms[idx] = { ...existingTerms[idx], moje_odpoved: newResponse };
+        }
+        return { ...ev, terminy: existingTerms };
+      }));
+    } catch (error) {
+      console.error('❌ Chyba při odpovědi na termín:', error);
+      setToast({
+        type: 'error',
+        message: 'Nepodařilo se uložit odpověď: ' + (error?.response?.data?.message || error.message || 'neznámá chyba')
+      });
+      setTimeout(() => setToast(null), 3500);
+    }
+  };
+
+  const isTermOnSelectedDay = (term, event) => {
+    if (!panelDayKey) return false;
+    const selectedDate = new Date(`${panelDayKey}T00:00:00`);
+    const start = parseSqlDateTime(term?.dt_od || event?.dt_od);
+    if (!start) return false;
+    const end = parseSqlDateTime(term?.dt_do || event?.dt_do) || start;
+    const dayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const dayEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    return selectedDate >= dayStart && selectedDate <= dayEnd;
+  };
+
   const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
   const prevMonth = () => {
     if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
@@ -3616,11 +3982,88 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
     else setViewMonth(m => m + 1);
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    const fetchCalendar = async () => {
+      setCalendarLoading(true);
+      setCalendarError(false);
+      try {
+        const response = await planningApi.getCalendarEvents({
+          year: viewYear,
+          month: viewMonth + 1
+        });
+        if (!cancelled) {
+          setCalendarEvents(response.data || []);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCalendarEvents([]);
+          setCalendarError(true);
+        }
+      } finally {
+        if (!cancelled) setCalendarLoading(false);
+      }
+    };
+
+    fetchCalendar();
+    return () => { cancelled = true; };
+  }, [viewYear, viewMonth]);
+
   const firstDay = new Date(viewYear, viewMonth, 1);
   const lastDay  = new Date(viewYear, viewMonth + 1, 0);
   const startPad = (firstDay.getDay() + 6) % 7;
   const blanks = Array.from({ length: startPad });
   const days   = Array.from({ length: lastDay.getDate() }, (_, i) => i + 1);
+
+  const eventsByDate = useMemo(() => {
+    const map = {};
+    const toKey = (date) => {
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
+
+    (calendarEvents || []).forEach(event => {
+      const terms = Array.isArray(event.terminy) ? event.terminy : [];
+      if (terms.length === 0) {
+        return;
+      }
+
+      terms.forEach(term => {
+        const start = parseSqlDateTime(term.dt_od || event.dt_od);
+        if (!start) return;
+        const end = parseSqlDateTime(term.dt_do || event.dt_do) || start;
+        const dayStart = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+        const dayEnd = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+        for (let d = new Date(dayStart); d <= dayEnd; d.setDate(d.getDate() + 1)) {
+          if (d.getFullYear() !== viewYear || d.getMonth() !== viewMonth) continue;
+          const key = toKey(d);
+          if (!map[key]) map[key] = [];
+          map[key].push({ event, term });
+        }
+      });
+    });
+    return map;
+  }, [calendarEvents, viewMonth, viewYear]);
+
+  const panelEvents = useMemo(() => {
+    if (!panelDayKey) return [];
+    const pairs = eventsByDate[panelDayKey] || [];
+    const grouped = {};
+    pairs.forEach(({ event, term }) => {
+      if (!grouped[event.id]) {
+        grouped[event.id] = { event, terms: [] };
+      }
+      if (term) {
+        const exists = grouped[event.id].terms.some(t => t.id === term.id);
+        if (!exists) grouped[event.id].terms.push(term);
+      }
+    });
+    return Object.values(grouped);
+  }, [eventsByDate, panelDayKey]);
+
+  const panelDateLabel = panelDayKey ? formatCzDate(panelDayKey) : '';
 
   const isToday = (d) =>
     d === today.getDate() && viewMonth === today.getMonth() && viewYear === today.getFullYear();
@@ -3710,6 +4153,20 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
         </button>
       </div>
 
+      {(calendarLoading || calendarError) && (
+        <div style={{
+          fontSize: '0.7rem',
+          color: calendarError ? '#dc2626' : '#64748b',
+          background: calendarError ? '#fee2e2' : '#f1f5f9',
+          padding: '0.25rem 0.5rem',
+          borderRadius: '999px',
+          alignSelf: 'center',
+          marginBottom: '0.55rem'
+        }}>
+          {calendarError ? 'Kalendářní události se nepodařilo načíst' : 'Načítám události…'}
+        </div>
+      )}
+
       {/* Záhlaví dnů */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: '0.5rem' }}>
         {CAL_DAYS.map(d => (
@@ -3728,14 +4185,11 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           const { asZastupovany, asZastupce } = checkDay(viewYear, viewMonth, d);
           const hasZastupovany = asZastupovany.length > 0;
           const hasZastupce = asZastupce.length > 0;
+          const dayKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+          const dayEvents = eventsByDate[dayKey] || [];
+          const hasEvents = dayEvents.length > 0;
 
           // Sestavení tooltip textu
-          const formatCzDate = (dateStr) => {
-            if (!dateStr) return '';
-            const [y, m, d] = dateStr.split('-');
-            return `${d}.${m}.${y}`;
-          };
-          
           let tooltipLines = [];
           asZastupovany.forEach(s => {
             const jmeno = s.zastupce?.jmeno
@@ -3759,7 +4213,18 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
             if (telefon) line += `\nTelefon: ${telefon}`;
             tooltipLines.push(line);
           });
+          if (hasEvents) {
+            if (tooltipLines.length > 0) tooltipLines.push('---');
+            dayEvents.forEach(({ event, term }) => {
+              const resp = term?.moje_odpoved?.typ_odpovedi;
+              let line = `Událost: ${event.nazev}`;
+              if (term?.dt_od) line += `\nTermín: ${getTermLabel(term)}`;
+              if (resp) line += `\nOdpověď: ${formatResponseLabel(resp)}`;
+              tooltipLines.push(line);
+            });
+          }
           const tooltipText = tooltipLines.join('\n');
+          const hasTooltip = tooltipText.length > 0;
 
           // Barvy - dnes má přednost (modrá), pak zastupovany (tyrkys), pak zastupce (fialová)
           let bg = 'transparent';
@@ -3780,25 +4245,70 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
             bg = '#7c3aed'; color = '#fff';
             boxShadow = '0 2px 8px rgba(124,58,237,0.3)';
           }
+          // Agregovana barva podle odpovedi termin u na danem dni:
+          // vsechny accepted -> zelena, vsechny declined -> cervena, jinak oranzova
+          let dotColor = '#f97316'; // oranzova = bez stavu / smisene
+          let outlineColor = '#f97316';
+          if (hasEvents) {
+            const responses = dayEvents.map(({ term }) => term?.moje_odpoved?.typ_odpovedi).filter(Boolean);
+            if (responses.length === dayEvents.length && responses.length > 0) {
+              if (responses.every(r => r === 'accepted')) {
+                dotColor = '#16a34a';
+                outlineColor = '#16a34a';
+              } else if (responses.every(r => r === 'declined')) {
+                dotColor = '#dc2626';
+                outlineColor = '#dc2626';
+              }
+            }
+          }
+
+          if (hasEvents && !today_) {
+            outline = `2px solid ${outlineColor}`;
+          }
+
+          const dayButton = (
+            <button
+              style={{
+                width: '2rem', height: '2rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: '50%', border: 'none',
+                cursor: hasEvents ? 'pointer' : (hasZastupovany || hasZastupce) ? 'help' : 'default',
+                fontSize: '0.82rem', fontWeight: (today_ || hasZastupovany || hasZastupce || hasEvents) ? 700 : 500,
+                background: bg, color, boxShadow, outline,
+                transition: 'background 0.12s, color 0.12s'
+              }}
+              onClick={() => {
+                if (hasEvents) {
+                  setPanelDayKey(dayKey);
+                  setPanelOpen(true);
+                }
+              }}
+              onMouseEnter={e => { if (!today_ && !hasZastupovany && !hasZastupce && !hasEvents) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#3b82f6'; } }}
+              onMouseLeave={e => { if (!today_ && !hasZastupovany && !hasZastupce && !hasEvents) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151'; } }}
+            >
+              {d}
+            </button>
+          );
 
           return (
             <div key={d} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-              <button
-                title={tooltipText || undefined}
-                style={{
-                  width: '2rem', height: '2rem',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: '50%', border: 'none',
-                  cursor: (hasZastupovany || hasZastupce) ? 'help' : 'default',
-                  fontSize: '0.82rem', fontWeight: (today_ || hasZastupovany || hasZastupce) ? 700 : 500,
-                  background: bg, color, boxShadow,
-                  transition: 'background 0.12s, color 0.12s'
-                }}
-                onMouseEnter={e => { if (!today_ && !hasZastupovany && !hasZastupce) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#3b82f6'; } }}
-                onMouseLeave={e => { if (!today_ && !hasZastupovany && !hasZastupce) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151'; } }}
-              >
-                {d}
-              </button>
+              {hasTooltip ? (
+                <SmartTooltip text={tooltipText} icon="info" multiline preferredPosition="top">
+                  {dayButton}
+                </SmartTooltip>
+              ) : dayButton}
+              {hasEvents && (
+                <span style={{
+                  position: 'absolute',
+                  bottom: '-1px',
+                  right: '8px',
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  background: dotColor,
+                  boxShadow: '0 0 0 2px #fff'
+                }} />
+              )}
             </div>
           );
         })}
@@ -3821,12 +4331,143 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           )}
         </div>
       )}
+
+      {panelOpen && (
+        <SlideInDetailPanel
+          isOpen={panelOpen}
+          onClose={() => setPanelOpen(false)}
+          entityType="planning_event"
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div>
+              <EventName>Události {panelDateLabel}</EventName>
+              <EventMeta>{panelEvents.length} položek</EventMeta>
+            </div>
+
+            {panelEvents.length === 0 && (
+              <EventMeta>Žádné události v tento den.</EventMeta>
+            )}
+
+            {panelEvents.map(({ event }) => {
+              const authorName = [event.autor_jmeno, event.autor_prijmeni].filter(Boolean).join(' ');
+              const description = event.popis_html || event.popis || '';
+              // Tlačítka Potvrdit/Odmítnout VŽDY zobrazit – uživatel musí mít možnost
+              // reagovat ke každému termínu (disabled stav řeší canChange podle deadline).
+              const requiresResponse = true;
+              const displayTerms = Array.isArray(event.terminy) ? [...event.terminy] : [];
+              if (displayTerms.length === 0) {
+                return null;
+              }
+
+              displayTerms.sort((a, b) => {
+                const aSelected = isTermOnSelectedDay(a, event) ? 0 : 1;
+                const bSelected = isTermOnSelectedDay(b, event) ? 0 : 1;
+                if (aSelected !== bSelected) return aSelected - bSelected;
+                return (a?.poradi ?? 0) - (b?.poradi ?? 0);
+              });
+
+              return (
+                <EventCard key={event.id}>
+                  <EventMeta>
+                    {authorName ? `Autor: ${authorName}` : 'Autor neuveden'}
+                  </EventMeta>
+                  <EventName>{event.nazev}</EventName>
+                  {description && (
+                    <EventDescription dangerouslySetInnerHTML={{ __html: description }} />
+                  )}
+
+                  <EventTerms>
+                    {displayTerms.map(term => {
+                      const response = term?.moje_odpoved?.typ_odpovedi;
+                      const responseTime = term?.moje_odpoved?.dt_odpovedi;
+                      const deadline = getResponseDeadline(event, term);
+                      const canChange = requiresResponse ? canChangeResponse(event, term) : false;
+                      const termLabel = getTermLabel(term);
+                      const isSelected = isTermOnSelectedDay(term, event);
+                      const flashKey = flashState[term.id];
+                      const flashType = flashKey ? flashKey.split('-')[0] : null;
+
+                      const rowContent = (
+                        <EventTermRow key={term.id} $selected={isSelected}>
+                          <EventTermLabel>
+                            {termLabel}
+                            {isSelected && <span style={{ color: '#1d4ed8' }}> (vybráno)</span>}
+                          </EventTermLabel>
+                          <EventTermStatus>
+                            Odpověď: {formatResponseLabel(response)}
+                            {responseTime ? ` • ${formatCzDateTime(responseTime)}` : ''}
+                          </EventTermStatus>
+                          {requiresResponse && deadline && (
+                            <EventMeta>{canChange ? `Změna do ${formatCzDateTime(deadline.toISOString())}` : 'Změna už není možná'}</EventMeta>
+                          )}
+                          {requiresResponse && (
+                            <>
+                              <EventTermNoteInput
+                                placeholder="Poznámka k odpovědi (nepovinné)"
+                                value={termNotes[term.id] ?? (term?.moje_odpoved?.poznamka || '')}
+                                onChange={(e) => setTermNotes(prev => ({ ...prev, [term.id]: e.target.value }))}
+                                disabled={!canChange}
+                              />
+                              <EventActions>
+                                <EventActionButton
+                                  type="button"
+                                  $variant="accept"
+                                  disabled={!canChange}
+                                  onClick={() => handleRespond(event, term, 'accepted')}
+                                >
+                                  Potvrdit
+                                </EventActionButton>
+                                <EventActionButton
+                                  type="button"
+                                  $variant="decline"
+                                  disabled={!canChange}
+                                  onClick={() => handleRespond(event, term, 'declined')}
+                                >
+                                  Odmítnout
+                                </EventActionButton>
+                              </EventActions>
+                            </>
+                          )}
+                        </EventTermRow>
+                      );
+
+                      return flashType ? (
+                        <EventTermFlash key={`flash-${term.id}-${flashKey}`} $type={flashType}>
+                          {rowContent}
+                        </EventTermFlash>
+                      ) : rowContent;
+                    })}
+                  </EventTerms>
+                </EventCard>
+              );
+            })}
+          </div>
+        </SlideInDetailPanel>
+      )}
+      {toast && (
+        <div style={{
+          position: 'fixed',
+          top: '1rem',
+          right: '1rem',
+          zIndex: 10000010,
+          background: toast.type === 'accepted' ? '#16a34a' : toast.type === 'declined' ? '#dc2626' : '#334155',
+          color: '#fff',
+          padding: '0.7rem 1.1rem',
+          borderRadius: '10px',
+          boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          animation: 'slideInRight 0.25s ease-out'
+        }}>
+          {toast.message}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Vítejte ──────────────────────────────────────────────────────────────────
-function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, navigate, substituting, mySubstitutions }) {
+function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogin, myStats, navigate, substituting, mySubstitutions }) {
   // Helper - formátování data do CZ formátu
   const formatCzDate = (dateStr) => {
     if (!dateStr) return '';
@@ -3834,6 +4475,45 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, 
     return `${d}.${m}.${y}`;
   };
 
+  const [planningMessages, setPlanningMessages] = useState([]);
+  const [tickerVisible, setTickerVisible] = useState(false);
+  const [tickerAnimating, setTickerAnimating] = useState(false);
+  const [tickerKey, setTickerKey] = useState(0);
+  const tickerTimerRef = useRef(null);
+  const activeMessagesRef = useRef([]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPlanningMessages = async () => {
+      try {
+        const response = await planningApi.getMessagesList({ page: 1, per_page: 200 });
+        if (!isMounted) return;
+        setPlanningMessages(Array.isArray(response?.data) ? response.data : []);
+      } catch (error) {
+        if (!isMounted) return;
+        console.error('❌ [Dashboard] Chyba načítání plánovaných zpráv:', error);
+        setPlanningMessages([]);
+      }
+    };
+
+    loadPlanningMessages();
+    const refreshTimer = setInterval(loadPlanningMessages, 5 * 60 * 1000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(refreshTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (tickerTimerRef.current) {
+        clearTimeout(tickerTimerRef.current);
+      }
+    };
+  }, []);
+  
   // Detekce capability-based rolí (jen pokud je admin nebo má speciální oprávnění)
   const roleLabels = [];
   if (rolesDetected?.is_admin) roleLabels.push('Administrátor');
@@ -3888,6 +4568,127 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, 
 
   const today = new Date();
   const dayNames = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
+
+  const parseSqlDateTime = (value) => {
+    if (!value) return null;
+    if (value instanceof Date && !isNaN(value)) return value;
+    const raw = String(value).trim();
+    if (!raw) return null;
+
+    if (raw.includes('T')) {
+      const parsed = new Date(raw);
+      return isNaN(parsed) ? null : parsed;
+    }
+
+    const parts = raw.split(' ');
+    if (parts.length >= 2) {
+      const parsed = new Date(`${parts[0]}T${parts[1]}`);
+      return isNaN(parsed) ? null : parsed;
+    }
+
+    const parsed = new Date(`${raw}T00:00:00`);
+    return isNaN(parsed) ? null : parsed;
+  };
+
+  const activePlanningMessages = useMemo(() => {
+    const now = new Date();
+    const userId = user?.id || user?.user_id || userDetail?.id;
+    const userRolesSource = Array.isArray(user?.roles) && user.roles.length > 0
+      ? user.roles
+      : (Array.isArray(userDetail?.roles) ? userDetail.roles : []);
+    const userRoleCodes = userRolesSource.map(r => r.kod_role).filter(Boolean);
+
+    return (planningMessages || [])
+      .filter(msg => {
+        const dtOd = parseSqlDateTime(msg.dt_od);
+        const dtDo = parseSqlDateTime(msg.dt_do);
+        const inTime = (!dtOd || dtOd <= now) && (!dtDo || dtDo >= now);
+        if (!inTime) return false;
+
+        const roleCodes = msg.prijemci_role_kody || msg.prijemci_role_codes || [];
+        const userIds = msg.prijemci_user_ids || [];
+
+        if (!roleCodes.length && !userIds.length) return true;
+
+        const matchRole = userRoleCodes.some(code => roleCodes.includes(code));
+        const matchUser = userId && userIds.some(id => Number(id) === Number(userId));
+
+        return matchRole || matchUser;
+      })
+      .sort((a, b) => {
+        const aTime = parseSqlDateTime(a.dt_od)?.getTime() || 0;
+        const bTime = parseSqlDateTime(b.dt_od)?.getTime() || 0;
+        return aTime - bTime;
+      });
+  }, [planningMessages, user, userDetail]);
+
+  useEffect(() => {
+    activeMessagesRef.current = activePlanningMessages;
+  }, [activePlanningMessages]);
+
+  const tickerDuration = Math.max(16, activePlanningMessages.length * 10);
+
+  const beginAnimation = useCallback((delayMs) => {
+    if (tickerTimerRef.current) {
+      clearTimeout(tickerTimerRef.current);
+    }
+
+    setTickerAnimating(false);
+    tickerTimerRef.current = setTimeout(() => {
+      if (activeMessagesRef.current.length === 0) {
+        setTickerVisible(false);
+        return;
+      }
+
+      setTickerAnimating(true);
+      setTickerKey(prev => prev + 1);
+    }, delayMs);
+  }, []);
+
+  const startTickerCycle = useCallback((delayMs = 300) => {
+    setTickerVisible(true);
+    beginAnimation(delayMs);
+  }, [beginAnimation]);
+
+  useEffect(() => {
+    if (activePlanningMessages.length === 0) {
+      setTickerVisible(false);
+      if (tickerTimerRef.current) {
+        clearTimeout(tickerTimerRef.current);
+      }
+      setTickerAnimating(false);
+      return;
+    }
+
+    if (!tickerVisible) {
+      startTickerCycle();
+    }
+  }, [activePlanningMessages, startTickerCycle, tickerVisible]);
+
+  const handleTickerEnd = () => {
+    setTickerAnimating(false);
+    if (tickerTimerRef.current) {
+      clearTimeout(tickerTimerRef.current);
+    }
+    tickerTimerRef.current = setTimeout(() => {
+      if (activeMessagesRef.current.length > 0) {
+        startTickerCycle(300);
+      }
+    }, 5 * 60 * 1000);
+  };
+
+  const restartTickerNow = () => {
+    if (tickerTimerRef.current) {
+      clearTimeout(tickerTimerRef.current);
+    }
+    if (activeMessagesRef.current.length === 0) {
+      setTickerVisible(false);
+      setTickerAnimating(false);
+      return;
+    }
+    setTickerVisible(true);
+    beginAnimation(150);
+  };
 
   const NEWS_ICON_MAP = {
     'shopping-cart': { icon: faShoppingCart, color: '#2563eb', bg: '#dbeafe' },
@@ -3959,6 +4760,40 @@ function WelcomeWidget({ user, rolesDetected, nameday, newsSinceLogin, myStats, 
           )}
         </WelcomeInfo>
       </WelcomeRow>
+
+      {tickerVisible && activePlanningMessages.length > 0 && (
+        <WelcomeTickerRow>
+          <PlanningTicker>
+            <PlanningTickerTitle>
+              <FontAwesomeIcon icon={faInfoCircle} />
+              Informační zprávy
+              <PlanningTickerRestart type="button" onClick={restartTickerNow} title="Znovu spustit rolování">
+                <FontAwesomeIcon icon={faSync} />
+              </PlanningTickerRestart>
+            </PlanningTickerTitle>
+            <PlanningTickerViewport>
+              <PlanningTickerContent
+                key={tickerKey}
+                style={{
+                  '--ticker-duration': `${tickerDuration}s`,
+                  '--ticker-start': 'calc(100% + 2em)',
+                  ...(tickerAnimating
+                    ? {}
+                    : { opacity: 0, animation: 'none', transform: 'translateY(var(--ticker-start))' })
+                }}
+                onAnimationEnd={tickerAnimating ? handleTickerEnd : undefined}
+              >
+                {activePlanningMessages.map((msg, idx) => (
+                  <PlanningTickerItem key={msg.id || idx}>
+                    {msg.nazev && <PlanningTickerItemTitle>{msg.nazev}</PlanningTickerItemTitle>}
+                    <PlanningTickerHtml dangerouslySetInnerHTML={{ __html: msg.obsah || '' }} />
+                  </PlanningTickerItem>
+                ))}
+              </PlanningTickerContent>
+            </PlanningTickerViewport>
+          </PlanningTicker>
+        </WelcomeTickerRow>
+      )}
 
       {/* Moje přehled – statistiky */}
       {myStats && !myStats.error && (
@@ -7178,7 +8013,7 @@ export default function DashboardPage() {
 
     switch (tileId) {
       case 'welcome':
-        content = <WelcomeWidget user={data?.user} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} myStats={data?.my_stats} navigate={navigate} substituting={substituting} mySubstitutions={mySubstitutions} />;
+        content = <WelcomeWidget user={data?.user} userDetail={userDetail} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} myStats={data?.my_stats} navigate={navigate} substituting={substituting} mySubstitutions={mySubstitutions} />;
         break;
       case 'orders_stats':
         content = <OrderStatsWidget stats={data?.orders_stats} navigate={navigate} />;
