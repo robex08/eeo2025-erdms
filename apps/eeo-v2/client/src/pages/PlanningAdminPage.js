@@ -9,6 +9,8 @@ import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import * as planningApi from '../services/planningApi';
 import { prettyDate } from '../utils/format';
+import DatePicker from '../components/DatePicker';
+import TimePicker from '../components/TimePicker';
 
 // =============================================================================
 // STYLED COMPONENTS
@@ -321,6 +323,13 @@ const FormGroup = styled.div`
   }
 `;
 
+const FormRow = styled.div`
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+`;
+
 const Label = styled.label`
   display: block;
   margin-bottom: 0.4rem;
@@ -486,8 +495,10 @@ const PlanningAdminPage = () => {
     nazev: '',
     obsah: '', // pro zprávy
     popis: '', // pro události
-    dt_od: '',
-    dt_do: '',
+    dt_od_date: '',
+    dt_od_time: '',
+    dt_do_date: '',
+    dt_do_time: '',
     prijemci: []
   });
   
@@ -556,8 +567,10 @@ const PlanningAdminPage = () => {
       nazev: '',
       obsah: '',
       popis: '',
-      dt_od: '',
-      dt_do: '',
+      dt_od_date: '',
+      dt_od_time: '',
+      dt_do_date: '',
+      dt_do_time: '',
       prijemci: []
     });
     setSelectedRoles([]);
@@ -567,12 +580,30 @@ const PlanningAdminPage = () => {
 
   const handleEdit = (item) => {
     setEditingItem(item);
+    
+    // Parse datetime do date a time
+    let dt_od_date = '', dt_od_time = '';
+    if (item.dt_od) {
+      const dtOd = new Date(item.dt_od);
+      dt_od_date = dtOd.toISOString().split('T')[0];
+      dt_od_time = dtOd.toTimeString().slice(0, 5);
+    }
+    
+    let dt_do_date = '', dt_do_time = '';
+    if (item.dt_do) {
+      const dtDo = new Date(item.dt_do);
+      dt_do_date = dtDo.toISOString().split('T')[0];
+      dt_do_time = dtDo.toTimeString().slice(0, 5);
+    }
+    
     setFormData({
       nazev: item.nazev || '',
       obsah: item.obsah || '',
       popis: item.popis || '',
-      dt_od: item.dt_od || '',
-      dt_do: item.dt_do || '',
+      dt_od_date,
+      dt_od_time,
+      dt_do_date,
+      dt_do_time,
       prijemci: item.prijemci || []
     });
     
@@ -600,8 +631,27 @@ const PlanningAdminPage = () => {
         }))
       ];
       
+      // Spojit date a time do datetime formátu pro backend
+      let dt_od = null;
+      if (formData.dt_od_date && formData.dt_od_time) {
+        dt_od = `${formData.dt_od_date} ${formData.dt_od_time}:00`;
+      } else if (formData.dt_od_date) {
+        dt_od = `${formData.dt_od_date} 00:00:00`;
+      }
+      
+      let dt_do = null;
+      if (formData.dt_do_date && formData.dt_do_time) {
+        dt_do = `${formData.dt_do_date} ${formData.dt_do_time}:00`;
+      } else if (formData.dt_do_date) {
+        dt_do = `${formData.dt_do_date} 23:59:59`;
+      }
+      
       const data = { 
-        ...formData,
+        nazev: formData.nazev,
+        obsah: formData.obsah,
+        popis: formData.popis,
+        dt_od,
+        dt_do,
         prijemci 
       };
 
@@ -786,23 +836,43 @@ const PlanningAdminPage = () => {
                 />
               </FormGroup>
 
-              <FormGroup>
-                <Label>Datum od</Label>
-                <Input
-                  type="datetime-local"
-                  value={formData.dt_od}
-                  onChange={(e) => setFormData({ ...formData, dt_od: e.target.value })}
-                />
-              </FormGroup>
+              <FormRow>
+                <div>
+                  <Label>Datum od</Label>
+                  <DatePicker
+                    value={formData.dt_od_date}
+                    onChange={(newDate) => setFormData({ ...formData, dt_od_date: newDate })}
+                    placeholder="Vyberte datum"
+                  />
+                </div>
+                <div>
+                  <Label>Čas od</Label>
+                  <TimePicker
+                    value={formData.dt_od_time}
+                    onChange={(newTime) => setFormData({ ...formData, dt_od_time: newTime })}
+                    placeholder="Vyberte čas"
+                  />
+                </div>
+              </FormRow>
 
-              <FormGroup>
-                <Label>Datum do</Label>
-                <Input
-                  type="datetime-local"
-                  value={formData.dt_do}
-                  onChange={(e) => setFormData({ ...formData, dt_do: e.target.value })}
-                />
-              </FormGroup>
+              <FormRow>
+                <div>
+                  <Label>Datum do</Label>
+                  <DatePicker
+                    value={formData.dt_do_date}
+                    onChange={(newDate) => setFormData({ ...formData, dt_do_date: newDate })}
+                    placeholder="Vyberte datum"
+                  />
+                </div>
+                <div>
+                  <Label>Čas do</Label>
+                  <TimePicker
+                    value={formData.dt_do_time}
+                    onChange={(newTime) => setFormData({ ...formData, dt_do_time: newTime })}
+                    placeholder="Vyberte čas"
+                  />
+                </div>
+              </FormRow>
 
               <FormGroup>
                 <Label>Role (příjemci)</Label>
