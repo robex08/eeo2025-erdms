@@ -487,8 +487,6 @@ const PlanningAdminPage = () => {
       popis: '',
       dt_od: '',
       dt_do: '',
-      pouzit_hierarchii: false,
-      hierarchy_profile_id: null,
       prijemci: []
     });
     setModalOpen(true);
@@ -502,8 +500,6 @@ const PlanningAdminPage = () => {
       popis: item.popis || '',
       dt_od: item.dt_od || '',
       dt_do: item.dt_do || '',
-      pouzit_hierarchii: item.pouzit_hierarchii === 1,
-      hierarchy_profile_id: item.hierarchy_profile_id || null,
       prijemci: item.prijemci || []
     });
     setModalOpen(true);
@@ -511,10 +507,7 @@ const PlanningAdminPage = () => {
 
   const handleSave = async () => {
     try {
-      const data = {
-        ...formData,
-        pouzit_hierarchii: formData.pouzit_hierarchii ? 1 : 0
-      };
+      const data = { ...formData };
 
       if (activeTab === 'messages') {
         if (editingItem) {
@@ -620,7 +613,6 @@ const PlanningAdminPage = () => {
                     <th>Datum od</th>
                     <th>Datum do</th>
                     <th>Příjemci</th>
-                    <th>Hierarchie</th>
                     <th>Akce</th>
                   </tr>
                 </thead>
@@ -638,15 +630,6 @@ const PlanningAdminPage = () => {
                   <td>{item.dt_do ? prettyDate(item.dt_do) : '-'}</td>
                   <td>
                     <Badge $type="user">{item.pocet_prijemcu || 0}</Badge>
-                  </td>
-                  <td>
-                    {item.pouzit_hierarchii === 1 ? (
-                      <Badge $type="role">
-                        <FontAwesomeIcon icon={faSitemap} /> {item.hierarchy_profile_nazev || 'Ano'}
-                      </Badge>
-                    ) : (
-                      '-'
-                    )}
                   </td>
                   <td>
                     <IconButton onClick={() => handleEdit(item)} title="Upravit">
@@ -726,34 +709,10 @@ const PlanningAdminPage = () => {
               </FormGroup>
 
               <FormGroup>
-                <CheckboxLabel>
-                  <Checkbox
-                    type="checkbox"
-                    checked={formData.pouzit_hierarchii}
-                    onChange={(e) => setFormData({ ...formData, pouzit_hierarchii: e.target.checked })}
-                  />
-                  <FontAwesomeIcon icon={faSitemap} style={{ marginRight: '0.25rem' }} />
-                  Použít organizační hierarchii
-                </CheckboxLabel>
-              </FormGroup>
-
-              {formData.pouzit_hierarchii && (
-                <FormGroup>
-                  <Label>Hierarchický profil</Label>
-                  <Select
-                    value={formData.hierarchy_profile_id || ''}
-                    onChange={(e) => setFormData({ ...formData, hierarchy_profile_id: parseInt(e.target.value) || null })}
-                  >
-                    <option value="">-- Vyberte profil --</option>
-                    {/* TODO: Načíst seznam hierarchických profilů z API */}
-                  </Select>
-                </FormGroup>
-              )}
-
-              <FormGroup>
                 <Label>Explicitní příjemci</Label>
                 <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  Výběr konkrétních uživatelů nebo rolí bude implementován v další verzi
+                  Výběr konkrétních uživatelů nebo rolí bude implementován v další verzi.
+                  Organizační hierarchie je řízena globálním nastavením systému.
                 </div>
               </FormGroup>
             </ModalBody>
