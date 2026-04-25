@@ -1,5 +1,22 @@
 # 📋 EEO Mobilní API - Seznam a Detail Objednávek
 
+> **📱 Pro mobilní vývojáře (iOS/Android)** - Kompletní dokumentace pro implementaci seznamu a detailu objednávek
+
+---
+
+## 🚨 **KRITICKÉ UPOZORNĚNÍ - PREVENCE CRASHŮ!**
+
+⚠️ **API vrací speciální formáty dat, které MUSÍTE bezpečně parsovat:**
+
+1. **`druh_objednavky_kod`** - JSON string → parsuj s `try/catch`
+2. **`fa_lp_kody`** - Speciální formát `LP-XXX|Název;;LP-YYY|Název2` → safe split
+3. **`fa_strediska_kod`** - JSON array jako string → parsuj s `try/catch`
+4. **Všechna pole** mohou být `null`, `undefined` nebo neočekávaného typu!
+
+👉 **VŽDY používej funkce z sekce [🛡️ OCHRANA PROTI CRASHŮM](#-ochrana-proti-crashům---safe-parsing)**
+
+---
+
 ## 🎯 **TŘÍSTUPŇOVÉ NAČÍTÁNÍ (LAZY LOADING)**
 
 Pro optimální výkon a minimální datový přenos:
@@ -160,6 +177,539 @@ function renderOrderType(order) {
 │ 📎 5 příloh  💬 12 komentářů         │
 └─────────────────────────────────────┘
 ```
+
+---
+
+## 🛡️ **OCHRANA PROTI CRASHŮM - SAFE PARSING**
+
+### ⚠️ **KRITICKÉ DŮLEŽITÉ - PREVENCE CRASHŮ MOBILNÍ APLIKACE!**
+
+**PROBLÉM:** Pokud backend přidá nová pole nebo změní formát dat, **mobilní aplikace může crashnout** kvůli:
+- Nečekaným `null` nebo `undefined` hodnotám
+- Chybějícím polím v objektech
+- Špatně naformátovanému JSON stringu
+- Neočekávaným datovým typům
+
+**ŘEŠENÍ:** Vždy používejte **defensive programming** s ochranou proti všem možným chybám!
+
+---
+
+### 🔒 **1. SAFE PARSING DRUHU OBJEDNÁVKY**
+
+**⚠️ PROBLÉM:** Pole `druh_objednavky_kod` je **JSON string**, který může být:
+- Validní JSON: `"{\"kod_stavu\":\"SLUZBY\",\"nazev_stavu\":\"Služby\"}"`
+- `null` nebo `undefined`
+- Nevalidní JSON (crash!)
+- Prázdný string
+
+**✅ ŘEŠENÍ:**
+```javascript
+/**
+ * 🛡️ SAFE parsování druhu objednávky
+ * @returns {kod: string, nazev: string} | null
+ */
+function safeParseDruhObjednavky(druh_objednavky_kod) {
+  // 1. Kontrola null/undefined
+  if (!druh_objednavky_kod) {
+    return null;
+  }
+
+  // 2. Kontrola typu (musí být string)
+  if (typeof druh_objednavky_kod !== 'string') {
+    console.warn('druh_objednavky_kod není string:', typeof druh_objednavky_kod);
+    return null;
+  }
+
+  // 3. Safe JSON parsing s try/catch
+  try {
+    const parsed = JSON.parse(druh_objednavky_kod);
+    
+    // 4. Validace struktury
+    if (!parsed || typeof parsed !== 'object') {
+      console.warn('druh_objednavky_kod není objekt:', parsed);
+      return null;
+    }
+
+    // 5. Validace povinných polí
+    if (!parsed.kod_stavu || !parsed.nazev_stavu) {
+      console.warn('Chybí povinná pole v druh_objednavky_kod:', parsed);
+      return null;
+    }
+
+    return {
+      kod: parsed.kod_stavu,      // "SLUZBY"
+      nazev: parsed.nazev_stavu   // "Služby"
+    };
+  } catch (error) {
+    console.error('Chyba při parsování druh_objednavky_kod:', error);
+    return null;
+  }
+}
+
+// ✅ POUŽITÍ:
+const order = getOrderFromAPI();
+const druh = safeParseDruhObjednavky(order.druh_objednavky_kod);
+
+if (druh) {
+  console.log(`Druh: ${druh.nazev} (${druh.kod})`);
+} else {
+  console.log('Druh objednávky není k dispozici');
+}
+```
+
+**📱 UI SAFE ZOBRAZENÍ:**
+```javascript
+function renderDruhObjednavky(order) {
+  // 1. Primární: Použij druh_objednavky_nazev (už je parsovaný v API)
+  const nazev = order?.druh_objednavky_nazev || 'Bez kategorie';
+  const atribut = order?.druh_objednavky_atribut ?? 0;
+  
+  // 2. Ikona podle atributu
+  const icon = atribut === 1 ? '🏠' : '📦';
+  
+  // 3. Badge pro majetek
+  const badge = atribut === 1 ? ' [MAJETEK]' : '';
+  
+  return `${icon} ${nazev}${badge}`;
+}
+
+// ✅ Výstup:
+// "📦 Služby"
+// "🏠 Elektronika [MAJETEK]"
+// "📦 Bez kategorie" (fallback)
+```
+
+---
+
+### 🔒 **2. SAFE PŘÍSTUP K POLOŽKÁM OBJEDNÁVKY**
+
+**⚠️ PROBLÉM:** Položky obsahují vnořené objekty a pole, která mohou být `null`:
+- `items` může být `undefined` nebo prázdné pole
+- LP kódy (`lppts_cislo`, `lppts_nazev`) mohou být `null`
+- Organizační struktura (`usek_kod`, `budova_kod`) může být neúplná
+
+**✅ ŘEŠENÍ:**
+```javascript
+/**
+ * 🛡️ SAFE zpracování položek objednávky
+ */
+function safeProcessOrderItems(itemsData) {
+  // 1. Kontrola existence dat
+  if (!itemsData || !itemsData.data) {
+    console.warn('Chybí data položek');
+    return [];
+  }
+
+  // 2. Kontrola pole items
+  const items = itemsData.data.items;
+  if (!Array.isArray(items)) {
+    console.warn('items není pole:', typeof items);
+    return [];
+  }
+
+  // 3. Safe zpracování každé položky
+  return items.map((item, index) => {
+    try {
+      return {
+        id: item?.id ?? null,
+        popis: item?.popis || 'Bez popisu',
+        
+        // Ceny - ALWAYS number, never null
+        cena_bez_dph: parseFloat(item?.cena_bez_dph) || 0,
+        sazba_dph: parseFloat(item?.sazba_dph) || 0,
+        cena_s_dph: parseFloat(item?.cena_s_dph) || 0,
+        
+        // LP kódy - SAFE přístup
+        lp: {
+          cislo: item?.lppts_cislo || null,
+          nazev: item?.lppts_nazev || null
+        },
+        
+        // Organizační struktura - SAFE přístup
+        organizace: {
+          usek: item?.usek_kod || null,
+          budova: item?.budova_kod || null,
+          mistnost: item?.mistnost_kod || null
+        },
+        
+        poznamka: item?.poznamka || null,
+        dt_vytvoreni: item?.dt_vytvoreni || null
+      };
+    } catch (error) {
+      console.error(`Chyba při zpracování položky ${index}:`, error);
+      return null; // Přeskočit vadnou položku
+    }
+  }).filter(item => item !== null); // Odstranit vadné položky
+}
+
+// ✅ POUŽITÍ:
+const itemsData = await fetchOrderDetail(orderId);
+const safeItems = safeProcessOrderItems(itemsData);
+
+safeItems.forEach(item => {
+  console.log(`${item.popis}: ${item.cena_s_dph} Kč`);
+  
+  // LP kód (může být null!)
+  if (item.lp.cislo) {
+    console.log(`  LP: ${item.lp.cislo} - ${item.lp.nazev}`);
+  }
+  
+  // Organizace (může být neúplná!)
+  const org = [item.organizace.usek, item.organizace.budova, item.organizace.mistnost]
+    .filter(Boolean)
+    .join(' / ');
+  if (org) {
+    console.log(`  Umístění: ${org}`);
+  }
+});
+```
+
+---
+
+### 🔒 **3. SAFE PARSING FAKTUR - LP KÓDY**
+
+**⚠️ PROBLÉM:** LP kódy faktur jsou ve speciálním formátu:
+- Formát: `"LP-2026-001|Název1;;LP-2026-002|Název2"`
+- Může být `null`, prázdný string nebo špatně naformátovaný
+- Separátor `|` může chybět
+- Separátor `;;` může chybět
+
+**✅ ŘEŠENÍ:**
+```javascript
+/**
+ * 🛡️ SAFE parsování LP kódů faktur
+ * @param {string|null} fa_lp_kody - String ve formátu "LP-X|Název;;LP-Y|Název"
+ * @returns {Array<{cislo: string, nazev: string}>}
+ */
+function safeParseInvoiceLpCodes(fa_lp_kody) {
+  // 1. Kontrola null/undefined
+  if (!fa_lp_kody) {
+    return [];
+  }
+
+  // 2. Kontrola typu
+  if (typeof fa_lp_kody !== 'string') {
+    console.warn('fa_lp_kody není string:', typeof fa_lp_kody);
+    return [];
+  }
+
+  // 3. Ošetření prázdného stringu
+  if (fa_lp_kody.trim() === '') {
+    return [];
+  }
+
+  try {
+    // 4. Split podle ;;
+    const lpParts = fa_lp_kody.split(';;');
+    
+    return lpParts
+      .map((lpStr, index) => {
+        try {
+          // 5. Split podle |
+          const parts = lpStr.split('|');
+          
+          // 6. Validace struktury
+          if (parts.length < 1) {
+            console.warn(`LP kód ${index}: Chybí číslo LP`);
+            return null;
+          }
+
+          const cislo = parts[0]?.trim() || '';
+          const nazev = parts[1]?.trim() || '(bez názvu)';
+
+          // 7. Validace čísla LP
+          if (!cislo || cislo === '') {
+            console.warn(`LP kód ${index}: Prázdné číslo LP`);
+            return null;
+          }
+
+          return {
+            cislo: cislo,     // "LP-2026-001"
+            nazev: nazev      // "Provozní náklady"
+          };
+        } catch (error) {
+          console.error(`Chyba při parsování LP kódu ${index}:`, error);
+          return null;
+        }
+      })
+      .filter(lp => lp !== null); // Odstranit vadné záznamy
+  } catch (error) {
+    console.error('Chyba při parsování fa_lp_kody:', error);
+    return [];
+  }
+}
+
+// ✅ POUŽITÍ:
+const invoice = getInvoiceFromAPI();
+const lpCodes = safeParseInvoiceLpCodes(invoice.fa_lp_kody);
+
+if (lpCodes.length > 0) {
+  console.log('LP kódy faktury:');
+  lpCodes.forEach(lp => {
+    console.log(`  ${lp.cislo}: ${lp.nazev}`);
+  });
+} else {
+  console.log('Faktura nemá přiřazené LP kódy');
+}
+```
+
+---
+
+### 🔒 **4. SAFE PARSING STŘEDISEK**
+
+**⚠️ PROBLÉM:** Střediska jsou JSON pole v textovém formátu:
+- Formát: `"[\"123\",\"456\"]"`
+- Může být `null`, prázdný string nebo nevalidní JSON
+
+**✅ ŘEŠENÍ:**
+```javascript
+/**
+ * 🛡️ SAFE parsování středisek
+ * @param {string|null} fa_strediska_kod - JSON string pole kódů
+ * @returns {Array<string>}
+ */
+function safeParseInvoiceStrediska(fa_strediska_kod) {
+  // 1. Kontrola null/undefined
+  if (!fa_strediska_kod) {
+    return [];
+  }
+
+  // 2. Kontrola typu
+  if (typeof fa_strediska_kod !== 'string') {
+    console.warn('fa_strediska_kod není string:', typeof fa_strediska_kod);
+    return [];
+  }
+
+  // 3. Ošetření prázdného stringu
+  if (fa_strediska_kod.trim() === '') {
+    return [];
+  }
+
+  try {
+    // 4. JSON parsing
+    const parsed = JSON.parse(fa_strediska_kod);
+    
+    // 5. Kontrola, že je to pole
+    if (!Array.isArray(parsed)) {
+      console.warn('fa_strediska_kod není pole:', typeof parsed);
+      return [];
+    }
+
+    // 6. Filtrování nevalidních hodnot
+    return parsed
+      .filter(kod => {
+        // Pouze string hodnoty
+        if (typeof kod !== 'string') {
+          console.warn('Středisko není string:', kod);
+          return false;
+        }
+        // Pouze neprázdné
+        if (kod.trim() === '') {
+          console.warn('Středisko je prázdný string');
+          return false;
+        }
+        return true;
+      })
+      .map(kod => kod.trim()); // Trim whitespace
+      
+  } catch (error) {
+    console.error('Chyba při parsování fa_strediska_kod:', error);
+    return [];
+  }
+}
+
+// ✅ POUŽITÍ:
+const invoice = getInvoiceFromAPI();
+const strediska = safeParseInvoiceStrediska(invoice.fa_strediska_kod);
+
+if (strediska.length > 0) {
+  console.log('Střediska: ' + strediska.join(', '));
+} else {
+  console.log('Faktura nemá přiřazená střediska');
+}
+```
+
+---
+
+### 🔒 **5. SAFE PARSING CELÉ FAKTURY**
+
+**✅ KOMPLETNÍ PŘÍKLAD - Bezpečné zpracování faktury:**
+```javascript
+/**
+ * 🛡️ SAFE zpracování celé faktury
+ */
+function safeProcessInvoice(invoice) {
+  if (!invoice || typeof invoice !== 'object') {
+    console.warn('Nevalidní faktura:', invoice);
+    return null;
+  }
+
+  try {
+    return {
+      // Základní údaje - ALWAYS defined
+      id: invoice?.id ?? null,
+      vs: invoice?.fa_cislo_vema || 'N/A',
+      vema_kod: invoice?.fa_vema_kod || null,
+      
+      // Částka - ALWAYS number
+      castka: parseFloat(invoice?.fa_castka) || 0,
+      
+      // Data - SAFE přístup
+      datum_vystaveni: invoice?.fa_datum_vystaveni || null,
+      datum_doruceni: invoice?.fa_datum_doruceni || null,
+      datum_splatnosti: invoice?.fa_datum_splatnosti || null,
+      
+      // Stav - SAFE default
+      stav: invoice?.stav || 'ZAEVIDOVANA',
+      
+      // Poznámka
+      poznamka: invoice?.fa_poznamka || null,
+      
+      // LP kódy - SAFE parsing
+      lp_kody: safeParseInvoiceLpCodes(invoice?.fa_lp_kody),
+      
+      // Střediska - SAFE parsing  
+      strediska: safeParseInvoiceStrediska(invoice?.fa_strediska_kod),
+      
+      // Uživatelé - SAFE formátování
+      vytvoril: safeFormatUserName('vytvoril', invoice),
+      potvrdil_vecnou_spravnost: safeFormatUserName('potvrdil_vecnou_spravnost', invoice),
+      
+      // Časové údaje
+      dt_vytvoreni: invoice?.dt_vytvoreni || null,
+      dt_potvrzeni_vecne_spravnosti: invoice?.dt_potvrzeni_vecne_spravnosti || null,
+      vecna_spravnost_poznamka: invoice?.vecna_spravnost_poznamka || null
+    };
+  } catch (error) {
+    console.error('Chyba při zpracování faktury:', error);
+    return null;
+  }
+}
+
+/**
+ * 🛡️ SAFE formátování jména uživatele
+ */
+function safeFormatUserName(prefix, invoice) {
+  try {
+    const jmeno = invoice?.[`${prefix}_jmeno`];
+    const prijmeni = invoice?.[`${prefix}_prijmeni`];
+    
+    if (!jmeno && !prijmeni) {
+      return null;
+    }
+
+    const parts = [];
+    
+    // Titul před
+    const titulPred = invoice?.[`${prefix}_titul_pred`];
+    if (titulPred && titulPred.trim() !== '') {
+      parts.push(titulPred);
+    }
+    
+    // Jméno
+    if (jmeno && jmeno.trim() !== '') {
+      parts.push(jmeno);
+    }
+    
+    // Příjmení
+    if (prijmeni && prijmeni.trim() !== '') {
+      parts.push(prijmeni);
+    }
+    
+    // Titul za
+    const titulZa = invoice?.[`${prefix}_titul_za`];
+    if (titulZa && titulZa.trim() !== '') {
+      parts.push(titulZa);
+    }
+    
+    return parts.length > 0 ? parts.join(' ') : null;
+  } catch (error) {
+    console.error(`Chyba při formátování uživatele ${prefix}:`, error);
+    return null;
+  }
+}
+
+// ✅ POUŽITÍ:
+const invoicesData = await fetchInvoices(orderId);
+const safeInvoices = (invoicesData?.data?.invoices || [])
+  .map(invoice => safeProcessInvoice(invoice))
+  .filter(invoice => invoice !== null);
+
+safeInvoices.forEach(invoice => {
+  console.log(`VS: ${invoice.vs}, Částka: ${invoice.castka} Kč`);
+  console.log(`Stav: ${invoice.stav}`);
+  
+  if (invoice.lp_kody.length > 0) {
+    console.log('LP kódy:');
+    invoice.lp_kody.forEach(lp => {
+      console.log(`  - ${lp.cislo}: ${lp.nazev}`);
+    });
+  }
+  
+  if (invoice.strediska.length > 0) {
+    console.log('Střediska: ' + invoice.strediska.join(', '));
+  }
+});
+```
+
+---
+
+### 🔒 **6. GENERAL SAFE PATTERNS**
+
+**✅ DOPORUČENÉ PRAKTIKY:**
+
+```javascript
+// ❌ ŠPATNĚ - crash při null:
+const nazev = order.dodavatel_nazev.toUpperCase();
+
+// ✅ SPRÁVNĚ - safe přístup:
+const nazev = order?.dodavatel_nazev?.toUpperCase() || 'N/A';
+
+// ❌ ŠPATNĚ - crash při non-array:
+const count = order.items.length;
+
+// ✅ SPRÁVNĚ - kontrola typu:
+const count = Array.isArray(order?.items) ? order.items.length : 0;
+
+// ❌ ŠPATNĚ - crash při non-number:
+const total = order.cena_s_dph + order.faktury_celkova_castka_s_dph;
+
+// ✅ SPRÁVNĚ - safe number parsing:
+const cena = parseFloat(order?.cena_s_dph) || 0;
+const faktury = parseFloat(order?.faktury_celkova_castka_s_dph) || 0;
+const total = cena + faktury;
+
+// ❌ ŠPATNĚ - crash při missing nested object:
+const email = order.garant.email;
+
+// ✅ SPRÁVNĚ - optional chaining:
+const email = order?.garant?.email || 'N/A';
+
+// ❌ ŠPATNĚ - crash při enum změně:
+const color = COLORS[invoice.stav];
+
+// ✅ SPRÁVNĚ - fallback hodnota:
+const color = COLORS[invoice?.stav] || '#6b7280'; // default gray
+```
+
+---
+
+### 📋 **CHECKLIST PRO SAFE CODING:**
+
+Před deploymentem mobilní aplikace zkontroluj:
+
+- [ ] **Všechny JSON.parse()** jsou v **try/catch** bloku
+- [ ] **Všechny array přístupy** mají kontrolu **Array.isArray()**
+- [ ] **Všechny object přístupy** používají **optional chaining (?.)** nebo **nullish coalescing (??)**
+- [ ] **Všechny number operace** mají **parseFloat()** nebo **Number()** s fallback na 0
+- [ ] **Všechny string operace** mají kontrolu **typeof === 'string'**
+- [ ] **Všechny .map()/.filter()** mají **.filter(Boolean)** pro odstranění null
+- [ ] **Všechny enum hodnoty** mají **fallback** pro neznámé hodnoty
+- [ ] **Všechny API response** mají validaci struktury dat
+- [ ] **Všechny error stavy** mají **console.error()** nebo logging
+- [ ] **UI zobrazuje fallback hodnoty** místo crash ("N/A", "Bez kategorie", atd.)
+
+---
 
 ### 🔍 **Filtrování podle druhu:**
 
@@ -1190,18 +1740,31 @@ Faktury obsahují **LP kódy** ve formátu:
 "LP-2026-001|Provozní náklady;;LP-2026-045|IT vybavení"
 ```
 
+**⚠️ UPOZORNĚNÍ:** Toto pole může být `null`, prázdný string nebo špatně naformátované!  
+👉 **Použij SAFE parsing funkci** z sekce [🛡️ OCHRANA PROTI CRASHŮM](#-ochrana-proti-crashům---safe-parsing)
+
 **Jak zpracovat v JavaScriptu:**
 ```javascript
-function parseInvoiceLpCodes(fa_lp_kody) {
-  if (!fa_lp_kody) return [];
-  
-  return fa_lp_kody.split(';;').map(lpStr => {
-    const [cislo, nazev] = lpStr.split('|');
-    return {
-      cislo: cislo,          // "LP-2026-001"
-      nazev: nazev || ''     // "Provozní náklady"
-    };
-  });
+// ✅ DOPORUČENÁ VERZE - s plnou ochranou (viz sekce výše)
+function safeParseInvoiceLpCodes(fa_lp_kody) {
+  if (!fa_lp_kody || typeof fa_lp_kody !== 'string' || fa_lp_kody.trim() === '') {
+    return [];
+  }
+
+  try {
+    return fa_lp_kody.split(';;').map(lpStr => {
+      const parts = lpStr.split('|');
+      const cislo = parts[0]?.trim() || '';
+      const nazev = parts[1]?.trim() || '(bez názvu)';
+      
+      if (!cislo) return null;
+      
+      return { cislo, nazev };
+    }).filter(lp => lp !== null);
+  } catch (error) {
+    console.error('Chyba při parsování fa_lp_kody:', error);
+    return [];
+  }
 }
 
 // Použití:
@@ -1209,7 +1772,7 @@ const invoice = {
   fa_lp_kody: "LP-2026-001|Provozní náklady;;LP-2026-045|IT vybavení"
 };
 
-const lpCodes = parseInvoiceLpCodes(invoice.fa_lp_kody);
+const lpCodes = safeParseInvoiceLpCodes(invoice.fa_lp_kody);
 console.log(lpCodes);
 /*
 [
@@ -1243,15 +1806,30 @@ Střediska jsou uložena jako **JSON pole v textovém formátu**:
 "[\"123\",\"456\"]"
 ```
 
+**⚠️ UPOZORNĚNÍ:** Toto pole může být `null`, prázdný string nebo nevalidní JSON!  
+👉 **Použij SAFE parsing funkci** z sekce [🛡️ OCHRANA PROTI CRASHŮM](#-ochrana-proti-crashům---safe-parsing)
+
 **Jak zpracovat:**
 ```javascript
-function parseInvoiceStrediska(fa_strediska_kod) {
-  if (!fa_strediska_kod) return [];
+// ✅ DOPORUČENÁ VERZE - s plnou ochranou (viz sekce výše)
+function safeParseInvoiceStrediska(fa_strediska_kod) {
+  if (!fa_strediska_kod || typeof fa_strediska_kod !== 'string' || fa_strediska_kod.trim() === '') {
+    return [];
+  }
   
   try {
-    return JSON.parse(fa_strediska_kod);  // ["123", "456"]
-  } catch (e) {
-    console.error('Chyba při parsování středisek:', e);
+    const parsed = JSON.parse(fa_strediska_kod);
+    
+    if (!Array.isArray(parsed)) {
+      console.warn('fa_strediska_kod není pole');
+      return [];
+    }
+safeP
+    return parsed
+      .filter(kod => typeof kod === 'string' && kod.trim() !== '')
+      .map(kod => kod.trim());
+  } catch (error) {
+    console.error('Chyba při parsování fa_strediska_kod:', error);
     return [];
   }
 }
