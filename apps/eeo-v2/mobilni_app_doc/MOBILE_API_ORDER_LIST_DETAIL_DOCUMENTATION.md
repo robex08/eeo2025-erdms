@@ -803,10 +803,18 @@ Content-Type: application/json
 | `token` | string | ✅ Ano | Autentizační token |
 | `username` | string | ✅ Ano | Email uživatele |
 | `page` | number | ❌ Ne | Číslo stránky (výchozí: 1) |
-| `per_page` | number | ❌ Ne | Počet záznamů na stránku (výchozí: 50, **mobil: 5**) |
+| `per_page` | number | ❌ Ne | Počet záznamů na stránku (výchozí: 50, **mobil: 20**) |
 | `year` | number | ❌ Ne | Rok objednávek (výchozí: aktuální rok) |
-| `filters` | object | ❌ Ne | Filtrování podle stavů, dodavatele, čísla obj. atd. |
+| `filters` | object | ❌ Ne | **Komplexní objekt filtrů** - viz sekce 🔍 FULLTEXT VYHLEDÁVÁNÍ |
 | `sorting` | array | ❌ Ne | Třídění výsledků |
+
+**⭐ DŮLEŽITÉ:** `filters` objekt podporuje:
+- `fulltext_search` - fulltext vyhledávání (⚡ nejdůležitější!)
+- `stav` - pole stavů objednávek
+- `dodavatel` - název dodavatele
+- `datum_od`, `datum_do` - datumový rozsah
+- `moje_objednavky`, `s_fakturou`, `s_prilohami` - boolean filtry
+- **Viz kompletní dokumentace níže** ↓
 
 ---
 
@@ -846,6 +854,296 @@ Content-Type: application/json
 - Vytvořte **toggle tlačítka nebo tagy** pro jednotlivé stavy
 - Po kliknutí na stav pošlete request s `filters.stav: ["KLIK_STAV"]`
 - Defaultně načtěte všechny stavy bez filtru
+
+---
+
+### 🔍 **FULLTEXT VYHLEDÁVÁNÍ** (⭐ NEJDŮLEŽITĚJŠÍ PRO MOBIL!)
+
+Backend implementuje **pokročilé fulltext vyhledávání** v těchto oblastech:
+
+#### **Co se prohledává:**
+
+1️⃣ **ZÁKLADNÍ ÚDAJE:**
+   - ✅ Číslo objednávky (`cislo_objednavky`)
+   - ✅ Předmět objednávky (`predmet`)
+   - ✅ Poznámka (`poznamka`)
+   - ✅ Název dodavatele (`dodavatel_nazev`)
+   - ✅ IČO dodavatele (`dodavatel_ico`)
+
+2️⃣ **UŽIVATELÉ** (jména + emaily):
+   - ✅ Objednatel, Garant, Příkazce, Schvalovatel
+   - ✅ Vytvořil, Aktualizoval, Odesilatel
+   - ✅ Zveřejnil, Fakturant, Dokončil, Potvrdil věcnou správnost
+
+3️⃣ **FAKTURY:**
+   - ✅ Číslo faktury VEMA (`fa_cislo_vema`)
+   - ✅ Poznámka faktury
+   - ✅ Věcná správnost - poznámka
+   - ✅ Umístění majetku
+   - ✅ Stav faktury (kód i název)
+
+4️⃣ **PŘÍLOHY:**
+   - ✅ Název souboru (`originalni_nazev_souboru`)
+   - ✅ Typ přílohy (OBJEDNAVKA, SCHVALENI, atd.)
+   - ✅ Přílohy faktur i objednávek
+
+5️⃣ **POLOŽKY:**
+   - ✅ Popis položky (`popis`)
+   - ✅ Poznámka k položce (`poznamka`)
+
+6️⃣ **FINANCOVÁNÍ:**
+   - ✅ LP kódy (číslo + název účtu)
+   - ✅ Smlouvy (číslo + individuální schválení)
+   - ✅ Pojistné události (číslo + poznámka)
+
+**⚡ VLASTNOSTI:**
+- ✅ **Case-insensitive** (velká/malá písmena)
+- ✅ **Bez diakritiky** ("Praha" = "praha" = "PRAHA")
+- ✅ **Částečná shoda** (stačí část slova)
+
+#### **📤 REQUEST s fulltextem:**
+
+```json
+{
+  "token": "...",
+  "username": "user@domain.cz",
+  "page": 1,
+  "per_page": 20,
+  "filters": {
+    "fulltext_search": "notebook dell"
+  }
+}
+```
+
+**Příklad vyhledávání:**
+```javascript
+// Hledá ve VŠECH sloupcích:
+"fulltext_search": "O-2026-0415"  // Najde číslo objednávky
+"fulltext_search": "Dell"          // Najde dodavatele nebo popis položky
+"fulltext_search": "jan novak"     // Najde uživatele (objednatel, garant, atd.)
+"fulltext_search": "LP-2026-001"   // Najde LP kód
+"fulltext_search": "FA2026001234"  // Najde číslo faktury
+"fulltext_search": "smlouva"       // Najde přílohy typu SMLOUVA
+```
+
+---
+
+### 🎛️ **DALŠÍ FILTRY** (sloupcové vyhledávání)
+
+Backend podporuje **kombinaci více filtrů najednou**:
+
+#### **1️⃣ DODAVATEL:**
+```json
+{
+  "filters": {
+    "dodavatel": "Dell"  // Hledá v názvu dodavatele
+  }
+}
+```
+
+#### **2️⃣ DATUMOVÉ FILTRY:**
+```json
+{
+  "filters": {
+    "datum_od": "2026-01-01",      // Od data (včetně)
+    "datum_do": "2026-12-31",      // Do data (včetně)
+    "datum_presne": "2026-04-15"   // Přesné datum
+  }
+}
+```
+
+#### **3️⃣ CENOVÉ FILTRY:**
+```json
+{
+  "filters": {
+    "cena_max": ">=10000",         // Operátor + částka
+    "cena_polozky": "<50000",      // <, >, <=, >=, =
+    "cena_faktury": "=25000"       // Přesná částka
+  }
+}
+```
+
+#### **4️⃣ BOOLEAN FILTRY:**
+```json
+{
+  "filters": {
+    "moje_objednavky": true,       // Pouze moje objednávky
+    "mimoradne_udalosti": true,    // Mimořádné události
+    "s_fakturou": true,            // Pouze s fakturou
+    "s_prilohami": true,           // Pouze s přílohami
+    "bez_obj_priloh": true,        // Pouze BEZ příloh
+    "s_komentari": true,           // Má jakékoliv komentáře
+    "s_mymi_komentari": true,      // Má moje komentáře
+    "fakturace_prodleni": true     // Faktury v prodlení >7 dní
+  }
+}
+```
+
+#### **5️⃣ FINANCOVÁNÍ (LP kódy, smlouvy):**
+```json
+{
+  "filters": {
+    "financovani": "LP-2026-001"   // Hledá LP kódy, smlouvy, pojistné události
+  }
+}
+```
+
+---
+
+### 🎯 **KOMBINACE FILTRŮ** (příklady pro mobil)
+
+#### **Příklad 1: Vyhledávání + filtr stavu**
+```json
+{
+  "token": "...",
+  "username": "user@domain.cz",
+  "page": 1,
+  "per_page": 20,
+  "filters": {
+    "fulltext_search": "notebook",
+    "stav": ["SCHVALENA", "POTVRZENA"]
+  }
+}
+```
+
+#### **Příklad 2: Moje objednávky s fakturou**
+```json
+{
+  "filters": {
+    "moje_objednavky": true,
+    "s_fakturou": true,
+    "datum_od": "2026-01-01"
+  }
+}
+```
+
+#### **Příklad 3: Hledání konkrétního dodavatele**
+```json
+{
+  "filters": {
+    "dodavatel": "Dell",
+    "cena_max": ">=10000",
+    "datum_od": "2026-01-01",
+    "datum_do": "2026-12-31"
+  }
+}
+```
+
+#### **Příklad 4: Objednávky v prodlení (dashboard)**
+```json
+{
+  "filters": {
+    "fakturace_prodleni": true,
+    "stav": ["POTVRZENA", "FAKTURACE"]
+  }
+}
+```
+
+---
+
+### 📱 **IMPLEMENTACE V MOBILNÍ APLIKACI**
+
+#### **UI komponenty pro vyhledávání:**
+
+```javascript
+// 1. Search Bar (fulltext)
+<SearchBar
+  placeholder="Hledat objednávky..."
+  onSearch={(text) => {
+    setFilters({
+      ...filters,
+      fulltext_search: text
+    });
+    loadOrders();
+  }}
+/>
+
+// 2. Filtr dodavatele
+<FilterSelect
+  label="Dodavatel"
+  options={suppliers}
+  onChange={(value) => {
+    setFilters({
+      ...filters,
+      dodavatel: value
+    });
+  }}
+/>
+
+// 3. Datumový rozsah
+<DateRangePicker
+  from={filters.datum_od}
+  to={filters.datum_do}
+  onChange={(from, to) => {
+    setFilters({
+      ...filters,
+      datum_od: from,
+      datum_do: to
+    });
+  }}
+/>
+
+// 4. Toggle filtry
+<ToggleButton
+  label="Pouze moje objednávky"
+  value={filters.moje_objednavky}
+  onChange={(checked) => {
+    setFilters({
+      ...filters,
+      moje_objednavky: checked
+    });
+  }}
+/>
+```
+
+#### **Volání API s filtry:**
+
+```javascript
+async function searchOrders(searchText, additionalFilters = {}) {
+  const response = await fetch('https://erdms.zachranka.cz/api.eeo/order-v3/list', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token: getUserToken(),
+      username: getUserEmail(),
+      page: 1,
+      per_page: 20,
+      filters: {
+        fulltext_search: searchText,
+        ...additionalFilters
+      }
+    }),
+  });
+
+  const data = await response.json();
+  return data.data.orders;
+}
+
+// Použití:
+const orders = await searchOrders('notebook', {
+  stav: ['SCHVALENA'],
+  moje_objednavky: true
+});
+```
+
+---
+
+### ⚡ **PERFORMANCE TIPY:**
+
+1. **Debounce search input** (300-500ms delay)
+   ```javascript
+   const debouncedSearch = useDebounce(searchText, 500);
+   ```
+
+2. **Clear filters tlačítko** - reset všech filtrů najednou
+
+3. **Zobraz počet výsledků** - `data.pagination.total`
+
+4. **Indikátor aktivních filtrů** - badge s počtem aktivních filtrů
+
+5. **Saved filters** - uložení často používaných kombinací filtrů
 
 ---
 
