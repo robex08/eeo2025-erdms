@@ -2297,7 +2297,16 @@ const PlanningAdminPage = () => {
                       const extraTermCount = activeTab === 'events' && Array.isArray(item.terminy) ? item.terminy.length : 0;
                       const previewHtml = activeTab === 'messages' ? item.obsah : item.popis;
                       const isActive = Number(item.aktivni) === 1;
-                      const rowStyle = isActive ? undefined : { opacity: 0.65, color: '#94a3b8' };
+                      
+                      // ✅ Kontrola, zda má událost nějaký plný termín
+                      const hasFullTerm = activeTab === 'events' && Array.isArray(item.terminy) && item.terminy.some(t => t.is_full === true);
+                      
+                      // ✅ Row style s červeným pozadím pro plné termíny
+                      let rowStyle = isActive ? {} : { opacity: 0.65, color: '#94a3b8' };
+                      if (hasFullTerm) {
+                        rowStyle = { ...rowStyle, backgroundColor: '#fee2e2' };
+                      }
+                      
                       const cellStyle = isActive ? undefined : { color: '#94a3b8' };
                       const toggleIconColor = isActive ? '#065f46' : '#9ca3af';
                       const recipientsTooltip = buildRecipientsTooltip(item);
