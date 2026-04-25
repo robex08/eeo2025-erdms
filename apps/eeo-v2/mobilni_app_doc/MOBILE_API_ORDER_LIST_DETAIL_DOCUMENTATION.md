@@ -10,7 +10,7 @@
 
 1. **`druh_objednavky_kod`** - JSON string → parsuj s `try/catch`
 2. **`fa_lp_kody`** - Speciální formát `LP-XXX|Název;;LP-YYY|Název2` → safe split
-3. **`fa_strediska_kod`** - JSON array jako string → parsuj s `try/catch`
+3. **`strediska_kod` / `fa_strediska_kod`** - JSON array kódů → **backend obohacuje o názvy** (viz sekce Střediska)
 4. **Všechna pole** mohou být `null`, `undefined` nebo neočekávaného typu!
 
 👉 **VŽDY používej funkce z sekce [🛡️ OCHRANA PROTI CRASHŮM](#-ochrana-proti-crashům---safe-parsing)**
@@ -854,6 +854,190 @@ Content-Type: application/json
 - Vytvořte **toggle tlačítka nebo tagy** pro jednotlivé stavy
 - Po kliknutí na stav pošlete request s `filters.stav: ["KLIK_STAV"]`
 - Defaultně načtěte všechny stavy bez filtru
+
+---
+
+### 🏢 **STŘEDISKA - ČÍSELNÍK A OBOHACENÍ**
+
+#### **Co jsou střediska?**
+
+Střediska jsou **nákladová střediska** organizace (např. "130 Dispečink ZOS", "101 VZ Kladno"). V databázi se ukládají jako **JSON pole kódů**:
+
+```json
+// Objednávka:
+"strediska_kod": "[\"130_DISPECINK\",\"101_RLP_KLADNO\"]"
+
+// Faktura:
+"fa_strediska_kod": "[\"130_DISPECINK\"]"
+```
+
+---
+
+#### **✅ Backend automaticky obohacuje názvy**
+
+Backend **načítá názvy středisek** z číselníku `25_ciselnik_stavy` (typ_objektu='STREDISKA') a přidává je do response:
+
+**Pro OBJEDNÁVKY (`/orders-v3/detail`):**
+```json
+{
+  "order": {
+    "strediska_kod": "[\"130_DISPECINK\",\"101_RLP_KLADNO\"]",  // Raw kódy
+    "strediska_nazvy": "130 Dispečink ZOS, 101 VZ Kladno",      // ✅ Obohacené názvy (string)
+    "_enriched": {
+      "strediska": [                                             // ✅ Obohacené objekty (pole)
+        {
+          "kod": "130_DISPECINK",
+          "nazev": "130 Dispečink ZOS",
+          "popis": "nákladové středisko 130",
+          "aktivni": 1
+        },
+        {
+          "kod": "101_RLP_KLADNO",
+          "nazev": "101 VZ Kladno",
+          "popis": "nákladové středisko 101",
+          "aktivni": 1
+        }
+      ]
+    }
+  }
+}
+```
+
+**Pro FAKTURY (`/orders-v3/invoices`):**
+```json
+{
+  "invoices": [
+    {
+      "fa_strediska_kod": "[\"130_DISPECINK\"]",  // ⚠️ Raw kódy - není obohaceno!
+      // Musíš parsovat a dohledat názvy sám:
+      // 1. Použít endpoint /api.eeo/ciselniky nebo
+      // 2. Použít lokální cache středisek
+    }
+  ]
+}
+```
+
+---
+
+#### **📡 Endpoint pro načtení číselníku středisek**
+
+**Endpoint:** `POST /api.eeo/ciselniky`
+
+**Request:**
+```json
+{
+  "token": "dXNlckBkb21haW4uY3p8MTc0MjkwMzk4MA==",
+  "username": "user@domain.cz",
+  "typ": "STREDISKA"
+}
+```
+
+**Response:**
+```json
+[
+  {
+    "id": 1,
+    "typ_objektu": "STREDISKA",
+    "kod_stavu": "130_DISPECINK",
+    "nazev_stavu": "130 Dispečink ZOS",
+    "popis": "nákladové středisko 130",
+    "aktivni": "1",
+    "poradi": 1
+  },
+  {
+    "id": 2,
+    "typ_objektu": "STREDISKA",
+    "kod_stavu": "101_RLP_KLADNO",
+    "nazev_stavu": "101 VZ Kladno",
+    "popis": "nákladové středisko 101",
+    "aktivni": "1",
+    "poradi": 2
+  }
+  // ... další střediska
+]
+```
+
+---
+
+#### **💡 Doporučený přístup pro mobilní app:**
+
+**1️⃣ Cache číselníku při startu aplikace:**
+```javascript
+async function loadStrediskaCache() {
+  const response = await fetch('/api.eeo/ciselniky', {
+    method: 'POST',
+    body: JSON.stringify({
+      token: getToken(),
+      username: getUsername(),
+      typ: 'STREDISKA'
+    })
+  });
+  
+  const strediska = await response.json();
+  
+  // Uložit do lokální cache (AsyncStorage, Redux, atd.)
+  const strediskaMap = {};
+  strediska.forEach(s => {
+    strediskaMap[s.kod_stavu] = {
+      kod: s.kod_stavu,
+      nazev: s.nazev_stavu,
+      popis: s.popis
+    };
+  });
+  
+  await AsyncStorage.setItem('strediska_cache', JSON.stringify(strediskaMap));
+}
+```
+
+**2️⃣ Pro objednávky - použít `_enriched.strediska`:**
+```javascript
+function renderOrderStrediska(order) {
+  // ✅ Backend již obohaceno!
+  const strediska = order._enriched?.strediska || [];
+  
+  if (strediska.length === 0) return null;
+  
+  return (
+    <View>
+      {strediska.map(s => (
+        <Text key={s.kod}>{s.nazev}</Text>
+      ))}
+    </View>
+  );
+}
+```
+
+**3️⃣ Pro faktury - použít lokální cache:**
+```javascript
+async function enrichInvoiceStrediska(invoice) {
+  const kody = safeParseInvoiceStrediska(invoice.fa_strediska_kod);
+  if (kody.length === 0) return [];
+  
+  // Načíst z cache
+  const strediskaMap = JSON.parse(
+    await AsyncStorage.getItem('strediska_cache') || '{}'
+  );
+  
+  return kody.map(kod => strediskaMap[kod] || { kod, nazev: kod });
+}
+
+// Použití:
+function renderInvoiceStrediska(invoice) {
+  const [strediska, setStrediska] = useState([]);
+  
+  useEffect(() => {
+    enrichInvoiceStrediska(invoice).then(setStrediska);
+  }, [invoice.fa_strediska_kod]);
+  
+  return (
+    <View>
+      {strediska.map(s => (
+        <Text key={s.kod}>{s.nazev}</Text>
+      ))}
+    </View>
+  );
+}
+```
 
 ---
 
