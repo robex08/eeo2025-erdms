@@ -2619,6 +2619,118 @@ const stats = result.stats;
 - **Progresivní načítání** (zobraz základní info → detail → faktury)
 - **Úspora dat** (mobilní aplikace nepřenáší zbytečná data)
 
+---
+
+### ❓ **Jak hledat v objednávkách?** ⭐
+
+**Odpověď:** Použij **fulltext vyhledávání** s parametrem `filters.fulltext_search`:
+
+```javascript
+const response = await fetch('https://erdms.zachranka.cz/api.eeo/order-v3/list', {
+  method: 'POST',
+  body: JSON.stringify({
+    token: getUserToken(),
+    username: getUserEmail(),
+    page: 1,
+    per_page: 20,
+    filters: {
+      fulltext_search: "notebook dell"  // ← KLÍČOVÝ PARAMETR!
+    }
+  })
+});
+```
+
+**Co se prohledává:**
+- ✅ Číslo objednávky, předmět, poznámka
+- ✅ Dodavatel (název + IČO)
+- ✅ Všichni uživatelé (jména + emaily)
+- ✅ Faktury (VS čísla, poznámky, stavy)
+- ✅ Přílohy (názvy souborů, typy)
+- ✅ Položky (popis, poznámky)
+- ✅ LP kódy, smlouvy, pojistné události
+
+**Příklady:**
+```javascript
+"fulltext_search": "O-2026-0415"  // Najde číslo objednávky
+"fulltext_search": "Dell"          // Najde dodavatele Dell
+"fulltext_search": "jan novak"     // Najde objednávky uživatele
+"fulltext_search": "LP-2026-001"   // Najde LP kód
+"fulltext_search": "notebook"      // Najde v popisu položek
+```
+
+**💡 TIP:** Kombinuj s dalšími filtry!
+```javascript
+{
+  "filters": {
+    "fulltext_search": "notebook",
+    "stav": ["SCHVALENA"],           // + filtr stavu
+    "moje_objednavky": true          // + jen moje
+  }
+}
+```
+
+**📱 UI doporučení:**
+- **SearchBar** nahoře v seznamu objednávek
+- **Debounce 500ms** (čekej než uživatel dopíše)
+- **Clear button** (rychlé smazání vyhledávání)
+- **Zobraz počet výsledků** (`data.pagination.total`)
+
+**🔗 Viz kompletní dokumentace:** Sekce "🔍 FULLTEXT VYHLEDÁVÁNÍ" výše
+
+---
+
+### ❓ **Jaké další filtry jsou dostupné?**
+
+**Odpověď:** Backend podporuje **14+ různých filtrů**:
+
+**1️⃣ FULLTEXT:**
+- `fulltext_search` - univerzální vyhledávání
+
+**2️⃣ STAVY:**
+- `stav: ["NOVA", "SCHVALENA"]` - pole stavů
+
+**3️⃣ DODAVATEL:**
+- `dodavatel: "Dell"` - název dodavatele
+
+**4️⃣ DATUMY:**
+- `datum_od: "2026-01-01"` - od data
+- `datum_do: "2026-12-31"` - do data
+- `datum_presne: "2026-04-15"` - přesné datum
+
+**5️⃣ CENY:**
+- `cena_max: ">=10000"` - operátor + částka
+- `cena_polozky: "<50000"`
+- `cena_faktury: "=25000"`
+
+**6️⃣ BOOLEAN:**
+- `moje_objednavky: true` - pouze moje
+- `s_fakturou: true` - s fakturou
+- `s_prilohami: true` - s přílohami
+- `bez_obj_priloh: true` - bez příloh
+- `s_komentari: true` - s komentáři
+- `mimoradne_udalosti: true` - mimořádné události
+- `fakturace_prodleni: true` - faktury v prodlení
+
+**7️⃣ FINANCOVÁNÍ:**
+- `financovani: "LP-2026-001"` - LP/smlouvy
+
+**Příklad kombinace:**
+```json
+{
+  "filters": {
+    "fulltext_search": "notebook",
+    "stav": ["SCHVALENA"],
+    "moje_objednavky": true,
+    "datum_od": "2026-01-01",
+    "cena_max": ">=10000"
+  }
+}
+```
+
+**🔗 Viz kompletní dokumentace:** Sekce "🎛️ DALŠÍ FILTRY" výše
+
+---
+
 ### ❓ **Kolik objednávek načíst na mobilu?**
 **Odpověď:** **Doporučujeme `per_page: 5`** pro mobilní aplikaci. Desktop aplikace používá `per_page: 50`. Mobilní obrazovka je menší, uživatel scrolluje pomaleji → menší počet záznamů je přehlednější.
 
