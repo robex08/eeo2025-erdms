@@ -2466,9 +2466,23 @@ const majetek = filterByDruh(allOrders.orders, 'MAJETEK');
 ### ❓ **Jak stáhnout přílohu?**
 **Odpověď:** Přílohy z `/order-v3/items` obsahují pouze metadata (název, typ, velikost). Pro stažení souboru použijte endpoint:
 ```
-GET https://erdms.zachranka.cz/data/eeo-v2/prilohy/{nazev_souboru}
+POST https://erdms.zachranka.cz/api.eeo/download/attachment
 ```
-kde `nazev_souboru` je hodnota z pole `attachments[].nazev_souboru`.
+Body:
+```json
+{
+  "token": "your_token",
+  "username": "user@domain.cz",
+  "guid": "2026-04-15_a3f8c2d1e4b9f7a6c5d8e1f2"
+}
+```
+kde `guid` je hodnota z pole `attachments[].guid`.
+
+Alternativně můžete použít přímý odkaz na soubor:
+```
+GET https://erdms.zachranka.cz/data/eeo-v2/prilohy/{systemova_cesta}
+```
+kde `systemova_cesta` je hodnota z pole `attachments[].systemova_cesta` (např. `obj-2026-04-15_a3f8c2d1e4b9f7a6c5d8e1f2.pdf`).
 
 ### ❓ **Jak získat detail faktur?**
 **Odpověď:** Faktury mají **SAMOSTATNÝ endpoint** `/orders-v3/invoices`:
