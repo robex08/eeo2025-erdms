@@ -1391,21 +1391,33 @@ Content-Type: application/json
     "attachments": [
       {
         "id": 50,
-        "nazev_souboru": "objednavka_20260415_103045.pdf",
-        "nazev_originalu": "Objednávka notebooků.pdf",
-        "typ_souboru": "application/pdf",
-        "velikost_souboru": 245680,
-        "popis": "Specifikace objednávky",
-        "dt_nahrani": "2026-04-15 10:40:00"
+        "guid": "2026-04-15_a3f8c2d1e4b9f7a6c5d8e1f2",
+        "originalni_nazev_souboru": "Objednávka notebooků.pdf",
+        "systemova_cesta": "obj-2026-04-15_a3f8c2d1e4b9f7a6c5d8e1f2.pdf",
+        "typ_prilohy": "OBJEDNAVKA",
+        "velikost_souboru_b": 245680,
+        "nahrano_uzivatel_id": 13,
+        "dt_vytvoreni": "2026-04-15 10:40:00",
+        "nahral_jmeno": "Jan",
+        "nahral_prijmeni": "Novák",
+        "nahral_email": "jan.novak@zachranka.cz",
+        "nahral_titul_pred": "Ing.",
+        "nahral_titul_za": null
       },
       {
         "id": 51,
-        "nazev_souboru": "schvaleni_20260416_091500.pdf",
-        "nazev_originalu": "Schválení objednávky.pdf",
-        "typ_souboru": "application/pdf",
-        "velikost_souboru": 182340,
-        "popis": "Podepsané schválení",
-        "dt_nahrani": "2026-04-16 09:15:00"
+        "guid": "2026-04-16_b4f9d3e2f5c8g8b7d6e9f3g3",
+        "originalni_nazev_souboru": "Schválení objednávky.pdf",
+        "systemova_cesta": "obj-2026-04-16_b4f9d3e2f5c8g8b7d6e9f3g3.pdf",
+        "typ_prilohy": "SCHVALENI",
+        "velikost_souboru_b": 182340,
+        "nahrano_uzivatel_id": 15,
+        "dt_vytvoreni": "2026-04-16 09:15:00",
+        "nahral_jmeno": "Marie",
+        "nahral_prijmeni": "Svobodová",
+        "nahral_email": "marie.svobodova@zachranka.cz",
+        "nahral_titul_pred": "PhDr.",
+        "nahral_titul_za": "Ph.D."
       }
     ],
     "notes": "Urgentní dodávka notebooků pro nové zaměstnance IT oddělení. Termín dodání: 30.4.2026."
@@ -1435,11 +1447,19 @@ Content-Type: application/json
 | `items[].dt_vytvoreni` | string | Datum a čas vytvoření položky |
 | `attachments[]` | array | Pole příloh objednávky |
 | `attachments[].id` | number | ID přílohy |
-| `attachments[].nazev_souboru` | string | Název souboru na serveru |
-| `attachments[].nazev_originalu` | string | Originální název souboru |
-| `attachments[].typ_souboru` | string | MIME typ souboru |
-| `attachments[].velikost_souboru` | number | Velikost souboru v bytech |
-| `notes` | string | Poznámky k objednávce |
+| `attachments[].guid` | string | Globálně unikátní identifikátor přílohy |
+| `attachments[].originalni_nazev_souboru` | string | Originální název souboru při nahrání |
+| `attachments[].systemova_cesta` | string | Cesta k souboru na serveru (relativní) |
+| `attachments[].typ_prilohy` | string | Typ přílohy (OBJEDNAVKA, SCHVALENI, FAKTURA, JINE) |
+| `attachments[].velikost_souboru_b` | number | Velikost souboru v bytech |
+| `attachments[].nahrano_uzivatel_id` | number | ID uživatele, který nahrál přílohu |
+| `attachments[].dt_vytvoreni` | string | Datum a čas nahrání přílohy |
+| `attachments[].nahral_jmeno` | string | Jméno uživatele, který nahrál |
+| `attachments[].nahral_prijmeni` | string | Příjmení uživatele, který nahrál |
+| `attachments[].nahral_email` | string | Email uživatele, který nahrál |
+| `attachments[].nahral_titul_pred` | string/null | Titul před jménem (Ing., PhDr., atd.) |
+| `attachments[].nahral_titul_za` | string/null | Titul za jménem (Ph.D., CSc., atd.) |
+| `notes` | string/null | Poznámky k objednávce |
 
 ---
 
@@ -1522,6 +1542,116 @@ Každá položka může být financována z **LP kódu** (limitovaného přísli
 │ 💳 LP-2026-001: Provozní náklady    │
 │ 📝 14" Full HD, i7, 16GB RAM        │
 └─────────────────────────────────────┘
+```
+
+---
+
+### 📎 **PŘÍLOHY OBJEDNÁVKY**
+
+Každá objednávka může mít **několik příloh** (PDF dokumenty, obrázky, atd.).
+
+**Typy příloh (`typ_prilohy`):**
+- `OBJEDNAVKA` - Samotná objednávka (PDF)
+- `SCHVALENI` - Podepsané schválení
+- `FAKTURA` - Faktura od dodavatele
+- `SMLOUVA` - Smlouva s dodavatelem
+- `PRILOHA` - Další příloha (technická specifikace, foto, atd.)
+- `JINE` - Ostatní
+
+**📌 Struktura přílohy:**
+```javascript
+{
+  "id": 50,
+  "guid": "2026-04-15_a3f8c2d1e4b9f7a6c5d8e1f2",
+  "originalni_nazev_souboru": "Objednávka notebooků.pdf",
+  "systemova_cesta": "obj-2026-04-15_a3f8c2d1e4b9f7a6c5d8e1f2.pdf",
+  "typ_prilohy": "OBJEDNAVKA",
+  "velikost_souboru_b": 245680,
+  "nahrano_uzivatel_id": 13,
+  "dt_vytvoreni": "2026-04-15 10:40:00",
+  "nahral_jmeno": "Jan",
+  "nahral_prijmeni": "Novák",
+  "nahral_email": "jan.novak@zachranka.cz",
+  "nahral_titul_pred": "Ing.",
+  "nahral_titul_za": null
+}
+```
+
+**📱 Zobrazení v UI:**
+```javascript
+function renderAttachment(attachment) {
+  // Formátování velikosti
+  const sizeMB = (attachment.velikost_souboru_b / 1024 / 1024).toFixed(2);
+  
+  // Formátování jména nahrávajícího
+  const uploader = [
+    attachment.nahral_titul_pred,
+    attachment.nahral_jmeno,
+    attachment.nahral_prijmeni,
+    attachment.nahral_titul_za
+  ].filter(Boolean).join(' ');
+  
+  // Typ přílohy - ikona
+  const icon = {
+    'OBJEDNAVKA': '📄',
+    'SCHVALENI': '✅',
+    'FAKTURA': '💰',
+    'SMLOUVA': '📝',
+    'PRILOHA': '📎',
+    'JINE': '📋'
+  }[attachment.typ_prilohy] || '📄';
+  
+  return `
+    ${icon} ${attachment.originalni_nazev_souboru}
+    ${sizeMB} MB | Nahrál: ${uploader}
+    ${formatDate(attachment.dt_vytvoreni)}
+  `;
+}
+```
+
+**🔗 STAHOVÁNÍ SOUBORU:**
+
+⚠️ **DŮLEŽITÉ:** Endpoint `/order-v3/items` vrací **POUZE metadata** (název, velikost, kdo nahrál).
+
+Pro **stažení samotného souboru** použij:
+```javascript
+// URL pro stažení přílohy
+const downloadUrl = `${API_BASE_URL}/download/attachment?guid=${attachment.guid}`;
+
+// Nebo pokud máš ID přílohy:
+const downloadUrl = `${API_BASE_URL}/download/attachment?id=${attachment.id}`;
+```
+
+**Příklad stažení:**
+```javascript
+async function downloadAttachment(attachment, token, username) {
+  const url = `${API_BASE_URL}/download/attachment`;
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token: token,
+      username: username,
+      guid: attachment.guid
+    })
+  });
+  
+  if (!response.ok) {
+    throw new Error('Chyba při stahování souboru');
+  }
+  
+  // Získání souboru jako blob
+  const blob = await response.blob();
+  
+  // Stažení souboru na zařízení
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = attachment.originalni_nazev_souboru;
+  link.click();
+}
 ```
 
 ---
