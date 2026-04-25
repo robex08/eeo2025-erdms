@@ -3572,16 +3572,23 @@ function handle_order_v3_items($input, $config, $queries) {
         // Načíst přílohy
         $sql_attachments = "
             SELECT 
-                id,
-                nazev_souboru,
-                nazev_originalu,
-                typ_souboru,
-                velikost_souboru,
-                popis,
-                dt_nahrani
-            FROM " . TBL_OBJEDNAVKY_PRILOHY . "
-            WHERE objednavka_id = ?
-            ORDER BY dt_nahrani DESC
+                p.id,
+                p.guid,
+                p.originalni_nazev_souboru,
+                p.systemova_cesta,
+                p.typ_prilohy,
+                p.velikost_souboru_b,
+                p.nahrano_uzivatel_id,
+                p.dt_vytvoreni,
+                u.jmeno as nahral_jmeno,
+                u.prijmeni as nahral_prijmeni,
+                u.email as nahral_email,
+                u.titul_pred as nahral_titul_pred,
+                u.titul_za as nahral_titul_za
+            FROM " . TBL_OBJEDNAVKY_PRILOHY . " p
+            LEFT JOIN " . TBL_UZIVATELE . " u ON p.nahrano_uzivatel_id = u.id
+            WHERE p.objednavka_id = ?
+            ORDER BY p.dt_vytvoreni DESC
         ";
         
         $stmt_attachments = $db->prepare($sql_attachments);
