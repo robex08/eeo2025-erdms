@@ -3779,7 +3779,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
     // Pravidla (vztažena k dt_od termínu):
     // - událost vytvořená ten samý den jako dt_od => dt_od - 1h
     // - vícedenní (konec je jiný den než začátek)  => dt_od - 24h
-    // - jednodenní (default)                        => dt_od - 12h
+    // - jednodenní (default)                        => dt_od - 6h
     const isMultiDay = end && startDate.toDateString() !== new Date(end).toDateString();
     const sameDayCreated = created && new Date(created).toDateString() === startDate.toDateString();
 
@@ -3789,7 +3789,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
     } else if (isMultiDay) {
       deadline.setHours(deadline.getHours() - 24);
     } else {
-      deadline.setHours(deadline.getHours() - 12);
+      deadline.setHours(deadline.getHours() - 6);
     }
     return deadline;
   };
@@ -3809,10 +3809,22 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
       setTimeout(() => setToast(null), 2500);
       return;
     }
+
+    // ✅ Kontrola kapacity - pokud je plný a uživatel není účastník
+    if (type === 'accepted') {
+      const isFull = term.is_full === true;
+      const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
+      if (isFull && !isUserAccepted) {
+        setToast({ type: 'error', message: '⛔ Termín je plně obsazen. Nelze jej akceptovat.' });
+        setTimeout(() => setToast(null), 3500);
+        return;
+      }
+    }
+
     const terminId = Number(term.id);
     const poznamka = (termNotes[terminId] || '').trim();
     try {
-      await planningApi.respondToEvent({
+      const result = await planningApi.respondToEvent({
         id: event.id,
         termin_id: terminId,
         typ_odpovedi: type,
@@ -3844,7 +3856,15 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
         const existingTerms = Array.isArray(ev.terminy) ? [...ev.terminy] : [];
         const idx = existingTerms.findIndex(t => Number(t.id) === terminId);
         if (idx >= 0) {
-          existingTerms[idx] = { ...existingTerms[idx], moje_odpoved: newResponse };
+          // ✅ Aktualizovat accepted_count a is_full z response
+          const acceptedCount = result?.data?.accepted_count;
+          const isFull = result?.data?.is_full;
+          existingTerms[idx] = { 
+            ...existingTerms[idx], 
+            moje_odpoved: newResponse,
+            ...(acceptedCount !== undefined && { accepted_count: acceptedCount }),
+            ...(isFull !== undefined && { is_full: isFull })
+          };
         }
         return { ...ev, terminy: existingTerms };
       }));

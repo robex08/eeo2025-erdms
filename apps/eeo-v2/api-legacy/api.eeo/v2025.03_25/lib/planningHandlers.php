@@ -435,7 +435,7 @@ function getEventResponseDeadline($event, $term) {
     // Pravidla (vztazena k dt_od terminu):
     // - udalost vytvorena ten samy den jako dt_od => deadline = dt_od - 1h
     // - vicedenni udalost (konci jiny den nez zacina)     => deadline = dt_od - 24h
-    // - jednodenni udalost (standard)                     => deadline = dt_od - 12h
+    // - jednodenni udalost (standard)                     => deadline = dt_od - 6h
     $sameDayCreated = $created && $created->format('Y-m-d') === $start->format('Y-m-d');
     $multiDay = $end && $end->format('Y-m-d') !== $start->format('Y-m-d');
 
@@ -444,7 +444,7 @@ function getEventResponseDeadline($event, $term) {
     } elseif ($multiDay) {
         $deadline->modify('-24 hours');
     } else {
-        $deadline->modify('-12 hours');
+        $deadline->modify('-6 hours');
     }
 
     return $deadline;
@@ -2340,6 +2340,19 @@ function handle_planning_events_respond($input, $config) {
             $dtOdpovedi
         ]);
 
+        // ✅ Přepočítat aktuální accepted_count pro termín
+        $sqlAcceptedCount = "SELECT COUNT(*) FROM " . TBL_PLAN_UDALOSTI_ODPOVEDI . " 
+                            WHERE termin_id = ? AND typ_odpovedi = 'accepted'";
+        $stmtAcceptedCount = $db->prepare($sqlAcceptedCount);
+        $stmtAcceptedCount->execute([$terminId]);
+        $acceptedCount = (int)$stmtAcceptedCount->fetchColumn();
+
+        // ✅ Zjistit, zda je termín plný
+        $isFull = false;
+        if ($term['kapacita'] !== null && $term['kapacita'] > 0) {
+            $isFull = ($acceptedCount >= $term['kapacita']);
+        }
+
         http_response_code(200);
         echo json_encode([
             'status' => 'success',
@@ -2349,7 +2362,9 @@ function handle_planning_events_respond($input, $config) {
                 'termin_id' => (int)$terminId,
                 'typ_odpovedi' => $typOdpovedi,
                 'poznamka' => $poznamka,
-                'dt_odpovedi' => $dtOdpovedi
+                'dt_odpovedi' => $dtOdpovedi,
+                'accepted_count' => $acceptedCount,
+                'is_full' => $isFull
             ]
         ]);
 

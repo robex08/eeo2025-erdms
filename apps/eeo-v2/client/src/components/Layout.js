@@ -1649,6 +1649,16 @@ const NotificationBellWrapper = ({ userId }) => {
       return;
     }
 
+    // ✅ Kontrola kapacity - pokud je plný a uživatel není účastník
+    if (type === 'accepted') {
+      const isFull = term.is_full === true;
+      const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
+      if (isFull && !isUserAccepted) {
+        alert('⛔ Termín je plně obsazen. Nelze jej akceptovat.');
+        return;
+      }
+    }
+
     const terminId = Number(term.id);
     const poznamka = (termNotes[terminId] || '').trim();
 

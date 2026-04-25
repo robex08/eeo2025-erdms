@@ -83,9 +83,8 @@ export const EventActionButton = styled.button`
   padding: 0.3rem 0.7rem;
   font-size: 0.7rem;
   font-weight: 700;
-  color: ${p => p.$variant === 'decline' ? '#991b1b' : '#166534'};
-  background: ${p => p.$variant === 'decline' ? '#fee2e2' : '#dcfce7'};
-  opacity: ${p => p.disabled ? 0.5 : 1};
+  color: ${p => p.disabled ? '#94a3b8' : (p.$variant === 'decline' ? '#991b1b' : '#166534')};
+  background: ${p => p.disabled ? '#f1f5f9' : (p.$variant === 'decline' ? '#fee2e2' : '#dcfce7')};
   cursor: ${p => p.disabled ? 'not-allowed' : 'pointer'};
   transition: transform 0.12s, box-shadow 0.12s, background 0.2s;
   &:hover:not(:disabled) {
@@ -188,7 +187,7 @@ export const getResponseDeadline = (event, term) => {
   } else if (isMultiDay) {
     deadline.setHours(deadline.getHours() - 24);
   } else {
-    deadline.setHours(deadline.getHours() - 12);
+    deadline.setHours(deadline.getHours() - 6);
   }
   return deadline;
 };
@@ -318,7 +317,7 @@ export default function PlanningEventDetailPanel({
                       type="button"
                       $variant="accept"
                       disabled={!canAccept}
-                      title={!canAccept && isFull && !isUserAccepted ? 'Termín je plně obsazen' : ''}
+                      title={!canAccept && isFull && !isUserAccepted ? 'Termín je plně obsazen' : !canChange ? 'Změna už není možná' : ''}
                       onClick={(e) => { e.stopPropagation(); onRespond && onRespond(event, term, 'accepted'); }}
                     >
                       Potvrdit
@@ -327,6 +326,7 @@ export default function PlanningEventDetailPanel({
                       type="button"
                       $variant="decline"
                       disabled={!canChange}
+                      title={!canChange ? 'Změna už není možná' : ''}
                       onClick={(e) => { e.stopPropagation(); onRespond && onRespond(event, term, 'declined'); }}
                     >
                       Odmítnout

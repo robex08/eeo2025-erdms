@@ -1204,6 +1204,16 @@ export const NotificationsPage = () => {
       return;
     }
 
+    // ✅ Kontrola kapacity - pokud je plný a uživatel není účastník
+    if (type === 'accepted') {
+      const isFull = term.is_full === true;
+      const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
+      if (isFull && !isUserAccepted) {
+        showToast('⛔ Termín je plně obsazen. Nelze jej akceptovat.', { type: 'error' });
+        return;
+      }
+    }
+
     try {
       await planningApi.respondToEvent({
         id: event.id,

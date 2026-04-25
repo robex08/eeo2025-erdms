@@ -18,6 +18,8 @@ import TimePicker from '../components/TimePicker';
 import { CustomSelect } from '../components/CustomSelect';
 import ConfirmDialog from '../components/ConfirmDialog';
 import SmartTooltip from '../styles/SmartTooltip';
+import PlanningEventCalendarPopup from '../components/PlanningEventCalendarPopup';
+import PlanningAllEventsCalendar from '../components/PlanningAllEventsCalendar';
 import '../styles/tableFiltersImprovement.css';
 
 // =============================================================================
@@ -30,6 +32,17 @@ const PageContainer = styled.div`
   max-width: 100%;
   box-sizing: border-box;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  @keyframes popupFadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
 `;
 
 const TitlePanel = styled.div`
@@ -176,6 +189,61 @@ const SearchPanelTitle = styled.h3`
   }
 `;
 
+const ToggleSwitch = styled.label`
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  cursor: pointer;
+`;
+
+const ToggleSwitchInput = styled.input`
+  opacity: 0;
+  width: 0;
+  height: 0;
+
+  &:checked + span {
+    background-color: #3b82f6;
+  }
+
+  &:checked + span:before {
+    transform: translateX(20px);
+  }
+`;
+
+const ToggleSwitchSlider = styled.span`
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cbd5e1;
+  transition: 0.3s;
+  border-radius: 24px;
+
+  &:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: 0.3s;
+    border-radius: 50%;
+  }
+`;
+
+const ToggleLabel = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: #4b5563;
+  user-select: none;
+`;
+
 const ClearAllButton = styled.button`
   background: #ef4444;
   color: white;
@@ -259,41 +327,44 @@ const TableContainer = styled.div`
   position: relative;
   width: 100%;
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
   overflow: hidden;
 `;
 
 const Table = styled.table`
-  min-width: 100%;
   width: 100%;
   border-collapse: collapse;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
   font-size: 0.9rem;
 
   tbody tr {
-    border-bottom: 1px solid #e5e7eb;
     background: white;
-  }
-
-  tbody tr:nth-of-type(even) {
-    background: #f8fafc;
+    border-bottom: 1px solid #f1f5f9;
   }
 
   tbody tr:hover {
-    background-color: #f3f4f6 !important;
+    background-color: #f8fafc;
+  }
+
+  tbody tr:last-child {
+    border-bottom: none;
   }
 `;
 
 const TableHead = styled.thead`
-  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%) !important;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: #f8fafc;
+  
+  tr {
+    border-bottom: 1px solid #e5e7eb;
+  }
+  
+  tr:last-child {
+    border-bottom: 2px solid #e5e7eb;
+  }
 `;
 
-const TableRow = styled.tr`
-  border-bottom: 1px solid #e5e7eb;
-  transition: background-color 0.2s ease;
-`;
+const TableRow = styled.tr``;
 
 const TableHeader = styled.th`
   padding: 0.35rem 0.5rem 0.2rem 0.5rem;
@@ -318,16 +389,10 @@ const TableHeader = styled.th`
 
 const SortableHeader = styled(TableHeader)`
   cursor: pointer;
-  transition: background-color 0.15s ease;
-
-  &:hover {
-    background-color: #f8fafc;
-  }
 `;
 
 const TableCell = styled.td`
   padding: 0.45rem 0.6rem;
-  border-bottom: 1px solid #f1f5f9;
   color: #1f2937;
   vertical-align: middle;
 
@@ -380,9 +445,9 @@ const PaginationContainer = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
-  background: #f8fafc;
-  border-top: 1px solid #e5e7eb;
+  padding: 0.75rem 0.6rem;
+  background: white;
+  border-top: 1px solid #f1f5f9;
 `;
 
 const PaginationInfo = styled.div`
@@ -997,14 +1062,33 @@ const PlanningAdminPage = () => {
   const [isHtmlView, setIsHtmlView] = useState(false);
   const editorRef = useRef(null);
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(() => {
+    try {
+      return localStorage.getItem('planning_search_term') || '';
+    } catch (e) {
+      return '';
+    }
+  });
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [columnFilters, setColumnFilters] = useState({
-    nazev: '',
-    organizator: '',
-    text: '',
-    dt_od: '',
-    dt_do: ''
+  const [columnFilters, setColumnFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planning_column_filters');
+      return saved ? JSON.parse(saved) : {
+        nazev: '',
+        organizator: '',
+        text: '',
+        dt_od: '',
+        dt_do: ''
+      };
+    } catch (e) {
+      return {
+        nazev: '',
+        organizator: '',
+        text: '',
+        dt_od: '',
+        dt_do: ''
+      };
+    }
   });
   const [debouncedColumnFilters, setDebouncedColumnFilters] = useState({
     nazev: '',
@@ -1015,10 +1099,24 @@ const PlanningAdminPage = () => {
   });
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(50);
+  const [itemsPerPage, setItemsPerPage] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planning_items_per_page');
+      return saved ? parseInt(saved, 10) : 50;
+    } catch (e) {
+      return 50;
+    }
+  });
   const [totalPages, setTotalPages] = useState(0);
   const [totalItems, setTotalItems] = useState(0);
-  const [includeInactive, setIncludeInactive] = useState(true);
+  const [includeInactive, setIncludeInactive] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planning_include_inactive');
+      return saved === null ? true : saved === 'true';
+    } catch (e) {
+      return true;
+    }
+  });
   
   // Třídění tabulky - výchozí dle dt_updated DESC
   const [sortField, setSortField] = useState('dt_updated');
@@ -1047,6 +1145,12 @@ const PlanningAdminPage = () => {
     } catch (e) { /* ignore */ }
     return {};
   });
+  // Popup kalendář pro událost
+  const [calendarPopupEvent, setCalendarPopupEvent] = useState(null);
+  const [popupPosition, setPopupPosition] = useState({ top: 0, left: 0, width: 860, height: 500 });
+  
+  // Modal s kumulativním kalendářem všech událostí
+  const [showAllEventsCalendar, setShowAllEventsCalendar] = useState(false);
 
   useEffect(() => {
     try {
@@ -1118,6 +1222,39 @@ const PlanningAdminPage = () => {
       // ignore storage errors
     }
   }, [activeTab]);
+
+  // Ukládání filtrů do localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('planning_search_term', searchTerm);
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, [searchTerm]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('planning_column_filters', JSON.stringify(columnFilters));
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, [columnFilters]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('planning_include_inactive', String(includeInactive));
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, [includeInactive]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('planning_items_per_page', String(itemsPerPage));
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, [itemsPerPage]);
 
   // Načtení seznamu rolí a uživatelů při otevření modálu
   useEffect(() => {
@@ -1216,6 +1353,14 @@ const PlanningAdminPage = () => {
       dt_do: ''
     });
     setCurrentPage(1);
+    
+    // Vymazat z localStorage
+    try {
+      localStorage.removeItem('planning_search_term');
+      localStorage.removeItem('planning_column_filters');
+    } catch (e) {
+      // ignore storage errors
+    }
   };
 
   // Třídění: null → ASC → DESC → null
@@ -1928,10 +2073,18 @@ const PlanningAdminPage = () => {
 
         <ContentArea>
           <ActionBar>
-            <Button onClick={handleCreate}>
-              <FontAwesomeIcon icon={faPlus} />
-              {activeTab === 'messages' ? 'Nová zpráva' : 'Nová událost'}
-            </Button>
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              {activeTab === 'events' && (
+                <Button $variant="secondary" onClick={() => setShowAllEventsCalendar(true)}>
+                  <FontAwesomeIcon icon={faCalendarAlt} />
+                  Kalendář všech událostí
+                </Button>
+              )}
+              <Button onClick={handleCreate}>
+                <FontAwesomeIcon icon={faPlus} />
+                {activeTab === 'messages' ? 'Nová zpráva' : 'Nová událost'}
+              </Button>
+            </div>
           </ActionBar>
 
           <SearchPanel>
@@ -1940,10 +2093,23 @@ const PlanningAdminPage = () => {
                 <FontAwesomeIcon icon={faSearch} />
                 Filtry a vyhledávání
               </SearchPanelTitle>
-              <ClearAllButton onClick={handleClearFilters}>
-                <FontAwesomeIcon icon={faEraser} />
-                Vymazat filtry
-              </ClearAllButton>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <ToggleLabel>
+                  Zobrazit neaktivní
+                  <ToggleSwitch>
+                    <ToggleSwitchInput
+                      type="checkbox"
+                      checked={includeInactive}
+                      onChange={(e) => setIncludeInactive(e.target.checked)}
+                    />
+                    <ToggleSwitchSlider />
+                  </ToggleSwitch>
+                </ToggleLabel>
+                <ClearAllButton onClick={handleClearFilters}>
+                  <FontAwesomeIcon icon={faEraser} />
+                  Vymazat filtry
+                </ClearAllButton>
+              </div>
             </SearchPanelHeader>
             <SearchInputWrapper>
               <FontAwesomeIcon icon={faSearch} />
@@ -1959,17 +2125,6 @@ const PlanningAdminPage = () => {
                 </SearchClearButton>
               )}
             </SearchInputWrapper>
-            <div style={{ marginTop: '0.5rem' }}>
-              <CheckboxLabel htmlFor="planning-include-inactive">
-                <Checkbox
-                  id="planning-include-inactive"
-                  type="checkbox"
-                  checked={includeInactive}
-                  onChange={(e) => setIncludeInactive(e.target.checked)}
-                />
-                Zobrazit neaktivní
-              </CheckboxLabel>
-            </div>
           </SearchPanel>
 
           {loading ? (
@@ -2126,9 +2281,7 @@ const PlanningAdminPage = () => {
                     </TableHeader>
                     {activeTab === 'events' && <TableHeader className="filter-cell" />}
                     <TableHeader className="filter-cell" />
-                    <TableHeader className="filter-cell" />
                     {activeTab === 'events' && <TableHeader className="filter-cell" />}
-                    <TableHeader className="filter-cell" />
                     <TableHeader className="filter-cell" />
                   </TableRow>
                 </TableHead>
@@ -2177,7 +2330,57 @@ const PlanningAdminPage = () => {
                                 </IconButton>
                               )}
                             </TableCell>
-                            <TableCell style={cellStyle}><strong>{item.nazev}</strong></TableCell>
+                            <TableCell style={cellStyle}>
+                              {activeTab === 'events' && (
+                                <IconButton
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const rect = e.currentTarget.getBoundingClientRect();
+                                    const popupWidth = Math.min(860, window.innerWidth - 40);
+                                    const popupHeight = Math.min(500, window.innerHeight - 100);
+                                    const margin = 20;
+                                    const headerHeight = 80; // Výška hlavičky stránky
+                                    
+                                    let top = rect.bottom + window.scrollY + 8;
+                                    let left = rect.left + window.scrollX;
+                                    
+                                    // Horizontální pozice - vycentruj pokud je ikona moc vlevo
+                                    if (left + popupWidth > window.innerWidth - margin) {
+                                      left = Math.max(margin, window.innerWidth - popupWidth - margin);
+                                    }
+                                    if (left < margin) {
+                                      left = margin;
+                                    }
+                                    
+                                    // Vertikální pozice
+                                    const spaceBelow = window.innerHeight + window.scrollY - rect.bottom;
+                                    const spaceAbove = rect.top + window.scrollY - headerHeight;
+                                    
+                                    if (spaceBelow < popupHeight + margin && spaceAbove > spaceBelow) {
+                                      // Zobraz nad ikonou
+                                      top = Math.max(
+                                        window.scrollY + headerHeight + margin,
+                                        rect.top + window.scrollY - popupHeight - 8
+                                      );
+                                    } else {
+                                      // Zobraz pod ikonou
+                                      top = Math.max(
+                                        window.scrollY + headerHeight + margin,
+                                        Math.min(top, window.scrollY + window.innerHeight - popupHeight - margin)
+                                      );
+                                    }
+                                    
+                                    setPopupPosition({ top, left, width: popupWidth, height: popupHeight });
+                                    setCalendarPopupEvent(item);
+                                  }}
+                                  title="Zobrazit v kalendáři"
+                                  style={{ marginRight: '0.5rem', color: '#3b82f6' }}
+                                >
+                                  <FontAwesomeIcon icon={faCalendarAlt} />
+                                </IconButton>
+                              )}
+                              <strong>{item.nazev}</strong>
+                            </TableCell>
                             <TableCell style={cellStyle}>
                               <div style={{ fontSize: '0.82rem' }}>
                                 <div style={{ fontWeight: 600, marginBottom: '0.15rem' }}>
@@ -2890,6 +3093,118 @@ const PlanningAdminPage = () => {
             </ModalFooter>
           </ModalContent>
         </ModalOverlay>,
+        document.body
+      )}
+
+      {/* Popup kalendář pro událost */}
+      {calendarPopupEvent && typeof document !== 'undefined' && createPortal(
+        <>
+          {/* Průhledná vrstva pro zavření */}
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              zIndex: 9998
+            }}
+            onClick={() => setCalendarPopupEvent(null)}
+          />
+          {/* Popup okno */}
+          <div
+            style={{
+              position: 'absolute',
+              top: `${popupPosition.top}px`,
+              left: `${popupPosition.left}px`,
+              background: 'white',
+              borderRadius: '12px',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+              zIndex: 9999,
+              display: 'inline-flex',
+              flexDirection: 'column',
+              animation: 'popupFadeIn 0.15s ease-out',
+              maxHeight: `${popupPosition.height || 520}px`,
+              maxWidth: '95vw'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Hlavička */}
+            <div style={{
+              padding: '0.75rem 1rem',
+              borderBottom: '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'linear-gradient(to bottom, #f8fafc, white)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+                <FontAwesomeIcon icon={faCalendarAlt} style={{ color: '#3b82f6', fontSize: '1.1rem' }} />
+                <div>
+                  <h3 style={{ 
+                    margin: 0, 
+                    fontSize: '1rem', 
+                    fontWeight: 700, 
+                    color: '#1e293b'
+                  }}>
+                    {calendarPopupEvent.nazev}
+                  </h3>
+                  <p style={{ margin: '0.1rem 0 0 0', fontSize: '0.75rem', color: '#64748b' }}>
+                    Kalendářový přehled a reakce
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCalendarPopupEvent(null)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  fontSize: '1.75rem',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: '0.25rem 0.5rem',
+                  lineHeight: 1,
+                  transition: 'all 0.2s',
+                  borderRadius: '6px'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.color = '#1e293b';
+                  e.target.style.background = '#f1f5f9';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.color = '#94a3b8';
+                  e.target.style.background = 'transparent';
+                }}
+                title="Zavřít"
+              >
+                ×
+              </button>
+            </div>
+            
+            {/* Obsah */}
+            <div style={{ 
+              padding: '1rem',
+              flex: 1,
+              overflow: 'hidden',
+              display: 'flex'
+            }}>
+              <PlanningEventCalendarPopup 
+                event={calendarPopupEvent}
+                responses={eventResponses[calendarPopupEvent.id] || []}
+              />
+            </div>
+          </div>
+        </>,
+        document.body
+      )}
+
+      {/* Modal s kumulativním kalendářem všech událostí */}
+      {showAllEventsCalendar && typeof document !== 'undefined' && createPortal(
+        <PlanningAllEventsCalendar
+          events={events}
+          eventResponses={eventResponses}
+          onClose={() => setShowAllEventsCalendar(false)}
+        />,
         document.body
       )}
     </PageContainer>
