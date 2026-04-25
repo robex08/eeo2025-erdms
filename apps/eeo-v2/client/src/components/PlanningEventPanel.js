@@ -146,8 +146,15 @@ export const parseSqlDateTime = (str) => {
 
 export const formatCzDateTime = (isoOrSql) => {
   if (!isoOrSql) return '';
-  const d = typeof isoOrSql === 'string' ? parseSqlDateTime(isoOrSql) : new Date(isoOrSql);
-  if (!d) return '';
+  let d;
+  if (isoOrSql instanceof Date) {
+    d = isoOrSql;
+  } else if (typeof isoOrSql === 'string') {
+    d = parseSqlDateTime(isoOrSql);
+  } else {
+    d = new Date(isoOrSql);
+  }
+  if (!d || isNaN(d.getTime())) return '';
   const dd = String(d.getDate()).padStart(2, '0');
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const yyyy = d.getFullYear();
@@ -270,7 +277,10 @@ export default function PlanningEventDetailPanel({
           const acceptedCount = term.accepted_count || 0;
           const isFull = term.is_full === true;
           const isUserAccepted = response === 'accepted';
-          const canAccept = canChange && (!isFull || isUserAccepted);
+          // ✅ OBOJE má stejnou podmínku: pokud je plno a nejsi accepted, nemůžeš ANI potvrdit ANI odmítnout
+          const canInteract = canChange && (!isFull || isUserAccepted);
+          const canAccept = canInteract;
+          const canDecline = canInteract;
 
           const rowContent = (
             <EventTermRow key={term.id} $selected={isSelected}>
@@ -297,14 +307,34 @@ export default function PlanningEventDetailPanel({
                   )}
                 </span>
               </EventTermLabel>
-              <EventTermStatus>
-                Odpověď: {formatResponseLabel(response)}
-                {responseTime ? ` • ${formatCzDateTime(responseTime)}` : ''}
-              </EventTermStatus>
-              {requiresResponse && deadline && (
-                <EventMeta>{canChange ? `Změna do ${formatCzDateTime(deadline.toISOString())}` : 'Změna už není možná'}</EventMeta>
+              {/* Zobrazit odpověď jen když může uživatel reagovat NEBO už má odpověď */}
+              {(canInteract || response) && (
+                <EventTermStatus>
+                  Odpověď: {formatResponseLabel(response)}
+                  {responseTime ? ` • ${formatCzDateTime(responseTime)}` : ''}
+                </EventTermStatus>
               )}
-              {requiresResponse && (
+              {/* Badge "Termín již obsazen" pro plné termíny */}
+              {isFull && !isUserAccepted && (
+                <div style={{
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  padding: '0.4rem 0.6rem',
+                  marginTop: '0.25rem',
+                  borderRadius: '6px',
+                  background: '#fee2e2',
+                  color: '#991b1b',
+                  border: '1px solid #fca5a5',
+                  display: 'inline-block',
+                  width: 'fit-content'
+                }}>
+                  ⛔ Termín již obsazen
+                </div>
+              )}
+              {requiresResponse && deadline && canInteract && (
+                <EventMeta>{canChange ? `Změna do ${formatCzDateTime(deadline)}` : 'Změna už není možná'}</EventMeta>
+              )}
+              {requiresResponse && canInteract && (
                 <>
                   <EventTermNoteInput
                     placeholder="Poznámka k odpovědi (nepovinné)"
@@ -317,7 +347,7 @@ export default function PlanningEventDetailPanel({
                       type="button"
                       $variant="accept"
                       disabled={!canAccept}
-                      title={!canAccept && isFull && !isUserAccepted ? 'Termín je plně obsazen' : !canChange ? 'Změna už není možná' : ''}
+                      title={!canInteract && isFull && !isUserAccepted ? 'Termín je plně obsazen' : !canChange ? 'Změna už není možná' : ''}
                       onClick={(e) => { e.stopPropagation(); onRespond && onRespond(event, term, 'accepted'); }}
                     >
                       Potvrdit
@@ -325,8 +355,8 @@ export default function PlanningEventDetailPanel({
                     <EventActionButton
                       type="button"
                       $variant="decline"
-                      disabled={!canChange}
-                      title={!canChange ? 'Změna už není možná' : ''}
+                      disabled={!canDecline}
+                      title={!canInteract && isFull && !isUserAccepted ? 'Termín je plně obsazen' : !canChange ? 'Změna už není možná' : ''}
                       onClick={(e) => { e.stopPropagation(); onRespond && onRespond(event, term, 'declined'); }}
                     >
                       Odmítnout

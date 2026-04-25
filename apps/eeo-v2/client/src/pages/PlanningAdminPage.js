@@ -441,6 +441,97 @@ const HtmlPreviewEmpty = styled.div`
   font-style: italic;
 `;
 
+const HtmlTooltipContent = styled.div`
+  /* Reset zděděných stylů z TooltipBubble */
+  font-weight: normal;
+  white-space: normal;
+  line-height: 1.6;
+  
+  /* Základní styly */
+  color: white;
+  font-size: 0.8rem;
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) rgba(0, 0, 0, 0.2);
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.35);
+  }
+
+  h2, h3, h4 {
+    margin: 1.2em 0 0.6em 0;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  h2:first-child, h3:first-child, h4:first-child {
+    margin-top: 0;
+  }
+
+  h2 {
+    font-size: 1.4em;
+  }
+
+  h3 {
+    font-size: 1.2em;
+  }
+
+  p {
+    margin: 1em 0;
+    line-height: 1.6;
+  }
+
+  p:first-child {
+    margin-top: 0;
+  }
+
+  p:last-child {
+    margin-bottom: 0;
+  }
+
+  ul, ol {
+    margin: 0.8em 0;
+    padding-left: 2em;
+    line-height: 1.6;
+  }
+
+  li {
+    margin: 0.4em 0;
+  }
+
+  ul ul, ol ol, ul ol, ol ul {
+    margin: 0.3em 0;
+  }
+
+  strong {
+    font-weight: 700;
+  }
+
+  em {
+    font-style: italic;
+  }
+
+  a {
+    color: #60a5fa;
+    text-decoration: underline;
+  }
+`;
+
 const PaginationContainer = styled.div`
   display: flex;
   justify-content: space-between;
@@ -1914,21 +2005,56 @@ const PlanningAdminPage = () => {
     // Událost má N rovnocenných termínů. Zobrazujeme pouze ty
     // (dt_od/dt_do události je pouze MIN/MAX agregát dopočtený DB triggery).
     const dates = Array.isArray(item?.terminy) ? item.terminy : [];
-    if (dates.length === 0) return '';
+    if (dates.length === 0) return null;
 
-    return dates.map((term, index) => {
-      const od = formatTooltipDateTime(term?.dt_od);
-      const doVal = term?.dt_do ? formatTooltipDateTime(term.dt_do) : '';
-      const range = doVal ? `${od} - ${doVal}` : od;
-      return `${index + 1}. ${range}`;
-    }).join('\n');
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+        <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>
+          📅 Všechny termíny ({dates.length})
+        </div>
+        {dates.map((term, index) => {
+          const od = formatTooltipDateTime(term?.dt_od);
+          const doVal = term?.dt_do ? formatTooltipDateTime(term.dt_do) : '';
+          const range = doVal ? `${od} - ${doVal}` : od;
+          const isFull = term.is_full;
+          const acceptedCount = term.accepted_count || 0;
+          const kapacita = term.kapacita;
+          
+          return (
+            <div key={index} style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem',
+              padding: '0.3rem 0.5rem',
+              background: 'rgba(255,255,255,0.05)',
+              borderRadius: '4px',
+              borderLeft: `3px solid ${isFull ? '#fbbf24' : '#60a5fa'}`
+            }}>
+              <span style={{ color: '#94a3b8', fontSize: '0.7rem', fontWeight: 700, minWidth: '1.2rem' }}>
+                {index + 1}.
+              </span>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: 'white', fontSize: '0.75rem', fontWeight: 600 }}>
+                  {range}
+                </div>
+                {kapacita > 0 && (
+                  <div style={{ color: isFull ? '#fbbf24' : '#94a3b8', fontSize: '0.65rem', marginTop: '0.1rem' }}>
+                    {isFull ? '🔴 Obsazeno' : '✅'} {acceptedCount}/{kapacita}
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   const buildRecipientsTooltip = (item) => {
     const roles = Array.isArray(item?.prijemci_roles) ? item.prijemci_roles : [];
     const users = Array.isArray(item?.prijemci_users) ? item.prijemci_users : [];
     if (roles.length === 0 && users.length === 0) {
-      return '';
+      return null;
     }
 
     // Ostranit email (text za " - " nebo obsahujici "@") a duplicity
@@ -1956,17 +2082,50 @@ const PlanningAdminPage = () => {
     const cleanedRoles = uniqueSorted(roles);
     const cleanedUsers = uniqueSorted(users);
 
-    const lines = [];
-    if (cleanedRoles.length > 0) {
-      lines.push(`Role (${cleanedRoles.length}):`);
-      cleanedRoles.forEach((role) => lines.push(`  • ${role}`));
-    }
-    if (cleanedUsers.length > 0) {
-      if (lines.length > 0) lines.push('');
-      lines.push(`Uživatelé (${cleanedUsers.length}):`);
-      cleanedUsers.forEach((user) => lines.push(`  • ${user}`));
-    }
-    return lines.join('\n');
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        {cleanedRoles.length > 0 && (
+          <div>
+            <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+              👥 Role ({cleanedRoles.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              {cleanedRoles.map((role, idx) => (
+                <div key={idx} style={{ 
+                  color: '#cbd5e1', 
+                  fontSize: '0.72rem', 
+                  paddingLeft: '0.8rem',
+                  position: 'relative'
+                }}>
+                  <span style={{ position: 'absolute', left: 0 }}>•</span>
+                  {role}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {cleanedUsers.length > 0 && (
+          <div>
+            <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+              👤 Uživatelé ({cleanedUsers.length})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+              {cleanedUsers.map((user, idx) => (
+                <div key={idx} style={{ 
+                  color: '#cbd5e1', 
+                  fontSize: '0.72rem', 
+                  paddingLeft: '0.8rem',
+                  position: 'relative'
+                }}>
+                  <span style={{ position: 'absolute', left: 0 }}>•</span>
+                  {user}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   };
 
   const formatResponseType = (type) => {
@@ -2403,22 +2562,42 @@ const PlanningAdminPage = () => {
                               </div>
                             </TableCell>
                             <TableCell style={cellStyle}>
-                              <HtmlPreviewBox>
-                                {previewHtml ? (
-                                  <HtmlPreviewContent style={cellStyle} dangerouslySetInnerHTML={{ __html: previewHtml }} />
-                                ) : (
+                              {previewHtml ? (
+                                <SmartTooltip
+                                  text={
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                      <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>
+                                        📝 {activeTab === 'messages' ? 'Obsah zprávy' : 'Popis události'}
+                                      </div>
+                                      <HtmlTooltipContent dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                                    </div>
+                                  }
+                                  icon="none"
+                                  multiline
+                                  preferredPosition="right"
+                                  maxWidth="500px"
+                                  interactive={true}
+                                >
+                                  <HtmlPreviewBox style={{ cursor: 'help' }}>
+                                    <HtmlPreviewContent style={cellStyle} dangerouslySetInnerHTML={{ __html: previewHtml }} />
+                                  </HtmlPreviewBox>
+                                </SmartTooltip>
+                              ) : (
+                                <HtmlPreviewBox>
                                   <HtmlPreviewEmpty>—</HtmlPreviewEmpty>
-                                )}
-                              </HtmlPreviewBox>
+                                </HtmlPreviewBox>
+                              )}
                             </TableCell>
                             <TableCell style={cellStyle}>
                               {item.dt_od ? prettyDate(item.dt_od) : '-'}
                               {extraTermCount > 0 && (
                                 <SmartTooltip
                                   text={buildEventDatesTooltip(item)}
-                                  icon="calendar"
+                                  icon="none"
                                   multiline
-                                  preferredPosition="top"
+                                  preferredPosition="right"
+                                  maxWidth="350px"
+                                  interactive={true}
                                 >
                                   <Badge $type="role" style={{ marginLeft: '0.5rem' }}>
                                     +{extraTermCount}
@@ -2435,10 +2614,74 @@ const PlanningAdminPage = () => {
                                   const isFull = maxKap && accepted >= maxKap;
                                   const badgeColor = isFull ? '#dc2626' : (maxKap ? '#3b82f6' : '#64748b');
                                   const displayText = maxKap ? `${accepted}/${maxKap}` : `${accepted}/∞`;
+                                  
+                                  const tooltipJSX = (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                                      <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700 }}>
+                                        📊 Kapacita události
+                                      </div>
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                          <span style={{ 
+                                            width: '14px', 
+                                            height: '14px', 
+                                            borderRadius: '3px', 
+                                            background: '#dc2626',
+                                            display: 'inline-block'
+                                          }} />
+                                          <span style={{ color: '#fca5a5', fontSize: '0.72rem' }}>
+                                            Obsazeno (kapacita naplněna)
+                                          </span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                          <span style={{ 
+                                            width: '14px', 
+                                            height: '14px', 
+                                            borderRadius: '3px', 
+                                            background: '#3b82f6',
+                                            display: 'inline-block'
+                                          }} />
+                                          <span style={{ color: '#93c5fd', fontSize: '0.72rem' }}>
+                                            Volná místa
+                                          </span>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                          <span style={{ 
+                                            width: '14px', 
+                                            height: '14px', 
+                                            borderRadius: '3px', 
+                                            background: '#64748b',
+                                            display: 'inline-block'
+                                          }} />
+                                          <span style={{ color: '#cbd5e1', fontSize: '0.72rem' }}>
+                                            Neomezená kapacita (∞)
+                                          </span>
+                                        </div>
+                                      </div>
+                                      <div style={{ 
+                                        borderTop: '1px solid rgba(255,255,255,0.2)', 
+                                        paddingTop: '0.4rem',
+                                        color: '#94a3b8',
+                                        fontSize: '0.7rem'
+                                      }}>
+                                        <strong style={{ color: '#cbd5e1' }}>Aktuálně:</strong> {accepted} akceptováno {maxKap ? `z ${maxKap}` : '(neomezeno)'}
+                                      </div>
+                                    </div>
+                                  );
+                                  
                                   return (
-                                    <Badge $type="user" style={{ background: badgeColor, color: 'white' }}>
-                                      {displayText}
-                                    </Badge>
+                                    <SmartTooltip 
+                                      text={tooltipJSX} 
+                                      icon="none" 
+                                      multiline 
+                                      preferredPosition="right"
+                                      maxWidth="280px"
+                                      interactive={true}
+                                    >
+                                      <Badge $type="user" style={{ background: badgeColor, color: 'white' }}>
+                                        {displayText}
+                                      </Badge>
+                                    </SmartTooltip>
                                   );
                                 })()}
                               </TableCell>
@@ -2447,9 +2690,11 @@ const PlanningAdminPage = () => {
                               {recipientsTooltip ? (
                                 <SmartTooltip
                                   text={recipientsTooltip}
-                                  icon="info"
+                                  icon="none"
                                   multiline
-                                  preferredPosition="top"
+                                  preferredPosition="right"
+                                  maxWidth="300px"
+                                  interactive={true}
                                 >
                                   <Badge $type="user">{recipientsCount}</Badge>
                                 </SmartTooltip>
@@ -2484,19 +2729,45 @@ const PlanningAdminPage = () => {
                                         const range = doo ? `${od}–${doo}` : od;
                                         return `🏆 ${range} (${w.accepted}×)`;
                                       });
-                                      const parts = [];
-                                      if (winnerLines.length > 0) {
-                                        parts.push('Nejvíce akceptováno:');
-                                        parts.push(...winnerLines);
-                                        parts.push('');
-                                      }
-                                      if (uniqueUsers.length > 0) {
-                                        parts.push(`Reagovali (${uniqueUsers.length}):`);
-                                        parts.push(...uniqueUsers.map(n => `• ${n}`));
-                                      }
-                                      const tooltipText = parts.join('\n');
-                                      return tooltipText ? (
-                                        <SmartTooltip text={tooltipText} icon="user" multiline preferredPosition="top">
+                                      const tooltipJSX = (winnerLines.length > 0 || uniqueUsers.length > 0) ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                          {winnerLines.length > 0 && (
+                                            <div>
+                                              <div style={{ color: '#fbbf24', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+                                                🏆 Nejvíce akceptováno
+                                              </div>
+                                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                                                {winners.map((w, idx) => {
+                                                  const od = formatTooltipDateTime(w.dt_od);
+                                                  const doVal = w.dt_do ? formatTooltipDateTime(w.dt_do) : '';
+                                                  const range = doVal ? `${od} - ${doVal}` : od;
+                                                  return (
+                                                    <div key={idx} style={{ color: '#fde68a', fontSize: '0.72rem' }}>
+                                                      • {range} <span style={{ color: '#fbbf24', fontWeight: 700 }}>({w.accepted}×)</span>
+                                                    </div>
+                                                  );
+                                                })}
+                                              </div>
+                                            </div>
+                                          )}
+                                          {uniqueUsers.length > 0 && (
+                                            <div>
+                                              <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.3rem' }}>
+                                                👤 Reagovali ({uniqueUsers.length})
+                                              </div>
+                                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
+                                                {uniqueUsers.map((n, idx) => (
+                                                  <div key={idx} style={{ color: '#cbd5e1', fontSize: '0.72rem' }}>
+                                                    • {n}
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      ) : null;
+                                      return tooltipJSX ? (
+                                        <SmartTooltip text={tooltipJSX} icon="none" multiline preferredPosition="right" maxWidth="350px" interactive={true}>
                                           <Badge $type="user">{responsesCount}</Badge>
                                         </SmartTooltip>
                                       ) : (
@@ -2597,15 +2868,22 @@ const PlanningAdminPage = () => {
                                       const sortMode = responsesSort[item.id] || 'type';
                                       const toggleSort = () => setResponsesSort(prev => ({ ...prev, [item.id]: (prev[item.id] === 'type' ? 'name' : 'type') }));
                                       const isName = sortMode === 'name';
-                                      const tooltip = isName
-                                        ? 'Řazeno podle jména (kliknutím přepnout na reakci)'
-                                        : 'Řazeno podle reakce (kliknutím přepnout na jméno)';
+                                      const tooltipJSX = (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                          <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700 }}>
+                                            {isName ? '🔤 Řazeno podle jména' : '📊 Řazeno podle reakce'}
+                                          </div>
+                                          <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+                                            Kliknutím přepnout
+                                          </div>
+                                        </div>
+                                      );
                                       return (
                                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.2rem' }}>
                                           <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
                                             Reakce ({responsesCount})
                                           </div>
-                                          <SmartTooltip text={tooltip} preferredPosition="top">
+                                          <SmartTooltip text={tooltipJSX} icon="none" preferredPosition="left" maxWidth="200px">
                                             <button
                                               type="button"
                                               onClick={toggleSort}
@@ -2622,7 +2900,6 @@ const PlanningAdminPage = () => {
                                                 justifyContent: 'center',
                                                 lineHeight: 1
                                               }}
-                                              aria-label={tooltip}
                                             >
                                               <FontAwesomeIcon icon={isName ? faSortAlphaDown : faFilter} />
                                             </button>
@@ -2942,7 +3219,21 @@ const PlanningAdminPage = () => {
                         </div>
                         <div>
                           <Label>Kapacita</Label>
-                          <SmartTooltip text="Ponechte prázdné nebo 0 = neomezeno" icon="info">
+                          <SmartTooltip 
+                            text={
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                                <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700 }}>
+                                  ℹ️ Kapacita termínu
+                                </div>
+                                <div style={{ color: '#cbd5e1', fontSize: '0.72rem' }}>
+                                  Prázdné nebo 0 = neomezeno
+                                </div>
+                              </div>
+                            } 
+                            icon="none" 
+                            preferredPosition="right"
+                            maxWidth="200px"
+                          >
                             <Input
                               type="number"
                               min="0"

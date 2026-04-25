@@ -1047,6 +1047,7 @@ export const NotificationsPage = () => {
   const [planningPanelOpen, setPlanningPanelOpen] = useState(false);
   const [selectedPlanningEvent, setSelectedPlanningEvent] = useState(null);
   const [planningLoading, setPlanningLoading] = useState(false);
+  const [planningDialog, setPlanningDialog] = useState({ isOpen: false, message: '' });
 
   // 🗄️ Search query s localStorage
   const [searchQuery, setSearchQuery] = useState(() => {
@@ -1209,7 +1210,10 @@ export const NotificationsPage = () => {
       const isFull = term.is_full === true;
       const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
       if (isFull && !isUserAccepted) {
-        showToast('⛔ Termín je plně obsazen. Nelze jej akceptovat.', { type: 'error' });
+        setPlanningDialog({ 
+          isOpen: true, 
+          message: 'Termín je plně obsazen. Nelze jej akceptovat.' 
+        });
         return;
       }
     }
@@ -3829,6 +3833,16 @@ export const NotificationsPage = () => {
           />
         </SlideInDetailPanel>
       )}
+
+      {/* Planning Error Dialog - UŽ MÁ VLASTNÍ createPortal uvnitř! */}
+      <ConfirmDialog
+        isOpen={planningDialog.isOpen}
+        message={planningDialog.message}
+        onConfirm={() => setPlanningDialog({ isOpen: false, message: '' })}
+        onClose={() => setPlanningDialog({ isOpen: false, message: '' })}
+        confirmText="OK"
+        showCancel={false}
+      />
     </PageContainer>
   );
 };

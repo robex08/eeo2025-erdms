@@ -1282,6 +1282,7 @@ const NotificationBellWrapper = ({ userId }) => {
   const [planningLoading, setPlanningLoading] = useState(false);
   const [termNotes, setTermNotes] = useState({});
   const [flashState, setFlashState] = useState({});
+  const [planningDialog, setPlanningDialog] = useState({ isOpen: false, message: '' });
   
   const buttonRef = useRef(null);
   const dropdownRef = useRef(null);
@@ -1654,7 +1655,10 @@ const NotificationBellWrapper = ({ userId }) => {
       const isFull = term.is_full === true;
       const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
       if (isFull && !isUserAccepted) {
-        alert('⛔ Termín je plně obsazen. Nelze jej akceptovat.');
+        setPlanningDialog({ 
+          isOpen: true, 
+          message: 'Termín je plně obsazen. Nelze jej akceptovat.' 
+        });
         return;
       }
     }
@@ -1789,6 +1793,16 @@ const NotificationBellWrapper = ({ userId }) => {
         />
       </SlideInDetailPanel>
     )}
+
+    {/* Planning Error Dialog - UŽ MÁ VLASTNÍ createPortal uvnitř! */}
+    <ConfirmDialog
+      isOpen={planningDialog.isOpen}
+      message={planningDialog.message}
+      onConfirm={() => setPlanningDialog({ isOpen: false, message: '' })}
+      onClose={() => setPlanningDialog({ isOpen: false, message: '' })}
+      confirmText="OK"
+      showCancel={false}
+    />
     </>
   );
 };

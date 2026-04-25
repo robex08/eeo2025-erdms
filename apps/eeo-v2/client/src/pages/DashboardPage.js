@@ -12,6 +12,7 @@ import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi
 import { fetchMySubstitutions, fetchCurrentlySubstituting } from '../services/apiSubstitution';
 import * as planningApi from '../services/planningApi';
 import { theme } from '../theme/theme';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
@@ -3714,6 +3715,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
   const [termNotes, setTermNotes] = useState({}); // { [termId]: 'poznamka' }
   const [flashState, setFlashState] = useState({}); // { [termId]: 'accepted' | 'declined' }
   const [toast, setToast] = useState(null); // { type, message }
+  const [calendarDialog, setCalendarDialog] = useState({ isOpen: false, data: null });
 
   // Zjisti, zda datum (rok, měsíc, den) spadá do rozsahu zastupování
   const checkDay = (year, month, day) => {
@@ -3815,7 +3817,10 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
       const isFull = term.is_full === true;
       const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
       if (isFull && !isUserAccepted) {
-        setToast({ type: 'error', message: '⛔ Termín je plně obsazen. Nelze jej akceptovat.' });
+        setToast({ 
+          type: 'error', 
+          message: '⛔ Termín je plně obsazen. Nelze jej akceptovat.' 
+        });
         setTimeout(() => setToast(null), 3500);
         return;
       }
@@ -4134,18 +4139,130 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
             if (tooltipLines.length > 0) tooltipLines.push('──────────────────────────────');
             dayEvents.forEach(({ event, term }, idx) => {
               const resp = term?.moje_odpoved?.typ_odpovedi;
-              let line = `Událost: ${event.nazev}`;
-              if (term?.dt_od) line += `\nTermín: ${getTermLabel(term)}`;
-              if (resp) line += `\nOdpověď: ${formatResponseLabel(resp)}`;
+              const isFull = term?.is_full === true;
+              const isUserAccepted = resp === 'accepted';
+              const isBlocked = isFull && !isUserAccepted;
+              
+              const organizator = event.autor_jmeno && event.autor_prijmeni 
+                ? `${event.autor_jmeno} ${event.autor_prijmeni}` 
+                : '—';
+              const telefon = event.autor_telefon || '—';
+              const email = event.autor_email || '—';
+              
+              let line = `📅 ${event.nazev}`;
+              if (isBlocked) line += `\n🔴 Obsazeno`;
+              if (term?.dt_od) line += `\n${getTermLabel(term)}`;
+              if (resp) line += ` • ${formatResponseLabel(resp)}`;
+              line += `\n👤 ${organizator}`;
+              line += `\n📞 ${telefon}`;
+              line += `\n📧 ${email}`;
+              
               tooltipLines.push(line);
               // Oddělovač mezi událostmi (ne po poslední)
               if (idx < dayEvents.length - 1) {
-                tooltipLines.push('──────────────────────────────');
+                tooltipLines.push('─────────────────────────────────────────────────────');
               }
             });
           }
-          const tooltipText = tooltipLines.join('\n');
-          const hasTooltip = tooltipText.length > 0;
+          
+          // ✅ Vytvoř JSX tooltip místo prostého textu
+          let tooltipJSX = null;
+          if (hasEvents || asZastupovany.length > 0 || asZastupce.length > 0) {
+            const elements = [];
+            
+            // Zastupování info
+            asZastupovany.forEach((s, i) => {
+              const jmeno = s.zastupce?.jmeno
+                ? `${s.zastupce.jmeno} ${s.zastupce.prijmeni || ''}`.trim()
+                : `id#${s.zastupce?.id || s.zastupce_id || '?'}`;
+              const email = s.zastupce?.email || '';
+              const telefon = s.zastupce?.telefon || '';
+              elements.push(
+                <div key={`zastupovany-${i}`} style={{ marginBottom: '0.5rem' }}>
+                  <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 600 }}>Zástupce: {jmeno}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Od: {formatCzDate(s.dt_od)} Do: {formatCzDate(s.dt_do)}</div>
+                  {email && <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Email: {email}</div>}
+                  {telefon && <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Telefon: {telefon}</div>}
+                </div>
+              );
+            });
+            
+            asZastupce.forEach((s, i) => {
+              const jmeno = s.zastupovany_jmeno
+                ? `${s.zastupovany_jmeno} ${s.zastupovany_prijmeni || ''}`.trim()
+                : `id#${s.zastupovany_id || '?'}`;
+              const email = s.zastupovany_email || '';
+              const telefon = s.zastupovany_telefon || '';
+              elements.push(
+                <div key={`zastupce-${i}`} style={{ marginBottom: '0.5rem' }}>
+                  <div style={{ color: '#f3e8ff', fontSize: '0.75rem', fontWeight: 600 }}>Zastupuji: {jmeno}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Od: {formatCzDate(s.dt_od)} Do: {formatCzDate(s.dt_do)}</div>
+                  {email && <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Email: {email}</div>}
+                  {telefon && <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>Telefon: {telefon}</div>}
+                </div>
+              );
+            });
+            
+            if ((asZastupovany.length > 0 || asZastupce.length > 0) && hasEvents) {
+              elements.push(<div key="sep" style={{ borderTop: '1px solid rgba(255,255,255,0.2)', margin: '0.5rem 0' }} />);
+            }
+            
+            // Události
+            dayEvents.forEach(({ event, term }, idx) => {
+              const resp = term?.moje_odpoved?.typ_odpovedi;
+              const isFull = term?.is_full === true;
+              const isUserAccepted = resp === 'accepted';
+              const isBlocked = isFull && !isUserAccepted;
+              
+              const organizator = event.autor_jmeno && event.autor_prijmeni 
+                ? `${event.autor_jmeno} ${event.autor_prijmeni}` 
+                : '—';
+              const telefon = event.autor_telefon || '—';
+              const email = event.autor_email || '—';
+              
+              elements.push(
+                <div key={`event-${event.id || idx}`} style={{ marginBottom: idx < dayEvents.length - 1 ? '0.75rem' : 0 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
+                    <span>📅</span>
+                    <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 600 }}>{event.nazev}</span>
+                    {isBlocked && (
+                      <span style={{ 
+                        marginLeft: 'auto',
+                        background: '#fef9c3',
+                        color: '#991b1b',
+                        padding: '0.1rem 0.4rem',
+                        borderRadius: '4px',
+                        fontSize: '0.65rem',
+                        fontWeight: 700
+                      }}>
+                        🔴 Obsazeno
+                      </span>
+                    )}
+                  </div>
+                  {term?.dt_od && (
+                    <div style={{ color: '#cbd5e1', fontSize: '0.75rem' }}>
+                      {getTermLabel(term)}{resp && ` • ${formatResponseLabel(resp)}`}
+                    </div>
+                  )}
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+                    👤 {organizator}
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+                    📞 {telefon}
+                  </div>
+                  <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+                    📧 {email}
+                  </div>
+                  {idx < dayEvents.length - 1 && (
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.5rem' }} />
+                  )}
+                </div>
+              );
+            });
+            
+            tooltipJSX = <div>{elements}</div>;
+          }
+          const hasTooltip = tooltipJSX !== null;
 
           // Barvy - dnes má přednost (modrá), pak zastupovany (tyrkys), pak zastupce (fialová)
           let bg = 'transparent';
@@ -4197,11 +4314,11 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
                 cursor: hasEvents ? 'pointer' : (hasZastupovany || hasZastupce) ? 'help' : 'default',
                 fontSize: '0.82rem', fontWeight: (today_ || hasZastupovany || hasZastupce || hasEvents) ? 700 : 500,
                 background: bg, color, boxShadow, outline,
-                transition: 'background 0.12s, color 0.12s'
+                transition: 'background 0.12s, color 0.12s',
+                position: 'relative'
               }}
               onClick={() => {
                 if (hasEvents) {
-                  // ✅ Kontrola zda VŠECHNY termíny jsou plné a uživatel není přihlášen
                   const allTermsFull = dayEvents.every(({ term }) => {
                     const isFull = term?.is_full === true;
                     const isUserAccepted = term?.moje_odpoved?.typ_odpovedi === 'accepted';
@@ -4209,8 +4326,17 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
                   });
 
                   if (allTermsFull && dayEvents.length > 0) {
-                    // Zobrazit dialog místo otevření panelu
-                    alert('Všechny termíny v tento den jsou plně obsazeny.\n\nZkuste jiný termín nebo kontaktujte organizátora.');
+                    const firstEvent = dayEvents[0].event;
+                    const organizator = firstEvent.autor_jmeno && firstEvent.autor_prijmeni 
+                      ? `${firstEvent.autor_jmeno} ${firstEvent.autor_prijmeni}` 
+                      : 'Organizátor';
+                    const telefon = firstEvent.autor_telefon || '—';
+                    const email = firstEvent.autor_email || '—';
+                    
+                    setCalendarDialog({ 
+                      isOpen: true, 
+                      data: { organizator, telefon, email }
+                    });
                     return;
                   }
 
@@ -4222,28 +4348,37 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
               onMouseLeave={e => { if (!today_ && !hasZastupovany && !hasZastupce && !hasEvents) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#374151'; } }}
             >
               {d}
+              {hasEvents && (
+                <span style={{
+                  position: 'absolute',
+                  left: '50%',
+                  top: '50%',
+                  transform: 'translate(5px, 5px)',
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: dotColor,
+                  boxShadow: '0 0 0 2px ' + (today_ ? '#3b82f6' : '#fff'),
+                  pointerEvents: 'none'
+                }} />
+              )}
             </button>
           );
 
           return (
-            <div key={d} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
+            <div key={d} style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               {hasTooltip ? (
-                <SmartTooltip text={tooltipText} icon="info" multiline preferredPosition="top">
+                <SmartTooltip 
+                  text={tooltipJSX} 
+                  icon="none" 
+                  multiline 
+                  preferredPosition="right"
+                  maxWidth="380px"
+                  interactive={true}
+                >
                   {dayButton}
                 </SmartTooltip>
               ) : dayButton}
-              {hasEvents && (
-                <span style={{
-                  position: 'absolute',
-                  bottom: '-1px',
-                  right: '8px',
-                  width: '7px',
-                  height: '7px',
-                  borderRadius: '50%',
-                  background: dotColor,
-                  boxShadow: '0 0 0 2px #fff'
-                }} />
-              )}
             </div>
           );
         })}
@@ -4328,6 +4463,67 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           {toast.message}
         </div>
       )}
+      {/* ConfirmDialog - UŽ MÁ VLASTNÍ createPortal uvnitř! */}
+      <ConfirmDialog
+        isOpen={calendarDialog.isOpen}
+        onConfirm={() => setCalendarDialog({ isOpen: false, data: null })}
+        onClose={() => setCalendarDialog({ isOpen: false, data: null })}
+        confirmText="OK"
+        showCancel={false}
+        variant="warning"
+      >
+        {calendarDialog.data && (
+          <div style={{ textAlign: 'left' }}>
+            <div style={{ 
+              fontSize: '1rem', 
+              fontWeight: 600, 
+              marginBottom: '1rem',
+              color: '#1f2937'
+            }}>
+              ⚠️ Všechny termíny v tento den jsou plně obsazeny
+            </div>
+            <div style={{ 
+              fontSize: '0.9rem', 
+              color: '#4b5563',
+              marginBottom: '1.25rem',
+              lineHeight: 1.6
+            }}>
+              Zkuste jiný termín nebo kontaktujte organizátora:
+            </div>
+            <div style={{ 
+              background: '#f9fafb',
+              border: '1px solid #e5e7eb',
+              borderRadius: '8px',
+              padding: '1rem',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.25rem' }}>👤</span>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>Organizátor</div>
+                  <div style={{ fontSize: '0.95rem', color: '#111827', fontWeight: 700 }}>{calendarDialog.data.organizator}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.25rem' }}>📞</span>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>Telefon</div>
+                  <div style={{ fontSize: '0.95rem', color: '#111827', fontWeight: 600 }}>{calendarDialog.data.telefon}</div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <span style={{ fontSize: '1.25rem' }}>📧</span>
+                <div>
+                  <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 600 }}>Email</div>
+                  <div style={{ fontSize: '0.95rem', color: '#111827', fontWeight: 600 }}>{calendarDialog.data.email}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </ConfirmDialog>
     </div>
   );
 }
@@ -5242,6 +5438,13 @@ function NotificationsWidget({ notifications, navigate }) {
     const data = n.data || {};
     const orderId = data.order_id || n.objekt_id;
     
+    // ✅ PLANNING EVENT - navigovat na stránku notifikací, kde se otevře detail
+    // (nemůžeme otevřít planning panel z dashboardu, protože by se překrýval s widgety)
+    if (n.objekt_typ === 'planning_event' || n.objekt_typ === 'planning_message') {
+      navigate('/notifications');
+      return;
+    }
+    
     // ✅ Notifikace objednávek - proklik na detail
     // Backend vrací: "orders" (množné číslo!)
     if (n.objekt_typ && (n.objekt_typ === 'orders' || n.objekt_typ === 'order' || n.objekt_typ === 'objednavka') && orderId) {
@@ -5300,6 +5503,66 @@ function NotificationsWidget({ notifications, navigate }) {
         number: null, objekt_id: null, subject: null, usersLine: null,
         amount: null, statusText: null, statusColor: null, timeText: null,
         actionType: null, actionColor: null
+      };
+    }
+
+    // ✅ PLANNING EVENT / MESSAGE - události a zprávy
+    if (n.objekt_typ === 'planning_event' || n.objekt_typ === 'planning_message' || n.typ === 'PLANNING_EVENT_CREATED' || n.typ === 'PLANNING_MESSAGE_CREATED') {
+      const planningData = (() => {
+        try {
+          return typeof n.data_json === 'string' ? JSON.parse(n.data_json) : (n.data_json || data || {});
+        } catch (e) {
+          return data || {};
+        }
+      })();
+      
+      const organizator = planningData.organizator || {};
+      const sender = organizator.full_name || n.from_user_name || null;
+      
+      const createdDate = n.dt_created || n.vytvoren_kdy;
+      const timeFormatted = createdDate ? new Date(createdDate).toLocaleString('cs-CZ', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      }) : '';
+      
+      // Formátování termínu události
+      let eventTimeStr = '';
+      if (planningData.dt_od) {
+        const dtOd = new Date(planningData.dt_od);
+        const dtDo = planningData.dt_do ? new Date(planningData.dt_do) : null;
+        
+        const dateStr = dtOd.toLocaleString('cs-CZ', { day: '2-digit', month: '2-digit', year: 'numeric' });
+        const timeOdStr = dtOd.toLocaleString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+        
+        if (dtDo) {
+          const timeDoStr = dtDo.toLocaleString('cs-CZ', { hour: '2-digit', minute: '2-digit' });
+          eventTimeStr = `${dateStr} ${timeOdStr} - ${timeDoStr}`;
+        } else {
+          eventTimeStr = `${dateStr} ${timeOdStr}`;
+        }
+      }
+      
+      const daysAge = getDaysAge(n.dt_created);
+      let timeText = '';
+      if (daysAge === 0) timeText = 'dnes';
+      else if (daysAge === 1) timeText = 'včera';
+      else if (daysAge !== null) timeText = `před ${daysAge} d`;
+      
+      return {
+        type: 'PLANNING',
+        nadpis: n.nadpis || planningData.nazev || 'Událost',
+        zprava: n.zprava || planningData.popis || '',
+        sender: sender,
+        timeFormatted: timeFormatted,
+        eventTime: eventTimeStr,
+        timeText,
+        actionType: n.objekt_typ === 'planning_message' ? 'Zpráva' : 'Událost',
+        actionColor: n.objekt_typ === 'planning_message' ? '#0891b2' : '#8b5cf6',
+        number: null, objekt_id: n.objekt_id, subject: null, usersLine: null,
+        amount: null, statusText: null, statusColor: null
       };
     }
     
@@ -5684,6 +5947,61 @@ function NotificationsWidget({ notifications, navigate }) {
               {/* Řádek 3: Od + datum+čas */}
               <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: '0.15rem' }}>
                 {details.sender && `Od: ${details.sender} • `}{details.timeFormatted}
+              </div>
+            </div>
+            ) : details.type === 'PLANNING' ? (
+            /* ── PLANNING UDÁLOSTI A ZPRÁVY ─────────────────────────── */
+            <div style={{ flex: 1, minWidth: 0 }}>
+              {/* Řádek 1: Ikona + Nadpis + čas | vpravo badge typu */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '0.2rem', flexWrap: 'wrap' }}>
+                <FontAwesomeIcon 
+                  icon={details.actionType === 'Zpráva' ? faEnvelope : faCalendarAlt} 
+                  style={{ 
+                    color: isRead ? '#94a3b8' : details.actionColor, 
+                    fontSize: '0.75rem', 
+                    flexShrink: 0 
+                  }} 
+                />
+                <span style={{ color: isRead ? '#64748b' : '#1e293b', fontWeight: isRead ? 500 : 700, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '60%' }}>
+                  {details.nadpis}
+                </span>
+                {details.timeText && (
+                  <Badge $bg={dateBadgeBg} $color={dateBadgeColor}>{details.timeText}</Badge>
+                )}
+                <span style={{ marginLeft: 'auto' }}>
+                  <Badge 
+                    $bg={isRead ? '#f1f5f9' : (details.actionType === 'Zpráva' ? '#cffafe' : '#ede9fe')} 
+                    $color={isRead ? '#94a3b8' : details.actionColor} 
+                    style={{ fontWeight: 600 }}
+                  >
+                    {details.actionType}
+                  </Badge>
+                </span>
+              </div>
+              {/* Řádek 2: Termín události + Zpráva/popis */}
+              {details.eventTime && (
+                <div style={{ fontSize: '0.78rem', color: isRead ? '#94a3b8' : '#475569', marginBottom: '0.2rem', fontWeight: 500 }}>
+                  📅 {details.eventTime}
+                </div>
+              )}
+              {details.zprava && (
+                <div style={{ 
+                  fontSize: '0.78rem', 
+                  color: isRead ? '#94a3b8' : '#475569', 
+                  lineHeight: 1.4, 
+                  overflow: 'hidden', 
+                  textOverflow: 'ellipsis', 
+                  display: '-webkit-box', 
+                  WebkitLineClamp: 2, 
+                  WebkitBoxOrient: 'vertical',
+                  marginBottom: '0.15rem'
+                }}>
+                  {details.zprava}
+                </div>
+              )}
+              {/* Řádek 3: Od + datum+čas vytvoření notifikace */}
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                {details.sender && `Organizátor: ${details.sender} • `}{details.timeFormatted}
               </div>
             </div>
             ) : (
