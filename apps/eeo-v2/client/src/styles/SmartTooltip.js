@@ -27,7 +27,7 @@ const TooltipBubble = styled.div`
   font-size: 0.85rem;
   font-weight: 600;
   white-space: ${props => props.$multiline ? 'pre-line' : 'nowrap'};
-  max-width: ${props => props.$multiline ? '340px' : 'none'};
+  max-width: ${props => props.$maxWidth || (props.$multiline ? '340px' : 'none')};
   box-shadow:
     0 6px 20px rgba(0, 0, 0, 0.4),
     0 2px 8px rgba(0, 0, 0, 0.25),
@@ -37,7 +37,6 @@ const TooltipBubble = styled.div`
   pointer-events: ${props => props.$interactive ? 'auto' : 'none'};
   z-index: 999999;
   line-height: 1.6;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
@@ -134,7 +133,8 @@ export const SmartTooltip = ({
   multiline = false,
   disabled = false,
   interactive = false,
-  stretch = false
+  stretch = false,
+  maxWidth = null
 }) => {
   const childRef = useRef(null);
   const tooltipRef = useRef(null);
@@ -381,6 +381,7 @@ export const SmartTooltip = ({
           $measuring={isMeasuring}
           $icon={icon}
           $multiline={multiline}
+          $maxWidth={maxWidth}
           $interactive={interactive}
           onMouseEnter={interactive ? handleTooltipMouseEnter : undefined}
           onMouseLeave={interactive ? handleTooltipMouseLeave : undefined}

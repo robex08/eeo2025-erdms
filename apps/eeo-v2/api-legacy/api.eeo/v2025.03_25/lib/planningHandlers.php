@@ -462,7 +462,7 @@ function createPlanningNotifications($db, $record, $typ, $event_type) {
     // Načíst jméno autora
     $organizator = null;
     if (!empty($record['autor_id'])) {
-        $sqlAutor = "SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM " . TBL_UZIVATELE . " WHERE uzivatel_id = ?";
+        $sqlAutor = "SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM " . TBL_UZIVATELE . " WHERE id = ?";
         $stmtAutor = $db->prepare($sqlAutor);
         $stmtAutor->execute([$record['autor_id']]);
         $autorData = $stmtAutor->fetch(PDO::FETCH_ASSOC);
@@ -537,8 +537,14 @@ function createPlanningNotifications($db, $record, $typ, $event_type) {
         }
     }
     
-    // 6. Vytvořit notifikaci pro každého příjemce
+    // 6. Vytvořit notifikaci pro každého příjemce (kromě autora)
+    $autorId = (int)($record['autor_id'] ?? 0);
     foreach ($allRecipients as $recipient) {
+        // ✅ Neposílat notifikaci autorovi o jeho vlastní akci
+        if ($recipient['user_id'] == $autorId) {
+            continue;
+        }
+        
         createNotification($db, [
             ':typ' => $event_type,
             ':nadpis' => $record['nazev'],
@@ -2129,7 +2135,11 @@ function handle_planning_events_calendar($input, $config) {
         }
 
         $placeholders = implode(',', array_fill(0, count($eventIds), '?'));
-        $sqlEvents = "SELECT u.*, us.jmeno as autor_jmeno, us.prijmeni as autor_prijmeni
+        $sqlEvents = "SELECT u.*, 
+                      us.jmeno as autor_jmeno, 
+                      us.prijmeni as autor_prijmeni,
+                      us.email as autor_email,
+                      us.telefon as autor_telefon
                       FROM " . TBL_PLAN_UDALOSTI . " u
                       LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id
                       WHERE u.id IN ($placeholders) AND u.aktivni = 1";
