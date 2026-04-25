@@ -1338,6 +1338,37 @@ function handle_planning_events_list($input, $config) {
             foreach ($terminy as $t) {
                 $terminyByEvent[$t['udalost_id']][] = $t;
             }
+            
+            // ✅ Načíst počty accepted pro každý termín
+            if (!empty($terminy)) {
+                $terminIds = array_column($terminy, 'id');
+                $placeholders2 = implode(',', array_fill(0, count($terminIds), '?'));
+                $sqlAccepted = "SELECT termin_id, COUNT(*) as accepted_count 
+                               FROM " . TBL_PLAN_UDALOSTI_ODPOVEDI . "
+                               WHERE termin_id IN ($placeholders2) AND typ_odpovedi = 'accepted'
+                               GROUP BY termin_id";
+                $stmtAccepted = $db->prepare($sqlAccepted);
+                $stmtAccepted->execute($terminIds);
+                $acceptedCounts = [];
+                foreach ($stmtAccepted->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $acceptedCounts[$row['termin_id']] = (int)$row['accepted_count'];
+                }
+                
+                // Přidat accepted_count a is_full k termínům
+                foreach ($terminyByEvent as &$eventTerms) {
+                    foreach ($eventTerms as &$termin) {
+                        $termin['accepted_count'] = $acceptedCounts[$termin['id']] ?? 0;
+                        $termin['kapacita'] = $termin['kapacita'] !== null ? (int)$termin['kapacita'] : null;
+                        $termin['is_full'] = false;
+                        if ($termin['kapacita'] !== null && $termin['kapacita'] > 0) {
+                            $termin['is_full'] = ($termin['accepted_count'] >= $termin['kapacita']);
+                        }
+                    }
+                    unset($termin);
+                }
+                unset($eventTerms);
+            }
+            
             foreach ($udalosti as &$u) {
                 $u['terminy'] = $terminyByEvent[$u['id']] ?? [];
                 
