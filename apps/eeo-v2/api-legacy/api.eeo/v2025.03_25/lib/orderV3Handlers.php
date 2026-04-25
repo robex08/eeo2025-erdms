@@ -3561,7 +3561,7 @@ function handle_order_v3_items($input, $config, $queries) {
                 lp.nazev_uctu as lppts_nazev
             FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
             LEFT JOIN " . TBL_LIMITOVANE_PRISLIBY . " lp ON p.lp_id = lp.id
-            WHERE p.objednavka_id = ? AND p.aktivni = 1
+            WHERE p.objednavka_id = ?
             ORDER BY p.id ASC
         ";
         
@@ -3580,7 +3580,7 @@ function handle_order_v3_items($input, $config, $queries) {
                 popis,
                 dt_nahrani
             FROM " . TBL_OBJEDNAVKY_PRILOHY . "
-            WHERE objednavka_id = ? AND aktivni = 1
+            WHERE objednavka_id = ?
             ORDER BY dt_nahrani DESC
         ";
         
