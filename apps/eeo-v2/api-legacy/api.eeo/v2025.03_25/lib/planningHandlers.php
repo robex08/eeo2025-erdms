@@ -98,7 +98,22 @@ function getPlanningRecipients($db, $record_id, $typ) {
     $prijemci_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($prijemci_rows as $row) {
-        if ($row['typ_prijemce'] === 'role' && $row['kod_role']) {
+        if ($row['typ_prijemce'] === 'all') {
+            // 🆕 VŠEM - Získat VŠECHNY aktivní uživatele
+            $sql_all = "SELECT id, email FROM " . TBL_UZIVATELE . " WHERE aktivni = 1";
+            $stmt_all = $db->prepare($sql_all);
+            $stmt_all->execute();
+            $users = $stmt_all->fetchAll(PDO::FETCH_ASSOC);
+            
+            foreach ($users as $user) {
+                $recipients[] = [
+                    'user_id' => $user['id'],
+                    'email' => $user['email'],
+                    'priority' => 'normal',
+                    'delivery' => ['email' => true, 'inApp' => true]
+                ];
+            }
+        } else if ($row['typ_prijemce'] === 'role' && $row['kod_role']) {
             // Získat všechny uživatele s touto rolí
             $sql_role = "SELECT DISTINCT u.id, u.email 
                         FROM " . TBL_UZIVATELE . " u
@@ -888,8 +903,24 @@ function handle_planning_messages_create($input, $config) {
 
         $zprava_id = $db->lastInsertId();
 
-        // INSERT příjemců
-        if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+        // 🆕 INSERT příjemců - podpora pro "Všem"
+        $sendToAll = isset($input['sendToAll']) && ($input['sendToAll'] == 1 || $input['sendToAll'] === true);
+        
+        if ($sendToAll) {
+            // 📧 Poslat VŠEM aktivním uživatelům
+            $sql_prijemce = "INSERT INTO " . TBL_PLAN_ZPRAVY_PRIJEMCI . " 
+                            (zprava_id, typ_prijemce, kod_role, user_id, dt_created)
+                            VALUES (?, ?, ?, ?, ?)";
+            $stmt_prijemce = $db->prepare($sql_prijemce);
+            $stmt_prijemce->execute([
+                $zprava_id,
+                'all',
+                null,
+                null,
+                $dt_created
+            ]);
+        } else if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+            // 📧 Poslat vybraným příjemcům
             $sql_prijemce = "INSERT INTO " . TBL_PLAN_ZPRAVY_PRIJEMCI . " 
                             (zprava_id, typ_prijemce, kod_role, user_id, dt_created)
                             VALUES (?, ?, ?, ?, ?)";
@@ -995,12 +1026,23 @@ function handle_planning_messages_update($input, $config) {
         $stmt_del_prij = $db->prepare($sql_del_prij);
         $stmt_del_prij->execute([$id]);
 
-        if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+        // 🆕 Podpora pro "Všem"
+        $sendToAll = isset($input['sendToAll']) && ($input['sendToAll'] == 1 || $input['sendToAll'] === true);
+        $dt_created = TimezoneHelper::getCzechDateTime();
+        
+        if ($sendToAll) {
+            // 📧 Poslat VŠEM aktivním uživatelům
             $sql_prijemce = "INSERT INTO " . TBL_PLAN_ZPRAVY_PRIJEMCI . " 
                             (zprava_id, typ_prijemce, kod_role, user_id, dt_created)
                             VALUES (?, ?, ?, ?, ?)";
             $stmt_prijemce = $db->prepare($sql_prijemce);
-            $dt_created = TimezoneHelper::getCzechDateTime();
+            $stmt_prijemce->execute([$id, 'all', null, null, $dt_created]);
+        } else if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+            // 📧 Poslat vybraným příjemcům
+            $sql_prijemce = "INSERT INTO " . TBL_PLAN_ZPRAVY_PRIJEMCI . " 
+                            (zprava_id, typ_prijemce, kod_role, user_id, dt_created)
+                            VALUES (?, ?, ?, ?, ?)";
+            $stmt_prijemce = $db->prepare($sql_prijemce);
 
             foreach ($input['prijemci'] as $prijemce) {
                 $stmt_prijemce->execute([
@@ -1673,8 +1715,24 @@ function handle_planning_events_create($input, $config) {
 
         $udalost_id = $db->lastInsertId();
 
-        // INSERT příjemců
-        if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+        // 🆕 INSERT příjemců - podpora pro "Všem"
+        $sendToAll = isset($input['sendToAll']) && ($input['sendToAll'] == 1 || $input['sendToAll'] === true);
+        
+        if ($sendToAll) {
+            // 📧 Poslat VŠEM aktivním uživatelům
+            $sql_prijemce = "INSERT INTO " . TBL_PLAN_UDALOSTI_PRIJEMCI . " 
+                            (udalost_id, typ_prijemce, kod_role, user_id, dt_created)
+                            VALUES (?, ?, ?, ?, ?)";
+            $stmt_prijemce = $db->prepare($sql_prijemce);
+            $stmt_prijemce->execute([
+                $udalost_id,
+                'all',
+                null,
+                null,
+                $dt_created
+            ]);
+        } else if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+            // 📧 Poslat vybraným příjemcům
             $sql_prijemce = "INSERT INTO " . TBL_PLAN_UDALOSTI_PRIJEMCI . " 
                             (udalost_id, typ_prijemce, kod_role, user_id, dt_created)
                             VALUES (?, ?, ?, ?, ?)";
@@ -1804,12 +1862,23 @@ function handle_planning_events_update($input, $config) {
         $stmt_del_prij = $db->prepare($sql_del_prij);
         $stmt_del_prij->execute([$id]);
 
-        if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+        // 🆕 Podpora pro "Všem"
+        $sendToAll = isset($input['sendToAll']) && ($input['sendToAll'] == 1 || $input['sendToAll'] === true);
+        $dt_created = TimezoneHelper::getCzechDateTime();
+        
+        if ($sendToAll) {
+            // 📧 Poslat VŠEM aktivním uživatelům
             $sql_prijemce = "INSERT INTO " . TBL_PLAN_UDALOSTI_PRIJEMCI . " 
                             (udalost_id, typ_prijemce, kod_role, user_id, dt_created)
                             VALUES (?, ?, ?, ?, ?)";
             $stmt_prijemce = $db->prepare($sql_prijemce);
-            $dt_created = TimezoneHelper::getCzechDateTime();
+            $stmt_prijemce->execute([$id, 'all', null, null, $dt_created]);
+        } else if (isset($input['prijemci']) && is_array($input['prijemci'])) {
+            // 📧 Poslat vybraným příjemcům
+            $sql_prijemce = "INSERT INTO " . TBL_PLAN_UDALOSTI_PRIJEMCI . " 
+                            (udalost_id, typ_prijemce, kod_role, user_id, dt_created)
+                            VALUES (?, ?, ?, ?, ?)";
+            $stmt_prijemce = $db->prepare($sql_prijemce);
 
             foreach ($input['prijemci'] as $prijemce) {
                 $stmt_prijemce->execute([

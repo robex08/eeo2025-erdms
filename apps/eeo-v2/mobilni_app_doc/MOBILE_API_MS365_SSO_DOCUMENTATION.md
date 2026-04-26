@@ -15,6 +15,7 @@
 ✅ **Auto-provisioning** - Uživatel se skupinou `eeoUser` se automaticky vytvoří  
 ✅ **Načítání rolí a oprávnění** - Z databáze `25_role`, `25_uzivatele_role`, `25_opravneni`  
 ✅ **Token systém** - Simple base64 token s expirací 24 hodin  
+✅ **GlobalSettings kontrola** - Backend automaticky kontroluje, zda je EntraID povolené  
 
 ### **Co potřebujeme pro mobilní:**
 🔨 **OAuth 2.0 PKCE flow** - Pro bezpečné mobilní přihlášení  
@@ -104,8 +105,16 @@ Uživatel zadá username (u03924), mobilní app zavolá backend, který ověří
 │                    OAUTH 2.0 PKCE FLOW                          │
 └─────────────────────────────────────────────────────────────────┘
 
+0️⃣ APP START (PŘED zobrazením login screenu!)
+   ├─> App zavolá: GET /api.eeo/auth/config
+   ├─> Backend vrátí: { entra_enabled: true, auth_mode: "both" }
+   └─> App rozhodne, jaká tlačítka zobrazit:
+       ├─> Pokud entra_enabled === false → SKRÝT tlačítko MS365
+       └─> Pokud auth_mode === "entra_only" → SKRÝT lokální login
+
 1️⃣ USER ACTION
    └─> Uživatel klikne "Přihlásit přes MS365"
+       (tlačítko se zobrazuje POUZE pokud entra_enabled === true)
        
 2️⃣ MOBILE APP (MSAL)
    ├─> Vygeneruje code_verifier (random 43-128 znaků)
@@ -150,6 +159,8 @@ Uživatel zadá username (u03924), mobilní app zavolá backend, který ověří
    │     refresh_token: "xxx"
    │   }
    └─> Backend:
+       ├─> ⚠️ KONTROLA: Ověří entra_enabled === '1' (GlobalSettings)
+       │   └─> Pokud NE: Vrátí 403 ENTRA_DISABLED
        ├─> Ověří id_token signaturu (Azure AD public key)
        ├─> Extrahuje username z UPN (upn claim)
        ├─> Zkontroluje/vytvoří uživatele v DB
@@ -172,6 +183,367 @@ Uživatel zadá username (u03924), mobilní app zavolá backend, který ověří
 ---
 
 ## 🔧 IMPLEMENTACE - KROK ZA KROKEM
+
+### **0️⃣ KONTROLA GLOBÁLNÍCH NASTAVENÍ (POVINNÉ!)**
+
+⚠️ **DŮLEŽITÉ:** Než vůbec nabídneš uživateli tlačítko "Přihlásit přes MS365", **MUSÍŠ ZKONTROLOVAT**, zda je EntraID autentizace v organizaci povolená!
+
+#### **A) Backend endpoint pro kontrolu nastavení**
+
+Backend již má kontrolu implementovanou v `entraAuthHandlers.php`:
+
+```php
+// V entraAuthHandlers.php - handle_entra_callback():
+$settingsModel = new GlobalSettingsModel($pdo);
+$auth_mode = $settingsModel->getSetting('auth_mode') ?: 'local_only';
+$entra_enabled = $settingsModel->getSetting('entra_enabled') ?: '0';
+
+// Reject if EntraID is disabled
+if ($entra_enabled !== '1') {
+    http_response_code(403);
+    echo json_encode(array(
+        'status' => 'error',
+        'code' => 'ENTRA_DISABLED',
+        'message' => 'EntraID přihlášení je zakázáno. Použijte lokální přihlášení.'
+    ), JSON_UNESCAPED_UNICODE);
+    return;
+}
+```
+
+**Klíče v GlobalSettings:**
+- `entra_enabled`: `'0'` (zakázáno) nebo `'1'` (povoleno)  
+- `auth_mode`: `'local_only'` | `'entra_only'` | `'both'`
+
+---
+
+### **📊 TŘI MÓDY AUTENTIZACE:**
+
+| auth_mode | entra_enabled | Co zobrazit v Login Screenu | Popis |
+|-----------|---------------|------------------------------|-------|
+| **`local_only`** | `'0'` nebo `'1'` | ✅ Lokální login<br>❌ MS365 tlačítko | Pouze username/password přihlášení |
+| **`both`** | `'1'` | ✅ Lokální login<br>✅ MS365 tlačítko | Uživatel si vybere metodu |
+| **`entra_only`** | `'1'` | ❌ Lokální login<br>✅ MS365 tlačítko | Pouze Microsoft 365 přihlášení |
+
+**⚠️ PRAVIDLA:**
+- Pokud `entra_enabled === '0'` → **NIKDY** nezobrazuj MS365 tlačítko (bez ohledu na auth_mode)
+- Pokud `auth_mode === 'entra_only'` AND `entra_enabled === '0'` → **ERROR stav** (žádná metoda není dostupná)
+
+---
+
+#### **B) Frontend - Kontrola PŘED zobrazením tlačítka**
+
+**NIKDY** nezobrazuj tlačítko "Přihlásit přes MS365", pokud není EntraID povolené!
+
+**Správný flow:**
+
+```javascript
+// 1️⃣ PŘI STARTU APLIKACE - Načti GlobalSettings
+async function checkAuthenticationMethods() {
+  try {
+    // Tento endpoint by měl být dostupný BEZ autentizace (anonymně)
+    // NEBO vytvořit nový endpoint /api.eeo/auth/config
+    const response = await fetch(`${API_BASE_URL}/auth/config`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch auth config');
+    }
+    
+    const data = await response.json();
+    
+    return {
+      entraEnabled: data.entra_enabled === '1' || data.entra_enabled === true,
+      authMode: data.auth_mode || 'local_only',
+    };
+  } catch (error) {
+    console.error('❌ Failed to check auth methods:', error);
+    
+    // FALLBACK: Pokud API selže, zobraz jen lokální login
+    return {
+      entraEnabled: false,
+      authMode: 'local_only',
+    };
+  }
+}
+
+// 2️⃣ POUŽITÍ V LOGIN SCREENU
+function LoginScreen({ navigation }) {
+  const [authConfig, setAuthConfig] = useState({
+    entraEnabled: false,
+    authMode: 'local_only',
+  });
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    // Načíst auth config při startu
+    checkAuthenticationMethods().then(config => {
+      setAuthConfig(config);
+      setLoading(false);
+    });
+  }, []);
+  
+  if (loading) {
+    return <ActivityIndicator size="large" />;
+  }
+  
+  // Rozhodovací logika pro zobrazení metod přihlášení
+  const showMS365 = authConfig.entraEnabled && 
+                     (authConfig.authMode === 'both' || authConfig.authMode === 'entra_only');
+  const showLocal = authConfig.authMode === 'local_only' || authConfig.authMode === 'both';
+  const hasAnyMethod = showMS365 || showLocal;
+  
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>EEO Mobile</Text>
+      
+      {/* ERROR stav - žádná metoda není dostupná */}
+      {!hasAnyMethod && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>
+            ⚠️ Momentálně není dostupná žádná metoda přihlášení.
+          </Text>
+          <Text style={styles.errorSubtext}>
+            Kontaktujte správce systému.
+          </Text>
+        </View>
+      )}
+      
+      {/* TLAČÍTKO MS365 - Zobrazit POUZE pokud je povolené */}
+      {showMS365 && (
+        <>
+          <Button
+            title="🔐 Přihlásit přes Microsoft 365"
+            onPress={handleMS365Login}
+            color="#0078d4"
+          />
+          
+          {/* Oddělovač pokud jsou obě metody */}
+          {authConfig.authMode === 'both' && (
+            <View style={styles.separator}>
+              <View style={styles.separatorLine} />
+              <Text style={styles.separatorText}>NEBO</Text>
+              <View style={styles.separatorLine} />
+            </View>
+          )}
+        </>
+      )}
+      
+      {/* LOKÁLNÍ PŘIHLÁŠENÍ - Zobrazit POUZE pokud je povolené */}
+      {showLocal && (
+        <View style={styles.localLoginForm}>
+          <TextInput
+            style={styles.input}
+            placeholder="Uživatelské jméno"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Heslo"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+          />
+          <Button
+            title="Přihlásit se"
+            onPress={handleLocalLogin}
+            color="#059669"
+          />
+        </View>
+      )}
+    </View>
+  );
+}
+
+// Styling pro login screen
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+    backgroundColor: '#fff',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 40,
+    textAlign: 'center',
+    color: '#0078d4',
+  },
+  separator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  separatorLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#e5e7eb',
+  },
+  separatorText: {
+    marginHorizontal: 16,
+    color: '#6b7280',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  localLoginForm: {
+    marginTop: 20,
+  },
+  input: {
+    height: 50,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    marginBottom: 12,
+    fontSize: 16,
+  },
+  errorContainer: {
+    padding: 20,
+    backgroundColor: '#fef2f2',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#fee2e2',
+  },
+  errorText: {
+    color: '#dc2626',
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  errorSubtext: {
+    color: '#991b1b',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+});
+```
+
+---
+
+#### **C) Backend - Nový endpoint `/auth/config` (doporučeno)**
+
+Pro mobilní aplikace vytvoř **veřejný endpoint** (bez autentizace), který vrátí dostupné metody přihlášení:
+
+**Soubor:** `/api-legacy/api.eeo/v2025.03_25/lib/authConfigHandlers.php`
+
+```php
+<?php
+/**
+ * GET /api.eeo/auth/config
+ * 
+ * Vrátí dostupné metody autentizace (bez nutnosti přihlášení)
+ * Pro mobilní aplikace - kontrola před zobrazením login tlačítek
+ */
+function handle_auth_config_get($db) {
+    try {
+        require_once __DIR__ . '/../models/GlobalSettingsModel.php';
+        
+        $settingsModel = new GlobalSettingsModel($db);
+        $entra_enabled = $settingsModel->getSetting('entra_enabled') ?: '0';
+        $auth_mode = $settingsModel->getSetting('auth_mode') ?: 'local_only';
+        
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => [
+                'entra_enabled' => $entra_enabled === '1',
+                'auth_mode' => $auth_mode,
+                'methods' => [
+                    'local' => in_array($auth_mode, ['local_only', 'both']),
+                    'entra' => $entra_enabled === '1' && in_array($auth_mode, ['entra_only', 'both'])
+                ]
+            ]
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při načítání konfigurace autentizace'
+        ], JSON_UNESCAPED_UNICODE);
+    }
+}
+```
+
+**Registrace v `api.php`:**
+
+```php
+// V api.php - přidat case:
+case 'auth/config':
+    if ($request_method === 'GET') {
+        require_once __DIR__ . '/v2025.03_25/lib/authConfigHandlers.php';
+        handle_auth_config_get($pdo);
+    } else {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze GET metoda']);
+    }
+    break;
+```
+
+**Response příklady pro různé konfigurace:**
+
+```json
+// ✅ VARIANTA 1: Kombinace obou metod
+{
+  "status": "success",
+  "data": {
+    "entra_enabled": true,
+    "auth_mode": "both",
+    "methods": {
+      "local": true,   // Zobrazit username/password
+      "entra": true    // Zobrazit MS365 tlačítko
+    }
+  }
+}
+
+// ✅ VARIANTA 2: Pouze lokální přihlášení
+{
+  "status": "success",
+  "data": {
+    "entra_enabled": false,
+    "auth_mode": "local_only",
+    "methods": {
+      "local": true,   // Zobrazit username/password
+      "entra": false   // SKRÝT MS365 tlačítko
+    }
+  }
+}
+
+// ✅ VARIANTA 3: Pouze Microsoft 365
+{
+  "status": "success",
+  "data": {
+    "entra_enabled": true,
+    "auth_mode": "entra_only",
+    "methods": {
+      "local": false,  // SKRÝT username/password
+      "entra": true    // Zobrazit MS365 tlačítko
+    }
+  }
+}
+
+// ❌ ERROR VARIANTA: EntraID zakázané, ale auth_mode je entra_only
+{
+  "status": "success",
+  "data": {
+    "entra_enabled": false,
+    "auth_mode": "entra_only",
+    "methods": {
+      "local": false,  // Není dostupné
+      "entra": false   // Není dostupné
+    }
+  }
+}
+// → Frontend by měl zobrazit error: "Žádná metoda přihlášení není dostupná"
+```
+
+---
 
 ### **1️⃣ AZURE AD KONFIGURACE**
 
@@ -959,6 +1331,7 @@ Přidej tento hash do Azure Portal → App Registration → Authentication → M
 ## 📊 TIMELINE IMPLEMENTACE
 
 ### **FÁZE 1: PŘÍPRAVA (1-2 dny)**
+- [ ] **Backend:** Vytvořit endpoint `GET /api.eeo/auth/config` (vrací entra_enabled, auth_mode)
 - [ ] Registrace mobile app v Azure Portal
 - [ ] Konfigurace redirect URI a permissions
 - [ ] Grant admin consent
@@ -974,6 +1347,8 @@ Přidej tento hash do Azure Portal → App Registration → Authentication → M
 ### **FÁZE 3: MOBILE APP (5-7 dní)**
 - [ ] Instalace MSAL React Native
 - [ ] Konfigurace msalConfig.js
+- [ ] **Implementace auth config check** (GET /auth/config při startu)
+- [ ] **Podmíněné zobrazení login tlačítek** podle entra_enabled
 - [ ] Implementace LoginScreen
 - [ ] Implementace authService
 - [ ] iOS: Info.plist + AppDelegate.m
@@ -998,6 +1373,64 @@ Přidej tento hash do Azure Portal → App Registration → Authentication → M
 ---
 
 ## ❓ FAQ
+
+### **❓ Co když organizace má EntraID vypnuté?**
+
+**Odpověď:**  
+Backend **AUTOMATICKY KONTROLUJE** GlobalSettings:
+
+```php
+// V entraAuthHandlers.php:
+if ($entra_enabled !== '1') {
+    http_response_code(403);
+    echo json_encode([
+        'status' => 'error',
+        'code' => 'ENTRA_DISABLED',
+        'message' => 'EntraID přihlášení je zakázáno.'
+    ]);
+    return;
+}
+```
+
+**Frontend rozhodovací tabulka:**
+
+| entra_enabled | auth_mode | Zobrazit MS365? | Zobrazit Lokální? | Stav |
+|---------------|-----------|-----------------|-------------------|------|
+| `'0'` | `local_only` | ❌ NE | ✅ ANO | ✅ OK |
+| `'0'` | `both` | ❌ NE | ✅ ANO | ⚠️ Fallback na local_only |
+| `'0'` | `entra_only` | ❌ NE | ❌ NE | 🔴 ERROR - žádná metoda |
+| `'1'` | `local_only` | ❌ NE | ✅ ANO | ✅ OK |
+| `'1'` | `both` | ✅ ANO | ✅ ANO | ✅ OK - obě metody |
+| `'1'` | `entra_only` | ✅ ANO | ❌ NE | ✅ OK |
+
+**Výhoda:** Uživatel ani neuvidí možnost MS365 přihlášení, pokud není povolené.
+
+---
+
+### **❓ Co když nastane konflikt (entra_only ale entra_enabled=false)?**
+
+**Odpověď:**  
+Toto je **chyba konfigurace** na straně administrátora.
+
+**Frontend by měl:**
+```javascript
+if (!showMS365 && !showLocal) {
+  // Zobrazit error screen
+  return (
+    <View style={styles.errorContainer}>
+      <Text>⚠️ Chyba konfigurace</Text>
+      <Text>Žádná metoda přihlášení není dostupná.</Text>
+      <Text>Kontaktujte správce systému.</Text>
+    </View>
+  );
+}
+```
+
+**Backend by měl:**
+- Validovat konzistenci při ukládání GlobalSettings
+- Zamezit nastavení `entra_only` pokud `entra_enabled === '0'`
+
+---
 
 ### **❓ Musíme použít OAuth 2.0 PKCE nebo lze jednodušší řešení?**
 
