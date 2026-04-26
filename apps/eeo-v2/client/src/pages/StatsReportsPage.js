@@ -3473,20 +3473,22 @@ export default function StatsReportsPage() {
     }
   }, [token, username, tableSorts]);
 
-  // Reload data when sorting changes for API tables
+  // Reload data when sorting changes for API tables (stringify pro prevenci nekonečného loop)
   useEffect(() => {
+    const sortKey = JSON.stringify(tableSorts['ordersWithoutAttachments']);
     if (ordersWithoutAttachments && activeTab === 'attachments') {
       handleLoadOrdersWithoutAttachments(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableSorts['ordersWithoutAttachments']]);
+  }, [JSON.stringify(tableSorts['ordersWithoutAttachments']), activeTab]);
 
   useEffect(() => {
+    const sortKey = JSON.stringify(tableSorts['invoicesWithoutAttachments']);
     if (invoicesWithoutAttachments && activeTab === 'attachments') {
       handleLoadInvoicesWithoutAttachments(1);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tableSorts['invoicesWithoutAttachments']]);
+  }, [JSON.stringify(tableSorts['invoicesWithoutAttachments']), activeTab]);
 
   // Load attachments tab data when tab is activated
   useEffect(() => {
