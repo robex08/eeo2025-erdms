@@ -410,13 +410,38 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         $limit = isset($input['limit']) ? (int)$input['limit'] : 1000;
         $offset = isset($input['offset']) ? (int)$input['offset'] : 0;
         
+        // ⚡ OPTIMALIZACE: Volitelné načítání statistik (výchozí: false pro rychlejší načítání)
+        $include_stats = isset($input['include_stats']) && $input['include_stats'];
+        
         // MySQL 5.5 nemá JSON_EXTRACT, takže JOIN na financovani musí používat LIKE
         // financovani obsahuje JSON: {"typ":"SMLOUVA","cislo_smlouvy":"XXX",...}
-        $sql = "
-            SELECT 
-                s.*,
-                u.usek_zkr,
-                u.usek_nazev,
+        
+        // BASIC SQL - bez těžkých subquery (defaultní pro rychlé načítání listu)
+        if (!$include_stats) {
+            $sql = "
+                SELECT 
+                    s.*,
+                    u.usek_zkr,
+                    u.usek_nazev,
+                    0 AS pocet_objednavek,
+                    0 AS pocet_objednavek_uzivatel,
+                    0 AS pocet_faktur_celkem,
+                    0 AS pocet_faktur_uzivatel,
+                    0 AS cerpano_faktury_dokoncene,
+                    0 AS cerpano_v_procesu
+                FROM " . TBL_SMLOUVY . " s
+                LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
+                $where_sql
+                ORDER BY s.dt_vytvoreni DESC
+                LIMIT $limit OFFSET $offset
+            ";
+        } else {
+            // FULL SQL - se všemi statistikami (jen když explicitně požadováno)
+            $sql = "
+                SELECT 
+                    s.*,
+                    u.usek_zkr,
+                    u.usek_nazev,
                 (
                     SELECT COUNT(*)
                     FROM " . TBL_OBJEDNAVKY . " o
@@ -511,12 +536,13 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                             WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.stav NOT IN ('STORNO')
                                         )
                                 ) AS cerpano_v_procesu
-            FROM " . TBL_SMLOUVY . " s
-            LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
-            $where_sql
-            ORDER BY s.dt_vytvoreni DESC
-            LIMIT $limit OFFSET $offset
-        ";
+                FROM " . TBL_SMLOUVY . " s
+                LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
+                $where_sql
+                ORDER BY s.dt_vytvoreni DESC
+                LIMIT $limit OFFSET $offset
+            ";
+        } // End if ($include_stats)
         
         $stmt = $db->prepare($sql);
         foreach ($params as $key => $value) {
