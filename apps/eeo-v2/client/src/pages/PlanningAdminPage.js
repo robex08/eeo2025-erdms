@@ -739,12 +739,59 @@ const FormRow = styled.div`
 
 const RecipientsRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr auto;
   gap: 0.85rem;
   margin-bottom: 0.5rem;
+  align-items: center;
 
   @media (max-width: 900px) {
     grid-template-columns: 1fr;
+    align-items: start;
+  }
+`;
+
+const SendToAllCheckbox = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+`;
+
+const SendToAllLabel = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #1e293b;
+  user-select: none;
+`;
+
+const SendToAllToggle = styled.div`
+  position: relative;
+  width: 48px;
+  height: 26px;
+  background: ${props => props.$checked ? '#3b82f6' : '#cbd5e1'};
+  border-radius: 13px;
+  transition: background 0.2s ease;
+  cursor: pointer;
+
+  &:hover {
+    background: ${props => props.$checked ? '#2563eb' : '#94a3b8'};
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: ${props => props.$checked ? '25px' : '3px'};
+    width: 20px;
+    height: 20px;
+    background: white;
+    border-radius: 50%;
+    transition: left 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
   }
 `;
 
@@ -1268,7 +1315,8 @@ const PlanningAdminPage = () => {
     dt_od_time: '',
     dt_do_date: '',
     dt_do_time: '',
-    prijemci: []
+    prijemci: [],
+    sendToAll: false // 🆕 Poslat všem aktivním uživatelům
   });
 
   const isMessagesTab = activeTab === 'messages';
@@ -1810,9 +1858,9 @@ const PlanningAdminPage = () => {
       }
       // Popis události je NEPOVINNÝ (již bez validace)
 
-      // Validace: Alespoň jedna role NEBO jeden uživatel
-      if (selectedRoles.length === 0 && selectedUsers.length === 0) {
-        setValidationErrors({ prijemci: 'Vyberte alespoň jednu roli nebo jednoho uživatele' });
+      // Validace: Alespoň jedna role NEBO jeden uživatel (POKUD NENÍ sendToAll)
+      if (!formData.sendToAll && selectedRoles.length === 0 && selectedUsers.length === 0) {
+        setValidationErrors({ prijemci: 'Vyberte alespoň jednu roli nebo jednoho uživatele, nebo zaškrtněte "Všem"' });
         return;
       }
 
@@ -1852,7 +1900,8 @@ const PlanningAdminPage = () => {
         popis: formData.popis,
         dt_od,
         dt_do,
-        prijemci,
+        prijemci: formData.sendToAll ? [] : prijemci, // 🆕 Pokud sendToAll, poslat prázdné pole
+        sendToAll: formData.sendToAll ? 1 : 0, // 🆕 Flag pro backend
         // Pro události: všechny termíny rovnocenně
         ...(activeTab === 'events' ? { terminy: terminyPayload } : {})
       };
@@ -3345,6 +3394,7 @@ const PlanningAdminPage = () => {
                       filterOptions={filterOptions}
                       getOptionLabel={getOptionLabel}
                       enableSearch={true}
+                      disabled={formData.sendToAll}
                     />
                   </div>
                 </FormGroup>
@@ -3369,9 +3419,27 @@ const PlanningAdminPage = () => {
                       filterOptions={filterOptions}
                       getOptionLabel={getOptionLabel}
                       enableSearch={true}
+                      disabled={formData.sendToAll}
                     />
                   </div>
                 </FormGroup>
+
+                <SendToAllCheckbox>
+                  <SendToAllLabel
+                    onClick={() => {
+                      const newValue = !formData.sendToAll;
+                      setFormData({ ...formData, sendToAll: newValue });
+                      if (newValue) {
+                        // Vyčistit výběr rolí a uživatelů
+                        setSelectedRoles([]);
+                        setSelectedUsers([]);
+                      }
+                    }}
+                  >
+                    <SendToAllToggle $checked={formData.sendToAll} />
+                    <span>Všem</span>
+                  </SendToAllLabel>
+                </SendToAllCheckbox>
               </RecipientsRow>
               {validationErrors.prijemci && (
                 <ValidationError>
