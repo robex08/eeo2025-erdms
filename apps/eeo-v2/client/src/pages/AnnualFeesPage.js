@@ -3706,10 +3706,7 @@ function AnnualFeesPage() {
           {filters.stav === 'NEZAPLACENO' && (
             <span className="active-check">✓</span>
           )}
-          <h3>
-            <span style={{marginRight: '8px', fontSize: '1rem'}}>❌</span>
-            K zaplacení
-          </h3>
+          <h3>K zaplacení</h3>
           <div style={{fontSize: '20px', fontWeight: 'bold', color: '#ff9800'}}>
             {dashboardStats.totalToPay || '0'} Kč
           </div>
@@ -3739,10 +3736,7 @@ function AnnualFeesPage() {
           {filters.stav === 'ZAPLACENO' && (
             <span className="active-check">✓</span>
           )}
-          <h3>
-            <span style={{marginRight: '8px', fontSize: '1rem'}}>✅</span>
-            Zaplaceno
-          </h3>
+          <h3>Zaplaceno</h3>
           <div style={{fontSize: '20px', fontWeight: 'bold', color: '#4caf50'}}>
             {dashboardStats.totalPaid || '0'} Kč
           </div>
