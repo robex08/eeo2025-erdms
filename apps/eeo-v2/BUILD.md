@@ -12,6 +12,42 @@ cd /var/www/erdms-dev/docs/scripts-shell
 ./build-eeo-v2.sh --dev --frontend --no-deploy
 ```
 
+## 🔴 KRITICKÁ PRAVIDLA PRO DATABÁZOVÉ ZMĚNY
+
+### ⚠️ VŽDY OVĚŘUJ STRUKTURU V DEV PŘED SQL ZMĚNAMI!
+
+**LESSONS LEARNED:**
+- ❌ **NIKDY nevymýšlej nové sloupce** - vždy ověř v DEV databázi!
+- ❌ **NIKDY nepředpokládej názvy sloupců** - zkontroluj je pomocí DESCRIBE!
+- ❌ **NIKDY nepiš SQL migration "od ruky"** bez ověření struktury v DEV!
+
+**PŘÍKLAD CHYBY (historie):**
+- Přidány sloupce `potvrzeni_vecne_spravnosti`, `potvrzeno_uzivatel_id`, `potvrzeno_datum` do faktury
+- Tyto sloupce **v DEV databázi NEEXISTOVALY** - byly vymyšlené!
+- Výsledek: Musely být odstraněny, způsobily problémy v PROD
+
+**✅ SPRÁVNÝ POSTUP PŘI PŘIDÁVÁNÍ SLOUPCŮ:**
+
+```bash
+# 1. VŽDY nejdřív zkontroluj strukturu v DEV
+mysql -h 10.3.172.11 -u erdms_user -p'CHANGE_ME_DB_PASSWORD' EEO-OSTRA-DEV \
+  -e "DESCRIBE nazev_tabulky;"
+
+# 2. Nebo prohledej existující PHP queries
+grep -r "nazev_tabulky" apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/*.php
+
+# 3. Porovnej PROD vs DEV před změnou
+mysql -h 10.3.172.11 ... eeo2025 -e "DESCRIBE tabulka;" > prod.txt
+mysql -h 10.3.172.11 ... EEO-OSTRA-DEV -e "DESCRIBE tabulka;" > dev.txt
+diff prod.txt dev.txt
+```
+
+**ZLATÉ PRAVIDLO:**
+> DEV databáze je **VŽDY AUTORITATIVNÍ** zdroj pravdy.
+> Co není v DEV, nepřidáváme do PROD!
+
+---
+
 ## Checklist před DEV buildem
 
 - [ ] Pracujeme pouze v DEV workspace `/var/www/erdms-dev/` (žádný deploy do produkce)
@@ -19,6 +55,7 @@ cd /var/www/erdms-dev/docs/scripts-shell
 - [ ] Pro stažení importovaných příloh je nastavené `REACT_APP_OLD_ATTACHMENTS_URL` **nebo** aspoň `REACT_APP_UPLOAD_BASE_URL` (jinak se `IMPORT` přílohy nepůjdou stáhnout)
 - [ ] DEV DB je správně (nesahat na PROD DB)
 - [ ] Nejsou přidané hardcoded URL/cesty/DB názvy (vše přes env)
+- [ ] **🔴 Pokud měníš DB strukturu - ověřil jsi sloupce v DEV databázi?**
 
 ## Build (alternativa přímo v client/)
 
