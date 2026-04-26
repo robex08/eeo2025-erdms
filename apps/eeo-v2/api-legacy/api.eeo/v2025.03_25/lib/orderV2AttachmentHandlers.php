@@ -1375,6 +1375,8 @@ function handle_order_v2_orders_without_attachments($input, $config, $queries) {
     $request_username = isset($input['username']) ? $input['username'] : '';
     $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
     $per_page = isset($input['per_page']) ? min(100, max(10, (int)$input['per_page'])) : 50;
+    $sort_by = isset($input['sort_by']) ? $input['sort_by'] : 'dt_vytvoreni';
+    $sort_dir = isset($input['sort_dir']) && strtoupper($input['sort_dir']) === 'ASC' ? 'ASC' : 'DESC';
     
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
@@ -1387,17 +1389,31 @@ function handle_order_v2_orders_without_attachments($input, $config, $queries) {
         $db = get_db($config);
         $offset = ($page - 1) * $per_page;
         
-        // Počet objednávek bez příloh
+        // Mapování frontend názvů sloupců na DB sloupce
+        $sortMap = array(
+            'cislo_objednavky' => 'o.cislo_objednavky',
+            'nazev' => 'o.predmet',
+            'stav' => 'o.stav_objednavky',
+            'dodavatel' => 'o.dodavatel_nazev',
+            'objednatel' => 'u.prijmeni', // třídí se podle příjmení autora
+            'castka' => 'o.max_cena_s_dph',
+            'dt_vytvoreni' => 'o.dt_vytvoreni'
+        );
+        $orderByColumn = isset($sortMap[$sort_by]) ? $sortMap[$sort_by] : 'o.dt_vytvoreni';
+        
+        // Počet objednávek bez příloh NEBO s pouze KOSILKA
         $countSql = "SELECT COUNT(DISTINCT o.id) as total 
                      FROM " . get_orders_table_name() . " o
                      LEFT JOIN " . get_order_attachments_table_name() . " a ON o.id = a.objednavka_id
                      WHERE o.aktivni = 1 
-                       AND a.id IS NULL";
+                     GROUP BY o.id
+                     HAVING COUNT(a.id) = 0 
+                         OR SUM(CASE WHEN a.typ_prilohy != 'KOSILKA' THEN 1 ELSE 0 END) = 0";
         $countStmt = $db->prepare($countSql);
         $countStmt->execute();
-        $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['total'];
+        $total = (int)$countStmt->rowCount();
         
-        // Načtení objednávek bez příloh
+        // Načtení objednávek bez příloh NEBO s pouze KOSILKA
         $sql = "SELECT 
                     o.id,
                     o.cislo_objednavky,
@@ -1408,13 +1424,20 @@ function handle_order_v2_orders_without_attachments($input, $config, $queries) {
                     o.max_cena_s_dph,
                     o.dodavatel_nazev,
                     u.jmeno as autor_jmeno,
-                    u.prijmeni as autor_prijmeni
+                    u.prijmeni as autor_prijmeni,
+                    COUNT(a.id) as total_attachments,
+                    SUM(CASE WHEN a.typ_prilohy = 'KOSILKA' THEN 1 ELSE 0 END) as kosilka_count,
+                    SUM(CASE WHEN a.typ_prilohy != 'KOSILKA' THEN 1 ELSE 0 END) as other_count
                 FROM " . get_orders_table_name() . " o
                 LEFT JOIN " . get_order_attachments_table_name() . " a ON o.id = a.objednavka_id
                 LEFT JOIN `25_uzivatele` u ON o.uzivatel_id = u.id
-                WHERE o.aktivni = 1 
-                  AND a.id IS NULL
-                ORDER BY o.dt_vytvoreni DESC
+                WHERE o.aktivni = 1
+                GROUP BY o.id, o.cislo_objednavky, o.predmet, o.stav_objednavky, 
+                         o.uzivatel_id, o.dt_vytvoreni, o.max_cena_s_dph, o.dodavatel_nazev,
+                         u.jmeno, u.prijmeni
+                HAVING COUNT(a.id) = 0 
+                    OR SUM(CASE WHEN a.typ_prilohy != 'KOSILKA' THEN 1 ELSE 0 END) = 0
+                ORDER BY $orderByColumn $sort_dir
                 LIMIT :limit OFFSET :offset";
         
         $stmt = $db->prepare($sql);
@@ -1426,6 +1449,8 @@ function handle_order_v2_orders_without_attachments($input, $config, $queries) {
         
         $mappedOrders = array();
         foreach ($orders as $ord) {
+            $hasOnlyKosilka = ((int)$ord['total_attachments'] > 0) && ((int)$ord['other_count'] == 0);
+            
             $mappedOrders[] = array(
                 'id' => (int)$ord['id'],
                 'cislo_objednavky' => $ord['cislo_objednavky'],
@@ -1434,7 +1459,8 @@ function handle_order_v2_orders_without_attachments($input, $config, $queries) {
                 'dodavatel' => $ord['dodavatel_nazev'],
                 'autor' => trim($ord['autor_jmeno'] . ' ' . $ord['autor_prijmeni']),
                 'datum_vytvoreni' => $ord['dt_vytvoreni'],
-                'castka' => (float)$ord['max_cena_s_dph']
+                'castka' => (float)$ord['max_cena_s_dph'],
+                'has_only_financial_control' => $hasOnlyKosilka ? 1 : 0
             );
         }
         

@@ -1322,6 +1322,8 @@ function handle_order_v2_invoices_without_attachments($input, $config, $queries)
     $request_username = isset($input['username']) ? $input['username'] : '';
     $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
     $per_page = isset($input['per_page']) ? min(100, max(10, (int)$input['per_page'])) : 50;
+    $sort_by = isset($input['sort_by']) ? $input['sort_by'] : 'fa_datum_vystaveni';
+    $sort_dir = isset($input['sort_dir']) && strtoupper($input['sort_dir']) === 'ASC' ? 'ASC' : 'DESC';
     
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
@@ -1334,17 +1336,30 @@ function handle_order_v2_invoices_without_attachments($input, $config, $queries)
         $db = get_db($config);
         $offset = ($page - 1) * $per_page;
         
-        // Počet faktur bez příloh
+        // Mapování frontend názvů sloupců na DB sloupce
+        $sortMap = array(
+            'cislo_faktury' => 'f.cislo_faktury',
+            'stav' => 'f.stav',
+            'datum_splatnosti' => 'f.fa_datum_splatnosti',
+            'cislo_objednavky' => 'o.cislo_objednavky',
+            'dodavatel' => 'f.dodavatel_nazev',
+            'castka' => 'f.fa_celkova_castka_s_dph',
+            'fa_datum_vystaveni' => 'f.fa_datum_vystaveni'
+        );
+        $orderByColumn = isset($sortMap[$sort_by]) ? $sortMap[$sort_by] : 'f.fa_datum_vystaveni';
+        
+        // Počet faktur bez příloh (aktivní, nestornované)
         $countSql = "SELECT COUNT(DISTINCT f.id) as total 
                      FROM " . get_invoices_table_name() . " f
                      LEFT JOIN " . get_invoice_attachments_table_name() . " a ON f.id = a.faktura_id
                      WHERE f.aktivni = 1 
+                       AND f.stav != 'STORNO'
                        AND a.id IS NULL";
         $countStmt = $db->prepare($countSql);
         $countStmt->execute();
         $total = (int)$countStmt->fetch(PDO::FETCH_ASSOC)['total'];
         
-        // Načtení faktur bez příloh
+        // Načtení faktur bez příloh (aktivní, nestornované)
         $sql = "SELECT 
                     f.id,
                     f.fa_cislo_vema as cislo_faktury,
@@ -1363,8 +1378,9 @@ function handle_order_v2_invoices_without_attachments($input, $config, $queries)
                 LEFT JOIN " . get_orders_table_name() . " o ON f.objednavka_id = o.id
                 LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
                 WHERE f.aktivni = 1 
+                  AND f.stav != 'STORNO'
                   AND a.id IS NULL
-                ORDER BY f.fa_datum_vystaveni DESC
+                ORDER BY $orderByColumn $sort_dir
                 LIMIT :limit OFFSET :offset";
         
         $stmt = $db->prepare($sql);
