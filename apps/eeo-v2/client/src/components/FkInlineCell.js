@@ -23,10 +23,10 @@ const TriggerBtn = styled.button`
   align-items: center;
   gap: 0.25rem;
   padding: 0.18rem 0.45rem;
-  border: 1px solid ${({ color }) => color || '#cbd5e1'};
+  border: 1px solid ${({ $color }) => $color || '#cbd5e1'};
   border-radius: 4px;
-  background: ${({ bgcolor }) => bgcolor || '#f1f5f9'};
-  color: ${({ textcolor }) => textcolor || '#475569'};
+  background: ${({ $bgcolor }) => $bgcolor || '#f1f5f9'};
+  color: ${({ $textcolor }) => $textcolor || '#475569'};
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
@@ -449,7 +449,7 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
     }
     if (!fkData) {
       return (
-        <TriggerBtn ref={btnRef} onClick={handleOpen} bgcolor="#f8fafc" textcolor="#94a3b8" color="#e2e8f0" title="Žádný záznam – klikněte pro přidání">
+        <TriggerBtn ref={btnRef} onClick={handleOpen} $bgcolor="#f8fafc" $textcolor="#94a3b8" $color="#e2e8f0" title="Žádný záznam – klikněte pro přidání">
           + FK
         </TriggerBtn>
       );
@@ -461,9 +461,9 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
       <TriggerBtn
         ref={btnRef}
         onClick={handleOpen}
-        bgcolor={bg + '22'}
-        textcolor={bg}
-        color={bg + '66'}
+        $bgcolor={bg + '22'}
+        $textcolor={bg}
+        $color={bg + '66'}
         title={`FK: ${FK_STAV_LABELS[stav] || stav}${commentCount ? ` · ${commentCount} komentář/ů` : ''}`}
       >
         {FK_STAV_LABELS[stav] || stav}
@@ -532,9 +532,9 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
                   <TriggerBtn
                     key={s}
                     onClick={() => handleQuickCreate(s)}
-                    bgcolor={FK_STAV_COLORS[s] + '22'}
-                    textcolor={FK_STAV_COLORS[s]}
-                    color={FK_STAV_COLORS[s] + '66'}
+                    $bgcolor={FK_STAV_COLORS[s] + '22'}
+                    $textcolor={FK_STAV_COLORS[s]}
+                    $color={FK_STAV_COLORS[s] + '66'}
                     disabled={saving}
                   >
                     {FK_STAV_LABELS[s]}

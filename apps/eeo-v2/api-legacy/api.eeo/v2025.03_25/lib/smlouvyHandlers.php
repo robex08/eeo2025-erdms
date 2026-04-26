@@ -548,7 +548,9 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         foreach ($params as $key => $value) {
             $stmt->bindValue(':' . $key, $value);
         }
-        $stmt->bindValue(':current_user_id', (int)$user_id, PDO::PARAM_INT);
+        if ($include_stats) {
+            $stmt->bindValue(':current_user_id', (int)$user_id, PDO::PARAM_INT);
+        }
         $stmt->execute();
         
         $data = array();

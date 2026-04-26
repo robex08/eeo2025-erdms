@@ -2482,6 +2482,16 @@ export default function StatsReportsPage() {
   // 🚀 PER-TAB LOADING TRACKING - které taby mají načtená data
   const [loadedTabs, setLoadedTabs] = useState(() => new Set());
   const [loadingTabs, setLoadingTabs] = useState(() => new Set());
+  const [failedTabs, setFailedTabs] = useState(() => new Set());
+  
+  // ⚡ REFS pro aktuální hodnoty - řeší stale closure problém
+  const loadedTabsRef = useRef(loadedTabs);
+  const loadingTabsRef = useRef(loadingTabs);
+  const failedTabsRef = useRef(failedTabs);
+  useEffect(() => { loadedTabsRef.current = loadedTabs; }, [loadedTabs]);
+  useEffect(() => { loadingTabsRef.current = loadingTabs; }, [loadingTabs]);
+  useEffect(() => { failedTabsRef.current = failedTabs; }, [failedTabs]);
+  
   const [timelineCumulative, setTimelineCumulative] = useState(() => {
     try {
       const saved = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_timeline_cumulative`);
@@ -2646,11 +2656,18 @@ export default function StatsReportsPage() {
 
   const [filters, setFilters] = useState(FILTER_DEFAULTS);
   const [pendingFilters, setPendingFilters] = useState(FILTER_DEFAULTS);
+  const [filtersReady, setFiltersReady] = useState(false);
 
   // Načtení uloženého tabu + filtrů po znám userKey (řeší async auth kontext)
   useEffect(() => {
-    if (!userKey || userKey === 'guest') return;
-    if (lsLoadedForKey.current === userKey) return;
+    if (!userKey || userKey === 'guest') {
+      setFiltersReady(true);
+      return;
+    }
+    if (lsLoadedForKey.current === userKey) {
+      setFiltersReady(true);
+      return;
+    }
     lsLoadedForKey.current = userKey;
     try {
       const savedTab = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`);
@@ -2665,6 +2682,7 @@ export default function StatsReportsPage() {
         setPendingFilters(merged);
       }
     } catch (e) {}
+    setFiltersReady(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userKey]);
 
@@ -3293,9 +3311,18 @@ export default function StatsReportsPage() {
   }, [token, username, loadLookups, progress]);
 
   // Control tab - potřebuje orders + invoices + orderAttachments
-  const loadControlTabData = useCallback(async (silent = false) => {
+  const loadControlTabData = useCallback(async (silent = false, forceReload = false) => {
     if (!token || !username) return;
-    if (loadingTabs.has('control') || loadedTabs.has('control')) return;
+    if (loadingTabsRef.current.has('control')) return;
+    if (!forceReload && loadedTabsRef.current.has('control')) return;
+    if (!forceReload && failedTabsRef.current.has('control')) return;
+    if (forceReload && failedTabsRef.current.has('control')) {
+      setFailedTabs(prev => {
+        const next = new Set(prev);
+        next.delete('control');
+        return next;
+      });
+    }
     
     if (!silent) setLoading(true);
     setLoadingTabs(prev => new Set([...prev, 'control']));
@@ -3328,6 +3355,7 @@ export default function StatsReportsPage() {
       setLoadedTabs(prev => new Set([...prev, 'control']));
     } catch (e) {
       console.error('❌ Control tab data load failed:', e);
+      setFailedTabs(prev => new Set([...prev, 'control']));
       if (!silent) {
         setLoadError(e?.message || 'Nepodařilo se načíst data pro Finanční kontrolu.');
       }
@@ -3339,15 +3367,24 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, loadInvoices, loadedTabs, loadingTabs, progress]);
+  }, [token, username, loadOrders, loadInvoices, progress]);
 
   // Stats tab - potřebuje orders + timelineData
-  const loadStatsTabData = useCallback(async (silent = false) => {
+  const loadStatsTabData = useCallback(async (silent = false, forceReload = false) => {
     if (!token || !username) return;
-    if (loadingTabs.has('stats') || loadedTabs.has('stats')) return;
+    if (loadingTabsRef.current.has('stats')) return;
+    if (!forceReload && loadedTabsRef.current.has('stats')) return;
+    if (!forceReload && failedTabsRef.current.has('stats')) return;
+    if (forceReload && failedTabsRef.current.has('stats')) {
+      setFailedTabs(prev => {
+        const next = new Set(prev);
+        next.delete('stats');
+        return next;
+      });
+    }
     
     // Pokud už máme orders z jiného tabu, načíst jen timeline
-    const needsOrders = orders.length === 0;
+    const needsOrders = forceReload ? true : orders.length === 0;
     
     if (!silent) setLoading(true);
     setLoadingTabs(prev => new Set([...prev, 'stats']));
@@ -3373,6 +3410,7 @@ export default function StatsReportsPage() {
       setLoadedTabs(prev => new Set([...prev, 'stats']));
     } catch (e) {
       console.error('❌ Stats tab data load failed:', e);
+      setFailedTabs(prev => new Set([...prev, 'stats']));
       if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Statistiky.');
     } finally {
       if (!silent) setLoading(false);
@@ -3382,15 +3420,24 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, orders.length, loadedTabs, loadingTabs]);
+  }, [token, username, loadOrders, orders.length]);
 
   // Spend tab - potřebuje orders + invoices + contracts
-  const loadSpendTabData = useCallback(async (silent = false) => {
+  const loadSpendTabData = useCallback(async (silent = false, forceReload = false) => {
     if (!token || !username) return;
-    if (loadingTabs.has('spend') || loadedTabs.has('spend')) return;
+    if (loadingTabsRef.current.has('spend')) return;
+    if (!forceReload && loadedTabsRef.current.has('spend')) return;
+    if (!forceReload && failedTabsRef.current.has('spend')) return;
+    if (forceReload && failedTabsRef.current.has('spend')) {
+      setFailedTabs(prev => {
+        const next = new Set(prev);
+        next.delete('spend');
+        return next;
+      });
+    }
     
-    const needsOrders = orders.length === 0;
-    const needsInvoices = invoices.length === 0;
+    const needsOrders = forceReload ? true : orders.length === 0;
+    const needsInvoices = forceReload ? true : invoices.length === 0;
     
     if (!silent) setLoading(true);
     setLoadingTabs(prev => new Set([...prev, 'spend']));
@@ -3415,6 +3462,7 @@ export default function StatsReportsPage() {
       setLoadedTabs(prev => new Set([...prev, 'spend']));
     } catch (e) {
       console.error('❌ Spend tab data load failed:', e);
+      setFailedTabs(prev => new Set([...prev, 'spend']));
       if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Čerpání.');
     } finally {
       if (!silent) setLoading(false);
@@ -3424,16 +3472,25 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, loadInvoices, loadContracts, orders.length, invoices.length, loadedTabs, loadingTabs]);
+  }, [token, username, loadOrders, loadInvoices, loadContracts, orders.length, invoices.length]);
 
   // Reports tab - potřebuje orders + invoices + orderAttachments + annualFeeAttachments
-  const loadReportsTabData = useCallback(async (silent = false) => {
+  const loadReportsTabData = useCallback(async (silent = false, forceReload = false) => {
     if (!token || !username) return;
-    if (loadingTabs.has('reports') || loadedTabs.has('reports')) return;
+    if (loadingTabsRef.current.has('reports')) return;
+    if (!forceReload && loadedTabsRef.current.has('reports')) return;
+    if (!forceReload && failedTabsRef.current.has('reports')) return;
+    if (forceReload && failedTabsRef.current.has('reports')) {
+      setFailedTabs(prev => {
+        const next = new Set(prev);
+        next.delete('reports');
+        return next;
+      });
+    }
     
-    const needsOrders = orders.length === 0;
-    const needsInvoices = invoices.length === 0;
-    const needsOrderAttachments = orderAttachments.length === 0;
+    const needsOrders = forceReload ? true : orders.length === 0;
+    const needsInvoices = forceReload ? true : invoices.length === 0;
+    const needsOrderAttachments = forceReload ? true : orderAttachments.length === 0;
     
     if (!silent) setLoading(true);
     setLoadingTabs(prev => new Set([...prev, 'reports']));
@@ -3463,6 +3520,7 @@ export default function StatsReportsPage() {
       setLoadedTabs(prev => new Set([...prev, 'reports']));
     } catch (e) {
       console.error('❌ Reports tab data load failed:', e);
+      setFailedTabs(prev => new Set([...prev, 'reports']));
       if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Reporty.');
     } finally {
       if (!silent) setLoading(false);
@@ -3472,13 +3530,22 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, loadInvoices, orders.length, invoices.length, orderAttachments.length, loadedTabs, loadingTabs]);
+  }, [token, username, loadOrders, loadInvoices, orders.length, invoices.length, orderAttachments.length]);
 
   // Vzdel tab - potřebuje jen orders
-  const loadVzdelTabData = useCallback(async (silent = false) => {
+  const loadVzdelTabData = useCallback(async (silent = false, forceReload = false) => {
     if (!token || !username) return;
-    if (loadingTabs.has('vzdel') || loadedTabs.has('vzdel')) return;
-    if (orders.length > 0) {
+    if (loadingTabsRef.current.has('vzdel')) return;
+    if (!forceReload && loadedTabsRef.current.has('vzdel')) return;
+    if (!forceReload && failedTabsRef.current.has('vzdel')) return;
+    if (forceReload && failedTabsRef.current.has('vzdel')) {
+      setFailedTabs(prev => {
+        const next = new Set(prev);
+        next.delete('vzdel');
+        return next;
+      });
+    }
+    if (!forceReload && orders.length > 0) {
       setLoadedTabs(prev => new Set([...prev, 'vzdel']));
       return;
     }
@@ -3491,6 +3558,7 @@ export default function StatsReportsPage() {
       setLoadedTabs(prev => new Set([...prev, 'vzdel']));
     } catch (e) {
       console.error('❌ Vzdel tab data load failed:', e);
+      setFailedTabs(prev => new Set([...prev, 'vzdel']));
       if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Vzdělávání.');
     } finally {
       if (!silent) setLoading(false);
@@ -3500,13 +3568,22 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, orders.length, loadedTabs, loadingTabs]);
+  }, [token, username, loadOrders, orders.length]);
 
   // Pivot tab - potřebuje jen orders
-  const loadPivotTabData = useCallback(async (silent = false) => {
+  const loadPivotTabData = useCallback(async (silent = false, forceReload = false) => {
     if (!token || !username) return;
-    if (loadingTabs.has('pivot') || loadedTabs.has('pivot')) return;
-    if (orders.length > 0) {
+    if (loadingTabsRef.current.has('pivot')) return;
+    if (!forceReload && loadedTabsRef.current.has('pivot')) return;
+    if (!forceReload && failedTabsRef.current.has('pivot')) return;
+    if (forceReload && failedTabsRef.current.has('pivot')) {
+      setFailedTabs(prev => {
+        const next = new Set(prev);
+        next.delete('pivot');
+        return next;
+      });
+    }
+    if (!forceReload && orders.length > 0) {
       setLoadedTabs(prev => new Set([...prev, 'pivot']));
       return;
     }
@@ -3519,6 +3596,7 @@ export default function StatsReportsPage() {
       setLoadedTabs(prev => new Set([...prev, 'pivot']));
     } catch (e) {
       console.error('❌ Pivot tab data load failed:', e);
+      setFailedTabs(prev => new Set([...prev, 'pivot']));
       if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Pivot.');
     } finally {
       if (!silent) setLoading(false);
@@ -3528,12 +3606,17 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, orders.length, loadedTabs, loadingTabs]);
+  }, [token, username, loadOrders, orders.length]);
 
   // 🔄 REFACTORED: Main data loader - nyní načte jen common data + první tab
   const handleLoadData = useCallback(async () => {
     if (!token || !username) return;
+    backgroundLoadRef.current = false;
+    setLoading(true);
     setLoadError('');
+    setLoadedTabs(new Set());
+    setLoadingTabs(new Set());
+    setFailedTabs(new Set());
     if (progress?.start) progress.start();
     try {
       // 1. Načíst common data (číselníky)
@@ -3542,12 +3625,12 @@ export default function StatsReportsPage() {
       // 2. Načíst data pro aktivní tab (default: control)
       // ⚠️ Per-tab funkce si už samy řídí setLoading() a progress
       const currentTab = activeTab || 'control';
-      if (currentTab === 'control') await loadControlTabData();
-      else if (currentTab === 'stats') await loadStatsTabData();
-      else if (currentTab === 'spend') await loadSpendTabData();
-      else if (currentTab === 'reports') await loadReportsTabData();
-      else if (currentTab === 'vzdel') await loadVzdelTabData();
-      else if (currentTab === 'pivot') await loadPivotTabData();
+      if (currentTab === 'control') await loadControlTabData(false, true);
+      else if (currentTab === 'stats') await loadStatsTabData(false, true);
+      else if (currentTab === 'spend') await loadSpendTabData(false, true);
+      else if (currentTab === 'reports') await loadReportsTabData(false, true);
+      else if (currentTab === 'vzdel') await loadVzdelTabData(false, true);
+      else if (currentTab === 'pivot') await loadPivotTabData(false, true);
       // attachments, cashbook, dohadne mají vlastní lazy loading
       
       if (progress?.done) progress.done();
@@ -3555,87 +3638,135 @@ export default function StatsReportsPage() {
       setLoadError(e?.message || 'Nepodařilo se načíst data.');
       if (progress?.fail) progress.fail();
     } finally {
+      setLoading(false);
       setTimeout(() => setIsInitialized(true), 300);
     }
   }, [token, username, activeTab, loadCommonData, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData, progress]);
 
   const initialLoadRef = useRef(false);
 
+  // ⚡ REFS pro load funkce - eliminují re-firing useEffectů kvůli měnícím se ref na funkce
+  const handleLoadDataRef = useRef(handleLoadData);
+  const loadControlTabDataRef = useRef(loadControlTabData);
+  const loadStatsTabDataRef = useRef(loadStatsTabData);
+  const loadSpendTabDataRef = useRef(loadSpendTabData);
+  const loadReportsTabDataRef = useRef(loadReportsTabData);
+  const loadVzdelTabDataRef = useRef(loadVzdelTabData);
+  const loadPivotTabDataRef = useRef(loadPivotTabData);
+  useEffect(() => { handleLoadDataRef.current = handleLoadData; }, [handleLoadData]);
+  useEffect(() => { loadControlTabDataRef.current = loadControlTabData; }, [loadControlTabData]);
+  useEffect(() => { loadStatsTabDataRef.current = loadStatsTabData; }, [loadStatsTabData]);
+  useEffect(() => { loadSpendTabDataRef.current = loadSpendTabData; }, [loadSpendTabData]);
+  useEffect(() => { loadReportsTabDataRef.current = loadReportsTabData; }, [loadReportsTabData]);
+  useEffect(() => { loadVzdelTabDataRef.current = loadVzdelTabData; }, [loadVzdelTabData]);
+  useEffect(() => { loadPivotTabDataRef.current = loadPivotTabData; }, [loadPivotTabData]);
+
+  // 🚀 INITIAL LOAD - jednorázově po přihlášení
   useEffect(() => {
     if (!token || !username || initialLoadRef.current) return;
+    if (!filtersReady) return;
+    if (userKey && userKey !== 'guest' && lsLoadedForKey.current !== userKey) return;
+    try {
+      if (userKey && userKey !== 'guest') {
+        const savedTab = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_active_tab_${userKey}`);
+        if (savedTab && PAGE_TABS.some(t => t.id === savedTab) && savedTab !== activeTab) return;
+      }
+    } catch (e) {}
     initialLoadRef.current = true;
-    handleLoadData();
-  }, [token, username, handleLoadData]);
+    handleLoadDataRef.current();
+  }, [token, username, userKey, activeTab, filtersReady]);
 
-  // 🚀 LAZY LOADING: Načíst data pro aktivní tab
+  // 🚀 LAZY LOADING: Načíst data pro aktivní tab při přepnutí
   useEffect(() => {
     if (!token || !username || !initialLoadRef.current) return;
     if (loading) return;
     
-    // Načíst data pro aktivní tab pokud ještě nejsou načtená
-    // ⚠️ Guard je uvnitř každé load funkce (loadingTabs.has / loadedTabs.has check)
-    if (activeTab === 'control') {
-      loadControlTabData();
-    } else if (activeTab === 'stats') {
-      loadStatsTabData();
-    } else if (activeTab === 'spend') {
-      loadSpendTabData();
-    } else if (activeTab === 'reports') {
-      loadReportsTabData();
-    } else if (activeTab === 'vzdel') {
-      loadVzdelTabData();
-    } else if (activeTab === 'pivot') {
-      loadPivotTabData();
+    // ✅ Voláme přes refs - useEffect se nespustí znovu kvůli změně ref funkcí
+    if (activeTab === 'control' && !loadedTabsRef.current.has('control') && !loadingTabsRef.current.has('control') && !failedTabsRef.current.has('control')) {
+      loadControlTabDataRef.current();
+    } else if (activeTab === 'stats' && !loadedTabsRef.current.has('stats') && !loadingTabsRef.current.has('stats') && !failedTabsRef.current.has('stats')) {
+      loadStatsTabDataRef.current();
+    } else if (activeTab === 'spend' && !loadedTabsRef.current.has('spend') && !loadingTabsRef.current.has('spend') && !failedTabsRef.current.has('spend')) {
+      loadSpendTabDataRef.current();
+    } else if (activeTab === 'reports' && !loadedTabsRef.current.has('reports') && !loadingTabsRef.current.has('reports') && !failedTabsRef.current.has('reports')) {
+      loadReportsTabDataRef.current();
+    } else if (activeTab === 'vzdel' && !loadedTabsRef.current.has('vzdel') && !loadingTabsRef.current.has('vzdel') && !failedTabsRef.current.has('vzdel')) {
+      loadVzdelTabDataRef.current();
+    } else if (activeTab === 'pivot' && !loadedTabsRef.current.has('pivot') && !loadingTabsRef.current.has('pivot') && !failedTabsRef.current.has('pivot')) {
+      loadPivotTabDataRef.current();
     }
-    // attachments, cashbook, dohadne mají vlastní useEffect handlers (už existují)
-  }, [activeTab, token, username, loading, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
-  // ⚡ OPRAVENO: Odstraněno loadedTabs a loadingTabs z dependencies (způsobovaly loop)
+  }, [activeTab, token, username, loading]);
 
   // 🚀 BACKGROUND LAZY LOADING: Po načtení prvního tabu načíst ostatní na pozadí (po 2s)
   const backgroundLoadRef = useRef(false);
+  const lastStableUserKeyRef = useRef(null);
+
+  // Při změně userKey (typicky username -> user_id) resetni init/load stavy,
+  // aby se taby nenačetly „potichu" pod jiným klíčem a gate mizela předčasně.
   useEffect(() => {
-    if (!token || !username || backgroundLoadRef.current) return;
-    if (loadedTabs.size === 0) return; // Čekat až se načte první tab
-    
+    const normalizedUserKey = userKey || 'guest';
+
+    if (lastStableUserKeyRef.current === null) {
+      lastStableUserKeyRef.current = normalizedUserKey;
+      return;
+    }
+    if (lastStableUserKeyRef.current === normalizedUserKey) return;
+
+    lastStableUserKeyRef.current = normalizedUserKey;
+
+    // Nový user context -> znovu načíst LS tab/filtry a data pod správným klíčem.
+    lsLoadedForKey.current = null;
+    setFiltersReady(normalizedUserKey === 'guest');
+    initialLoadRef.current = false;
+    backgroundLoadRef.current = false;
+    setIsInitialized(false);
+    setLoadedTabs(new Set());
+    setLoadingTabs(new Set());
+    setFailedTabs(new Set());
+  }, [userKey]);
+
+  // 🚀 BACKGROUND PRELOAD (SAFE MODE)
+  // Spouští se až po korektním načtení aktivního LS ouška,
+  // takže nikdy neovlivní loading gate pro právě zobrazený tab.
+  useEffect(() => {
+    if (!token || !username) return;
+    if (!filtersReady || !initialLoadRef.current || !isInitialized) return;
+    if (userKey && userKey !== 'guest' && lsLoadedForKey.current !== userKey) return;
+    if (backgroundLoadRef.current) return;
+
+    const preloadTabs = ['control', 'stats', 'spend', 'reports', 'vzdel', 'pivot'];
+    if (!preloadTabs.includes(activeTab)) return;
+
+    // Aktivní tab MUSÍ být opravdu načtený, jinak preload nespouštíme.
+    if (loading) return;
+    if (loadingTabsRef.current.has(activeTab)) return;
+    if (failedTabsRef.current.has(activeTab)) return;
+    if (!loadedTabsRef.current.has(activeTab)) return;
+
     backgroundLoadRef.current = true;
-    
-    // Po 2 sekundách začít načítat ostatní taby na pozadí
+
     const timer = setTimeout(async () => {
-      console.log('🔄 Background loading: Načítám ostatní taby na pozadí...');
-      
-      // Načíst v pořadí podle priority
-      const priorityOrder = ['control', 'stats', 'spend', 'reports', 'vzdel', 'pivot'];
-      for (const tab of priorityOrder) {
-        // ⚠️ Musíme číst aktuální stav loadedTabs/loadingTabs v době kontroly
-        const currentLoadedTabs = loadedTabs; // Snapshot
-        const currentLoadingTabs = loadingTabs; // Snapshot
-        if (currentLoadedTabs.has(tab) || currentLoadingTabs.has(tab)) continue;
-        
-        // Delay mezi jednotlivými taby (500ms)
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // ✅ SILENT MODE - nepoužívat loading gate pro background loading
-        if (tab === 'control') await loadControlTabData(true);
-        else if (tab === 'stats') await loadStatsTabData(true);
-        else if (tab === 'spend') await loadSpendTabData(true);
-        else if (tab === 'reports') await loadReportsTabData(true);
-        else if (tab === 'vzdel') await loadVzdelTabData(true);
-        else if (tab === 'pivot') await loadPivotTabData(true);
+      const orderedTabs = [activeTab].concat(preloadTabs.filter(t => t !== activeTab));
+      for (const tab of orderedTabs) {
+        if (tab === activeTab) continue;
+        if (loadedTabsRef.current.has(tab) || loadingTabsRef.current.has(tab) || failedTabsRef.current.has(tab)) continue;
+        await new Promise(resolve => setTimeout(resolve, 350));
+        if (tab === 'control') await loadControlTabDataRef.current(true);
+        else if (tab === 'stats') await loadStatsTabDataRef.current(true);
+        else if (tab === 'spend') await loadSpendTabDataRef.current(true);
+        else if (tab === 'reports') await loadReportsTabDataRef.current(true);
+        else if (tab === 'vzdel') await loadVzdelTabDataRef.current(true);
+        else if (tab === 'pivot') await loadPivotTabDataRef.current(true);
       }
-      
-      console.log('✅ Background loading: Všechny taby načteny');
-    }, 2000);
-    
+    }, 1200);
+
     return () => clearTimeout(timer);
-  }, [token, username, loadedTabs.size, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
-  // ⚡ OPRAVENO: Odstraněno loadedTabs a loadingTabs z dependencies (způsobovaly loop)
+  }, [token, username, filtersReady, isInitialized, userKey, activeTab, loading]);
 
   const [applyTrigger, setApplyTrigger] = useState(0);
-  const loadDataRef = useRef(handleLoadData);
-  useEffect(() => { loadDataRef.current = handleLoadData; }, [handleLoadData]);
   useEffect(() => {
     if (applyTrigger === 0) return;
-    loadDataRef.current();
+    handleLoadDataRef.current();
   }, [applyTrigger]);
 
   const handleLoadAttachmentsStats = useCallback(async () => {
@@ -3687,6 +3818,8 @@ export default function StatsReportsPage() {
       setInvoiceAttachmentsStats(invoiceStats);
     } catch (e) {
       console.error('📎 Attachments Tab Stats Error:', e);
+      setOrderAttachmentsStats({ total: 0, types: [] });
+      setInvoiceAttachmentsStats({ total: 0, types: [] });
     } finally {
       setAttachmentsLoading(false);
     }
@@ -3737,6 +3870,8 @@ export default function StatsReportsPage() {
       setOrdersWithoutAttachmentsPage(page);
     } catch (e) {
       console.error('📎 Orders Without Attachments Error:', e);
+      setOrdersWithoutAttachments({ data: [], pagination: { total: 0, total_pages: 1, per_page: 25 } });
+      setOrdersWithoutAttachmentsPage(page);
     } finally {
       setAttachmentsLoading(false);
     }
@@ -3757,6 +3892,8 @@ export default function StatsReportsPage() {
       setInvoicesWithoutAttachmentsPage(page);
     } catch (e) {
       console.error('📎 Invoices Without Attachments Error:', e);
+      setInvoicesWithoutAttachments({ data: [], pagination: { total: 0, total_pages: 1, per_page: 25 } });
+      setInvoicesWithoutAttachmentsPage(page);
     } finally {
       setAttachmentsLoading(false);
     }
@@ -8245,14 +8382,33 @@ export default function StatsReportsPage() {
     }
   }, [lpEditModal, token, username, showToast]);
 
+  const isGateTab = activeTab === 'control' || activeTab === 'stats' || activeTab === 'spend' || activeTab === 'reports' || activeTab === 'vzdel' || activeTab === 'pivot';
+  const isAttachmentsTab = activeTab === 'attachments';
+  const isCashbookTab = activeTab === 'cashbook';
+  const isDohadneTab = activeTab === 'dohadne';
+
+  const attachmentsStatsReady = orderAttachmentsStats != null || invoiceAttachmentsStats != null;
+  const ordersWithoutAttachmentsReady = ordersWithoutAttachments != null;
+  const invoicesWithoutAttachmentsReady = invoicesWithoutAttachments != null;
+  const isAttachmentsPending = isAttachmentsTab && (attachmentsLoading || !attachmentsStatsReady || !ordersWithoutAttachmentsReady || !invoicesWithoutAttachmentsReady);
+  const isCashbookPending = isCashbookTab && cashbookLoading;
+  const isDohadnePending = isDohadneTab && dohadneLoading;
+
+  const isActiveTabFailed = isGateTab && failedTabs.has(activeTab);
+  const isActiveTabPending = (isGateTab && !isActiveTabFailed && !loadedTabs.has(activeTab))
+    || isAttachmentsPending
+    || isCashbookPending
+    || isDohadnePending;
+  const isGateVisible = !filtersReady || !isInitialized || loading || isActiveTabPending;
+
   return (
     <>
-      <LoadingGate $visible={!isInitialized || loading}>
-        <LoadingGateSpinner $visible={!isInitialized || loading} />
-        <LoadingGateMessage $visible={!isInitialized || loading}>
+      <LoadingGate $visible={isGateVisible}>
+        <LoadingGateSpinner $visible={isGateVisible} />
+        <LoadingGateMessage $visible={isGateVisible}>
           {isInitialized ? 'Obnovuji data z databáze…' : 'Načítám přehled statistik…'}
         </LoadingGateMessage>
-        <LoadingGateSubtext $visible={!isInitialized || loading}>
+        <LoadingGateSubtext $visible={isGateVisible}>
           {isInitialized ? 'Prosím čekejte, zpracovávám objednávky a faktury.' : 'Inicializace analytického panelu…'}
         </LoadingGateSubtext>
       </LoadingGate>
