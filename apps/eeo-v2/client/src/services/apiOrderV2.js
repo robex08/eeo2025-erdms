@@ -1463,7 +1463,9 @@ export async function getOrdersWithoutAttachmentsV2(token, username, options = {
       token,
       username,
       page: options.page || 1,
-      per_page: options.per_page || 50
+      per_page: options.per_page || 50,
+      ...(options.sort_by && { sort_by: options.sort_by }),
+      ...(options.sort_dir && { sort_dir: options.sort_dir })
     });
 
     const result = validateAPIResponse(response, 'getOrdersWithoutAttachmentsV2');
@@ -1495,7 +1497,9 @@ export async function getInvoicesWithoutAttachmentsV2(token, username, options =
       token,
       username,
       page: options.page || 1,
-      per_page: options.per_page || 50
+      per_page: options.per_page || 50,
+      ...(options.sort_by && { sort_by: options.sort_by }),
+      ...(options.sort_dir && { sort_dir: options.sort_dir })
     });
 
     const result = validateAPIResponse(response, 'getInvoicesWithoutAttachmentsV2');

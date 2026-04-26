@@ -1325,6 +1325,8 @@ function handle_order_v2_invoices_without_attachments($input, $config, $queries)
     $sort_by = isset($input['sort_by']) ? $input['sort_by'] : 'fa_datum_vystaveni';
     $sort_dir = isset($input['sort_dir']) && strtoupper($input['sort_dir']) === 'ASC' ? 'ASC' : 'DESC';
     
+    error_log("🔍 [Invoices Without Attachments] Params: page=$page, per_page=$per_page, sort_by=$sort_by, sort_dir=$sort_dir");
+    
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
         http_response_code(401);
