@@ -3705,8 +3705,24 @@ const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear()
 
 function CalendarWidget({ token, username, mySubstitutions, substituting, onHeaderButton }) {
   const today = new Date();
-  const [viewYear, setViewYear]   = useState(today.getFullYear());
-  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  
+  // Načíst uložený stav kalendáře z localStorage
+  const getSavedCalendarState = () => {
+    try {
+      const saved = localStorage.getItem('dashboardCalendarState');
+      if (saved) {
+        const { year, month } = JSON.parse(saved);
+        return { year, month };
+      }
+    } catch (e) {
+      console.error('Chyba při načítání stavu kalendáře:', e);
+    }
+    return { year: today.getFullYear(), month: today.getMonth() };
+  };
+  
+  const savedState = getSavedCalendarState();
+  const [viewYear, setViewYear]   = useState(savedState.year);
+  const [viewMonth, setViewMonth] = useState(savedState.month);
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState(false);
@@ -3847,7 +3863,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           delete copy[terminId];
           return copy;
         });
-      }, 1300);
+      }, 3000);
 
       // Toast hláška
       setToast({
@@ -3894,14 +3910,45 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
     return selectedDate >= dayStart && selectedDate <= dayEnd;
   };
 
-  const goToToday = () => { setViewYear(today.getFullYear()); setViewMonth(today.getMonth()); };
+  const goToToday = () => { 
+    setViewYear(today.getFullYear()); 
+    setViewMonth(today.getMonth()); 
+    // Smazat uložený stav - vrátili jsme se na aktuální měsíc
+    localStorage.removeItem('dashboardCalendarState');
+  };
   const prevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
+    if (viewMonth === 0) { 
+      setViewMonth(11); 
+      setViewYear(y => {
+        const newYear = y - 1;
+        localStorage.setItem('dashboardCalendarState', JSON.stringify({ year: newYear, month: 11 }));
+        return newYear;
+      }); 
+    }
+    else {
+      setViewMonth(m => {
+        const newMonth = m - 1;
+        localStorage.setItem('dashboardCalendarState', JSON.stringify({ year: viewYear, month: newMonth }));
+        return newMonth;
+      });
+    }
   };
   const nextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
+    if (viewMonth === 11) { 
+      setViewMonth(0); 
+      setViewYear(y => {
+        const newYear = y + 1;
+        localStorage.setItem('dashboardCalendarState', JSON.stringify({ year: newYear, month: 0 }));
+        return newYear;
+      }); 
+    }
+    else {
+      setViewMonth(m => {
+        const newMonth = m + 1;
+        localStorage.setItem('dashboardCalendarState', JSON.stringify({ year: viewYear, month: newMonth }));
+        return newMonth;
+      });
+    }
   };
 
   useEffect(() => {
@@ -4040,7 +4087,11 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
         <div style={{ display: 'flex', gap: '0.3rem', alignItems: 'center' }}>
           <select
             value={viewMonth}
-            onChange={e => setViewMonth(Number(e.target.value))}
+            onChange={e => {
+              const newMonth = Number(e.target.value);
+              setViewMonth(newMonth);
+              localStorage.setItem('dashboardCalendarState', JSON.stringify({ year: viewYear, month: newMonth }));
+            }}
             style={{
               appearance: 'none', background: 'transparent', border: 'none',
               fontWeight: 700, fontSize: '1.05rem', color: '#0f172a',
@@ -4051,7 +4102,11 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           </select>
           <select
             value={viewYear}
-            onChange={e => setViewYear(Number(e.target.value))}
+            onChange={e => {
+              const newYear = Number(e.target.value);
+              setViewYear(newYear);
+              localStorage.setItem('dashboardCalendarState', JSON.stringify({ year: newYear, month: viewMonth }));
+            }}
             style={{
               appearance: 'none', background: 'transparent', border: 'none',
               fontWeight: 700, fontSize: '1.05rem', color: '#3b82f6',

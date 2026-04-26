@@ -1372,6 +1372,47 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
             {orderData.faktury.map((faktura, index) => {
               const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
               const isBeingEdited = editingInvoiceId && (faktura.id === editingInvoiceId || faktura.id === Number(editingInvoiceId));
+              const rawInvoiceStatus = (faktura.stav || '').toString().trim();
+              const normalizedInvoiceStatus = rawInvoiceStatus
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^A-Za-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '')
+                .toUpperCase();
+              const invoiceStatusLabel = (() => {
+                if (!rawInvoiceStatus) return '';
+                const statusLabels = {
+                  ZAEVIDOVANA: 'Zaevidovaná',
+                  VECNA_SPRAVNOST: 'Věcná správnost',
+                  V_RESENI: 'V řešení',
+                  PREDANA_PO: 'Předaná PO',
+                  K_ZAPLACENI: 'K zaplacení',
+                  ZAPLACENO: 'Zaplaceno',
+                  DOKONCENA: 'Dokončená',
+                  STORNO: 'Storno'
+                };
+                return statusLabels[normalizedInvoiceStatus] || rawInvoiceStatus.replace(/_/g, ' ');
+              })();
+              const invoiceStatusBadge = (() => {
+                switch (normalizedInvoiceStatus) {
+                  case 'DOKONCENA':
+                    return { bg: '#16a34a', border: '#166534' };
+                  case 'ZAPLACENO':
+                    return { bg: '#059669', border: '#065f46' };
+                  case 'K_ZAPLACENI':
+                    return { bg: '#2563eb', border: '#1e3a8a' };
+                  case 'PREDANA_PO':
+                    return { bg: '#6d28d9', border: '#4c1d95' };
+                  case 'VECNA_SPRAVNOST':
+                    return { bg: '#0ea5e9', border: '#075985' };
+                  case 'V_RESENI':
+                    return { bg: '#f59e0b', border: '#92400e' };
+                  case 'STORNO':
+                    return { bg: '#dc2626', border: '#7f1d1d' };
+                  default:
+                    return { bg: '#475569', border: '#1e293b' };
+                }
+              })();
               return (
               <div key={faktura.id || index} style={{
                 border: isBeingEdited ? '3px solid #f59e0b' : '2px solid #3b82f6',
@@ -1403,18 +1444,41 @@ const OrderFormReadOnly = forwardRef(({ orderData, onCollapseChange, onEditInvoi
                 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                     <FontAwesomeIcon icon={isBeingEdited ? faEdit : faMoneyBillWave} style={{ fontSize: '1.2rem' }} />
-                    Faktura #{index + 1}
-                    {faktura.fa_cislo_vema && (
-                      <span style={{ 
-                        fontWeight: '600',
-                        fontSize: '0.9rem',
-                        background: 'rgba(255, 255, 255, 0.2)',
-                        padding: '0.25rem 0.75rem',
-                        borderRadius: '6px',
-                        letterSpacing: 'normal',
+                    <span>
+                      Faktura
+                      <span style={{
+                        fontSize: '0.62em',
+                        verticalAlign: 'super',
+                        marginLeft: '0.1rem',
+                        fontWeight: 800,
+                        opacity: 0.95,
                         textTransform: 'none'
                       }}>
-                        {faktura.fa_cislo_vema}
+                        {index + 1}
+                      </span>
+                    </span>
+                    {faktura.fa_cislo_vema && (
+                      <span style={{ 
+                        fontWeight: '700',
+                        textTransform: 'none'
+                      }}>
+                        VS: {faktura.fa_cislo_vema}{faktura.fa_vema_kod ? ` / ${faktura.fa_vema_kod}` : ''}
+                      </span>
+                    )}
+                    {invoiceStatusLabel && (
+                      <span style={{
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '999px',
+                        background: invoiceStatusBadge.bg,
+                        border: `1px solid ${invoiceStatusBadge.border}`,
+                        color: '#ffffff',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.01em',
+                        textTransform: 'none',
+                        whiteSpace: 'nowrap'
+                      }}>
+                        Stav: {invoiceStatusLabel}
                       </span>
                     )}
                   </div>

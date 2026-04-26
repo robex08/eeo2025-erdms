@@ -2,12 +2,13 @@ import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import ConfirmDialog from './ConfirmDialog';
 import { CustomSelect } from './CustomSelect';
 import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp, Filter, X, Search } from 'lucide-react';
-import { faExclamationTriangle } from '@fortawesome/free-solid-svg-icons';
+import { faExclamationTriangle, faBoltLightning } from '@fortawesome/free-solid-svg-icons';
 import { SmartTooltip } from '../styles/SmartTooltip';
 
 // 🇨🇿 České názvy stavů faktur
@@ -24,6 +25,11 @@ const INVOICE_STATE_LABELS = {
 
 // Helper funkce pro převod kódu na český název
 const getInvoiceStateLabel = (code) => INVOICE_STATE_LABELS[code] || code;
+
+const isMimoradnaObjednavka = (obj) => {
+  const value = obj?.mimoradna_udalost;
+  return value === 1 || value === '1' || value === true || value === 'true';
+};
 
 const spinAnimation = keyframes`
   from { transform: rotate(0deg); }
@@ -2039,7 +2045,14 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
           <AmountTooltipTitle>📋 Objednávky ({relevantOrders.length})</AmountTooltipTitle>
           {relevantOrders.map((obj, idx) => (
             <AmountTooltipItem key={idx}>
-              <AmountTooltipOrderNum>{obj.cislo_objednavky}</AmountTooltipOrderNum>
+              <AmountTooltipOrderNum>
+                {isMimoradnaObjednavka(obj) && (
+                  <span style={{ color: '#dc2626', marginRight: '4px' }}>
+                    <FontAwesomeIcon icon={faBoltLightning} />
+                  </span>
+                )}
+                {obj.cislo_objednavky}
+              </AmountTooltipOrderNum>
               <AmountTooltipAmount>
                 {formatAmount(
                   typ === 'skutecne' ? obj.skutecne_podil :
@@ -2127,6 +2140,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                   {lp.objednavky_detail.map((obj, idx) => (
                     <tr key={idx} style={{ fontSize: '0.7rem' }}>
                       <td style={{ paddingLeft: '1rem', color: '#6b7280' }}>
+                        {isMimoradnaObjednavka(obj) && (
+                          <span style={{ color: '#dc2626', marginRight: '4px' }}>
+                            <FontAwesomeIcon icon={faBoltLightning} />
+                          </span>
+                        )}
                         {obj.cislo_objednavky}
                       </td>
                       <td style={{ color: '#059669', fontWeight: '600' }}>
@@ -2616,6 +2634,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                                 }}
                                 title="Klikněte pro editaci objednávky"
                               >
+                                {isMimoradnaObjednavka(ord) && (
+                                  <span style={{ color: '#dc2626', marginRight: '4px' }}>
+                                    <FontAwesomeIcon icon={faBoltLightning} />
+                                  </span>
+                                )}
                                 {ord.cislo_objednavky || '—'}
                               </button>
                             </td>

@@ -1076,6 +1076,30 @@ const DashboardCard = styled.div`
   border: 1px solid #e2e8f0;
   text-align: center;
   position: relative;
+  transition: all 0.2s ease;
+  
+  ${props => props.$clickable && `
+    cursor: pointer;
+    user-select: none;
+    
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      border-color: ${props.$isActive ? '#3b82f6' : '#cbd5e1'};
+    }
+    
+    &:active {
+      transform: translateY(0);
+    }
+  `}
+  
+  ${props => props.$isActive && `
+    border-color: #3b82f6 !important;
+    border-width: 2px;
+    background: #eff6ff;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    padding: calc(1rem - 1px); /* Kompenzace pro širší border */
+  `}
   
   h3 {
     margin: 0 0 0.5rem 0;
@@ -1181,6 +1205,25 @@ const DashboardCard = styled.div`
     animation: pulseAlert 1.5s ease-in-out infinite;
     z-index: 1;
     line-height: 1;
+  }
+  
+  .active-check {
+    position: absolute;
+    right: 8px;
+    top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #3b82f6;
+    font-size: 20px;
+    font-weight: bold;
+    z-index: 2;
+    line-height: 1;
+    background: white;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
 `;
 
@@ -1608,7 +1651,9 @@ function AnnualFeesPage() {
     totalActiveAmount: 0,     // Částka celkem aktivních
     totalToPay: 0,            // Celkem k zaplacení
     totalPaid: 0,             // Celkem zaplaceno
-    totalRemaining: 0         // Celkem zbývá
+    totalRemaining: 0,        // Celkem zbývá
+    partiallyPaid: 0,         // Částečně zaplaceno
+    partiallyPaidAmount: 0    // Částka částečně zaplaceno
   });
   
   // Přidání nové položky k existujícímu ročnímu poplatku
@@ -1635,6 +1680,7 @@ function AnnualFeesPage() {
   const [newFeeData, setNewFeeData] = useState({
     smlouva_id: null,
     smlouva_cislo: '',
+    smlouva_usek_zkr: '',
     dodavatel_nazev: '',
     nazev: '',
     poznamka: '',
@@ -2359,6 +2405,17 @@ function AnnualFeesPage() {
     setCurrentPage(1); // Reset na první stránku při změně filtru
   };
 
+  // Handler pro kliknutí na dashboard dlaždice
+  const handleDashboardCardClick = (stavValue) => {
+    // Pokud je již aktivní tento stav, zruš filtr
+    if (filters.stav === stavValue) {
+      handleFilterChange('stav', 'all');
+    } else {
+      // Jinak nastav filtr na tento stav
+      handleFilterChange('stav', stavValue);
+    }
+  };
+
   // Fulltext search change
   const handleFulltextSearchChange = (value) => {
     setFulltextSearch(value);
@@ -2987,7 +3044,7 @@ function AnnualFeesPage() {
   // Select smlouva z autocomplete
   const handleSelectSmlouva = async (smlouva) => {
     try {
-      // Načíst detail smlouvy pro dodavatele
+      // Načíst detail smlouvy pro dodavatele a úsek
       const detail = await getSmlouvaDetail({
         token,
         username,
@@ -2998,6 +3055,7 @@ function AnnualFeesPage() {
         ...prev,
         smlouva_id: smlouva.id,
         smlouva_cislo: smlouva.cislo_smlouvy || '',
+        smlouva_usek_zkr: detail.data?.usek_zkr || smlouva.usek_zkr || '',
         dodavatel_nazev: detail.data?.nazev_firmy || smlouva.nazev_firmy || ''
       }));
       
@@ -3482,6 +3540,7 @@ function AnnualFeesPage() {
           setNewFeeData({
             smlouva_id: null,
             smlouva_cislo: '',
+            smlouva_usek_zkr: '',
             dodavatel_nazev: '',
             nazev: '',
             poznamka: '',
@@ -3583,14 +3642,33 @@ function AnnualFeesPage() {
       
       {/* Dashboard */}
       <DashboardContainer>
-        <DashboardCard className="due-soon" style={{borderColor: '#ff9800'}}>
+        <DashboardCard 
+          className="due-soon" 
+          style={{borderColor: '#ff9800'}}
+          $clickable={true}
+          $isActive={filters.stav === '_BLIZI_SE_SPLATNOST'}
+          onClick={() => handleDashboardCardClick('_BLIZI_SE_SPLATNOST')}
+          title="Klikněte pro filtrování položek blížících se splatnosti"
+        >
+          {filters.stav === '_BLIZI_SE_SPLATNOST' && (
+            <span className="active-check">✓</span>
+          )}
           <h3>Blíží se splatnost</h3>
           <div style={{fontSize: '20px', fontWeight: 'bold', color: '#ff9800'}}>
             {dashboardStats.dueSoon || 0}
           </div>
           <small>{dashboardStats.dueSoonAmount || '0'} Kč (do 10 dní)</small>
         </DashboardCard>
-        <DashboardCard className="overdue">
+        <DashboardCard 
+          className="overdue"
+          $clickable={true}
+          $isActive={filters.stav === '_PO_SPLATNOSTI'}
+          onClick={() => handleDashboardCardClick('_PO_SPLATNOSTI')}
+          title="Klikněte pro filtrování položek po splatnosti"
+        >
+          {filters.stav === '_PO_SPLATNOSTI' && (
+            <span className="active-check">✓</span>
+          )}
           <h3>Po splatnosti</h3>
           <div style={{fontSize: '20px', fontWeight: 'bold', color: '#f44336'}}>
             {dashboardStats.overdue || 0}
@@ -3603,22 +3681,68 @@ function AnnualFeesPage() {
             </>
           )}
         </DashboardCard>
-        <DashboardCard>
+        <DashboardCard
+          className="current"
+          $clickable={true}
+          $isActive={filters.stav === '_AKTUALNI_MESIC'}
+          onClick={() => handleDashboardCardClick('_AKTUALNI_MESIC')}
+          title="Klikněte pro filtrování položek se splatností v aktuálním měsíci"
+        >
+          {filters.stav === '_AKTUALNI_MESIC' && (
+            <span className="active-check">✓</span>
+          )}
           <h3>Platby v aktuálním měsíci</h3>
           <div style={{fontSize: '20px', fontWeight: 'bold', color: '#2196f3'}}>
             {dashboardStats.currentMonth || 0}
           </div>
           <small>{dashboardStats.currentMonthAmount || '0'} Kč</small>
         </DashboardCard>
-        <DashboardCard>
-          <h3>K zaplacení</h3>
+        <DashboardCard
+          $clickable={true}
+          $isActive={filters.stav === 'NEZAPLACENO'}
+          onClick={() => handleDashboardCardClick('NEZAPLACENO')}
+          title="Klikněte pro filtrování nezaplacených položek"
+        >
+          {filters.stav === 'NEZAPLACENO' && (
+            <span className="active-check">✓</span>
+          )}
+          <h3>
+            <span style={{marginRight: '8px', fontSize: '1rem'}}>❌</span>
+            K zaplacení
+          </h3>
           <div style={{fontSize: '20px', fontWeight: 'bold', color: '#ff9800'}}>
             {dashboardStats.totalToPay || '0'} Kč
           </div>
           <small>Nezaplacené položky</small>
         </DashboardCard>
-        <DashboardCard>
-          <h3>Zaplaceno</h3>
+        <DashboardCard
+          $clickable={true}
+          $isActive={filters.stav === 'CASTECNE'}
+          onClick={() => handleDashboardCardClick('CASTECNE')}
+          title="Klikněte pro filtrování částečně zaplacených položek"
+        >
+          {filters.stav === 'CASTECNE' && (
+            <span className="active-check">✓</span>
+          )}
+          <h3>Částečně zaplaceno</h3>
+          <div style={{fontSize: '20px', fontWeight: 'bold', color: '#9c27b0'}}>
+            {dashboardStats.partiallyPaidAmount || '0'} Kč
+          </div>
+          <small>Zaplacená část ({dashboardStats.partiallyPaid || 0} položek)</small>
+        </DashboardCard>
+        <DashboardCard
+          $clickable={true}
+          $isActive={filters.stav === 'ZAPLACENO'}
+          onClick={() => handleDashboardCardClick('ZAPLACENO')}
+          title="Klikněte pro filtrování zaplacených položek"
+        >
+          {filters.stav === 'ZAPLACENO' && (
+            <span className="active-check">✓</span>
+          )}
+          <h3>
+            <span style={{marginRight: '8px', fontSize: '1rem'}}>✅</span>
+            Zaplaceno
+          </h3>
           <div style={{fontSize: '20px', fontWeight: 'bold', color: '#4caf50'}}>
             {dashboardStats.totalPaid || '0'} Kč
           </div>
@@ -3685,6 +3809,7 @@ function AnnualFeesPage() {
             <option key="CASTECNE" value="CASTECNE">Částečně zaplaceno</option>
             <option key="_PO_SPLATNOSTI" value="_PO_SPLATNOSTI">Po splatnosti</option>
             <option key="_BLIZI_SE_SPLATNOST" value="_BLIZI_SE_SPLATNOST">Blíží se splatnost</option>
+            <option key="_AKTUALNI_MESIC" value="_AKTUALNI_MESIC">Aktuální měsíc</option>
           </Select>
         </FilterGroup>
         
@@ -3777,6 +3902,7 @@ function AnnualFeesPage() {
                   Rok
                 </Th>
                 <Th>Smlouva</Th>
+                <Th>Úsek</Th>
                 <Th>Dodavatel</Th>
                 <Th>Název</Th>
                 <Th>Druh / Platba</Th>
@@ -3795,7 +3921,7 @@ function AnnualFeesPage() {
               {/* II. Inline řádek pro vytvoření nového ročního poplatku - pouze s právem CREATE */}
               {canCreate && !showNewRow && (
                 <NewRowTr>
-                  <Td colSpan="15" style={{textAlign: 'center', padding: '12px'}}>
+                  <Td colSpan="16" style={{textAlign: 'center', padding: '12px'}}>
                     <NewRowButton onClick={() => setShowNewRow(true)}>
                       <FontAwesomeIcon icon={faPlus} />
                       Nový roční poplatek
@@ -3834,7 +3960,8 @@ function AnnualFeesPage() {
                             setNewFeeData(prev => ({
                               ...prev,
                               smlouva_id: null,
-                              smlouva_cislo: ''
+                              smlouva_cislo: '',
+                              smlouva_usek_zkr: ''
                             }));
                             setShowSmlouvySuggestions(false);
                           }}
@@ -3855,6 +3982,11 @@ function AnnualFeesPage() {
                               <SuggestionTitle>
                                 <SuggestionBadge $color="#10b981" $textColor="white">SML</SuggestionBadge>
                                 {smlouva.cislo_smlouvy}
+                                {smlouva.usek_zkr && (
+                                  <SuggestionBadge $color="#e0e7ff" $textColor="#4338ca">
+                                    {smlouva.usek_zkr}
+                                  </SuggestionBadge>
+                                )}
                                 {smlouva.hodnota_s_dph && (
                                   <SuggestionBadge $color="#fef3c7" $textColor="#92400e">
                                     {parseFloat(smlouva.hodnota_s_dph).toLocaleString('cs-CZ')} Kč
@@ -3882,6 +4014,24 @@ function AnnualFeesPage() {
                         </SuggestionsDropdown>
                       )}
                     </SuggestionsWrapper>
+                  </Td>
+                  <Td>
+                    {/* Úsek se automaticky doplní ze smlouvy */}
+                    {newFeeData.smlouva_usek_zkr ? (
+                      <span style={{
+                        display: 'inline-block',
+                        padding: '2px 8px',
+                        backgroundColor: '#e0e7ff',
+                        color: '#4338ca',
+                        borderRadius: '4px',
+                        fontSize: '0.85rem',
+                        fontWeight: '600'
+                      }}>
+                        {newFeeData.smlouva_usek_zkr}
+                      </span>
+                    ) : (
+                      <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>—</span>
+                    )}
                   </Td>
                   <Td>
                     <div style={{position: 'relative'}}>
@@ -4139,6 +4289,23 @@ function AnnualFeesPage() {
                     </Td>
                     <Td>
                       <strong>{highlightSearchTerm(fee.smlouva_cislo || '', debouncedFulltext)}</strong>
+                    </Td>
+                    <Td>
+                      {fee.smlouva_usek_zkr ? (
+                        <span style={{
+                          display: 'inline-block',
+                          padding: '2px 8px',
+                          backgroundColor: '#e0e7ff',
+                          color: '#4338ca',
+                          borderRadius: '4px',
+                          fontSize: '0.85rem',
+                          fontWeight: '600'
+                        }}>
+                          {highlightSearchTerm(fee.smlouva_usek_zkr, debouncedFulltext)}
+                        </span>
+                      ) : (
+                        <span style={{color: '#9ca3af', fontSize: '0.85rem'}}>—</span>
+                      )}
                     </Td>
                     <Td>
                       {isEditingFee ? (
@@ -5036,7 +5203,7 @@ function AnnualFeesPage() {
               {/* Empty state message v tabulce */}
               {paginatedData.length === 0 && !showNewRow && (
                 <Tr>
-                  <Td colSpan="14" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
+                  <Td colSpan="16" style={{textAlign: 'center', padding: '40px', color: '#9ca3af'}}>
                     <div style={{fontSize: '3rem', marginBottom: '16px'}}>
                       <FontAwesomeIcon icon={faMoneyBill} />
                     </div>

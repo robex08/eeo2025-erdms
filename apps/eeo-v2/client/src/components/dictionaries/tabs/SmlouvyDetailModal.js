@@ -20,7 +20,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faTimes, faEdit, faSyncAlt, faSpinner, faFileContract,
   faBuilding, faCalendar, faMoneyBillWave, faChartLine, faExclamationTriangle, faBolt,
-  faCheckCircle, faTimesCircle, faTriangleExclamation, faLock, faUnlock
+  faCheckCircle, faTimesCircle, faTriangleExclamation, faLock, faUnlock, faBoltLightning
 } from '@fortawesome/free-solid-svg-icons';
 import { useNavigate } from 'react-router-dom';
 
@@ -929,7 +929,14 @@ const SmlouvyDetailModal = ({ smlouva, onClose, onEdit }) => {
                 <Tbody>
                   {objednavky.map((obj, index) => (
                     <Tr key={obj.id} style={{ background: index % 2 === 0 ? '#f8fafc' : 'white' }}>
-                      <Td><strong>{obj.ev_cislo}</strong></Td>
+                      <Td>
+                        <strong>
+                          {(obj.mimoradna_udalost === 1 || obj.mimoradna_udalost === '1' || obj.mimoradna_udalost === true || obj.mimoradna_udalost === 'true') && (
+                            <FontAwesomeIcon icon={faBoltLightning} style={{ color: '#dc2626', marginRight: '4px' }} />
+                          )}
+                          {obj.ev_cislo}
+                        </strong>
+                      </Td>
                       <Td>{obj.predmet}</Td>
                       <Td style={{ textAlign: 'right', fontWeight: 600 }}>{formatCurrency(obj.castka_s_dph)}</Td>
                       <Td style={{ textAlign: 'center' }}>{formatDateTime(obj.dt_prirazeni)}</Td>

@@ -39,6 +39,7 @@ import {
   faFileAlt,
   faExternalLinkAlt,
   faBolt,
+  faBoltLightning,
   faCheckCircle,
   faLock,
   faInfoCircle,
@@ -5001,22 +5002,27 @@ export default function StatsReportsPage() {
         const usekLabel = getUsekLabel(o) || usekCode;
         sKeys.forEach(sCode => {
           const sLabel = sCode === 'NEURCENO' ? 'Neurčeno' : (strediskaMap[String(sCode)] || String(sCode));
-          if (!byStredisko[sCode]) byStredisko[sCode] = { code: sCode, label: sLabel, byUsek: {}, totalCount: 0, totalAmount: 0 };
-          if (!byStredisko[sCode].byUsek[usekCode]) byStredisko[sCode].byUsek[usekCode] = { code: usekCode, label: usekLabel, orders: [], count: 0, amount: 0 };
+          if (!byStredisko[sCode]) byStredisko[sCode] = { code: sCode, label: sLabel, byUsek: {}, totalCount: 0, completedCount: 0, totalAmount: 0 };
+          if (!byStredisko[sCode].byUsek[usekCode]) byStredisko[sCode].byUsek[usekCode] = { code: usekCode, label: usekLabel, orders: [], count: 0, completedCount: 0, amount: 0 };
           const amt = calcAmt(o);
+          const statusCode = getOrderStatusCode(o);
+          const isCompleted = statusCode.includes('DOKON') || statusCode.includes('UZAVR');
           byStredisko[sCode].byUsek[usekCode].orders.push(o);
           byStredisko[sCode].byUsek[usekCode].count += 1;
+          if (isCompleted) byStredisko[sCode].byUsek[usekCode].completedCount += 1;
           byStredisko[sCode].byUsek[usekCode].amount += amt;
           byStredisko[sCode].totalCount += 1;
+          if (isCompleted) byStredisko[sCode].completedCount += 1;
           byStredisko[sCode].totalAmount += amt;
         });
       });
       const strediskaArr = Object.values(byStredisko).sort((a, b) => (a.label || a.code).localeCompare(b.label || b.code, 'cs-CZ'));
       const totalCount = strediskaArr.reduce((s, st) => s + st.totalCount, 0);
+      const totalCompleted = strediskaArr.reduce((s, st) => s + (st.completedCount || 0), 0);
       const totalAmount = strediskaArr.reduce((s, st) => s + st.totalAmount, 0);
-      return { key: typDef.key, label: typDef.label, tone: typDef.tone, strediska: strediskaArr, totalCount, totalAmount };
+      return { key: typDef.key, label: typDef.label, tone: typDef.tone, strediska: strediskaArr, totalCount, totalCompleted, totalAmount };
     }).filter(t => t.totalCount > 0);
-  }, [vzdelSections, invoicesByOrderId, getOrdererUsekCode, getUsekLabel, strediskaMap, getInvoiceAmount, getOrderPlannedAmount, getOrderLimit]);
+  }, [vzdelSections, invoicesByOrderId, getOrdererUsekCode, getUsekLabel, strediskaMap, getInvoiceAmount, getOrderPlannedAmount, getOrderLimit, getOrderStatusCode]);
 
   const reportSections = useMemo(() => {
     const now = new Date();
@@ -8094,15 +8100,36 @@ export default function StatsReportsPage() {
     );
   }, [attachPopup, handleAttachBadgeClick, handleOpenAttachment, badgeColors]);
 
+  const isMimoradnaOrder = useCallback((order) => {
+    const value = order?.mimoradna_udalost;
+    return value === 1 || value === '1' || value === true || value === 'true';
+  }, []);
+
+  const renderOrderNumberWithStatus = useCallback((order, content) => {
+    const resolvedOrder = order?.id ? (ordersById.get(String(order.id)) || order) : order;
+    const isMimoradna = isMimoradnaOrder(resolvedOrder);
+
+    return (
+      <>
+        {isMimoradna && (
+          <span style={{ color: '#dc2626', marginRight: '4px' }}>
+            <FontAwesomeIcon icon={faBoltLightning} />
+          </span>
+        )}
+        {content}
+      </>
+    );
+  }, [ordersById, isMimoradnaOrder]);
+
   const renderOrderLink = useCallback((order, searchKey = null) => {
     const orderNumber = order.ev_cislo || order.cislo_objednavky || order.id;
     const content = searchKey ? highlightText(String(orderNumber), searchKey) : orderNumber;
     return (
       <LinkButton onClick={() => navigate(`/order-form-25?edit=${order.id}`, { state: { returnTo: '/stats-reports' } })}>
-        {content}
+        {renderOrderNumberWithStatus(order, content)}
       </LinkButton>
     );
-  }, [navigate, highlightText]);
+  }, [navigate, highlightText, renderOrderNumberWithStatus]);
 
   // Varianta s předmětem objednávky jako druhý řádek (max 2 řádky, SmartTooltip pro plný text)
   const renderOrderLinkWithSubject = useCallback((order, searchKey = null) => {
@@ -8115,7 +8142,7 @@ export default function StatsReportsPage() {
     return (
       <div style={{ minWidth: '160px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.1rem' }}>
         <LinkButton onClick={() => navigate(`/order-form-25?edit=${order.id}`, { state: { returnTo: '/stats-reports' } })}>
-          {content}
+          {renderOrderNumberWithStatus(order, content)}
         </LinkButton>
         {subj && (
           <SmartTooltip text={subj} preferredPosition="top" icon="none" multiline={true}>
@@ -8140,7 +8167,7 @@ export default function StatsReportsPage() {
         )}
       </div>
     );
-  }, [navigate, highlightText]);
+  }, [navigate, highlightText, renderOrderNumberWithStatus]);
 
   // Lookup mapy pro pivot linky — indexujeme dle čísla (ev_cislo / cislo_faktury)
   const ordersByEvCislo = useMemo(() => {
@@ -9720,7 +9747,7 @@ export default function StatsReportsPage() {
                       ) : (
                         <>
                           {/* Záhlaví sloupců */}
-                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '16px 1fr 180px 190px', gap: '0.75rem', padding: '0.25rem 1rem', color: '#6b7280', fontSize: '0.72rem', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                             <div /><div>Typ / Středisko / Úsek</div>
                             <div style={{ textAlign: 'right' }}>Počet</div>
                             <div style={{ textAlign: 'right' }}>Celkem</div>
@@ -9733,11 +9760,13 @@ export default function StatsReportsPage() {
                                 {/* Level 1: Typ školení */}
                                 <div
                                   onClick={() => setExpandedVzdelByTyp(prev => { const n = new Set(prev); if (n.has(typGroup.key)) n.delete(typGroup.key); else n.add(typGroup.key); return n; })}
-                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.75rem 1rem', background: typOpen ? typColor.bgOpen : typColor.bg, cursor: 'pointer', userSelect: 'none', borderBottom: typOpen ? `1px solid ${typColor.border}` : 'none' }}
+                                  style={{ display: 'grid', gridTemplateColumns: '16px 1fr 180px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.75rem 1rem', background: typOpen ? typColor.bgOpen : typColor.bg, cursor: 'pointer', userSelect: 'none', borderBottom: typOpen ? `1px solid ${typColor.border}` : 'none' }}
                                 >
                                   <span style={{ fontSize: '1rem', fontWeight: '800', color: typColor.icon, textAlign: 'center', lineHeight: 1 }}>{typOpen ? '\u2212' : '+'}</span>
                                   <span style={{ fontWeight: '800', color: typColor.text, fontSize: '0.9rem' }}>{typGroup.label}</span>
-                                  <SectionBadge $tone={typGroup.tone} style={{ textAlign: 'right', justifySelf: 'end' }}>{typGroup.totalCount} obj.</SectionBadge>
+                                  <SectionBadge $tone={typGroup.tone} style={{ textAlign: 'right', justifySelf: 'end', whiteSpace: 'nowrap' }}>
+                                    {typGroup.totalCount} obj. / {typGroup.totalCompleted || 0} dokončena
+                                  </SectionBadge>
                                   <span style={{ fontSize: '0.85rem', fontFamily: 'monospace', color: '#1e293b', textAlign: 'right', fontWeight: '700' }}>{fmtCurrency(typGroup.totalAmount)}</span>
                                 </div>
                                 {typOpen && (
@@ -9750,11 +9779,13 @@ export default function StatsReportsPage() {
                                           {/* Level 2: Středisko */}
                                           <div
                                             onClick={() => setExpandedVzdelByUsek(prev => { const n = new Set(prev); if (n.has(sKey)) n.delete(sKey); else n.add(sKey); return n; })}
-                                            style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.65rem 0.75rem', background: sOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none', borderBottom: sOpen ? '1px solid #bfdbfe' : 'none' }}
+                                            style={{ display: 'grid', gridTemplateColumns: '16px 1fr 180px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.65rem 0.75rem', background: sOpen ? '#eff6ff' : '#f8fafc', cursor: 'pointer', userSelect: 'none', borderBottom: sOpen ? '1px solid #bfdbfe' : 'none' }}
                                           >
                                             <span style={{ fontSize: '0.95rem', fontWeight: '700', color: '#1d4ed8', textAlign: 'center', lineHeight: 1 }}>{sOpen ? '\u2212' : '+'}</span>
                                             <span style={{ fontWeight: '700', color: '#1e3a8a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.86rem' }}>🏢 {sGroup.label || sGroup.code}</span>
-                                            <SectionBadge $tone="info" style={{ textAlign: 'right', justifySelf: 'end' }}>{sGroup.totalCount} obj.</SectionBadge>
+                                            <SectionBadge $tone="info" style={{ textAlign: 'right', justifySelf: 'end', whiteSpace: 'nowrap' }}>
+                                              {sGroup.totalCount} obj. / {sGroup.completedCount || 0} dokončena
+                                            </SectionBadge>
                                             <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(sGroup.totalAmount)}</span>
                                           </div>
                                           {sOpen && (
@@ -9784,11 +9815,13 @@ export default function StatsReportsPage() {
                                                       {/* Level 3: Úsek */}
                                                       <div
                                                         onClick={() => setExpandedVzdelUsek(prev => { const n = new Set(prev); if (n.has(uKey)) n.delete(uKey); else n.add(uKey); return n; })}
-                                                        style={{ display: 'grid', gridTemplateColumns: '16px 1fr 110px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0.65rem', background: uOpen ? '#f0fdf4' : '#fff', cursor: 'pointer', userSelect: 'none' }}
+                                                        style={{ display: 'grid', gridTemplateColumns: '16px 1fr 180px 190px', gap: '0.75rem', alignItems: 'center', padding: '0.5rem 0.65rem', background: uOpen ? '#f0fdf4' : '#fff', cursor: 'pointer', userSelect: 'none' }}
                                                       >
                                                         <span style={{ fontSize: '0.85rem', fontWeight: '700', color: '#059669', textAlign: 'center', lineHeight: 1 }}>{uOpen ? '\u2212' : '+'}</span>
                                                         <span style={{ fontWeight: '600', color: '#14532d', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '0.83rem' }}>{uGroup.label || uGroup.code}</span>
-                                                        <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end' }}>{uGroup.count} obj.</SectionBadge>
+                                                        <SectionBadge $tone="warn" style={{ textAlign: 'right', justifySelf: 'end', whiteSpace: 'nowrap' }}>
+                                                          {uGroup.count} obj. / {uGroup.completedCount || 0} dokončena
+                                                        </SectionBadge>
                                                         <span style={{ fontSize: '0.8rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(uGroup.amount)}</span>
                                                       </div>
                                                       {uOpen && (

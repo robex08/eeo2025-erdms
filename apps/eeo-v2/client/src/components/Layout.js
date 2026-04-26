@@ -1685,7 +1685,7 @@ const NotificationBellWrapper = ({ userId }) => {
           delete copy[terminId];
           return copy;
         });
-      }, 1300);
+      }, 3000);
 
       // Aktualizovat událost v panelu
       const updatedEvent = await planningApi.getEvent(event.id);

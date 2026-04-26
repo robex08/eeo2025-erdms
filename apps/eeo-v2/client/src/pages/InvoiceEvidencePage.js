@@ -90,6 +90,43 @@ const formatDateForPicker = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const INVOICE_STATUS_LABELS = {
+  ZAEVIDOVANA: 'Zaevidovaná',
+  VECNA_SPRAVNOST: 'Věcná správnost',
+  V_RESENI: 'V řešení',
+  PREDANA_PO: 'Předaná PO',
+  K_ZAPLACENI: 'K zaplacení',
+  ZAPLACENO: 'Zaplaceno',
+  DOKONCENA: 'Dokončená',
+  STORNO: 'Storno'
+};
+
+const getInvoiceStatusLabel = (statusCode) => {
+  if (!statusCode) return '';
+  return INVOICE_STATUS_LABELS[statusCode] || statusCode;
+};
+
+const getInvoiceStatusBadgeStyle = (statusCode) => {
+  switch (statusCode) {
+    case 'DOKONCENA':
+      return { bg: '#16a34a', border: '#166534' };
+    case 'ZAPLACENO':
+      return { bg: '#059669', border: '#065f46' };
+    case 'K_ZAPLACENI':
+      return { bg: '#2563eb', border: '#1e3a8a' };
+    case 'PREDANA_PO':
+      return { bg: '#6d28d9', border: '#4c1d95' };
+    case 'VECNA_SPRAVNOST':
+      return { bg: '#0ea5e9', border: '#075985' };
+    case 'V_RESENI':
+      return { bg: '#f59e0b', border: '#92400e' };
+    case 'STORNO':
+      return { bg: '#dc2626', border: '#7f1d1d' };
+    default:
+      return { bg: '#475569', border: '#1e293b' };
+  }
+};
+
 // Currency Input Component - zachovává pozici kurzoru při psaní
 function CurrencyInput({ fieldName, value, onChange, onBlur, disabled, hasError, placeholder }) {
   const inputRef = useRef(null);
@@ -2100,6 +2137,19 @@ export default function InvoiceEvidencePage() {
     return currentState === 'DOKONCENA';
   }, [orderData]);
 
+  // U existující faktury navázané na objednávku povolíme editaci i při dokončené objednávce.
+  // Po uložení změn už existuje logika, která vrací workflow objednávky zpět na věcnou správnost.
+  const isEditingExistingInvoiceOnOrder = useMemo(() => {
+    return !!editingInvoiceId && !!hadOriginalEntity && !!formData.order_id;
+  }, [editingInvoiceId, hadOriginalEntity, formData.order_id]);
+
+  // Blokace dle stavu objednávky platí jen pro NOVOU fakturu nebo přiřazení objednávky k existující faktuře.
+  const isOrderStateBlockingInvoiceOperations = useMemo(() => {
+    if (!formData.order_id || !orderData) return false;
+    if (isEditingExistingInvoiceOnOrder) return false;
+    return !canAddInvoiceToOrder(orderData).allowed;
+  }, [formData.order_id, orderData, isEditingExistingInvoiceOnOrder, canAddInvoiceToOrder]);
+
   // 🔒 Zjistit, zda lze fakturu editovat (stejná logika jako disable na tlačítku Aktualizovat)
   const isInvoiceEditable = useMemo(() => {
     // Readonly režim - nemůže editovat
@@ -2119,8 +2169,8 @@ export default function InvoiceEvidencePage() {
       return false; // ❌ Fakturu nelze editovat - je DOKONČENÁ
     }
     
-    // Pokud je faktura přiřazena k objednávce a objednávka neumožňuje přidání faktury
-    if (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed) return false;
+    // Blokace podle stavu objednávky jen pro nové/přiřazované faktury
+    if (isOrderStateBlockingInvoiceOperations) return false;
     
     // 🔥 VĚCNÁ SPRÁVNOST: Po potvrzení věcné správnosti je faktura DISABLED
     // (kromě ADMIN, INVOICE_MANAGE nebo ÚČETNÍ kterí mohou odemknout tlačítkem)
@@ -2134,7 +2184,7 @@ export default function InvoiceEvidencePage() {
     
     // Běžná editace: INVOICE_MANAGE nebo ÚČETNÍ může editovat dokud není potvrzena věcná správnost
     return hasPermission('INVOICE_MANAGE') || hasAccountantRole;
-  }, [isReadOnlyMode, originalFormData, formData.order_id, formData.vecna_spravnost_potvrzeno, orderData, canAddInvoiceToOrder, hasPermission, hasAccountantRole]);
+  }, [isReadOnlyMode, originalFormData, isOrderStateBlockingInvoiceOperations, formData.vecna_spravnost_potvrzeno, hasPermission, hasAccountantRole]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO PŘÍLOHY - dostupné dokud faktura NENÍ DOKONČENÁ
   const areAttachmentsEditable = useMemo(() => {
@@ -2205,6 +2255,10 @@ export default function InvoiceEvidencePage() {
     if (!editingInvoiceId || !originalFormData) return false;
     return (originalFormData.fa_vema_kod || '') !== (formData.fa_vema_kod || '');
   }, [formData.fa_vema_kod, originalFormData, editingInvoiceId]);
+
+  const invoiceStatusCode = useMemo(() => {
+    return originalFormData?.stav || formData?.stav || null;
+  }, [originalFormData?.stav, formData?.stav]);
 
   // 🆕 Speciální režim: uživatel s právem editace VEMA kódu upravil JEN toto pole
   // a chceme mu povolit uložení i když by jinak byl save button disabled
@@ -3393,15 +3447,6 @@ export default function InvoiceEvidencePage() {
 
   // Handler: editace faktury - načte fakturu do formuláře
   const handleEditInvoice = useCallback(async (faktura) => {
-    // ✅ Kontrola stavu objednávky - nelze editovat fakturu u objednávky v nevhodném stavu
-    if (orderData) {
-      const invoiceCheck = canAddInvoiceToOrder(orderData);
-      if (!invoiceCheck.allowed) {
-        showToast && showToast(`❌ ${invoiceCheck.reason}`, 'error');
-        return;
-      }
-    }
-
     setFormData({
       order_id: faktura.objednavka_id || '',
       smlouva_id: faktura.smlouva_id || null,
@@ -3464,7 +3509,7 @@ export default function InvoiceEvidencePage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
     
     showToast && showToast('📝 Faktura načtena pro úpravu', 'info');
-  }, [showToast, orderData, canAddInvoiceToOrder, token, username]);
+  }, [showToast, token, username]);
 
   // � Handler: Odpojit fakturu od objednávky
   const handleUnlinkInvoice = useCallback((faktura) => {
@@ -5189,17 +5234,17 @@ export default function InvoiceEvidencePage() {
   // Handler: odemknout fakturu (pro adminy a INVOICE_MANAGE)
   const handleUnlockInvoice = useCallback(async () => {
     if (!editingInvoiceId) return;
+
+    // Faktura ve stavu DOKONČENÁ je vždy read-only (unlock věcné správnosti by nepomohl)
+    if (originalFormData?.stav === 'DOKONCENA') {
+      showToast?.('Fakturu ve stavu DOKONČENÁ nelze odemknout pro editaci', 'error');
+      return;
+    }
     
     // Kontrola oprávnění
     const canUnlock = hasPermission('INVOICE_MANAGE') || hasPermission('ADMIN');
     if (!canUnlock) {
       showToast?.('Nemáte oprávnění odemknout fakturu', 'error');
-      return;
-    }
-    
-    // Pokud je faktura součástí objednávky, zkontroluj že objednávka NENÍ dokončena
-    if (orderData && orderData.stav_objednavky === 'DOKONCENA') {
-      showToast?.('Fakturu nelze odemknout, protože objednávka je již dokončena', 'error');
       return;
     }
     
@@ -5218,7 +5263,7 @@ export default function InvoiceEvidencePage() {
             updateData: {
               vecna_spravnost_potvrzeno: 0,
               potvrdil_vecnou_spravnost_id: null,
-              dt_vecna_spravnost: null,
+              dt_potvrzeni_vecne_spravnosti: null,
               vecna_spravnost_poznamka: '',
               vecna_spravnost_umisteni_majetku: ''
             }
@@ -5229,7 +5274,7 @@ export default function InvoiceEvidencePage() {
             ...prev,
             vecna_spravnost_potvrzeno: 0,
             potvrdil_vecnou_spravnost_id: null,
-            dt_vecna_spravnost: null,
+            dt_potvrzeni_vecne_spravnosti: null,
             vecna_spravnost_poznamka: '',
             vecna_spravnost_umisteni_majetku: ''
           }));
@@ -5238,7 +5283,7 @@ export default function InvoiceEvidencePage() {
             ...prev,
             vecna_spravnost_potvrzeno: 0,
             potvrdil_vecnou_spravnost_id: null,
-            dt_vecna_spravnost: null,
+            dt_potvrzeni_vecne_spravnosti: null,
             vecna_spravnost_poznamka: '',
             vecna_spravnost_umisteni_majetku: ''
           }));
@@ -5255,7 +5300,7 @@ export default function InvoiceEvidencePage() {
         setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
       }
     });
-  }, [editingInvoiceId, orderData, hasPermission, token, username, showToast]);
+  }, [editingInvoiceId, originalFormData?.stav, hasPermission, token, username, showToast]);
 
   // Handler: zpět na seznam
   const handleBack = async () => {
@@ -5642,13 +5687,12 @@ export default function InvoiceEvidencePage() {
             }
           </div>
           {/* Tlačítko pro odemčení faktury - pouze pokud je zamčená a uživatel má práva */}
-          {/* NESMÍ se zobrazit pro faktury přidružené k objednávce ve stavu DOKONCENA */}
           {editingInvoiceId && 
            !isReadOnlyMode && 
+           originalFormData?.stav !== 'DOKONCENA' &&
            originalFormData?.vecna_spravnost_potvrzeno === 1 && 
            !hasPermission('INVOICE_MANAGE_ALL') &&
-           (hasPermission('INVOICE_MANAGE') || hasPermission('ADMIN')) && 
-           !isOrderCompleted && (
+           (hasPermission('INVOICE_MANAGE') || hasPermission('ADMIN')) && (
             <button
               onClick={handleUnlockInvoice}
               style={{
@@ -5765,7 +5809,30 @@ export default function InvoiceEvidencePage() {
             <CollapsibleHeader onClick={() => toggleSection('invoiceData')}>
               <HeaderLeft>
                 <FontAwesomeIcon icon={faCreditCard} />
-                Údaje faktury{formData.fa_cislo_vema && <span> VS: <strong>{formData.fa_cislo_vema}</strong></span>}
+                Údaje faktury
+                {formData.fa_cislo_vema && <span style={{ textTransform: 'none' }}> VS: <strong>{formData.fa_cislo_vema}</strong></span>}
+                {invoiceStatusCode && (() => {
+                  const badge = getInvoiceStatusBadgeStyle(invoiceStatusCode);
+                  return (
+                    <span
+                      style={{
+                        marginLeft: '0.35rem',
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: '999px',
+                        background: badge.bg,
+                        border: `1px solid ${badge.border}`,
+                        color: '#ffffff',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        letterSpacing: '0.01em',
+                        textTransform: 'none',
+                        whiteSpace: 'nowrap'
+                      }}
+                    >
+                      Stav: {getInvoiceStatusLabel(invoiceStatusCode)}
+                    </span>
+                  );
+                })()}
               </HeaderLeft>
               <HeaderRight>
                 {/* 🔒 NOVÝ: Badge pro DOKONČENOU fakturu (nejvyšší priorita) */}
@@ -6963,7 +7030,7 @@ export default function InvoiceEvidencePage() {
           {/* VAROVÁNÍ: EDITACE faktury vázané na objednávku - nutnost věcné kontroly (pouze pokud je operace možná) */}
           {/* NEZOBRAZOVAT pro readonly režim (věcná kontrola) - varování je irelevantní */}
           {/* NEZOBRAZOVAT pro DOKONCENA faktury - nelze editovat, takže varování nemá smysl */}
-          {editingInvoiceId && formData.order_id && orderData && canAddInvoiceToOrder(orderData).allowed && !isReadOnlyMode && originalFormData?.stav !== 'DOKONCENA' && (
+          {editingInvoiceId && formData.order_id && orderData && (canAddInvoiceToOrder(orderData).allowed || isEditingExistingInvoiceOnOrder) && !isReadOnlyMode && originalFormData?.stav !== 'DOKONCENA' && (
             <div style={{
               background: 'linear-gradient(135deg, #fef3c7 0%, #fde68a 100%)',
               border: '3px solid #f59e0b',
@@ -7015,7 +7082,7 @@ export default function InvoiceEvidencePage() {
           )}
           
           {/* VAROVÁNÍ: Nelze přidat/upravit fakturu k objednávce v nevhodném stavu */}
-          {formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && (
+          {formData.order_id && orderData && isOrderStateBlockingInvoiceOperations && (
             <div style={{
               background: editingInvoiceId ? '#fee2e2' : '#fef3c7',
               border: editingInvoiceId ? '3px solid #dc2626' : '2px solid #f59e0b',
@@ -7103,7 +7170,7 @@ export default function InvoiceEvidencePage() {
                 (originalFormData?.stav === 'DOKONCENA') ||
                 // Běžná disabled logika - nelze přidat fakturu k objednávce v zakázaném stavu
                 // (výjimka: pouhá změna VEMA kódu je povolena i u uzamčené objednávky)
-                (formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && !canSaveVemaKodOnly) ||
+                (isOrderStateBlockingInvoiceOperations && !canSaveVemaKodOnly) ||
                 // 🔥 Readonly uživatelé (INVOICE_MATERIAL_CORRECTNESS) mohou uložit POUZE pokud se změnila věcná správnost NEBO VEMA kód
                 (isReadOnlyMode && !hasChangedVecnaSpravnost && !canSaveVemaKodOnly)
               }
@@ -7112,7 +7179,7 @@ export default function InvoiceEvidencePage() {
                   ? 'Nemáte oprávnění upravovat faktury. Zobrazení je pouze pro čtení.'
                   : originalFormData?.stav === 'DOKONCENA'
                   ? '🔒 Faktura je DOKONČENÁ a nelze ji editovat. Všechna pole jsou pouze pro čtení.'
-                  : formData.order_id && orderData && !canAddInvoiceToOrder(orderData).allowed && !canSaveVemaKodOnly
+                  : isOrderStateBlockingInvoiceOperations && !canSaveVemaKodOnly
                   ? canAddInvoiceToOrder(orderData).reason
                   : (isReadOnlyMode && !hasChangedVecnaSpravnost && !canSaveVemaKodOnly)
                     ? 'Nemáte oprávnění měnit základní data faktury. Můžete pouze potvrdit věcnou správnost.'
@@ -7973,7 +8040,7 @@ export default function InvoiceEvidencePage() {
               onCollapseChange={setHasAnySectionCollapsed}
               onEditInvoice={isReadOnlyMode ? null : handleEditInvoice}
               onUnlinkInvoice={(isReadOnlyMode && !hasPermission('ADMIN')) ? null : handleUnlinkInvoice}
-              canEditInvoice={(!isReadOnlyMode || hasPermission('ADMIN')) && canAddInvoiceToOrder(orderData).allowed}
+              canEditInvoice={(!isReadOnlyMode || hasPermission('ADMIN')) && (canAddInvoiceToOrder(orderData).allowed || isEditingExistingInvoiceOnOrder)}
               editingInvoiceId={editingInvoiceId} // ✅ Předat ID editované faktury pro zvýraznění
               isReadOnlyMode={isReadOnlyMode} // ✅ Předat readonly režim pro změnu textu
               token={token}

@@ -2686,6 +2686,7 @@ const OrdersTableV3 = ({
   const scrollFadeRightRef = useRef(null);
   const stickyHeaderRef = useRef(null);
   const tableBodyScrollRef = useRef(null);
+  const ENABLE_FIXED_SCROLLBAR = false;
   const [showFixedScrollbar, setShowFixedScrollbar] = useState(false);
 
   const handleTableMouseDownCapture = useCallback((e) => {
@@ -2946,6 +2947,10 @@ const OrdersTableV3 = ({
     
     // Zjistit, zda je potřeba scrollbar (obsah je širší než container)
     const checkScrollbarNeeded = () => {
+      if (!ENABLE_FIXED_SCROLLBAR) {
+        setShowFixedScrollbar(false);
+        return;
+      }
       const isNeeded = bodyScroll.scrollWidth > bodyScroll.clientWidth;
       setShowFixedScrollbar(isNeeded);
       
@@ -4266,15 +4271,33 @@ const OrdersTableV3 = ({
           const order = row.original;
           return (
             <div style={{ textAlign: 'left', whiteSpace: 'normal' }}>
-              <div style={{ fontWeight: 600, color: '#1e293b', fontFamily: 'monospace' }}>
+              <div style={{
+                fontWeight: 600,
+                color: '#1e293b',
+                fontFamily: 'monospace',
+                display: 'flex',
+                alignItems: 'baseline',
+                gap: '2px',
+                minWidth: 0,
+                whiteSpace: 'nowrap'
+              }}>
                 {(order.mimoradna_udalost === 1 || order.mimoradna_udalost === '1') && (
-                  <span style={{ color: '#dc2626', marginRight: '4px' }}>
+                  <span style={{ color: '#dc2626', marginRight: '4px', flexShrink: 0 }}>
                     <FontAwesomeIcon icon={faBoltLightning} />
                   </span>
                 )}
-                {order.cislo_objednavky || '---'}
+                <span style={{
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  overflowWrap: 'normal',
+                  wordBreak: 'normal'
+                }}>
+                  {order.cislo_objednavky || '---'}
+                </span>
                 {order.id && (
-                  <sup style={{ fontSize: '0.6rem', color: '#9ca3af', marginLeft: '2px' }}>
+                  <sup style={{ fontSize: '0.6rem', color: '#9ca3af', marginLeft: '2px', flexShrink: 0 }}>
                     #{order.id}
                   </sup>
                 )}
@@ -5543,7 +5566,7 @@ const OrdersTableV3 = ({
     </TableWrapper>
     
     {/* Fixed horizontal scrollbar - vždy na spodním okraji layoutu */}
-    {showFixedScrollbar && ReactDOM.createPortal(
+    {ENABLE_FIXED_SCROLLBAR && showFixedScrollbar && ReactDOM.createPortal(
       <FixedScrollbarContainer ref={fixedScrollbarRef}>
         <FixedScrollbarContent />
       </FixedScrollbarContainer>,
