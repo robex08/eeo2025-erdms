@@ -1364,7 +1364,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         stav: filters.stav || '',
         platnost_od: filters.platnost_od || '',
         platnost_do: filters.platnost_do || '',
-        show_inactive: filters.show_inactive || filters.stav === 'NEAKTIVNI'
+        show_inactive: filters.show_inactive || filters.stav === 'NEAKTIVNI',
+        include_stats: true  // ⚡ SmlouvyTab potřebuje statistiky pro zobrazení v tabulce
       };
 
       const [smlouvyResult, usekyResult] = await Promise.all([
