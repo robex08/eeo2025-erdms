@@ -636,6 +636,7 @@ function handle_planning_messages_list($input, $config) {
 
         $search_term = trim((string)($input['search_term'] ?? ''));
         $filter_nazev = trim((string)($input['filter_nazev'] ?? ''));
+        $filter_organizator = trim((string)($input['filter_organizator'] ?? ''));
         $filter_text = trim((string)($input['filter_text'] ?? ''));
         $filter_dt_od = trim((string)($input['filter_dt_od'] ?? ''));
         $filter_dt_do = trim((string)($input['filter_dt_do'] ?? ''));
