@@ -1105,21 +1105,18 @@ const Table = styled.table`
   tbody td:first-child {
     position: sticky;
     left: 0;
-    z-index: 2;
+    z-index: 10;
   }
   thead th:first-child {
-    z-index: 3;
+    z-index: 11;
     background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
   }
-  tbody td:first-child {
-    background: #fff;
+  /* Ostatní buňky mají nižší z-index */
+  tbody td:not(:first-child) {
+    z-index: 1;
   }
-  tbody tr:nth-of-type(even) td:first-child {
-    background: #f8fafc;
-  }
-  tbody tr:hover td:first-child {
-    background: #e8f0fe;
-  }
+  /* Globální tbody td:first-child pravidla ODSTRANĚNA - řeší se v TbodyGroup */
 `;
 
 const Tr = styled.tr`
@@ -1142,19 +1139,42 @@ const Tr = styled.tr`
 
 /* Vzdělávání – tbody per objednávka: zebra + group hover */
 const TbodyGroup = styled.tbody`
+  /* Oddělení mezi objednávkami (tbody skupinami) - VÝRAZNÉ */
+  border-bottom: 3px solid #cbd5e1;
+  
   & tr {
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid #e2e8f0;
     transition: background-color 0.15s ease;
   }
-  & tr td:first-child { background: #fff; }
+  
+  /* ✅ LICHÉ tbody skupiny (liché objednávky) - bílá barva pro VŠECHNY řádky */
+  &:nth-of-type(odd) tr {
+    background-color: #fff;
+  }
+  &:nth-of-type(odd) tr td:first-child { 
+    background: #fff !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+  
+  /* ✅ SUDÉ tbody skupiny (sudé objednávky) - světle šedá pro VŠECHNY řádky */
   &:nth-of-type(even) tr {
     background-color: #f8fafc;
   }
-  &:nth-of-type(even) tr td:first-child { background: #f8fafc; }
+  &:nth-of-type(even) tr td:first-child { 
+    background: #f8fafc !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+  
+  /* Hover přes celou skupinu */
   &:hover tr {
     background-color: #e8f0fe !important;
   }
-  &:hover tr td:first-child { background: #e8f0fe !important; }
+  &:hover tr td:first-child { 
+    background: #e8f0fe !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Čárkovaná čára mezi fakturami v rámci jedné objednávky */
   & tr:not(:first-child) {
     border-top: 1px dashed #c7d2fe;
   }
@@ -1162,18 +1182,38 @@ const TbodyGroup = styled.tbody`
 
 // Zvýrazněná skupina řádků pro objednávky se zálohovou + vyúčtovací fakturou
 const TbodyGroupHighlighted = styled(TbodyGroup)`
+  /* Zelený border na levé straně první buňky */
   & tr:first-child td:first-child {
     border-left: 4px solid #16a34a;
     padding-left: 0.6rem;
   }
+  
+  /* ✅ LICHÉ zvýrazněné skupiny - světle zelené pro VŠECHNY řádky */
+  &:nth-of-type(odd) tr {
+    background-color: #f0fdf4;
+  }
+  &:nth-of-type(odd) tr td:first-child { 
+    background: #f0fdf4 !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+  
+  /* ✅ SUDÉ zvýrazněné skupiny - světle zelené (stejná barva) */
   &:nth-of-type(even) tr {
     background-color: #f0fdf4;
   }
-  &:nth-of-type(even) tr td:first-child { background: #f0fdf4; }
+  &:nth-of-type(even) tr td:first-child { 
+    background: #f0fdf4 !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+  
+  /* Hover - tmavší zelená */
   &:hover tr {
     background-color: #dcfce7 !important;
   }
-  &:hover tr td:first-child { background: #dcfce7 !important; }
+  &:hover tr td:first-child { 
+    background: #dcfce7 !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
+  }
 `;
 
 const Th = styled.th`
@@ -6752,32 +6792,47 @@ export default function StatsReportsPage() {
   // ---------- Vzdělávání – helper: buňky na úrovni jedné faktury ----------
   const renderVzdelInvCells = (inv, sectionKey) => {
     if (!inv) return (
-      <Td colSpan={8} style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center' }}>— bez faktury —</Td>
+      <Td colSpan={8} style={{ color: '#9ca3af', fontStyle: 'italic', fontSize: '0.8rem', textAlign: 'center', position: 'relative', zIndex: 1 }}>— bez faktury —</Td>
     );
     const pozn = inv.fa_poznamka;
-    const isLong = pozn && pozn.length > 75;
-    const truncated = isLong ? pozn.slice(0, 75).trimEnd() + '\u2026' : pozn;
+    // ✅ Všechny Td buňky musí mít z-index: 1 aby byly POD sticky sloupcem
+    const tdStyle = { position: 'relative', zIndex: 1 };
     return (
       <>
-        <Td style={{ width: '220px', maxWidth: '220px', overflow: 'hidden' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}>
+        <Td style={{ width: '220px', maxWidth: '220px', overflow: 'hidden', ...tdStyle }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem', width: '100%' }}>
             {renderInvoiceLink(inv, sectionKey)}
             {pozn && (
               <SmartTooltip text={pozn} preferredPosition="right" icon="none" multiline={true}>
-                <div style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', wordBreak: 'break-word', lineHeight: '1.35', cursor: 'help' }}>
-                  {highlightText(truncated, sectionKey)}
+                <div style={{ 
+                  fontSize: '0.75rem', 
+                  color: '#6b7280', 
+                  fontStyle: 'italic',
+                  width: '100%',
+                  maxWidth: '200px',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'normal',
+                  lineHeight: '1.4',
+                  cursor: 'help',
+                  overflow: 'hidden',
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {pozn}
                 </div>
               </SmartTooltip>
             )}
           </div>
         </Td>
-        <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(inv.fa_typ, inv.fa_typ_nazev)}</Td>
-        <Td>{highlightText(formatDateCz(inv.datum_doruceni || ''), sectionKey)}</Td>
-        <Td>{highlightText(formatDateCz(inv.datum_splatnosti || ''), sectionKey)}</Td>
-        <TdR>{highlightText(fmtCurrency(inv.castka), sectionKey)}</TdR>
-        <Td>{inv.vytvoril_uzivatel_zkracene ? highlightText(inv.vytvoril_uzivatel_zkracene, sectionKey) : '—'}</Td>
-        <Td>{inv.fa_predana_zam_jmeno_cele ? highlightText(inv.fa_predana_zam_jmeno_cele, sectionKey) : '—'}</Td>
-        <Td>{highlightText(getInvoiceStatusLabel(inv), sectionKey)}</Td>
+        <Td style={{ width: '90px', maxWidth: '90px', ...tdStyle }}>{renderFaTypBadge(inv.fa_typ, inv.fa_typ_nazev)}</Td>
+        <Td style={tdStyle}>{highlightText(formatDateCz(inv.datum_doruceni || ''), sectionKey)}</Td>
+        <Td style={tdStyle}>{highlightText(formatDateCz(inv.datum_splatnosti || ''), sectionKey)}</Td>
+        <TdR style={tdStyle}>{highlightText(fmtCurrency(inv.castka), sectionKey)}</TdR>
+        <Td style={tdStyle}>{inv.vytvoril_uzivatel_zkracene ? highlightText(inv.vytvoril_uzivatel_zkracene, sectionKey) : '—'}</Td>
+        <Td style={tdStyle}>{inv.fa_predana_zam_jmeno_cele ? highlightText(inv.fa_predana_zam_jmeno_cele, sectionKey) : '—'}</Td>
+        <Td style={tdStyle}>{highlightText(getInvoiceStatusLabel(inv), sectionKey)}</Td>
       </>
     );
   };
@@ -7020,14 +7075,23 @@ export default function StatsReportsPage() {
     const invoices = invoicesByOrderId[String(order.id)] || [];
     const rowSpan = invoices.length || 1;
     const firstInv = invoices[0] || null;
+    // ✅ První sloupec (sticky) - BEZ z-index (bude z TbodyGroup)
     const orderTdStyle = { verticalAlign: 'middle', minWidth: '250px', width: '250px' };
-    const orderTdStyleLast = { verticalAlign: 'middle' };
+    // ✅ Ostatní buňky s rowSpan - mají z-index: 1 (POD sticky sloupcem)
+    const orderTdStyleOther = { verticalAlign: 'middle', position: 'relative', zIndex: 1 };
+    const orderTdStyleLast = { verticalAlign: 'middle', position: 'relative', zIndex: 1 };
     
     // Detekce kombinace zálohová + vyúčtovací faktura
     const hasZalohova = invoices.some(inv => (inv.fa_typ || inv.typ) === 'ZALOHOVA');
     const hasVyuctovaci = invoices.some(inv => (inv.fa_typ || inv.typ) === 'VYUCTOVACI');
     const isHighlighted = hasZalohova && hasVyuctovaci;
-    const GroupComponent = isHighlighted ? TbodyGroupHighlighted : TbodyGroup;
+    
+    // ✅ Podmínky pro zelené zvýraznění (STEJNÉ jako pro enabled button)
+    const isZkontrolovana = String(order.stav_workflow_kod || '').toUpperCase().includes('ZKONTROLOVANA');
+    const isEnabled = isZkontrolovana && isHighlighted && order.attachment_color === '#16a34a';
+    
+    // ✅ Zelené zvýraznění JEN když jsou splněny VŠECHNY podmínky
+    const GroupComponent = isEnabled ? TbodyGroupHighlighted : TbodyGroup;
     
     // Počet příloh kombinovaně (objednávka + všechny faktury)
     const orderAttachCount = order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0;
@@ -7040,11 +7104,11 @@ export default function StatsReportsPage() {
         <tr>
           <Td rowSpan={rowSpan} style={orderTdStyle}>{renderOrderLinkWithSubject(order, sectionKey)}</Td>
           {renderVzdelInvCells(firstInv, sectionKey)}
-          {showUsek && <Td rowSpan={rowSpan} style={orderTdStyle}>{highlightText(getOrdererUsekCode(order) || '—', sectionKey)}</Td>}
-          <TdNarrow rowSpan={rowSpan} style={orderTdStyle}>{renderFinancingLabelCell(order, sectionKey)}</TdNarrow>
-          <TdNarrow rowSpan={rowSpan} style={orderTdStyle}>{renderFinancingRefCell(order, sectionKey)}</TdNarrow>
-          <TdNarrow rowSpan={rowSpan} style={orderTdStyle}>{highlightText(getOrderTypeLabel(order), sectionKey)}</TdNarrow>
-          <TdR rowSpan={rowSpan} style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600, fontSize: '0.85rem' }}>
+          {showUsek && <Td rowSpan={rowSpan} style={orderTdStyleOther}>{highlightText(getOrdererUsekCode(order) || '—', sectionKey)}</Td>}
+          <TdNarrow rowSpan={rowSpan} style={orderTdStyleOther}>{renderFinancingLabelCell(order, sectionKey)}</TdNarrow>
+          <TdNarrow rowSpan={rowSpan} style={orderTdStyleOther}>{renderFinancingRefCell(order, sectionKey)}</TdNarrow>
+          <TdNarrow rowSpan={rowSpan} style={orderTdStyleOther}>{highlightText(getOrderTypeLabel(order), sectionKey)}</TdNarrow>
+          <TdR rowSpan={rowSpan} style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600, fontSize: '0.85rem', position: 'relative', zIndex: 1 }}>
             {(() => {
               const faSum = invoices.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
               const polozkySum = getOrderPlannedAmount(order) || 0;
@@ -7062,10 +7126,10 @@ export default function StatsReportsPage() {
             })()}
           </TdR>
           <Td rowSpan={rowSpan} style={orderTdStyleLast}>{highlightText(getOrderStatusLabel(order), sectionKey)}</Td>
-          <TdC rowSpan={rowSpan} style={orderTdStyle}>
+          <TdC rowSpan={rowSpan} style={orderTdStyleOther}>
             {renderAttachBadge(order.id, 'order-combined', totalAttachCount, invoiceIds, order.attachment_color)}
           </TdC>
-          <TdC rowSpan={rowSpan} style={orderTdStyle}>
+          <TdC rowSpan={rowSpan} style={orderTdStyleOther}>
             {renderActionButton(order, isHighlighted)}
           </TdC>
         </tr>
