@@ -1663,25 +1663,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
       if (!isAdmin && !isLPManager && userId && userUsekId) {
         try {
           
-          // KROK 1: Načíst GLOBÁLNÍ stav všech LP (pro celkový_limit a celkové čerpání)
-          const globalStateEndpoint = `${API_BASE_URL}limitovane-prisliby/stav`;
-          const globalStatePayload = {
-            rok: selectedYear,
-            username: username,
-            token: token,
-            isAdmin: true  // Načíst všechna LP pro sloučení
-          };
+          // ⚡ OPTIMALIZACE: Použít již načtená lpData místo druhého dotazu s isAdmin: true
+          // lpData obsahuje LP úseku uživatele + LP ze kterých čerpal (už načteno v prvním dotazu)
+          const globalStateResult = { data: mappedData };
           
-          const globalStateResponse = await fetch(globalStateEndpoint, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(globalStatePayload)
-          });
-          
-          const globalStateText = await globalStateResponse.text();
-          const globalStateResult = JSON.parse(globalStateText);
-          
-          // KROK 2: Načíst MOJE čerpání
+          // KROK 1: Načíst MOJE čerpání
           const myUsageEndpoint = `${API_BASE_URL}limitovane-prisliby/moje-cerpani`;
           const myUsagePayload = {
             rok: selectedYear,
