@@ -1136,6 +1136,21 @@ const Tr = styled.tr`
   &:hover {
     background-color: #e2e8f0 !important;
   }
+
+  /* ✅ FIX: Sticky první sloupec musí mít stejné pozadí jako zbytek řádku */
+  & td:first-child {
+    background: #fff !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+
+  &:nth-of-type(even) td:first-child {
+    background: #f8fafc !important;
+  }
+
+  &:hover td:first-child {
+    background: #e2e8f0 !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
+  }
 `;
 
 /* Vzdělávání – tbody per objednávka: zebra + group hover */
@@ -2001,6 +2016,7 @@ const normalizeInvoice = (invoice) => ({
   cislo_smlouvy: invoice.cislo_smlouvy || invoice.smlouva_cislo || '',
   cislo_objednavky: invoice.cislo_objednavky || '',
   cislo_faktury: invoice.fa_cislo_vema || invoice.cislo_faktury || '',
+  fa_vema_kod: invoice.fa_vema_kod || null,  // ✅ PŘIDÁNO: FA VEMA kód
   castka: parseFloat(invoice.fa_castka || invoice.castka || 0) || 0,
   datum_vystaveni: invoice.fa_datum_vystaveni || invoice.datum_vystaveni,
   datum_splatnosti: invoice.fa_datum_splatnosti || invoice.datum_splatnosti,
@@ -6772,7 +6788,11 @@ export default function StatsReportsPage() {
     const invs = invoicesByOrderId[String(order?.id)] || [];
     return {
       ev_cislo:     order?.ev_cislo || order?.cislo_objednavky || '',
-      fa_vs:        invs.map(i => i.cislo_faktury).join(' | '),
+      fa_vs:        invs.map(i => {
+        const vs = i.cislo_faktury;
+        const vema = i.fa_vema_kod;
+        return vema ? `${vs} / ${vema}` : vs;
+      }).join(' | '),
       fa_typ:       invs.map(i => getTypFakturyLabel(i.fa_typ)).join(' | '),
       dt_obj:       formatDateCz(getOrderDate(order)),
       predmet:      getOrderSubject(order),
@@ -6825,7 +6845,10 @@ export default function StatsReportsPage() {
     const headers = ['Ev.číslo obj.','Fa VS','Typ FA','Fa doručena','Obj vytvořena','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','FA částka (Kč)'];
     const rows = filtered.map(({ order, invoice }) => {
       const r = orderToCsvRow(order);
-      return [r.ev_cislo, invoice.cislo_faktury || '', getTypFakturyLabel(invoice.fa_typ), formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, getInvoiceStatusLabel(invoice), getInvoiceAmount(invoice)];
+      const faVs = invoice.cislo_faktury || '';
+      const faVema = invoice.fa_vema_kod || '';
+      const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+      return [r.ev_cislo, faDisplay, getTypFakturyLabel(invoice.fa_typ), formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, getInvoiceStatusLabel(invoice), getInvoiceAmount(invoice)];
     });
     downloadCsv(headers, rows, `objednavka-po-fakture-${new Date().toISOString().slice(0,10)}.csv`);
   }, [controlSections.ordersAfterInvoice, orderToCsvRow, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
@@ -6866,8 +6889,11 @@ export default function StatsReportsPage() {
     const headers = ['Fa VS','Typ FA','Doručena','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
     const rows = filtered.map(invoice => {
       const order = ordersById.get(String(invoice.objednavka_id)) || null;
+      const faVs = invoice.cislo_faktury || '';
+      const faVema = invoice.fa_vema_kod || '';
+      const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
       return [
-        invoice.cislo_faktury || '',
+        faDisplay,
         getTypFakturyLabel(invoice.fa_typ),
         formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
         invoice.vytvoril_uzivatel_zkracene || '',
@@ -6902,8 +6928,11 @@ export default function StatsReportsPage() {
     const headers = ['Fa VS','Typ FA','Doručena','Splatnost','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
     const rows = filtered.map(invoice => {
       const order = ordersById.get(String(invoice.objednavka_id)) || null;
+      const faVs = invoice.cislo_faktury || '';
+      const faVema = invoice.fa_vema_kod || '';
+      const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
       return [
-        invoice.cislo_faktury || '',
+        faDisplay,
         getTypFakturyLabel(invoice.fa_typ),
         formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
         formatDateCz(invoice.datum_splatnosti),
@@ -6954,19 +6983,24 @@ export default function StatsReportsPage() {
       if (invs.length === 0) {
         return [[order.ev_cislo || '', '', '', '', '', '', '', getOrdererUsekCode(order) || '', getOrderFinancingRef(order), castkaCelk, getOrderStatusLabel(order)]];
       }
-      return invs.map(inv => [
-        order.ev_cislo || '',
-        inv.cislo_faktury || '',
-        getTypFakturyLabel(inv.fa_typ),
-        formatDateCz(inv.datum_doruceni || inv.datum_vystaveni),
-        formatDateCz(inv.datum_splatnosti),
-        inv.castka || '',
-        getInvoiceStatusLabel(inv),
-        getOrdererUsekCode(order) || '',
-        getOrderFinancingRef(order),
-        castkaCelk,
-        getOrderStatusLabel(order),
-      ]);
+      return invs.map(inv => {
+        const faVs = inv.cislo_faktury || '';
+        const faVema = inv.fa_vema_kod || '';
+        const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+        return [
+          order.ev_cislo || '',
+          faDisplay,
+          getTypFakturyLabel(inv.fa_typ),
+          formatDateCz(inv.datum_doruceni || inv.datum_vystaveni),
+          formatDateCz(inv.datum_splatnosti),
+          inv.castka || '',
+          getInvoiceStatusLabel(inv),
+          getOrdererUsekCode(order) || '',
+          getOrderFinancingRef(order),
+          castkaCelk,
+          getOrderStatusLabel(order),
+        ];
+      });
     });
     downloadCsv(headers, rows, `vzdelavani-lekarsky-${new Date().toISOString().slice(0,10)}.csv`);
   }, [vzdelSections.lekarsky, invoicesByOrderId, getOrdererUsekCode, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, getOrderPlannedAmount, getOrderLimit, downloadCsv, getSearchQuery, searchInVisibleColumns]);
@@ -7144,7 +7178,11 @@ export default function StatsReportsPage() {
     const rows = filtered.map(order => {
       const invs = invoicesByOrderId[String(order.id)] || [];
       const r = orderToCsvRow(order);
-      const faWithVS = invs.filter(inv => inv.potvrdil_vecnou_spravnost_id || inv.potvrdil_vecnou_spravnost_zkracene).map(inv => inv.cislo_faktury || String(inv.id)).join(' | ');
+      const faWithVS = invs.filter(inv => inv.potvrdil_vecnou_spravnost_id || inv.potvrdil_vecnou_spravnost_zkracene).map(inv => {
+        const vs = inv.cislo_faktury || String(inv.id);
+        const vema = inv.fa_vema_kod;
+        return vema ? `${vs} / ${vema}` : vs;
+      }).join(' | ');
       return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.detail_fin, faWithVS, r.druh, r.fa_castka, getOrderPlannedAmount(order), getOrderLimit(order), r.stav];
     });
     downloadCsv(headers, rows, `lp-bez-rozkladu-${new Date().toISOString().slice(0,10)}.csv`);
@@ -8197,7 +8235,9 @@ export default function StatsReportsPage() {
 
   const renderInvoiceLink = useCallback((invoice, searchKey = null) => {
     const invoiceNumber = invoice.cislo_faktury || invoice.id;
-    const content = searchKey ? highlightText(String(invoiceNumber), searchKey) : invoiceNumber;
+    const vemaKod = invoice.fa_vema_kod || '';
+    const displayText = vemaKod ? `${invoiceNumber} / ${vemaKod}` : invoiceNumber;
+    const content = searchKey ? highlightText(String(displayText), searchKey) : displayText;
     return (
       <LinkButton
         onClick={() => {
@@ -8745,7 +8785,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -8833,7 +8873,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -8942,7 +8982,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -9062,7 +9102,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -9194,7 +9234,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -9318,7 +9358,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -9455,7 +9495,7 @@ export default function StatsReportsPage() {
                       <EmptyState>Žádné objednávky druhu „Vzdělávání – kurzy zdravotnické a lékařské“</EmptyState>
                     ) : (
                       <>
-                        <TableWrapper>
+                        <TableWrapper style={{ margin: 0 }}>
                           <Table>
                             <thead>
                               <tr>
@@ -9576,7 +9616,7 @@ export default function StatsReportsPage() {
                                     <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                                   </div>
                                   {grpOpen && (
-                                    <TableWrapper>
+                                    <TableWrapper style={{ margin: 0 }}>
                                       <Table>
                                         <thead>
                                           <tr>
@@ -10001,7 +10041,7 @@ export default function StatsReportsPage() {
                               <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                             </div>
                             {finOpen && (
-                              <TableWrapper>
+                              <TableWrapper style={{ margin: 0 }}>
                                 <Table>
                                   <thead>
                                     <tr>
@@ -10126,7 +10166,7 @@ export default function StatsReportsPage() {
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(totalVydaje)}</span>
                                 </div>
                                 {pokladnaOpen && (
-                                  <TableWrapper>
+                                  <TableWrapper style={{ margin: 0 }}>
                                     <Table>
                                       <thead>
                                         <tr>
@@ -10313,7 +10353,7 @@ export default function StatsReportsPage() {
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                                 </div>
                                 {grpOpen && (
-                                  <TableWrapper>
+                                  <TableWrapper style={{ margin: 0 }}>
                                     <Table>
                                       <thead>
                                         <tr>
@@ -10493,7 +10533,7 @@ export default function StatsReportsPage() {
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                                 </div>
                                 {grpOpen && (
-                                  <TableWrapper>
+                                  <TableWrapper style={{ margin: 0 }}>
                                     <Table>
                                       <thead>
                                         <tr>
@@ -10668,7 +10708,7 @@ export default function StatsReportsPage() {
                                   <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                                 </div>
                                 {grpOpen && (
-                                  <TableWrapper>
+                                  <TableWrapper style={{ margin: 0 }}>
                                     <Table>
                                       <thead>
                                         <tr>
@@ -12148,7 +12188,7 @@ export default function StatsReportsPage() {
                                     <span style={{ fontSize: '0.82rem', fontFamily: 'monospace', color: '#374151', textAlign: 'right', fontWeight: '600' }}>{fmtCurrency(group.totalAmount)}</span>
                                   </div>
                                   {grpOpen && (
-                                    <TableWrapper>
+                                    <TableWrapper style={{ margin: 0 }}>
                                       <Table>
                                         <thead>
                                           <tr>
@@ -12301,7 +12341,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -12385,7 +12425,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -12471,7 +12511,7 @@ export default function StatsReportsPage() {
                     </SearchEmptyState>
                   ) : (
                     <>
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -12841,7 +12881,7 @@ export default function StatsReportsPage() {
                           </SearchEmptyState>
                         ) : (
                           <>
-                            <TableWrapper>
+                            <TableWrapper style={{ margin: 0 }}>
                               <Table>
                                 <thead>
                                   <tr>
@@ -12954,7 +12994,7 @@ export default function StatsReportsPage() {
                       <SectionBadge $tone="warn">{(ordersWithoutAttachments && ordersWithoutAttachments.pagination && ordersWithoutAttachments.pagination.total) || '...'}</SectionBadge>
                     </SectionHeader>
                     {ordersWithoutAttachments && (
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -13025,7 +13065,7 @@ export default function StatsReportsPage() {
                       <SectionBadge $tone="warn">{(invoicesWithoutAttachments && invoicesWithoutAttachments.pagination && invoicesWithoutAttachments.pagination.total) || '...'}</SectionBadge>
                     </SectionHeader>
                     {invoicesWithoutAttachments && (
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
@@ -13407,7 +13447,7 @@ export default function StatsReportsPage() {
                     Nalezeno {pagedPivotRows.total} z {pagedPivotRows.originalTotal} záznamů
                   </div>
                 )}
-                <TableWrapper>
+                <TableWrapper style={{ margin: 0 }}>
                   <Table>
                     <thead>
                       <tr>
@@ -13626,7 +13666,7 @@ export default function StatsReportsPage() {
 
                     {/* Tabulka pokladních knih */}
                     {!cashbookLoading && cashbookData?.books && cashbookData.books.length > 0 ? (
-                      <TableWrapper>
+                      <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
                             <tr>
