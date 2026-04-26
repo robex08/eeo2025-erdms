@@ -1378,6 +1378,8 @@ function handle_order_v2_orders_without_attachments($input, $config, $queries) {
     $sort_by = isset($input['sort_by']) ? $input['sort_by'] : 'dt_vytvoreni';
     $sort_dir = isset($input['sort_dir']) && strtoupper($input['sort_dir']) === 'ASC' ? 'ASC' : 'DESC';
     
+    error_log("🔍 [Orders Without Attachments] Params: page=$page, per_page=$per_page, sort_by=$sort_by, sort_dir=$sort_dir");
+    
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
         http_response_code(401);

@@ -217,22 +217,22 @@ const ATTACHMENT_ORDER_CATEGORIES = [
   {
     key: 'objednavka',
     label: 'Objednávka',
-    color: '#475569',
-    bg: '#f8fafc',
+    color: '#1e40af',
+    bg: '#dbeafe',
     types: ['OBJEDNAVKA', 'POTVRZENA_OBJEDNAVKA', 'KOSILKA', 'CESTOVNI_PRIKAZ']
   },
   {
     key: 'faktura',
     label: 'Faktura & Finance',
-    color: '#475569',
-    bg: '#f8fafc',
+    color: '#b45309',
+    bg: '#fef3c7',
     types: ['FAKTURA_OBJEDNAVKA', 'CENOVA_NABIDKA', 'DOKLAD', 'ROCNI_POPLATEK']
   },
   {
     key: 'ostatni',
     label: 'Ostatní',
-    color: '#6b7280',
-    bg: '#f8fafc',
+    color: '#475569',
+    bg: '#f1f5f9',
     types: [] // catch-all – vše, co nepatří výše
   }
 ];
@@ -241,15 +241,15 @@ const ATTACHMENT_INVOICE_CATEGORIES = [
   {
     key: 'faktura',
     label: 'Faktura',
-    color: '#475569',
-    bg: '#f8fafc',
+    color: '#b45309',
+    bg: '#fef3c7',
     types: ['FAKTURA', 'DODACI_LIST']
   },
   {
     key: 'ostatni',
     label: 'Ostatní',
-    color: '#6b7280',
-    bg: '#f8fafc',
+    color: '#475569',
+    bg: '#f1f5f9',
     types: [] // catch-all
   }
 ];
@@ -3798,6 +3798,24 @@ export default function StatsReportsPage() {
     objednavka:    att => att.cislo_objednavky || '',
     dodavatel:     att => att.dodavatel || '',
     druh:          att => att.druh_objednavky_label || '',
+  }), []);
+
+  const orderAttachmentsByTypeAcc = useMemo(() => ({
+    original_name: att => att.original_name || att.nazev_souboru || '',
+    order_number:  att => att.order_number || '',
+    order_stav:    att => att.order_stav || '',
+    supplier:      att => att.supplier || '',
+    uploaded_by:   att => att.uploaded_by || '',
+    created_at:    att => att.created_at || ''
+  }), []);
+
+  const invoiceAttachmentsByTypeAcc = useMemo(() => ({
+    original_name:  att => att.original_name || att.nazev_souboru || '',
+    invoice_number: att => att.invoice_number || '',
+    invoice_stav:   att => att.invoice_stav || '',
+    order_number:   att => att.order_number || '',
+    uploaded_by:    att => att.uploaded_by || '',
+    created_at:     att => att.created_at || ''
   }), []);
   // ──────────────────────────────────────────────────────────────────────────────
 
@@ -12094,16 +12112,16 @@ export default function StatsReportsPage() {
                                             <Table>
                                               <thead>
                                                 <tr>
-                                                  <Th>Soubor / Příloha</Th>
-                                                  <Th>Objednávka</Th>
-                                                  <Th>Stav obj.</Th>
-                                                  <Th>Dodavatel</Th>
-                                                  <Th>Nahrál</Th>
-                                                  <Th>Datum</Th>
+                                                  <ThSort onClick={() => handleTableSort('orderAttachmentsByTypeList', 'original_name')}>Soubor / Příloha{sortIcon('orderAttachmentsByTypeList', 'original_name')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('orderAttachmentsByTypeList', 'order_number')}>Objednávka{sortIcon('orderAttachmentsByTypeList', 'order_number')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('orderAttachmentsByTypeList', 'order_stav')}>Stav obj.{sortIcon('orderAttachmentsByTypeList', 'order_stav')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('orderAttachmentsByTypeList', 'supplier')}>Dodavatel{sortIcon('orderAttachmentsByTypeList', 'supplier')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('orderAttachmentsByTypeList', 'uploaded_by')}>Nahrál{sortIcon('orderAttachmentsByTypeList', 'uploaded_by')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('orderAttachmentsByTypeList', 'created_at')}>Datum{sortIcon('orderAttachmentsByTypeList', 'created_at')}</ThSort>
                                                 </tr>
                                               </thead>
                                               <tbody>
-                                                {((attachmentsByType.orders && attachmentsByType.orders.data) || []).map(att => (
+                                                {sortTableData(((attachmentsByType.orders && attachmentsByType.orders.data) || []), 'orderAttachmentsByTypeList', orderAttachmentsByTypeAcc).map(att => (
                                                   <Tr key={att.id}>
                                                     <Td>
                                                       <span style={{ color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }} onClick={() => handleOpenAttachment(att, 'order')} title="Otevřít přílohu">
@@ -12209,16 +12227,16 @@ export default function StatsReportsPage() {
                                             <Table>
                                               <thead>
                                                 <tr>
-                                                  <Th>Soubor / Příloha</Th>
-                                                  <Th>Faktura</Th>
-                                                  <Th>Stav FA</Th>
-                                                  <Th>Objednávka</Th>
-                                                  <Th>Nahrál</Th>
-                                                  <Th>Datum</Th>
+                                                  <ThSort onClick={() => handleTableSort('invoiceAttachmentsByTypeList', 'original_name')}>Soubor / Příloha{sortIcon('invoiceAttachmentsByTypeList', 'original_name')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('invoiceAttachmentsByTypeList', 'invoice_number')}>Faktura{sortIcon('invoiceAttachmentsByTypeList', 'invoice_number')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('invoiceAttachmentsByTypeList', 'invoice_stav')}>Stav FA{sortIcon('invoiceAttachmentsByTypeList', 'invoice_stav')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('invoiceAttachmentsByTypeList', 'order_number')}>Objednávka{sortIcon('invoiceAttachmentsByTypeList', 'order_number')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('invoiceAttachmentsByTypeList', 'uploaded_by')}>Nahrál{sortIcon('invoiceAttachmentsByTypeList', 'uploaded_by')}</ThSort>
+                                                  <ThSort onClick={() => handleTableSort('invoiceAttachmentsByTypeList', 'created_at')}>Datum{sortIcon('invoiceAttachmentsByTypeList', 'created_at')}</ThSort>
                                                 </tr>
                                               </thead>
                                               <tbody>
-                                                {((attachmentsByType.invoices && attachmentsByType.invoices.data) || []).map(att => (
+                                                {sortTableData(((attachmentsByType.invoices && attachmentsByType.invoices.data) || []), 'invoiceAttachmentsByTypeList', invoiceAttachmentsByTypeAcc).map(att => (
                                                   <Tr key={att.id}>
                                                     <Td>
                                                       <span style={{ color: '#3b82f6', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem' }} onClick={() => handleOpenAttachment(att, 'invoice')} title="Otevřít přílohu">
