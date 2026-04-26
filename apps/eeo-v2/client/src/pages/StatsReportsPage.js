@@ -3570,24 +3570,26 @@ export default function StatsReportsPage() {
   // 🚀 LAZY LOADING: Načíst data pro aktivní tab
   useEffect(() => {
     if (!token || !username || !initialLoadRef.current) return;
-    if (loading || loadingTabs.has(activeTab)) return;
+    if (loading) return;
     
     // Načíst data pro aktivní tab pokud ještě nejsou načtená
-    if (activeTab === 'control' && !loadedTabs.has('control')) {
+    // ⚠️ Guard je uvnitř každé load funkce (loadingTabs.has / loadedTabs.has check)
+    if (activeTab === 'control') {
       loadControlTabData();
-    } else if (activeTab === 'stats' && !loadedTabs.has('stats')) {
+    } else if (activeTab === 'stats') {
       loadStatsTabData();
-    } else if (activeTab === 'spend' && !loadedTabs.has('spend')) {
+    } else if (activeTab === 'spend') {
       loadSpendTabData();
-    } else if (activeTab === 'reports' && !loadedTabs.has('reports')) {
+    } else if (activeTab === 'reports') {
       loadReportsTabData();
-    } else if (activeTab === 'vzdel' && !loadedTabs.has('vzdel')) {
+    } else if (activeTab === 'vzdel') {
       loadVzdelTabData();
-    } else if (activeTab === 'pivot' && !loadedTabs.has('pivot')) {
+    } else if (activeTab === 'pivot') {
       loadPivotTabData();
     }
     // attachments, cashbook, dohadne mají vlastní useEffect handlers (už existují)
-  }, [activeTab, token, username, loading, loadedTabs, loadingTabs, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
+  }, [activeTab, token, username, loading, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
+  // ⚡ OPRAVENO: Odstraněno loadedTabs a loadingTabs z dependencies (způsobovaly loop)
 
   // 🚀 BACKGROUND LAZY LOADING: Po načtení prvního tabu načíst ostatní na pozadí (po 2s)
   const backgroundLoadRef = useRef(false);
@@ -3604,7 +3606,10 @@ export default function StatsReportsPage() {
       // Načíst v pořadí podle priority
       const priorityOrder = ['control', 'stats', 'spend', 'reports', 'vzdel', 'pivot'];
       for (const tab of priorityOrder) {
-        if (loadedTabs.has(tab) || loadingTabs.has(tab)) continue;
+        // ⚠️ Musíme číst aktuální stav loadedTabs/loadingTabs v době kontroly
+        const currentLoadedTabs = loadedTabs; // Snapshot
+        const currentLoadingTabs = loadingTabs; // Snapshot
+        if (currentLoadedTabs.has(tab) || currentLoadingTabs.has(tab)) continue;
         
         // Delay mezi jednotlivými taby (500ms)
         await new Promise(resolve => setTimeout(resolve, 500));
@@ -3622,7 +3627,8 @@ export default function StatsReportsPage() {
     }, 2000);
     
     return () => clearTimeout(timer);
-  }, [token, username, loadedTabs.size, loadedTabs, loadingTabs, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
+  }, [token, username, loadedTabs.size, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
+  // ⚡ OPRAVENO: Odstraněno loadedTabs a loadingTabs z dependencies (způsobovaly loop)
 
   const [applyTrigger, setApplyTrigger] = useState(0);
   const loadDataRef = useRef(handleLoadData);
