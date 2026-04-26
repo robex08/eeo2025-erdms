@@ -3491,17 +3491,25 @@ export default function StatsReportsPage() {
   }, [JSON.stringify(tableSorts['invoicesWithoutAttachments']), activeTab]);
 
   // Load attachments tab data when tab is activated
+  // ⚡ PROGRESSIVE LOADING: Prioritní data hned, ostatní na pozadí
   useEffect(() => {
     if (activeTab === 'attachments') {
+      // 1. PRIORITA: Stats pro accordion (hned)
       if (!orderAttachmentsStats && !invoiceAttachmentsStats) {
         handleLoadAttachmentsTabStats();
       }
-      if (!ordersWithoutAttachments) {
-        handleLoadOrdersWithoutAttachments(1);
-      }
-      if (!invoicesWithoutAttachments) {
-        handleLoadInvoicesWithoutAttachments(1);
-      }
+      
+      // 2. LAZY LOADING: Ostatní bloky na pozadí (po 500ms)
+      const lazyTimer = setTimeout(() => {
+        if (!ordersWithoutAttachments) {
+          handleLoadOrdersWithoutAttachments(1);
+        }
+        if (!invoicesWithoutAttachments) {
+          handleLoadInvoicesWithoutAttachments(1);
+        }
+      }, 500);
+      
+      return () => clearTimeout(lazyTimer);
     }
   }, [activeTab, orderAttachmentsStats, invoiceAttachmentsStats, ordersWithoutAttachments, invoicesWithoutAttachments, handleLoadAttachmentsTabStats, handleLoadOrdersWithoutAttachments, handleLoadInvoicesWithoutAttachments]);
 
