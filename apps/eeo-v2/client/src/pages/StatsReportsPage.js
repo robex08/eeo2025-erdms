@@ -4871,11 +4871,13 @@ export default function StatsReportsPage() {
           strediskaCodes = [raw];
         }
       }
-      const sKeys = strediskaCodes.length > 0 ? strediskaCodes : ['NEURCENO'];
+      // ✅ OPTIMALIZACE: Přeskočit položky bez střediska (dříve NEURCENO)
+      if (strediskaCodes.length === 0) return;
+      
       const usekCode = getOrdererUsekCode(o) || 'NEURCENO';
       const usekLabel = getUsekLabel(o) || usekCode;
-      sKeys.forEach(sCode => {
-        const sLabel = sCode === 'NEURCENO' ? 'Neurčeno' : (strediskaMap[String(sCode)] || String(sCode));
+      strediskaCodes.forEach(sCode => {
+        const sLabel = strediskaMap[String(sCode)] || String(sCode);
         if (!byStredisko[sCode]) byStredisko[sCode] = { code: sCode, label: sLabel, byUsek: {} };
         if (!byStredisko[sCode].byUsek[usekCode]) {
           byStredisko[sCode].byUsek[usekCode] = { code: usekCode, label: usekLabel, orders: [] };
@@ -4997,11 +4999,13 @@ export default function StatsReportsPage() {
         else if (typeof raw === 'string' && raw.trim()) {
           try { const p = JSON.parse(raw); sCodes = Array.isArray(p) ? p.filter(Boolean) : [raw]; } catch (e) { sCodes = [raw]; }
         }
-        const sKeys = sCodes.length > 0 ? sCodes : ['NEURCENO'];
+        // ✅ OPTIMALIZACE: Přeskočit položky bez střediska (dříve NEURCENO)
+        if (sCodes.length === 0) return;
+        
         const usekCode = getOrdererUsekCode(o) || 'NEURCENO';
         const usekLabel = getUsekLabel(o) || usekCode;
-        sKeys.forEach(sCode => {
-          const sLabel = sCode === 'NEURCENO' ? 'Neurčeno' : (strediskaMap[String(sCode)] || String(sCode));
+        sCodes.forEach(sCode => {
+          const sLabel = strediskaMap[String(sCode)] || String(sCode);
           if (!byStredisko[sCode]) byStredisko[sCode] = { code: sCode, label: sLabel, byUsek: {}, totalCount: 0, completedCount: 0, totalAmount: 0 };
           if (!byStredisko[sCode].byUsek[usekCode]) byStredisko[sCode].byUsek[usekCode] = { code: usekCode, label: usekLabel, orders: [], count: 0, completedCount: 0, amount: 0 };
           const amt = calcAmt(o);
@@ -5095,9 +5099,13 @@ export default function StatsReportsPage() {
     });
     // Přidáme flagy pro barevné zvýraznění
     Object.values(supplierGroups).forEach(function(g) {
-      var codes = Object.keys(g.finCodes || {});
+      // ✅ POJISTNÁ UDÁLOST se IGNORUJE při výpočtu barevných stavů (zobrazí se jen v seznamu)
+      var codes = Object.keys(g.finCodes || {}).filter(function(c) { return c !== 'POJISTNA_UDALOST'; });
       var hasSmlouvaFin = codes.indexOf('SMLOUVA') >= 0;
-      var hasOther = codes.some(function(c) { return c !== 'SMLOUVA' && c !== '__none__'; });
+      // Chyba (mix) jen pro: LP a INDIVIDUÁLNÍ SCHVÁLENÍ
+      var hasOther = codes.some(function(c) { 
+        return c !== 'SMLOUVA' && c !== '__none__'; 
+      });
       g.hasMixedFinancing = hasSmlouvaFin && hasOther;
       // Má platnou smlouvu ale vůbec z ní nečerpá (žádná obj. se SMLOUVA financováním)
       g.hasContractNoUsage = g.smlouvyActive > 0 && !hasSmlouvaFin;
@@ -12106,7 +12114,7 @@ export default function StatsReportsPage() {
                               var hasContracts = group.smlouvyTotal > 0;
                               var isMixed = group.hasMixedFinancing;
                               var noUsage = group.hasContractNoUsage;
-                              // Barvy: červená = platná smlouva ale nečerpá, oranžová = mix, zelená = čistě smlouvy, amber = bez smluv
+                              // Barvy: červená = platná smlouva ale nečerpá, oranžová = mix (LP/INDIVID. jen, ne POJISTNÁ), zelená = čistě smlouvy, amber = bez smluv
                               var accentColor = noUsage ? '#b91c1c' : hasContracts ? (isMixed ? '#c2410c' : '#16a34a') : '#b45309';
                               var textColor = noUsage ? '#7f1d1d' : hasContracts ? (isMixed ? '#7c2d12' : '#15803d') : '#78350f';
                               var bgOpen = noUsage ? '#fee2e2' : hasContracts ? (isMixed ? '#ffedd5' : '#f0fdf4') : '#fffbeb';
