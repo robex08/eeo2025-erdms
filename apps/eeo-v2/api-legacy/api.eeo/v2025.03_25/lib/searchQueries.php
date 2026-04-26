@@ -373,6 +373,7 @@ function getSqlSearchContracts($filterObjForm = false) {
             sm.zbyva,
             sm.procento_cerpani,
             sm.pouzit_v_obj_formu,
+            sm.usek_zkr,
             CONCAT(
                 COALESCE(us.usek_zkr, ''),
                 IF(us.usek_zkr IS NOT NULL AND us.usek_nazev IS NOT NULL, ' - ', ''),

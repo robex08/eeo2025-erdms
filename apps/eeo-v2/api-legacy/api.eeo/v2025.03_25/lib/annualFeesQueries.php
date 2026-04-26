@@ -144,6 +144,10 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset, $user = null) {
                 // Má alespoň jednu položku blížící se splatnosti
                 $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO" AND datum_splatnosti >= CURDATE() AND datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL 10 DAY))';
                 break;
+            case '_AKTUALNI_MESIC':
+                // Má alespoň jednu položku se splatností v aktuálním měsíci
+                $where[] = 'EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND YEAR(datum_splatnosti) = YEAR(CURDATE()) AND MONTH(datum_splatnosti) = MONTH(CURDATE()))';
+                break;
             case 'ZAPLACENO':
                 // Všechny položky zaplacené
                 $where[] = 'NOT EXISTS (SELECT 1 FROM `' . TBL_ROCNI_POPLATKY_POLOZKY . '` WHERE rocni_poplatek_id = rp.id AND aktivni = 1 AND stav != "ZAPLACENO")';
@@ -278,6 +282,7 @@ function queryAnnualFeesList($pdo, $filters, $limit, $offset, $user = null) {
             rp.smlouva_id,
             s.cislo_smlouvy AS smlouva_cislo,
             s.nazev_smlouvy,
+            s.usek_zkr AS smlouva_usek_zkr,
             COALESCE(s.nazev_firmy, JSON_UNQUOTE(JSON_EXTRACT(rp.rozsirujici_data, '$.dodavatel_nazev'))) AS dodavatel_nazev,
             s.ico AS dodavatel_ico,
             rp.dt_vytvoreni,
@@ -920,7 +925,37 @@ function queryAnnualFeesStats($pdo, $rok = null) {
             SUM(DISTINCT r.celkova_castka) AS total_active_amount,
             
             SUM(CASE WHEN p.stav != 'ZAPLACENO' THEN p.castka ELSE 0 END) AS total_to_pay,
-            SUM(CASE WHEN p.stav = 'ZAPLACENO' THEN p.castka ELSE 0 END) AS total_paid
+            SUM(CASE WHEN p.stav = 'ZAPLACENO' THEN p.castka ELSE 0 END) AS total_paid,
+            
+            -- Částečně zaplacené - roční poplatky, které mají alespoň jednu položku ZAPLACENO a alespoň jednu != ZAPLACENO
+            (SELECT COUNT(DISTINCT rp_partial.id)
+             FROM `" . TBL_ROCNI_POPLATKY . "` rp_partial
+             WHERE rp_partial.aktivni = 1
+               AND EXISTS (SELECT 1 FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p_paid 
+                          WHERE p_paid.rocni_poplatek_id = rp_partial.id 
+                            AND p_paid.aktivni = 1 
+                            AND p_paid.stav = 'ZAPLACENO')
+               AND EXISTS (SELECT 1 FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p_unpaid 
+                          WHERE p_unpaid.rocni_poplatek_id = rp_partial.id 
+                            AND p_unpaid.aktivni = 1 
+                            AND p_unpaid.stav != 'ZAPLACENO')
+            ) AS partially_paid,
+            
+            (SELECT COALESCE(SUM(p_partial.castka), 0)
+             FROM `" . TBL_ROCNI_POPLATKY . "` rp_partial2
+             JOIN `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p_partial ON p_partial.rocni_poplatek_id = rp_partial2.id
+             WHERE rp_partial2.aktivni = 1
+               AND p_partial.aktivni = 1
+               AND p_partial.stav = 'ZAPLACENO'
+               AND EXISTS (SELECT 1 FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p_paid2 
+                          WHERE p_paid2.rocni_poplatek_id = rp_partial2.id 
+                            AND p_paid2.aktivni = 1 
+                            AND p_paid2.stav = 'ZAPLACENO')
+               AND EXISTS (SELECT 1 FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p_unpaid2 
+                          WHERE p_unpaid2.rocni_poplatek_id = rp_partial2.id 
+                            AND p_unpaid2.aktivni = 1 
+                            AND p_unpaid2.stav != 'ZAPLACENO')
+            ) AS partially_paid_amount
         FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` p
         JOIN `" . TBL_ROCNI_POPLATKY . "` r ON p.rocni_poplatek_id = r.id
         WHERE r.aktivni = 1 AND p.aktivni = 1
@@ -946,7 +981,9 @@ function queryAnnualFeesStats($pdo, $rok = null) {
         'totalActiveAmount' => number_format((float)$dashboardStats['total_active_amount'], 0, ',', ' '),
         'totalToPay' => number_format((float)$dashboardStats['total_to_pay'], 0, ',', ' '),
         'totalPaid' => number_format((float)$dashboardStats['total_paid'], 0, ',', ' '),
-        'totalRemaining' => number_format((float)$dashboardStats['total_to_pay'], 0, ',', ' ')
+        'totalRemaining' => number_format((float)$dashboardStats['total_to_pay'], 0, ',', ' '),
+        'partiallyPaid' => (int)$dashboardStats['partially_paid'],
+        'partiallyPaidAmount' => number_format((float)$dashboardStats['partially_paid_amount'], 0, ',', ' ')
     ];
 
     return $stats;

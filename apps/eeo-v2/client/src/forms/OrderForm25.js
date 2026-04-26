@@ -25498,9 +25498,54 @@ function OrderForm25() {
                             const isEditing = editingFaktura?.id === faktura.id;
                             const currentData = isEditing ? fakturaFormData : faktura;
                             const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
+                            const rawInvoiceStatus = (faktura.stav || '').toString().trim();
+                            const normalizedInvoiceStatus = rawInvoiceStatus
+                              .normalize('NFD')
+                              .replace(/[\u0300-\u036f]/g, '')
+                              .replace(/[^A-Za-z0-9]+/g, '_')
+                              .replace(/^_+|_+$/g, '')
+                              .toUpperCase();
+                            const invoiceStatusLabel = (() => {
+                              if (!rawInvoiceStatus) return '';
+                              const statusLabels = {
+                                ZAEVIDOVANA: 'Zaevidovaná',
+                                VECNA_SPRAVNOST: 'Věcná správnost',
+                                V_RESENI: 'V řešení',
+                                PREDANA_PO: 'Předaná PO',
+                                K_ZAPLACENI: 'K zaplacení',
+                                ZAPLACENO: 'Zaplaceno',
+                                DOKONCENA: 'Dokončená',
+                                STORNO: 'Storno'
+                              };
+                              return statusLabels[normalizedInvoiceStatus] || rawInvoiceStatus.replace(/_/g, ' ');
+                            })();
+                            const invoiceStatusBadge = (() => {
+                              switch (normalizedInvoiceStatus) {
+                                case 'DOKONCENA':
+                                  return { bg: '#16a34a', border: '#166534' };
+                                case 'ZAPLACENO':
+                                  return { bg: '#059669', border: '#065f46' };
+                                case 'K_ZAPLACENI':
+                                  return { bg: '#2563eb', border: '#1e3a8a' };
+                                case 'PREDANA_PO':
+                                  return { bg: '#6d28d9', border: '#4c1d95' };
+                                case 'VECNA_SPRAVNOST':
+                                  return { bg: '#0ea5e9', border: '#075985' };
+                                case 'V_RESENI':
+                                  return { bg: '#f59e0b', border: '#92400e' };
+                                case 'STORNO':
+                                  return { bg: '#dc2626', border: '#7f1d1d' };
+                                default:
+                                  return { bg: '#475569', border: '#1e293b' };
+                              }
+                            })();
 
                             return (
-                            <div key={faktura.id} style={{
+                            <div
+                              key={faktura.id}
+                              id={`faktura-${String(faktura.id ?? index)}`}
+                              data-faktura-card-id={String(faktura.id ?? index)}
+                              style={{
                               border: '2px solid #3b82f6',
                               borderRadius: '12px',
                               padding: '0',
@@ -25526,19 +25571,41 @@ function OrderForm25() {
                               }}>
                                 <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem'}}>
                                   <FontAwesomeIcon icon={faCreditCard} style={{ fontSize: '1.2rem' }} />
-                                  Faktura #{index + 1}
-                                  {index === 0 && <span style={{color: '#fef3c7', fontSize: '1.3rem'}}>*</span>}
-                                  {faktura.fa_cislo_vema && (
-                                    <span style={{ 
-                                      fontWeight: '600',
-                                      fontSize: '0.9rem',
-                                      background: 'rgba(255, 255, 255, 0.2)',
-                                      padding: '0.25rem 0.75rem',
-                                      borderRadius: '6px',
-                                      letterSpacing: 'normal',
+                                  <span>
+                                    Faktura
+                                    <span style={{
+                                      fontSize: '0.62em',
+                                      verticalAlign: 'super',
+                                      marginLeft: '0.1rem',
+                                      fontWeight: 800,
+                                      opacity: 0.95,
                                       textTransform: 'none'
                                     }}>
-                                      {faktura.fa_cislo_vema}
+                                      {index + 1}
+                                    </span>
+                                  </span>
+                                  {faktura.fa_cislo_vema && (
+                                    <span style={{ 
+                                      fontWeight: '700',
+                                      textTransform: 'none'
+                                    }}>
+                                      VS: {faktura.fa_cislo_vema}{faktura.fa_vema_kod ? ` / ${faktura.fa_vema_kod}` : ''}
+                                    </span>
+                                  )}
+                                  {invoiceStatusLabel && (
+                                    <span style={{
+                                      padding: '0.2rem 0.55rem',
+                                      borderRadius: '999px',
+                                      background: invoiceStatusBadge.bg,
+                                      border: `1px solid ${invoiceStatusBadge.border}`,
+                                      color: '#ffffff',
+                                      fontSize: '0.78rem',
+                                      fontWeight: 700,
+                                      letterSpacing: '0.01em',
+                                      textTransform: 'none',
+                                      whiteSpace: 'nowrap'
+                                    }}>
+                                      Stav: {invoiceStatusLabel}
                                     </span>
                                   )}
 
@@ -26807,13 +26874,172 @@ function OrderForm25() {
                                 ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
                                 : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : '');
                               const datum = faktura.dt_potvrzeni_vecne_spravnosti ? prettyDate(faktura.dt_potvrzeni_vecne_spravnosti) : '';
+                              const invoiceVs = faktura.fa_cislo_vema || '—';
+                              const invoiceVema = faktura.fa_vema_kod || '—';
+                              const invoiceCodeText = invoiceVema && invoiceVema !== '—' ? ` / ${invoiceVema}` : '';
                               
                               return (
-                                <li key={faktura.id || index} style={{ display: 'flex', alignItems: 'center', marginBottom: '0.4rem' }}>
-                                  {isPotvrzeno ? '✅' : '⚠️'} Věcná správnost faktury #{index + 1} {datum ? `(${datum} • ${userName})` : ''}
+                                <li key={faktura.id || index} style={{ display: 'flex', alignItems: 'baseline', marginBottom: '0.4rem' }}>
+                                  <span style={{ marginRight: '0.35rem' }}>{isPotvrzeno ? '✅' : '⚠️'}</span>
+                                  <span style={{ display: 'inline-flex', alignItems: 'baseline', gap: '0.15rem', flexWrap: 'wrap' }}>
+                                    <span>
+                                      Věcná správnost faktury
+                                      <sup style={{ fontSize: '0.7em', marginLeft: '0.1rem', lineHeight: 1 }}>
+                                        {index + 1}
+                                      </sup>
+                                    </span>
+                                    <span>VS: {invoiceVs}{invoiceCodeText}</span>
+                                    {datum ? <span>{` (${datum} • ${userName})`}</span> : null}
+                                  </span>
                                 </li>
                               );
                             })}
+                            {(() => {
+                              const fakturyList = Array.isArray(formData.faktury) ? formData.faktury : [];
+                              const normalizeStatus = (statusValue) => {
+                                if (!statusValue) return '';
+                                return String(statusValue)
+                                  .trim()
+                                  .normalize('NFD')
+                                  .replace(/[\u0300-\u036f]/g, '')
+                                  .replace(/[^A-Za-z0-9]+/g, '_')
+                                  .replace(/^_+|_+$/g, '')
+                                  .toUpperCase();
+                              };
+
+                              const completedCount = fakturyList.filter((faktura) => normalizeStatus(faktura.stav) === 'DOKONCENA').length;
+                              const totalCount = fakturyList.length;
+                              const allInvoicesCompleted = totalCount > 0 && completedCount === totalCount;
+
+                              const openInvoiceInEvidence = (invoiceId) => {
+                                if (!invoiceId || String(invoiceId).startsWith('temp-')) {
+                                  return;
+                                }
+
+                                navigate('/invoice-evidence', {
+                                  state: {
+                                    editInvoiceId: invoiceId,
+                                    orderIdForLoad: formData.id || null,
+                                    returnTo: location.pathname
+                                  }
+                                });
+                              };
+
+                              return (
+                                <>
+                                  <li
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      marginTop: '0.55rem',
+                                      marginBottom: '0.1rem',
+                                      padding: '0.3rem 0.55rem',
+                                      borderRadius: '6px',
+                                      fontWeight: 700,
+                                      color: allInvoicesCompleted ? '#166534' : '#b91c1c',
+                                      background: allInvoicesCompleted ? 'rgba(34, 197, 94, 0.12)' : 'rgba(239, 68, 68, 0.15)'
+                                    }}
+                                  >
+                                    {allInvoicesCompleted ? '✅' : '❌'}{' '}
+                                    {allInvoicesCompleted
+                                      ? `Faktury k objednávce jsou dokončené (${completedCount}/${totalCount})`
+                                      : totalCount === 0
+                                        ? 'Faktury k objednávce nejsou evidované (0/0)'
+                                        : `Faktury k objednávce nejsou všechny dokončené (${completedCount}/${totalCount})`}
+                                  </li>
+
+                                  <li
+                                    style={{
+                                      marginLeft: '1.1rem',
+                                      marginTop: '0.4rem',
+                                      marginBottom: '0.2rem',
+                                      color: '#14532d'
+                                    }}
+                                  >
+                                    <div style={{ fontWeight: 600, marginBottom: '0.3rem' }}>
+                                      ↳ Seznam faktur:
+                                    </div>
+
+                                    {fakturyList.length === 0 ? (
+                                      <div style={{ color: '#6b7280', fontSize: '0.85rem' }}>
+                                        Žádná faktura není evidována.
+                                      </div>
+                                    ) : (
+                                      <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none' }}>
+                                        {fakturyList.map((faktura, index) => {
+                                          const invoiceVs = faktura.fa_cislo_vema || '—';
+                                          const invoiceVema = faktura.fa_vema_kod || '—';
+                                          const invoiceCodeText = invoiceVema && invoiceVema !== '—' ? ` / ${invoiceVema}` : '';
+                                          const invoiceStatusCode = normalizeStatus(faktura.stav);
+                                          const invoiceStatusLabel = (() => {
+                                            const statusLabels = {
+                                              ZAEVIDOVANA: 'Zaevidovaná',
+                                              VECNA_SPRAVNOST: 'Věcná správnost',
+                                              V_RESENI: 'V řešení',
+                                              PREDANA_PO: 'Předaná PO',
+                                              K_ZAPLACENI: 'K zaplacení',
+                                              ZAPLACENO: 'Zaplaceno',
+                                              DOKONCENA: 'Dokončená',
+                                              STORNO: 'Storno'
+                                            };
+                                            if (statusLabels[invoiceStatusCode]) return statusLabels[invoiceStatusCode];
+                                            if (faktura.stav) return String(faktura.stav).replace(/_/g, ' ');
+                                            return 'Neuveden';
+                                          })();
+                                          const invoiceUser = faktura.vytvoril_jmeno
+                                            || (faktura.vytvoril_uzivatel_id ? getUserNameById(faktura.vytvoril_uzivatel_id) : '')
+                                            || (formData.fakturant_id ? getUserNameById(formData.fakturant_id) : '—');
+                                          const invoiceDateRaw = faktura.dt_vytvoreni || faktura.datum_vytvoreni || formData.dt_faktura_pridana;
+                                          const invoiceDate = invoiceDateRaw ? prettyDate(invoiceDateRaw) : '—';
+                                          const invoiceCompleted = normalizeStatus(faktura.stav) === 'DOKONCENA';
+                                          const isInvoicePersisted = !!faktura.id && !String(faktura.id).startsWith('temp-');
+                                          const invoiceLinkColor = invoiceCompleted ? '#166534' : '#b91c1c';
+                                          const invoiceLinkHoverColor = invoiceCompleted ? '#14532d' : '#991b1b';
+                                          const invoiceLinkHoverBg = invoiceCompleted ? 'rgba(22, 163, 74, 0.12)' : 'rgba(220, 38, 38, 0.12)';
+
+                                          return (
+                                            <li key={`final-link-${faktura.id || index}`} style={{ marginBottom: '0.2rem' }}>
+                                              <button
+                                                type="button"
+                                                onClick={() => openInvoiceInEvidence(faktura.id)}
+                                                disabled={!isInvoicePersisted}
+                                                style={{
+                                                  border: 'none',
+                                                  background: 'transparent',
+                                                  padding: '0.05rem 0.25rem',
+                                                  margin: 0,
+                                                  color: invoiceLinkColor,
+                                                  cursor: isInvoicePersisted ? 'pointer' : 'not-allowed',
+                                                  textDecoration: 'none',
+                                                  borderRadius: '4px',
+                                                  fontSize: '0.86rem',
+                                                  lineHeight: 1.45,
+                                                  textAlign: 'left',
+                                                  transition: 'background 0.2s ease, color 0.2s ease',
+                                                  opacity: isInvoicePersisted ? 1 : 0.65
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                  if (!isInvoicePersisted) return;
+                                                  e.currentTarget.style.background = invoiceLinkHoverBg;
+                                                  e.currentTarget.style.color = invoiceLinkHoverColor;
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                  e.currentTarget.style.background = 'transparent';
+                                                  e.currentTarget.style.color = invoiceLinkColor;
+                                                }}
+                                                title={isInvoicePersisted ? 'Otevřít fakturu v Evidenci faktur' : 'Faktura zatím není uložena v databázi'}
+                                              >
+                                                FA VS: {invoiceVs}{invoiceCodeText} - stav: {invoiceStatusLabel} ({invoiceDate} • {invoiceUser})
+                                              </button>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    )}
+                                  </li>
+                                </>
+                              );
+                            })()}
                           </ul>
                           <div style={{ marginTop: '0.75rem', fontWeight: '500' }}>
                             Nyní potvrďte finální dokončení objednávky.

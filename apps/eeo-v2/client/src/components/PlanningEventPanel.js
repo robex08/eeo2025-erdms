@@ -108,9 +108,31 @@ const flashDecline = keyframes`
   100% { background: #ffffff; box-shadow: 0 0 0 0 rgba(220,38,38,0); }
 `;
 
+const flashTextAccept = keyframes`
+  0%   { background: transparent; transform: scale(1); }
+  20%  { background: #dcfce7; transform: scale(1.02); }
+  60%  { background: #bbf7d0; transform: scale(1.04); }
+  100% { background: transparent; transform: scale(1); }
+`;
+
+const flashTextDecline = keyframes`
+  0%   { background: transparent; transform: scale(1); }
+  20%  { background: #fee2e2; transform: scale(1.02); }
+  60%  { background: #fecaca; transform: scale(1.04); }
+  100% { background: transparent; transform: scale(1); }
+`;
+
 export const EventTermFlash = styled.div`
   animation: ${p => p.$type === 'accepted' ? flashAccept : flashDecline} 1.2s ease-out;
   border-radius: 10px;
+`;
+
+export const EventTermStatusFlash = styled.div`
+  animation: ${p => p.$type === 'accepted' ? flashTextAccept : flashTextDecline} 1.5s ease-out;
+  animation-delay: 1.2s;
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+  margin: -0.25rem -0.4rem;
 `;
 
 export const EventTermNoteInput = styled.textarea`
@@ -150,7 +172,12 @@ export const formatCzDateTime = (isoOrSql) => {
   if (isoOrSql instanceof Date) {
     d = isoOrSql;
   } else if (typeof isoOrSql === 'string') {
-    d = parseSqlDateTime(isoOrSql);
+    // ✅ Pokud obsahuje 'T' (ISO formát), použij new Date(), jinak SQL parser
+    if (isoOrSql.includes('T')) {
+      d = new Date(isoOrSql);
+    } else {
+      d = parseSqlDateTime(isoOrSql);
+    }
   } else {
     d = new Date(isoOrSql);
   }
@@ -301,7 +328,7 @@ export default function PlanningEventDetailPanel({
                   whiteSpace: 'nowrap'
                 }}>
                   {hasCapacity ? (
-                    <>{isFull ? '🔴 ' : '✅ '}{acceptedCount}/{term.kapacita}</>
+                    <>{isFull ? '🔴 ' : ''}{acceptedCount}/{term.kapacita}</>
                   ) : (
                     <>{acceptedCount}/∞</>
                   )}
@@ -309,10 +336,43 @@ export default function PlanningEventDetailPanel({
               </EventTermLabel>
               {/* Zobrazit odpověď jen když může uživatel reagovat NEBO už má odpověď */}
               {(canInteract || response) && (
-                <EventTermStatus>
-                  Odpověď: {formatResponseLabel(response)}
-                  {responseTime ? ` • ${formatCzDateTime(responseTime)}` : ''}
-                </EventTermStatus>
+                <>
+                  {flashType ? (
+                    <EventTermStatusFlash $type={flashType}>
+                      <EventTermStatus style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                        <span>Odpověď:</span>
+                        <span>{formatResponseLabel(response)}</span>
+                        {responseTime ? (
+                          <span>• {formatCzDateTime(responseTime)}</span>
+                        ) : response ? (
+                          <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontStyle: 'italic' }}>• datum neuloženo</span>
+                        ) : null}
+                        {response === 'accepted' && (
+                          <span style={{marginLeft: '8px', fontSize: '1rem', color: '#16a34a'}}>✓</span>
+                        )}
+                        {response === 'declined' && (
+                          <span style={{marginLeft: '8px', fontSize: '1rem', color: '#dc2626'}}>✕</span>
+                        )}
+                      </EventTermStatus>
+                    </EventTermStatusFlash>
+                  ) : (
+                    <EventTermStatus style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                      <span>Odpověď:</span>
+                      <span>{formatResponseLabel(response)}</span>
+                      {responseTime ? (
+                        <span>• {formatCzDateTime(responseTime)}</span>
+                      ) : response ? (
+                        <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontStyle: 'italic' }}>• datum neuloženo</span>
+                      ) : null}
+                      {response === 'accepted' && (
+                        <span style={{marginLeft: '8px', fontSize: '1rem', color: '#16a34a'}}>✓</span>
+                      )}
+                      {response === 'declined' && (
+                        <span style={{marginLeft: '8px', fontSize: '1rem', color: '#dc2626'}}>✕</span>
+                      )}
+                    </EventTermStatus>
+                  )}
+                </>
               )}
               {/* Badge "Termín již obsazen" pro plné termíny */}
               {isFull && !isUserAccepted && (

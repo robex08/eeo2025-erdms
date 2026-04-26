@@ -20,7 +20,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faPlus, faEdit, faTrash, faEye, faFileImport, faSyncAlt,
   faSearch, faFilter, faDownload, faCheckCircle, faTimesCircle, faBolt, faTimes,
-  faChevronDown, faChevronUp, faToggleOn, faToggleOff, faExclamationTriangle
+  faChevronDown, faChevronUp, faToggleOn, faToggleOff, faExclamationTriangle, faBoltLightning
 } from '@fortawesome/free-solid-svg-icons';
 import { FileText, Coins, TrendingUp, CheckCircle, AlertTriangle } from 'lucide-react';
 
@@ -116,6 +116,22 @@ const getFaStavBadge = (stav) => {
     case 'STORNO':          return { bg: '#fee2e2', color: '#dc2626', border: '#fca5a5' };
     default:                return { bg: '#fef3c7', color: '#92400e', border: '#fde68a' };
   }
+};
+
+const isMimoradnaObjednavka = (obj) => {
+  const value = obj?.mimoradna_udalost;
+  return value === 1 || value === '1' || value === true || value === 'true';
+};
+
+const formatInvoiceReference = (invoice) => {
+  const cislo = (invoice?.fa_cislo_vema || '').toString().trim();
+  const vemaKod = (invoice?.fa_vema_kod || '').toString().trim();
+
+  if (cislo && vemaKod) {
+    return `${cislo} / ${vemaKod}`;
+  }
+
+  return cislo || vemaKod || '—';
 };
 
 // =============================================================================
@@ -3049,7 +3065,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                             if (!sortState.col || !sortState.dir) return 0;
                             const m = sortState.dir === 'asc' ? 1 : -1;
                             switch (sortState.col) {
-                              case 'cislo': return m * (a.cislo_objednavky || a.fa_cislo_vema || '').localeCompare(b.cislo_objednavky || b.fa_cislo_vema || '', 'cs');
+                              case 'cislo': return m * (a.cislo_objednavky || a.fa_cislo_vema || a.fa_vema_kod || '').localeCompare(b.cislo_objednavky || b.fa_cislo_vema || b.fa_vema_kod || '', 'cs');
+                              case 'predmet': return m * (a.predmet || a.fa_poznamka || '').localeCompare(b.predmet || b.fa_poznamka || '', 'cs');
                               case 'datum': return m * (a.dt_vytvoreni || a.fa_datum_vystaveni || '').localeCompare(b.dt_vytvoreni || b.fa_datum_vystaveni || '');
                               case 'stav': return m * (a.stav || '').localeCompare(b.stav || '', 'cs');
                               case 'dodavatel': return m * (a.dodavatel_nazev || '').localeCompare(b.dodavatel_nazev || '', 'cs');
@@ -3078,6 +3095,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                   <thead>
                                     <tr style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
                                       <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('cislo')}>Č. obj.{sortIcon('cislo')}</th>
+                                      <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('predmet')}>Předmět obj.{sortIcon('predmet')}</th>
                                       <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('datum')}>Datum{sortIcon('datum')}</th>
                                       <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
                                       <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('dodavatel')}>Dodavatel{sortIcon('dodavatel')}</th>
@@ -3105,8 +3123,14 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                             }}
                                             title="Otevřít objednávku"
                                           >
+                                            {isMimoradnaObjednavka(ord) && (
+                                              <FontAwesomeIcon icon={faBoltLightning} style={{ color: '#dc2626', marginRight: '4px' }} />
+                                            )}
                                             {ord.cislo_objednavky || '—'}
                                           </button>
+                                        </td>
+                                        <td style={{ padding: '0.25rem 0.5rem', color: '#334155', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ord.predmet || ''}>
+                                          {ord.predmet || '—'}
                                         </td>
                                         <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(ord.dt_vytvoreni)}</td>
                                         <td style={{ padding: '0.25rem 0.5rem' }}>
@@ -3141,10 +3165,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                               }}
                                               title="Otevřít fakturu"
                                             >
-                                              {fa.fa_cislo_vema || '—'}
+                                                {formatInvoiceReference(fa)}
                                             </button>
                                           </td>
-                                          <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c' }}>{czDate(fa.fa_datum_vystaveni)}</td>
+                                            <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={fa.fa_poznamka || ''}>
+                                              {fa.fa_poznamka || '—'}
+                                            </td>
+                                            <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                                           <td style={{ padding: '0.2rem 0.5rem' }}>
                                             {(() => { const s = getFaStavBadge(fa.stav); return (
                                               <span style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}`, borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em', display: 'inline-block' }}>
@@ -3152,7 +3179,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                               </span>
                                             ); })()}
                                           </td>
-                                          <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: '#92400e' }} colSpan={2}>
+                                            <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c' }}>—</td>
+                                            <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: '#92400e' }}>
                                             {czFormat(fa.fa_castka)}
                                           </td>
                                           <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontSize: '0.7rem', color: '#78716c' }}>
@@ -3174,6 +3202,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                     <thead>
                                       <tr style={{ background: 'linear-gradient(180deg, #f5f3ff 0%, #ede9fe 100%)' }}>
                                         <th style={{ ...thBase, textAlign: 'left', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('cislo')}>Č. faktury{sortIcon('cislo')}</th>
+                                        <th style={{ ...thBase, textAlign: 'left', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('predmet')}>Poznámka FA{sortIcon('predmet')}</th>
                                         <th style={{ ...thBase, textAlign: 'left', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('datum')}>Datum vystavení{sortIcon('datum')}</th>
                                         <th style={{ ...thBase, textAlign: 'left', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
                                         <th style={{ ...thBase, textAlign: 'right', borderBottomColor: '#c4b5fd' }} onClick={() => toggleSort('cena')}>Částka{sortIcon('cena')}</th>
@@ -3199,8 +3228,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                               }}
                                               title="Otevřít fakturu"
                                             >
-                                              {fa.fa_cislo_vema || '—'}
+                                              {formatInvoiceReference(fa)}
                                             </button>
+                                          </td>
+                                          <td style={{ padding: '0.25rem 0.5rem', color: '#475569', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={fa.fa_poznamka || ''}>
+                                            {fa.fa_poznamka || '—'}
                                           </td>
                                           <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                                           <td style={{ padding: '0.25rem 0.5rem' }}>

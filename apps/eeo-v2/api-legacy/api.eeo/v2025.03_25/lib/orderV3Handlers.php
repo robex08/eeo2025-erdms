@@ -4129,6 +4129,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
             return;
         }
         $cislo_smlouvy = $smlouva['cislo_smlouvy'];
+        $cislo_smlouvy_escaped = str_replace('/', '\\/', $cislo_smlouvy);
 
         // 1) Objednávky které mají financovani.cislo_smlouvy = cislo_smlouvy
         // ⚠️ OPRAVA: Používat REPLACE + LIKE kvůli escaped \/ v JSON (stejný pattern jako smlouvyHandlers.php)
@@ -4145,13 +4146,16 @@ function handle_orderV3_smlouva_expand($input, $config) {
                 CONCAT(u.jmeno, ' ', u.prijmeni) as objednatel_jmeno
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN 25_uzivatele u ON o.uzivatel_id = u.id
-            WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
-              AND o.aktivni = 1
+                        WHERE o.aktivni = 1
+                            AND (
+                                o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
+                                OR o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
+                            )
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
             ORDER BY o.dt_vytvoreni DESC
         ";
         $stmt = $db->prepare($sql);
-        $stmt->execute([$cislo_smlouvy]);
+                $stmt->execute([$cislo_smlouvy, $cislo_smlouvy_escaped]);
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Faktury na objednávkách
@@ -4160,7 +4164,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
         if (!empty($order_ids)) {
             $placeholders = implode(',', array_fill(0, count($order_ids), '?'));
             $sql_fa = "
-                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_castka, f.stav,
+                SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_poznamka, f.fa_castka, f.stav,
                        f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
                 FROM " . TBL_FAKTURY . " f
                 WHERE f.objednavka_id IN ($placeholders) AND f.aktivni = 1
@@ -4173,6 +4177,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
                     'id' => (int)$fa['id'],
                     'fa_cislo_vema' => $fa['fa_cislo_vema'],
                     'fa_vema_kod' => $fa['fa_vema_kod'],
+                    'fa_poznamka' => $fa['fa_poznamka'],
                     'fa_castka' => (float)$fa['fa_castka'],
                     'stav' => $fa['stav'],
                     'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
@@ -4202,7 +4207,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
 
         // 2) Přímé faktury na smlouvu (bez objednávky)
         $sql_direct = "
-            SELECT f.id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_castka, f.stav,
+            SELECT f.id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_poznamka, f.fa_castka, f.stav,
                    f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
             FROM " . TBL_FAKTURY . " f
             WHERE f.smlouva_id = ? AND f.objednavka_id IS NULL AND f.aktivni = 1
@@ -4216,6 +4221,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
                 'id' => (int)$fa['id'],
                 'fa_cislo_vema' => $fa['fa_cislo_vema'],
                 'fa_vema_kod' => $fa['fa_vema_kod'],
+                'fa_poznamka' => $fa['fa_poznamka'],
                 'fa_castka' => (float)$fa['fa_castka'],
                 'stav' => $fa['stav'],
                 'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
