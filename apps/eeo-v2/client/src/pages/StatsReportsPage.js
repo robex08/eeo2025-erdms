@@ -2478,6 +2478,10 @@ export default function StatsReportsPage() {
   const [orderAttachments, setOrderAttachments] = useState([]); // 🆕 OBJ přílohy (všechny najednou)
   const [annualFeeAttachments, setAnnualFeeAttachments] = useState([]);
   const [timelineData, setTimelineData] = useState(null);
+  
+  // 🚀 PER-TAB LOADING TRACKING - které taby mají načtená data
+  const [loadedTabs, setLoadedTabs] = useState(() => new Set());
+  const [loadingTabs, setLoadingTabs] = useState(() => new Set());
   const [timelineCumulative, setTimelineCumulative] = useState(() => {
     try {
       const saved = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_timeline_cumulative`);
@@ -3278,60 +3282,282 @@ export default function StatsReportsPage() {
     }
   }, [token, username, showToast]);
 
-  const handleLoadData = useCallback(async () => {
+  // 🚀 PER-TAB DATA LOADING FUNCTIONS
+  
+  // Common data - číselníky potřebuje každý tab
+  const loadCommonData = useCallback(async () => {
     if (!token || !username) return;
-    setLoading(true);
-    setLoadError('');
-    if (progress?.start) progress.start();
-    try {
-      // Postupný progress: číselníky 10%, pak 6 paralelních bloků po ~15%
-      if (progress?.setProgress) progress.setProgress(5);
-      await loadLookups();
-      if (progress?.setProgress) progress.setProgress(15);
+    if (progress?.setProgress) progress.setProgress(5);
+    await loadLookups();
+    if (progress?.setProgress) progress.setProgress(15);
+  }, [token, username, loadLookups, progress]);
 
-      // Sledování progressu pro paralelní bloky
+  // Control tab - potřebuje orders + invoices + orderAttachments
+  const loadControlTabData = useCallback(async (silent = false) => {
+    if (!token || !username) return;
+    if (loadingTabs.has('control') || loadedTabs.has('control')) return;
+    
+    if (!silent) setLoading(true);
+    setLoadingTabs(prev => new Set([...prev, 'control']));
+    try {
       let completedTasks = 0;
-      const totalTasks = 6;
+      const totalTasks = 3;
       const trackProgress = (promise) => promise.then(result => {
         completedTasks++;
-        if (progress?.setProgress) progress.setProgress(15 + Math.round((completedTasks / totalTasks) * 80));
+        // ✅ Progress tracking jen pokud NENÍ silent mode
+        if (!silent && progress?.setProgress) {
+          progress.setProgress(15 + Math.round((completedTasks / totalTasks) * 80));
+        }
         return result;
       });
 
-      const [ordersResult, invoicesResult, contractsResult, timelineResult, orderAttachmentsResult, annualFeeAttachmentsResult] = await Promise.all([
+      const [ordersResult, invoicesResult, orderAttachmentsResult] = await Promise.all([
         trackProgress(loadOrders()),
         trackProgress(loadInvoices()),
-        trackProgress(loadContracts()),
-        trackProgress(fetchOrderTimelineV3({ token, username, year: new Date().getFullYear() })),
-        trackProgress(listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; })),
-        trackProgress(getAllAnnualFeeAttachments({ token, username }).catch(() => ({ success: false, data: [] })))
+        trackProgress(listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; }))
       ]);
+      
       setOrders(ordersResult.data || []);
       setInvoices(invoicesResult.data || []);
-      setContracts(contractsResult || []);
       setOrderAttachments(orderAttachmentsResult?.data || []);
-      setAnnualFeeAttachments(annualFeeAttachmentsResult?.data || []);
-      setTimelineData(timelineResult?.data?.timeline || []);
       setDataMeta({
         loadedAt: new Date().toISOString(),
         truncated: ordersResult.truncated || invoicesResult.truncated
       });
+      
+      setLoadedTabs(prev => new Set([...prev, 'control']));
+    } catch (e) {
+      console.error('❌ Control tab data load failed:', e);
+      if (!silent) {
+        setLoadError(e?.message || 'Nepodařilo se načíst data pro Finanční kontrolu.');
+      }
+    } finally {
+      if (!silent) setLoading(false);
+      setLoadingTabs(prev => {
+        const next = new Set(prev);
+        next.delete('control');
+        return next;
+      });
+    }
+  }, [token, username, loadOrders, loadInvoices, loadedTabs, loadingTabs, progress]);
+
+  // Stats tab - potřebuje orders + timelineData
+  const loadStatsTabData = useCallback(async (silent = false) => {
+    if (!token || !username) return;
+    if (loadingTabs.has('stats') || loadedTabs.has('stats')) return;
+    
+    // Pokud už máme orders z jiného tabu, načíst jen timeline
+    const needsOrders = orders.length === 0;
+    
+    if (!silent) setLoading(true);
+    setLoadingTabs(prev => new Set([...prev, 'stats']));
+    try {
+      if (needsOrders) {
+        const [ordersResult, timelineResult] = await Promise.all([
+          loadOrders(),
+          fetchOrderTimelineV3({ token, username, year: new Date().getFullYear() })
+        ]);
+        setOrders(ordersResult.data || []);
+        setTimelineData(timelineResult?.data?.timeline || []);
+        setDataMeta(prev => ({
+          ...prev,
+          loadedAt: new Date().toISOString(),
+          truncated: prev.truncated || ordersResult.truncated
+        }));
+      } else {
+        // Jen timeline
+        const timelineResult = await fetchOrderTimelineV3({ token, username, year: new Date().getFullYear() });
+        setTimelineData(timelineResult?.data?.timeline || []);
+      }
+      
+      setLoadedTabs(prev => new Set([...prev, 'stats']));
+    } catch (e) {
+      console.error('❌ Stats tab data load failed:', e);
+      if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Statistiky.');
+    } finally {
+      if (!silent) setLoading(false);
+      setLoadingTabs(prev => {
+        const next = new Set(prev);
+        next.delete('stats');
+        return next;
+      });
+    }
+  }, [token, username, loadOrders, orders.length, loadedTabs, loadingTabs]);
+
+  // Spend tab - potřebuje orders + invoices + contracts
+  const loadSpendTabData = useCallback(async (silent = false) => {
+    if (!token || !username) return;
+    if (loadingTabs.has('spend') || loadedTabs.has('spend')) return;
+    
+    const needsOrders = orders.length === 0;
+    const needsInvoices = invoices.length === 0;
+    
+    if (!silent) setLoading(true);
+    setLoadingTabs(prev => new Set([...prev, 'spend']));
+    try {
+      const promises = [];
+      if (needsOrders) promises.push(loadOrders());
+      if (needsInvoices) promises.push(loadInvoices());
+      promises.push(loadContracts());
+      
+      const results = await Promise.all(promises);
+      let idx = 0;
+      if (needsOrders) {
+        setOrders(results[idx].data || []);
+        idx++;
+      }
+      if (needsInvoices) {
+        setInvoices(results[idx].data || []);
+        idx++;
+      }
+      setContracts(results[idx] || []);
+      
+      setLoadedTabs(prev => new Set([...prev, 'spend']));
+    } catch (e) {
+      console.error('❌ Spend tab data load failed:', e);
+      if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Čerpání.');
+    } finally {
+      if (!silent) setLoading(false);
+      setLoadingTabs(prev => {
+        const next = new Set(prev);
+        next.delete('spend');
+        return next;
+      });
+    }
+  }, [token, username, loadOrders, loadInvoices, loadContracts, orders.length, invoices.length, loadedTabs, loadingTabs]);
+
+  // Reports tab - potřebuje orders + invoices + orderAttachments + annualFeeAttachments
+  const loadReportsTabData = useCallback(async (silent = false) => {
+    if (!token || !username) return;
+    if (loadingTabs.has('reports') || loadedTabs.has('reports')) return;
+    
+    const needsOrders = orders.length === 0;
+    const needsInvoices = invoices.length === 0;
+    const needsOrderAttachments = orderAttachments.length === 0;
+    
+    if (!silent) setLoading(true);
+    setLoadingTabs(prev => new Set([...prev, 'reports']));
+    try {
+      const promises = [];
+      if (needsOrders) promises.push(loadOrders());
+      if (needsInvoices) promises.push(loadInvoices());
+      if (needsOrderAttachments) promises.push(listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; }));
+      promises.push(getAllAnnualFeeAttachments({ token, username }).catch(() => ({ success: false, data: [] })));
+      
+      const results = await Promise.all(promises);
+      let idx = 0;
+      if (needsOrders) {
+        setOrders(results[idx].data || []);
+        idx++;
+      }
+      if (needsInvoices) {
+        setInvoices(results[idx].data || []);
+        idx++;
+      }
+      if (needsOrderAttachments) {
+        setOrderAttachments(results[idx]?.data || []);
+        idx++;
+      }
+      setAnnualFeeAttachments(results[idx]?.data || []);
+      
+      setLoadedTabs(prev => new Set([...prev, 'reports']));
+    } catch (e) {
+      console.error('❌ Reports tab data load failed:', e);
+      if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Reporty.');
+    } finally {
+      if (!silent) setLoading(false);
+      setLoadingTabs(prev => {
+        const next = new Set(prev);
+        next.delete('reports');
+        return next;
+      });
+    }
+  }, [token, username, loadOrders, loadInvoices, orders.length, invoices.length, orderAttachments.length, loadedTabs, loadingTabs]);
+
+  // Vzdel tab - potřebuje jen orders
+  const loadVzdelTabData = useCallback(async (silent = false) => {
+    if (!token || !username) return;
+    if (loadingTabs.has('vzdel') || loadedTabs.has('vzdel')) return;
+    if (orders.length > 0) {
+      setLoadedTabs(prev => new Set([...prev, 'vzdel']));
+      return;
+    }
+    
+    if (!silent) setLoading(true);
+    setLoadingTabs(prev => new Set([...prev, 'vzdel']));
+    try {
+      const ordersResult = await loadOrders();
+      setOrders(ordersResult.data || []);
+      setLoadedTabs(prev => new Set([...prev, 'vzdel']));
+    } catch (e) {
+      console.error('❌ Vzdel tab data load failed:', e);
+      if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Vzdělávání.');
+    } finally {
+      if (!silent) setLoading(false);
+      setLoadingTabs(prev => {
+        const next = new Set(prev);
+        next.delete('vzdel');
+        return next;
+      });
+    }
+  }, [token, username, loadOrders, orders.length, loadedTabs, loadingTabs]);
+
+  // Pivot tab - potřebuje jen orders
+  const loadPivotTabData = useCallback(async (silent = false) => {
+    if (!token || !username) return;
+    if (loadingTabs.has('pivot') || loadedTabs.has('pivot')) return;
+    if (orders.length > 0) {
+      setLoadedTabs(prev => new Set([...prev, 'pivot']));
+      return;
+    }
+    
+    if (!silent) setLoading(true);
+    setLoadingTabs(prev => new Set([...prev, 'pivot']));
+    try {
+      const ordersResult = await loadOrders();
+      setOrders(ordersResult.data || []);
+      setLoadedTabs(prev => new Set([...prev, 'pivot']));
+    } catch (e) {
+      console.error('❌ Pivot tab data load failed:', e);
+      if (!silent) setLoadError(e?.message || 'Chyba při načítání dat pro Pivot.');
+    } finally {
+      if (!silent) setLoading(false);
+      setLoadingTabs(prev => {
+        const next = new Set(prev);
+        next.delete('pivot');
+        return next;
+      });
+    }
+  }, [token, username, loadOrders, orders.length, loadedTabs, loadingTabs]);
+
+  // 🔄 REFACTORED: Main data loader - nyní načte jen common data + první tab
+  const handleLoadData = useCallback(async () => {
+    if (!token || !username) return;
+    setLoadError('');
+    if (progress?.start) progress.start();
+    try {
+      // 1. Načíst common data (číselníky)
+      await loadCommonData();
+      
+      // 2. Načíst data pro aktivní tab (default: control)
+      // ⚠️ Per-tab funkce si už samy řídí setLoading() a progress
+      const currentTab = activeTab || 'control';
+      if (currentTab === 'control') await loadControlTabData();
+      else if (currentTab === 'stats') await loadStatsTabData();
+      else if (currentTab === 'spend') await loadSpendTabData();
+      else if (currentTab === 'reports') await loadReportsTabData();
+      else if (currentTab === 'vzdel') await loadVzdelTabData();
+      else if (currentTab === 'pivot') await loadPivotTabData();
+      // attachments, cashbook, dohadne mají vlastní lazy loading
+      
       if (progress?.done) progress.done();
     } catch (e) {
-      setOrders([]);
-      setInvoices([]);
-      setContracts([]);
-      setOrderAttachments([]);
-      setAnnualFeeAttachments([]);
-      setTimelineData([]);
-      setDataMeta({ loadedAt: null, truncated: false });
       setLoadError(e?.message || 'Nepodařilo se načíst data.');
       if (progress?.fail) progress.fail();
     } finally {
-      setLoading(false);
       setTimeout(() => setIsInitialized(true), 300);
     }
-  }, [token, username, loadLookups, loadOrders, loadInvoices, loadContracts, progress]);
+  }, [token, username, activeTab, loadCommonData, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData, progress]);
 
   const initialLoadRef = useRef(false);
 
@@ -3340,6 +3566,63 @@ export default function StatsReportsPage() {
     initialLoadRef.current = true;
     handleLoadData();
   }, [token, username, handleLoadData]);
+
+  // 🚀 LAZY LOADING: Načíst data pro aktivní tab
+  useEffect(() => {
+    if (!token || !username || !initialLoadRef.current) return;
+    if (loading || loadingTabs.has(activeTab)) return;
+    
+    // Načíst data pro aktivní tab pokud ještě nejsou načtená
+    if (activeTab === 'control' && !loadedTabs.has('control')) {
+      loadControlTabData();
+    } else if (activeTab === 'stats' && !loadedTabs.has('stats')) {
+      loadStatsTabData();
+    } else if (activeTab === 'spend' && !loadedTabs.has('spend')) {
+      loadSpendTabData();
+    } else if (activeTab === 'reports' && !loadedTabs.has('reports')) {
+      loadReportsTabData();
+    } else if (activeTab === 'vzdel' && !loadedTabs.has('vzdel')) {
+      loadVzdelTabData();
+    } else if (activeTab === 'pivot' && !loadedTabs.has('pivot')) {
+      loadPivotTabData();
+    }
+    // attachments, cashbook, dohadne mají vlastní useEffect handlers (už existují)
+  }, [activeTab, token, username, loading, loadedTabs, loadingTabs, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
+
+  // 🚀 BACKGROUND LAZY LOADING: Po načtení prvního tabu načíst ostatní na pozadí (po 2s)
+  const backgroundLoadRef = useRef(false);
+  useEffect(() => {
+    if (!token || !username || backgroundLoadRef.current) return;
+    if (loadedTabs.size === 0) return; // Čekat až se načte první tab
+    
+    backgroundLoadRef.current = true;
+    
+    // Po 2 sekundách začít načítat ostatní taby na pozadí
+    const timer = setTimeout(async () => {
+      console.log('🔄 Background loading: Načítám ostatní taby na pozadí...');
+      
+      // Načíst v pořadí podle priority
+      const priorityOrder = ['control', 'stats', 'spend', 'reports', 'vzdel', 'pivot'];
+      for (const tab of priorityOrder) {
+        if (loadedTabs.has(tab) || loadingTabs.has(tab)) continue;
+        
+        // Delay mezi jednotlivými taby (500ms)
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // ✅ SILENT MODE - nepoužívat loading gate pro background loading
+        if (tab === 'control') await loadControlTabData(true);
+        else if (tab === 'stats') await loadStatsTabData(true);
+        else if (tab === 'spend') await loadSpendTabData(true);
+        else if (tab === 'reports') await loadReportsTabData(true);
+        else if (tab === 'vzdel') await loadVzdelTabData(true);
+        else if (tab === 'pivot') await loadPivotTabData(true);
+      }
+      
+      console.log('✅ Background loading: Všechny taby načteny');
+    }, 2000);
+    
+    return () => clearTimeout(timer);
+  }, [token, username, loadedTabs.size, loadedTabs, loadingTabs, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData]);
 
   const [applyTrigger, setApplyTrigger] = useState(0);
   const loadDataRef = useRef(handleLoadData);
@@ -4875,6 +5158,7 @@ export default function StatsReportsPage() {
   );
 
   const spendByFinancingGroups = useMemo(() => {
+    if (activeTab !== 'spend') return []; // ⚡ Skip výpočet když tab není aktivní
     const groups = {};
     filteredOrders.forEach(order => {
       const finCode = getOrderFinancingCode(order) || '__none__';
@@ -4895,10 +5179,11 @@ export default function StatsReportsPage() {
       groups[finCode].totalAmount += amt;
     });
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
-  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel]);
+  }, [activeTab, filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel, getOrderAmount]);
 
   // Úsek → Financování
   const spendByUsekGroups = useMemo(() => {
+    if (activeTab !== 'spend') return []; // ⚡ Skip výpočet když tab není aktivní
     const groups = {};
     filteredOrders.forEach(order => {
       const usekCode = getOrdererUsekCode(order) || '__none__';
@@ -4915,10 +5200,11 @@ export default function StatsReportsPage() {
       groups[usekCode].totalAmount += amt;
     });
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
-  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel]);
+  }, [activeTab, filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel, getOrderAmount]);
 
   // Druh objednávky → Financování
   const spendByDruhGroups = useMemo(() => {
+    if (activeTab !== 'spend') return []; // ⚡ Skip výpočet když tab není aktivní
     const groups = {};
     filteredOrders.forEach(order => {
       const druhCode = getOrderTypeCode(order) || '__none__';
@@ -4935,10 +5221,11 @@ export default function StatsReportsPage() {
       groups[druhCode].totalAmount += amt;
     });
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
-  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrderTypeCode, getOrderTypeLabel]);
+  }, [activeTab, filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrderTypeCode, getOrderTypeLabel, getOrderAmount]);
 
   // Financování → Úsek → Druh objednávky
   const spendByFinancingUsekDruhGroups = useMemo(() => {
+    if (activeTab !== 'spend') return []; // ⚡ Skip výpočet když tab není aktivní
     const groups = {};
     filteredOrders.forEach(order => {
       const finCode = getOrderFinancingCode(order) || '__none__';
@@ -4960,10 +5247,11 @@ export default function StatsReportsPage() {
       groups[finCode].totalAmount += amt;
     });
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
-  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel, getOrderTypeCode, getOrderTypeLabel, getOrderAmount]);
+  }, [activeTab, filteredOrders, getOrderFinancingCode, getOrderFinancingLabel, getOrdererUsekCode, getOrdererUsekLabel, getOrderTypeCode, getOrderTypeLabel, getOrderAmount]);
 
   // Smlouvy → objednávky čerpající ze smlouvy
   const spendBySmlouvyGroups = useMemo(() => {
+    if (activeTab !== 'spend') return []; // ⚡ Skip výpočet když tab není aktivní
     const groups = {};
     filteredOrders.forEach(order => {
       const finCode = String(getOrderFinancingCode(order) || '').toUpperCase();
@@ -4993,10 +5281,11 @@ export default function StatsReportsPage() {
       groups[key].amount += amt;
     });
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
-  }, [filteredOrders, getOrderFinancingCode, getOrderFinancingRef, getOrderAmount]);
+  }, [activeTab, filteredOrders, getOrderFinancingCode, getOrderFinancingRef, getOrderAmount]);
 
   // LP financování → LP kód (cislo_lp) → objednávky
   const spendByLpKodGroups = useMemo(() => {
+    if (activeTab !== 'spend') return []; // ⚡ Skip výpočet když tab není aktivní
     const groups = {};
     filteredOrders.forEach(order => {
       const fin = parseFinancing(order?.financovani);
@@ -5027,7 +5316,7 @@ export default function StatsReportsPage() {
       }
     });
     return Object.values(groups).sort((a, b) => a.code.localeCompare(b.code, 'cs-CZ'));
-  }, [filteredOrders]);
+  }, [activeTab, filteredOrders, getOrderAmount]);
 
   // Filtrované verze spend groups podle search query
   const filteredSpendByFinancingGroups = useMemo(() => {
