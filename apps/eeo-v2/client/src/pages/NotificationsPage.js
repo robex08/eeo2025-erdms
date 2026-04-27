@@ -114,8 +114,11 @@ function getNotificationTypeLabel(englishCode) {
     
     // ✅ PLÁNOVÁNÍ / REZERVACE
     'PLANNING_EVENT_CREATED': 'Nová událost vytvořena',
+    'PLANNING_MESSAGE_CREATED': 'Nová zpráva v plánování',
     'PLANNING_EVENT_UPDATED': 'Událost aktualizována',
     'PLANNING_EVENT_CANCELLED': 'Událost zrušena',
+    'PLANNING_EVENT_RESPONSE': 'Odpověď na událost',
+    'PLANNING_MESSAGE_RESPONSE': 'Odpověď na zprávu',
     'PLANNING_TERM_FULL': 'Termín plně obsazen',
     'PLANNING_REGISTRATION_ACCEPTED': 'Registrace potvrzena',
     'PLANNING_REGISTRATION_DECLINED': 'Registrace odmítnuta',
@@ -203,8 +206,11 @@ function getNotificationTypeIcon(typ) {
     'ORDER_COMMENT_ADDED':            { icon: faComment,            color: '#6366f1' },
     'COMMENT_REPLY':                  { icon: faReply,              color: '#8b5cf6' },
     'PLANNING_EVENT_CREATED':         { icon: faCalendarAlt,        color: '#f59e0b' },
+    'PLANNING_MESSAGE_CREATED':       { icon: faEnvelope,           color: '#6366f1' },
     'PLANNING_EVENT_UPDATED':         { icon: faEdit,               color: '#f59e0b' },
     'PLANNING_EVENT_CANCELLED':       { icon: faTimesCircle,        color: '#dc2626' },
+    'PLANNING_EVENT_RESPONSE':        { icon: faReply,              color: '#8b5cf6' },
+    'PLANNING_MESSAGE_RESPONSE':      { icon: faReply,              color: '#8b5cf6' },
     'PLANNING_TERM_FULL':             { icon: faExclamationTriangle, color: '#ef4444' },
     'PLANNING_REGISTRATION_ACCEPTED': { icon: faCheckCircle,        color: '#10b981' },
     'PLANNING_REGISTRATION_DECLINED': { icon: faTimesCircle,        color: '#ef4444' },
@@ -214,6 +220,19 @@ function getNotificationTypeIcon(typ) {
     'alarm_todo_expired':             { icon: faExclamationCircle,  color: '#ef4444' },
   };
   return map[typ] || { icon: faInfoCircle, color: '#94a3b8' };
+}
+
+function isPlanningNotification(notification) {
+  const objTyp = (notification?.objekt_typ || '').toLowerCase();
+  const typ = (notification?.typ || '').toUpperCase();
+
+  return (
+    objTyp === 'planning_event' ||
+    objTyp === 'planning_message' ||
+    objTyp === 'planning_event_response' ||
+    objTyp === 'planning_message_response' ||
+    typ.startsWith('PLANNING_')
+  );
 }
 
 /**
@@ -1556,7 +1575,7 @@ export const NotificationsPage = () => {
     }
 
     // ✅ PLANNING EVENT - načíst kompletní data z DB včetně ověření přístupu
-    if (notification.objekt_typ === 'planning_event' || notification.objekt_typ === 'planning_message') {
+    if (isPlanningNotification(notification)) {
       const eventId = notification.objekt_id;
       if (!eventId) {
         showToast('Chybí ID události', { type: 'error' });
@@ -1569,6 +1588,11 @@ export const NotificationsPage = () => {
         
         if (!response || !response.data) {
           showToast('Událost nebyla nalezena', { type: 'error' });
+          return;
+        }
+
+        if (response.data?.isRecipient === false || response.data?.isRecipient === 0 || response.data?.isRecipient === '0') {
+          showToast('Tato událost nebyla určena pro přihlášeného uživatele.', { type: 'warning' });
           return;
         }
 
@@ -2430,7 +2454,7 @@ export const NotificationsPage = () => {
                         borderLeft: threadCount > 0 ? '4px solid #3b82f6' : undefined
                       }}
                     >
-                      <NotificationContent style={(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order' || mainNotification.objekt_typ === 'invoices' || mainNotification.objekt_typ === 'invoice' || mainNotification.objekt_typ === 'objednavka' || mainNotification.objekt_typ === 'zastupovani' || mainNotification.objekt_typ === 'planning_message' || mainNotification.objekt_typ === 'planning_event') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
+                      <NotificationContent style={(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order' || mainNotification.objekt_typ === 'invoices' || mainNotification.objekt_typ === 'invoice' || mainNotification.objekt_typ === 'objednavka' || mainNotification.objekt_typ === 'zastupovani' || isPlanningNotification(mainNotification)) ? { position: 'relative', paddingLeft: '30px' } : undefined}>
                         {/* Badge OBJ/FAK/KOM/ZASTUP/REZ přes celou výšku */}
                         {(mainNotification.objekt_typ === 'orders' || mainNotification.objekt_typ === 'order') && (
                           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #3b82f6, #2563eb)', color: '#fff', fontSize: '0.6em', fontWeight: '800', letterSpacing: '0.12em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(37,99,235,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>OBJ</span>
@@ -2444,7 +2468,7 @@ export const NotificationsPage = () => {
                         {mainNotification.objekt_typ === 'zastupovani' && (
                           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #0891b2, #0e7490)', color: '#fff', fontSize: '0.5em', fontWeight: '800', letterSpacing: '0.08em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(8,145,178,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>ZASTUP</span>
                         )}
-                        {(mainNotification.objekt_typ === 'planning_message' || mainNotification.objekt_typ === 'planning_event') && (
+                        {isPlanningNotification(mainNotification) && (
                           <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: '#f59e0b', color: '#fff', fontSize: '0.6em', fontWeight: '800', letterSpacing: '0.12em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', userSelect: 'none', lineHeight: 1 }}>REZ</span>
                         )}
                         <NotificationHeader>
@@ -2579,7 +2603,7 @@ export const NotificationsPage = () => {
                               }
                               
                               // ✅ PLÁNOVÁNÍ / REZERVACE - formátovaný nadpis
-                              if (mainNotification.objekt_typ === 'planning_event' || mainNotification.objekt_typ === 'planning_message') {
+                              if (isPlanningNotification(mainNotification)) {
                                 const nadpisPlanning = mainNotification.nadpis || getNotificationTypeLabel(mainNotification.typ || '');
                                 return (
                                   <>
@@ -2647,7 +2671,7 @@ export const NotificationsPage = () => {
                           <NotificationMessage>
                             <strong>Částka:</strong> {mainNotification.data.placeholders.invoice_amount || mainNotification.data.placeholders.amount || 'N/A'} | <strong>Dodavatel:</strong> {mainNotification.data.placeholders.supplier_name || mainNotification.data.placeholders.dodavatel_nazev || 'N/A'} | <strong>Splatnost:</strong> {mainNotification.data.placeholders.due_date || mainNotification.data.placeholders.datum_splatnosti || 'N/A'} | <strong>Vytvořil:</strong> {mainNotification.data.placeholders.creator_name || mainNotification.data.placeholders.vytvoril_fa_name || 'N/A'}
                           </NotificationMessage>
-                        ) : mainNotification.objekt_typ && (mainNotification.objekt_typ === 'planning_event' || mainNotification.objekt_typ === 'planning_message') && (mainNotification.zprava || mainNotification.message) ? (
+                        ) : isPlanningNotification(mainNotification) && (mainNotification.zprava || mainNotification.message) ? (
                           <>
                             <div style={{
                               fontSize: '0.875rem',
@@ -3049,7 +3073,7 @@ export const NotificationsPage = () => {
                   $priority={priority}
                   onClick={() => handleNotificationClick(notification)}
                 >
-                  <NotificationContent style={(notification.objekt_typ === 'orders' || notification.objekt_typ === 'order' || notification.objekt_typ === 'invoices' || notification.objekt_typ === 'invoice' || notification.objekt_typ === 'objednavka' || notification.objekt_typ === 'zastupovani' || notification.objekt_typ === 'planning_message' || notification.objekt_typ === 'planning_event' || notification.typ === 'ADMIN_MESSAGE') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
+                  <NotificationContent style={(notification.objekt_typ === 'orders' || notification.objekt_typ === 'order' || notification.objekt_typ === 'invoices' || notification.objekt_typ === 'invoice' || notification.objekt_typ === 'objednavka' || notification.objekt_typ === 'zastupovani' || isPlanningNotification(notification) || notification.typ === 'ADMIN_MESSAGE') ? { position: 'relative', paddingLeft: '30px' } : undefined}>
                     {/* Badge MSG/OBJ/FAK/KOM/ZASTUP/REZ přes celou výšku */}
                     {notification.typ === 'ADMIN_MESSAGE' && (
                       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #f59e0b, #d97706)', color: '#fff', fontSize: '0.55em', fontWeight: '800', letterSpacing: '0.1em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(217,119,6,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>MSG</span>
@@ -3066,7 +3090,7 @@ export const NotificationsPage = () => {
                     {notification.objekt_typ === 'zastupovani' && (
                       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: 'linear-gradient(180deg, #0891b2, #0e7490)', color: '#fff', fontSize: '0.5em', fontWeight: '800', letterSpacing: '0.08em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', boxShadow: '2px 0 6px rgba(8,145,178,0.25), inset 0 1px 0 rgba(255,255,255,0.15)', userSelect: 'none', lineHeight: 1 }}>ZASTUP</span>
                     )}
-                    {(notification.objekt_typ === 'planning_message' || notification.objekt_typ === 'planning_event') && (
+                    {isPlanningNotification(notification) && (
                       <span style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '22px', background: '#f59e0b', color: '#fff', fontSize: '0.6em', fontWeight: '800', letterSpacing: '0.12em', writingMode: 'vertical-lr', textOrientation: 'mixed', transform: 'rotate(180deg)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px 0 0 4px', userSelect: 'none', lineHeight: 1 }}>REZ</span>
                     )}
                     <NotificationHeader>
@@ -3221,7 +3245,7 @@ export const NotificationsPage = () => {
                           }
 
                           // ✅ PLÁNOVÁNÍ / REZERVACE - formátovaný nadpis
-                          if (notification.objekt_typ === 'planning_event' || notification.objekt_typ === 'planning_message') {
+                          if (isPlanningNotification(notification)) {
                             const nadpisPlanning = notification.nadpis || getNotificationTypeLabel(notification.typ || '');
                             return (
                               <>
@@ -3257,7 +3281,7 @@ export const NotificationsPage = () => {
                       <NotificationMessage>
                         <strong>Částka:</strong> {notification.data.placeholders.invoice_amount || notification.data.placeholders.amount || 'N/A'} | <strong>Dodavatel:</strong> {notification.data.placeholders.supplier_name || notification.data.placeholders.dodavatel_nazev || 'N/A'} | <strong>Splatnost:</strong> {notification.data.placeholders.due_date || notification.data.placeholders.invoice_due_date || notification.data.placeholders.datum_splatnosti || 'N/A'} | <strong>Vytvořil:</strong> {notification.data.placeholders.creator_name || notification.data.placeholders.vytvoril_fa_name || 'N/A'}
                       </NotificationMessage>
-                    ) : (notification.objekt_typ === 'planning_event' || notification.objekt_typ === 'planning_message') && notification.zprava ? (
+                    ) : isPlanningNotification(notification) && notification.zprava ? (
                       <>
                         <div style={{
                           fontSize: '0.875rem',

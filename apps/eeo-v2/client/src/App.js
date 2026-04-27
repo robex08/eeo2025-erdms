@@ -246,7 +246,9 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
       const hasEventParams = searchParams.has('eventId') && searchParams.has('openPanel');
       
       if (hasEventParams) {
-        console.log('🔗 [App] URL obsahuje eventId parametry → redirect PŘESKOČEN, navigace na /dashboard s parametry');
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('[App] Deep-link parametry detekovány, přesměrování na /dashboard zachováno.');
+        }
         navigate('/dashboard' + location.search, { replace: true });
         return;
       }

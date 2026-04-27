@@ -4026,6 +4026,21 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
       try {
         const eventResponse = await planningApi.getEvent(urlEventId);
         const event = eventResponse?.data || eventResponse || null;
+
+        const isRecipient = event?.isRecipient;
+        const isEmailLinkRecipient = event?.isEmailLinkRecipient;
+        const denyFromEmailLink = (isEmailLinkRecipient === false || isEmailLinkRecipient === 0 || isEmailLinkRecipient === '0');
+        if (denyFromEmailLink || isRecipient === false || isRecipient === 0 || isRecipient === '0') {
+          setToast({
+            type: 'error',
+            message: 'Tato událost nebyla určena pro přihlášeného uživatele.'
+          });
+          setTimeout(() => setToast(null), 5000);
+          setPanelDirectEvent(null);
+          setPanelOpen(false);
+          return;
+        }
+
         setPanelDirectEvent(event || null);
 
         if (event && event.terminy && event.terminy.length > 0) {
@@ -4267,6 +4282,9 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           const dayKey = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
           const dayEvents = eventsByDate[dayKey] || [];
           const hasEvents = dayEvents.length > 0;
+          const MAX_TERMS_IN_TOOLTIP = 10;
+          const visibleDayEvents = dayEvents.slice(0, MAX_TERMS_IN_TOOLTIP);
+          const hiddenDayEventsCount = Math.max(0, dayEvents.length - visibleDayEvents.length);
 
           // Sestavení tooltip textu
           let tooltipLines = [];
@@ -4294,7 +4312,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
           });
           if (hasEvents) {
             if (tooltipLines.length > 0) tooltipLines.push('──────────────────────────────');
-            dayEvents.forEach(({ event, term }, idx) => {
+            visibleDayEvents.forEach(({ event, term }, idx) => {
               const resp = term?.moje_odpoved?.typ_odpovedi;
               const isFull = term?.is_full === true;
               const isUserAccepted = resp === 'accepted';
@@ -4316,10 +4334,13 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
               
               tooltipLines.push(line);
               // Oddělovač mezi událostmi (ne po poslední)
-              if (idx < dayEvents.length - 1) {
+              if (idx < visibleDayEvents.length - 1) {
                 tooltipLines.push('─────────────────────────────────────────────────────');
               }
             });
+            if (hiddenDayEventsCount > 0) {
+              tooltipLines.push(`… a zbývá dalších ${hiddenDayEventsCount} termínů`);
+            }
           }
           
           // ✅ Vytvoř JSX tooltip místo prostého textu
@@ -4365,7 +4386,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
             }
             
             // Události
-            dayEvents.forEach(({ event, term }, idx) => {
+            visibleDayEvents.forEach(({ event, term }, idx) => {
               const resp = term?.moje_odpoved?.typ_odpovedi;
               const isFull = term?.is_full === true;
               const isUserAccepted = resp === 'accepted';
@@ -4378,7 +4399,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
               const email = event.autor_email || '—';
               
               elements.push(
-                <div key={`event-${event.id || idx}`} style={{ marginBottom: idx < dayEvents.length - 1 ? '0.75rem' : 0 }}>
+                <div key={`event-${event.id || idx}`} style={{ marginBottom: idx < visibleDayEvents.length - 1 ? '0.75rem' : 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
                     <span>📅</span>
                     <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 600 }}>{event.nazev}</span>
@@ -4410,12 +4431,28 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
                   <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
                     📧 {email}
                   </div>
-                  {idx < dayEvents.length - 1 && (
+                  {idx < visibleDayEvents.length - 1 && (
                     <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.5rem' }} />
                   )}
                 </div>
               );
             });
+
+            if (hiddenDayEventsCount > 0) {
+              elements.push(
+                <div key="events-more" style={{ marginTop: '0.35rem' }}>
+                  <div style={{
+                    color: '#cbd5e1',
+                    fontSize: '0.72rem',
+                    fontStyle: 'italic',
+                    borderTop: '1px solid rgba(255,255,255,0.18)',
+                    paddingTop: '0.45rem'
+                  }}>
+                    … a zbývá dalších {hiddenDayEventsCount} termínů
+                  </div>
+                </div>
+              );
+            }
             
             tooltipJSX = <div>{elements}</div>;
           }
@@ -5785,6 +5822,18 @@ function NotificationsWidget({ notifications, navigate }) {
     return 'Před ' + Math.floor(diff / 86400) + 'd';
   };
 
+  const isPlanningNotification = (n) => {
+    const objTyp = (n?.objekt_typ || '').toLowerCase();
+    const typ = (n?.typ || '').toUpperCase();
+    return (
+      objTyp === 'planning_event' ||
+      objTyp === 'planning_message' ||
+      objTyp === 'planning_event_response' ||
+      objTyp === 'planning_message_response' ||
+      typ.startsWith('PLANNING_')
+    );
+  };
+
   // ✅ SPRÁVNÁ NAVIGACE - stejně jako NotificationsPage - používá data a objekt_id
   const handleNotificationClick = (n) => {
     const data = n.data || {};
@@ -5792,7 +5841,7 @@ function NotificationsWidget({ notifications, navigate }) {
     
     // ✅ PLANNING EVENT - navigovat na stránku notifikací, kde se otevře detail
     // (nemůžeme otevřít planning panel z dashboardu, protože by se překrýval s widgety)
-    if (n.objekt_typ === 'planning_event' || n.objekt_typ === 'planning_message') {
+    if (isPlanningNotification(n)) {
       navigate('/notifications');
       return;
     }
@@ -5859,7 +5908,7 @@ function NotificationsWidget({ notifications, navigate }) {
     }
 
     // ✅ PLANNING EVENT / MESSAGE - události a zprávy
-    if (n.objekt_typ === 'planning_event' || n.objekt_typ === 'planning_message' || n.typ === 'PLANNING_EVENT_CREATED' || n.typ === 'PLANNING_MESSAGE_CREATED') {
+    if (isPlanningNotification(n)) {
       const planningData = (() => {
         try {
           return typeof n.data_json === 'string' ? JSON.parse(n.data_json) : (n.data_json || data || {});
@@ -5902,6 +5951,11 @@ function NotificationsWidget({ notifications, navigate }) {
       if (daysAge === 0) timeText = 'dnes';
       else if (daysAge === 1) timeText = 'včera';
       else if (daysAge !== null) timeText = `před ${daysAge} d`;
+
+      const typUpper = (n.typ || '').toUpperCase();
+      const objTypLower = (n.objekt_typ || '').toLowerCase();
+      const isResponse = typUpper.includes('_RESPONSE') || objTypLower.includes('_response');
+      const isMessage = objTypLower.includes('message') || typUpper.includes('MESSAGE');
       
       return {
         type: 'PLANNING',
@@ -5911,8 +5965,8 @@ function NotificationsWidget({ notifications, navigate }) {
         timeFormatted: timeFormatted,
         eventTime: eventTimeStr,
         timeText,
-        actionType: n.objekt_typ === 'planning_message' ? 'Zpráva' : 'Událost',
-        actionColor: n.objekt_typ === 'planning_message' ? '#0891b2' : '#8b5cf6',
+        actionType: isResponse ? 'Odpověď' : (isMessage ? 'Zpráva' : 'Událost'),
+        actionColor: isResponse ? '#8b5cf6' : (isMessage ? '#0891b2' : '#8b5cf6'),
         number: null, objekt_id: n.objekt_id, subject: null, usersLine: null,
         amount: null, statusText: null, statusColor: null
       };
@@ -7994,8 +8048,12 @@ export default function DashboardPage() {
       n?.kategorie === 'planning'
       || n?.objekt_typ === 'planning_event'
       || n?.objekt_typ === 'planning_message'
+      || n?.objekt_typ === 'planning_event_response'
+      || n?.objekt_typ === 'planning_message_response'
       || n?.typ === 'PLANNING_EVENT_CREATED'
       || n?.typ === 'PLANNING_MESSAGE_CREATED'
+      || n?.typ === 'PLANNING_EVENT_RESPONSE'
+      || n?.typ === 'PLANNING_MESSAGE_RESPONSE'
     );
 
     if (planningUnread.length === 0) return baseAlerts;
@@ -8116,8 +8174,12 @@ export default function DashboardPage() {
               (n?.kategorie === 'planning'
                 || n?.objekt_typ === 'planning_event'
                 || n?.objekt_typ === 'planning_message'
+                || n?.objekt_typ === 'planning_event_response'
+                || n?.objekt_typ === 'planning_message_response'
                 || n?.typ === 'PLANNING_EVENT_CREATED'
-                || n?.typ === 'PLANNING_MESSAGE_CREATED')
+                || n?.typ === 'PLANNING_MESSAGE_CREATED'
+                || n?.typ === 'PLANNING_EVENT_RESPONSE'
+                || n?.typ === 'PLANNING_MESSAGE_RESPONSE')
               && Number(n?.objekt_id) === Number(eventId)
             ))
             .map(n => Number(n?.id))
