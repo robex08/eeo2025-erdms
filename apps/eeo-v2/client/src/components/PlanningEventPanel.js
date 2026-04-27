@@ -15,13 +15,16 @@ import styled, { keyframes } from 'styled-components';
 // ============================================================================
 
 export const EventCard = styled.div`
-  border: 1px solid #e2e8f0;
+  border: 2px solid #cbd5e1;
   border-radius: 12px;
-  padding: 0.85rem 0.9rem;
+  padding: 1rem 1.1rem;
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  background: #f8fafc;
+  background: #ffffff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  margin-bottom: 1.2rem;
+  position: relative;
 `;
 
 export const EventMeta = styled.div`
@@ -29,10 +32,32 @@ export const EventMeta = styled.div`
   color: #64748b;
 `;
 
+export const EventHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+`;
+
 export const EventName = styled.div`
-  font-size: 0.95rem;
+  font-size: 1rem;
   font-weight: 700;
   color: #0f172a;
+  flex: 1;
+`;
+
+export const EventBadge = styled.div`
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
 `;
 
 export const EventDescription = styled.div`
@@ -56,7 +81,13 @@ export const EventTermRow = styled.div`
   gap: 0.35rem;
   padding: 0.55rem 0.6rem;
   border-radius: 10px;
-  background: ${p => p.$selected ? '#eef2ff' : '#ffffff'};
+  background: ${
+    p => p.$suppressResponseVisual ?
+         (p.$selected ? '#eef2ff' : '#f9fafb') :
+         p.$responseType === 'accepted' ? '#dcfce7' :
+         p.$responseType === 'declined' ? '#fee2e2' :
+         p.$selected ? '#eef2ff' : '#f9fafb'
+  };
   border: 1px solid ${p => p.$selected ? '#93c5fd' : '#e2e8f0'};
 `;
 
@@ -96,43 +127,15 @@ export const EventActionButton = styled.button`
   }
 `;
 
-const flashAccept = keyframes`
-  0%   { background: #dcfce7; box-shadow: 0 0 0 3px rgba(22,163,74,0.45); }
-  60%  { background: #bbf7d0; box-shadow: 0 0 0 6px rgba(22,163,74,0.25); }
-  100% { background: #ffffff; box-shadow: 0 0 0 0 rgba(22,163,74,0); }
-`;
-
-const flashDecline = keyframes`
-  0%   { background: #fee2e2; box-shadow: 0 0 0 3px rgba(220,38,38,0.45); }
-  60%  { background: #fecaca; box-shadow: 0 0 0 6px rgba(220,38,38,0.25); }
-  100% { background: #ffffff; box-shadow: 0 0 0 0 rgba(220,38,38,0); }
-`;
-
-const flashTextAccept = keyframes`
-  0%   { background: transparent; transform: scale(1); }
-  20%  { background: #dcfce7; transform: scale(1.02); }
-  60%  { background: #bbf7d0; transform: scale(1.04); }
-  100% { background: transparent; transform: scale(1); }
-`;
-
-const flashTextDecline = keyframes`
-  0%   { background: transparent; transform: scale(1); }
-  20%  { background: #fee2e2; transform: scale(1.02); }
-  60%  { background: #fecaca; transform: scale(1.04); }
-  100% { background: transparent; transform: scale(1); }
+const flashBorder = keyframes`
+  0%   { box-shadow: 0 0 0 3px rgba(59,130,246,0.45); }
+  60%  { box-shadow: 0 0 0 6px rgba(59,130,246,0.25); }
+  100% { box-shadow: 0 0 0 0 rgba(59,130,246,0); }
 `;
 
 export const EventTermFlash = styled.div`
-  animation: ${p => p.$type === 'accepted' ? flashAccept : flashDecline} 1.2s ease-out;
+  animation: ${flashBorder} 1.2s ease-out;
   border-radius: 10px;
-`;
-
-export const EventTermStatusFlash = styled.div`
-  animation: ${p => p.$type === 'accepted' ? flashTextAccept : flashTextDecline} 1.5s ease-out;
-  animation-delay: 1.2s;
-  border-radius: 6px;
-  padding: 0.25rem 0.4rem;
-  margin: -0.25rem -0.4rem;
 `;
 
 export const EventTermNoteInput = styled.textarea`
@@ -235,6 +238,35 @@ export const canChangeResponse = (event, term) => {
   return new Date() <= deadline;
 };
 
+/**
+ * Zkontroluje, zda termín již proběhl (je v minulosti)
+ * @param {Object} term - Termín události
+ * @returns {boolean} - True pokud termín již proběhl
+ */
+export const isTermInPast = (term) => {
+  if (!term) return false;
+  
+  // Kontrola podle dt_do (konec termínu) - pokud existuje
+  if (term.dt_do) {
+    const endDate = parseSqlDateTime(term.dt_do);
+    if (endDate) {
+      return new Date() > endDate;
+    }
+  }
+  
+  // Fallback na dt_od (začátek termínu)
+  if (term.dt_od) {
+    const startDate = parseSqlDateTime(term.dt_od);
+    if (startDate) {
+      // Termín je v minulosti pokud začátek + 24 hodin < teď
+      const endTime = new Date(startDate.getTime() + 24 * 60 * 60 * 1000);
+      return new Date() > endTime;
+    }
+  }
+  
+  return false;
+};
+
 // ============================================================================
 // COMPONENT
 // ============================================================================
@@ -250,6 +282,8 @@ export const canChangeResponse = (event, term) => {
  * @param {Function} isTermSelected - Funkce pro zjištění zda je termín vybrán (term, event) (default: false)
  * @param {boolean} showAuthor - Zobrazit autora (default: true)
  * @param {string} title - Volitelný nadpis místo názvu události
+ * @param {boolean} showResponseStatus - Zobrazit textový stav odpovědi (default: true)
+ * @param {boolean} suppressResponseVisual - Potlačit barevné zvýraznění dle odpovědi (default: false)
  */
 export default function PlanningEventDetailPanel({ 
   event, 
@@ -260,7 +294,9 @@ export default function PlanningEventDetailPanel({
   requiresResponse = true,
   isTermSelected = () => false,
   showAuthor = true,
-  title = null
+  title = null,
+  showResponseStatus = true,
+  suppressResponseVisual = false
 }) {
   if (!event) return null;
 
@@ -275,7 +311,13 @@ export default function PlanningEventDetailPanel({
     return (
       <EventCard>
         {showAuthor && <EventMeta>{authorName ? `Autor: ${authorName}` : 'Autor neuveden'}</EventMeta>}
-        <EventName>{title || event.nazev}</EventName>
+        <EventHeader>
+          <EventName>{title || event.nazev}</EventName>
+          <EventBadge>
+            <span>📅</span>
+            <span>0 termínů</span>
+          </EventBadge>
+        </EventHeader>
         {description && <EventDescription dangerouslySetInnerHTML={{ __html: description }} />}
         <EventMeta>Tato událost nemá žádné termíny.</EventMeta>
       </EventCard>
@@ -285,7 +327,13 @@ export default function PlanningEventDetailPanel({
   return (
     <EventCard>
       {showAuthor && <EventMeta>{authorName ? `Autor: ${authorName}` : 'Autor neuveden'}</EventMeta>}
-      <EventName>{title || event.nazev}</EventName>
+      <EventHeader>
+        <EventName>{title || event.nazev}</EventName>
+        <EventBadge>
+          <span>📅</span>
+          <span>{displayTerms.length} {displayTerms.length === 1 ? 'termín' : displayTerms.length < 5 ? 'termíny' : 'termínů'}</span>
+        </EventBadge>
+      </EventHeader>
       {description && <EventDescription dangerouslySetInnerHTML={{ __html: description }} />}
 
       <EventTerms>
@@ -298,6 +346,9 @@ export default function PlanningEventDetailPanel({
           const isSelected = isTermSelected(term, event);
           const flashKey = flashState[term.id];
           const flashType = flashKey ? flashKey.split('-')[0] : null;
+          
+          // ✅ Kontrola zda termín již proběhl (je v minulosti)
+          const isPast = isTermInPast(term);
 
           // Kontrola kapacity termínu
           const hasCapacity = term.kapacita !== null && term.kapacita !== undefined && term.kapacita > 0;
@@ -305,73 +356,74 @@ export default function PlanningEventDetailPanel({
           const isFull = term.is_full === true;
           const isUserAccepted = response === 'accepted';
           // ✅ OBOJE má stejnou podmínku: pokud je plno a nejsi accepted, nemůžeš ANI potvrdit ANI odmítnout
-          const canInteract = canChange && (!isFull || isUserAccepted);
+          // ✅ A TAKÉ pokud je termín v minulosti, nemůžeš už reagovat
+          const canInteract = canChange && (!isFull || isUserAccepted) && !isPast;
           const canAccept = canInteract;
           const canDecline = canInteract;
 
           const rowContent = (
-            <EventTermRow key={term.id} $selected={isSelected}>
+            <EventTermRow
+              key={term.id}
+              $selected={isSelected}
+              $responseType={response}
+              $suppressResponseVisual={suppressResponseVisual}
+            >
               <EventTermLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                <span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   {termLabel}
-                  {isSelected && <span style={{ color: '#1d4ed8' }}> (vybráno)</span>}
+                  {/* ✅ Badge "Uskutečněno" pro termíny v minulosti */}
+                  {isPast && (
+                    <span style={{
+                      fontSize: '0.65rem',
+                      fontWeight: 600,
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: '10px',
+                      background: '#f1f5f9',
+                      color: '#64748b',
+                      border: '1px solid #cbd5e1',
+                      whiteSpace: 'nowrap'
+                    }}>
+                      ✓ Uskutečněno
+                    </span>
+                  )}
                 </span>
                 {/* Badge kapacity v pravém rohu - vždy zobrazit (X/Y nebo X/∞) */}
                 <span style={{
-                  fontSize: '0.65rem',
+                  fontSize: '0.7rem',
                   fontWeight: 700,
-                  padding: '0.15rem 0.5rem',
+                  padding: '0.25rem 0.6rem',
                   borderRadius: '10px',
-                  background: hasCapacity ? (isFull ? '#fee2e2' : '#dcfce7') : '#f1f5f9',
-                  color: hasCapacity ? (isFull ? '#dc2626' : '#059669') : '#64748b',
-                  border: `1px solid ${hasCapacity ? (isFull ? '#fca5a5' : '#86efac') : '#cbd5e1'}`,
-                  whiteSpace: 'nowrap'
+                  background: hasCapacity ? (isFull ? '#fca5a5' : '#86efac') : '#cbd5e1',
+                  color: hasCapacity ? (isFull ? '#7f1d1d' : '#14532d') : '#1e293b',
+                  border: `1.5px solid ${hasCapacity ? (isFull ? '#ef4444' : '#22c55e') : '#94a3b8'}`,
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
                 }}>
                   {hasCapacity ? (
-                    <>{isFull ? '🔴 ' : ''}{acceptedCount}/{term.kapacita}</>
+                    <>{isFull ? '🔴 ' : '✓ '}{acceptedCount}/{term.kapacita}</>
                   ) : (
-                    <>{acceptedCount}/∞</>
+                    <>👥 {acceptedCount}/∞</>
                   )}
                 </span>
               </EventTermLabel>
               {/* Zobrazit odpověď jen když může uživatel reagovat NEBO už má odpověď */}
-              {(canInteract || response) && (
+              {showResponseStatus && (canInteract || response) && (
                 <>
-                  {flashType ? (
-                    <EventTermStatusFlash $type={flashType}>
-                      <EventTermStatus style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-                        <span>Odpověď:</span>
-                        <span>{formatResponseLabel(response)}</span>
-                        {responseTime ? (
-                          <span>• {formatCzDateTime(responseTime)}</span>
-                        ) : response ? (
-                          <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontStyle: 'italic' }}>• datum neuloženo</span>
-                        ) : null}
-                        {response === 'accepted' && (
-                          <span style={{marginLeft: '8px', fontSize: '1rem', color: '#16a34a'}}>✓</span>
-                        )}
-                        {response === 'declined' && (
-                          <span style={{marginLeft: '8px', fontSize: '1rem', color: '#dc2626'}}>✕</span>
-                        )}
-                      </EventTermStatus>
-                    </EventTermStatusFlash>
-                  ) : (
-                    <EventTermStatus style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
-                      <span>Odpověď:</span>
-                      <span>{formatResponseLabel(response)}</span>
-                      {responseTime ? (
-                        <span>• {formatCzDateTime(responseTime)}</span>
-                      ) : response ? (
-                        <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontStyle: 'italic' }}>• datum neuloženo</span>
-                      ) : null}
-                      {response === 'accepted' && (
-                        <span style={{marginLeft: '8px', fontSize: '1rem', color: '#16a34a'}}>✓</span>
-                      )}
-                      {response === 'declined' && (
-                        <span style={{marginLeft: '8px', fontSize: '1rem', color: '#dc2626'}}>✕</span>
-                      )}
-                    </EventTermStatus>
-                  )}
+                  <EventTermStatus style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    <span>Odpověď:</span>
+                    <span>{formatResponseLabel(response)}</span>
+                    {responseTime ? (
+                      <span>• {formatCzDateTime(responseTime)}</span>
+                    ) : response ? (
+                      <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontStyle: 'italic' }}>• datum neuloženo</span>
+                    ) : null}
+                    {response === 'accepted' && (
+                      <span style={{marginLeft: '8px', fontSize: '1rem', color: '#16a34a'}}>✓</span>
+                    )}
+                    {response === 'declined' && (
+                      <span style={{marginLeft: '8px', fontSize: '1rem', color: '#dc2626'}}>✕</span>
+                    )}
+                  </EventTermStatus>
                 </>
               )}
               {/* Badge "Termín již obsazen" pro plné termíny */}
@@ -428,7 +480,7 @@ export default function PlanningEventDetailPanel({
           );
 
           return flashType ? (
-            <EventTermFlash key={`flash-${term.id}-${flashKey}`} $type={flashType}>
+            <EventTermFlash key={`flash-${term.id}-${flashKey}`}>
               {rowContent}
             </EventTermFlash>
           ) : rowContent;

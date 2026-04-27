@@ -947,6 +947,12 @@ function handle_notifications_unread_count($input, $config, $queries) {
         // 2. Detekce priority pro barevný badge
         $badge_color = 'orange'; // ✅ VÝCHOZÍ ORANŽOVÁ pro méně důležité notifikace
         $priority_info = array();
+        $has_comments = false;
+        $has_orders_normal = false; 
+        $has_high_priority = false;
+        $has_planning = false;
+        $total_notif_count = 0;
+        $planning_notif_count = 0;
         
         if ($count > 0) {
             // Kontrola kategorií pro určení barvy
@@ -977,16 +983,7 @@ function handle_notifications_unread_count($input, $config, $queries) {
             $priority_stmt->execute(array(':uzivatel_id' => $uzivatel_id));
             $priority_results = $priority_stmt->fetchAll(PDO::FETCH_ASSOC);
             
-            // 🐛 DEBUG: Kolik řádků vrátil dotaz?
-            error_log("🔍 [Notifications] priority_results count: " . count($priority_results));
-            
-            $has_comments = false;
-            $has_orders_normal = false; 
-            $has_high_priority = false;
-            
             foreach ($priority_results as $row) {
-                // 🐛 DEBUG: Log každý řádek
-                error_log("🔍 [Notifications] Row: typ={$row['typ']}, priorita={$row['priorita']}, kategorie={$row['kategorie']}, count={$row['count_per_type']}");
                 
                 $priority_info[] = array(
                     'kategorie' => $row['kategorie'],
@@ -998,45 +995,51 @@ function handle_notifications_unread_count($input, $config, $queries) {
                 // Detekce typu pro barvu
                 $typ = $row['typ'];
                 $priorita = $row['priorita'];
+                $kategorie = $row['kategorie'];
+                $row_count = (int)$row['count_per_type'];
+                
+                $total_notif_count += $row_count;
+                
+                // 📅 PLANNING notifikace
+                if ($kategorie === 'planning') {
+                    $has_planning = true;
+                    $planning_notif_count += $row_count;
+                }
                 
                 // 🔴 ČERVENÁ - Urgentní/high priorita + schvalování
                 if ($priorita === 'EXCEPTIONAL' || $priorita === 'high' || $priorita === 'APPROVAL') {
                     $has_high_priority = true;
-                    error_log("✅ [Notifications] Detekována HIGH priorita: typ=$typ, priorita=$priorita");
                 }
                 // 🔵 MODRÁ - Komentáře (pouze pokud nejsou červené)
                 elseif (strpos($typ, 'COMMENT') !== false) {
                     $has_comments = true;
-                    error_log("✅ [Notifications] Detekovány KOMENTÁŘE: typ=$typ");
                 }
                 // 🟢 ZELENÁ - Změny stavů objednávek s INFO prioritou
                 elseif ($priorita === 'INFO' && strpos($typ, 'ORDER_') !== false) {
                     $has_orders_normal = true;
-                    error_log("✅ [Notifications] Detekovány INFO OBJEDNÁVKY: typ=$typ, priorita=$priorita");
                 }
                 // 🟢 ZELENÁ - Změny stavů objednávek s normal/low prioritou
                 elseif (strpos($typ, 'ORDER_') !== false && ($priorita === 'normal' || $priorita === 'low')) {
                     $has_orders_normal = true;
-                    error_log("✅ [Notifications] Detekovány NORMÁLNÍ OBJEDNÁVKY: typ=$typ, priorita=$priorita");
                 }
             }
             
-            // Priorita barev: červená > modrá > zelená
+            // Priorita barev: červená > modrá (komentáře) > modrá (POUZE planning) > zelená > oranžová
             if ($has_high_priority) {
                 $badge_color = 'red';      // 🔴 Vysoká priorita (urgent/EXCEPTIONAL/high)
             } elseif ($has_comments) {
                 $badge_color = 'blue';     // 🔵 Komentáře k objednávce
+            } elseif ($has_planning && $planning_notif_count === $total_notif_count) {
+                // 🔵 POUZE planning notifikace (žádné jiné)
+                $badge_color = 'blue';
             } elseif ($has_orders_normal) {
                 $badge_color = 'green';    // 🟢 Změny stavů objednávek s normal/low prioritou
             }
-            // jinak zůstává červená (výchozí)
+            // jinak zůstává oranžová (výchozí)
         } else {
             // Žádné nepřečtené notifikace = šedá
             $badge_color = 'gray';
         }
-
-        // 🐛 DEBUG: Log badge color pro debugging
-        error_log("🔔 [Notifications/unread-count] user_id=$uzivatel_id, count=$count, badge_color=$badge_color, has_high_priority=" . ($has_high_priority ? 'true' : 'false') . ", has_comments=" . ($has_comments ? 'true' : 'false') . ", has_orders_normal=" . ($has_orders_normal ? 'true' : 'false'));
 
         echo json_encode(array(
             'status' => 'ok',

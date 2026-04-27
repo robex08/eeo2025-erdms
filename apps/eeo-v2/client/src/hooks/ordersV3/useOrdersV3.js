@@ -503,16 +503,6 @@ export function useOrdersV3({
     
     const filterName = columnToFilterMapping[columnId] || columnId;
     
-    // DEBUG: Log číselné filtry
-    if (['max_cena_s_dph', 'cena_s_dph', 'faktury_celkova_castka_s_dph'].includes(columnId)) {
-      console.log('🔢 OrdersV3 Number Filter:', {
-        columnId,
-        filterName,
-        value,
-        type: typeof value
-      });
-    }
-    
     // Funkce pro aplikaci filtru
     const applyFilter = () => {
       // ✅ Clear cache při změně filtrů
@@ -594,9 +584,15 @@ export function useOrdersV3({
    */
   const handleClearFilters = useCallback(() => {
     
-    // Reset všech typů sloupcových filtrů na default z config
-    const emptyFilters = { ...ORDERS_V3_CONFIG.DEFAULT_PREFERENCES.columnFilters };
-    const emptyDashboardFilters = { ...ORDERS_V3_CONFIG.DEFAULT_PREFERENCES.dashboardFilters };
+    // ✅ OPRAVA: Reset na ÚPLNĚ prázdné objekty místo DEFAULT_PREFERENCES
+    // DEFAULT_PREFERENCES obsahuje prázdné hodnoty ale VŠECHNY klíče,
+    // což způsobuje, že se filtry "jeví jako aktivní" i když jsou prázdné
+    const emptyFilters = {}; // Prázdný objekt = žádné filtry
+    const emptyDashboardFilters = {
+      filter_status: '',
+      filter_my_orders: false,
+      filter_archivovano: false,
+    };
     
     updatePreferences({
       columnFilters: emptyFilters,
@@ -604,13 +600,14 @@ export function useOrdersV3({
       expandedRows: {},
     });
     
-    // 💾 OKAMŽITĚ smazat dashboard filter z localStorage (bez debounce)
+    // 💾 OKAMŽITĚ smazat všechny filtry z localStorage (bez debounce)
     // aby se po reloadu neuložil starý filtr
     if (userId) {
       try {
+        localStorage.setItem(`ordersV3_columnFilters_${userId}`, JSON.stringify(emptyFilters));
         localStorage.setItem(`ordersV3_dashboardFilters_${userId}`, JSON.stringify(emptyDashboardFilters));
       } catch (err) {
-        console.warn('Failed to clear dashboard filters from localStorage:', err);
+        console.warn('Failed to clear filters from localStorage:', err);
       }
     }
     

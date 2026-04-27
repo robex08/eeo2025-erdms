@@ -381,6 +381,33 @@ function isUserRecipientForEvent($db, $event, $userId) {
 }
 
 /**
+ * Zkontroluje, zda uživatel obdržel in-app notifikaci k planning události.
+ * Neřeší read/unread, stačí existence doručené notifikace.
+ * @param PDO $db
+ * @param int $eventId
+ * @param int $userId
+ * @return bool
+ */
+function hasPlanningEventNotificationForUser($db, $eventId, $userId) {
+    try {
+        $sql = "SELECT COUNT(*)
+                FROM " . TBL_NOTIFIKACE . " n
+                INNER JOIN " . TBL_NOTIFIKACE_PRECTENI . " nr ON nr.notifikace_id = n.id
+                WHERE n.typ = 'PLANNING_EVENT_CREATED'
+                  AND n.objekt_typ = 'planning_event'
+                  AND n.objekt_id = ?
+                  AND n.aktivni = 1
+                  AND nr.uzivatel_id = ?";
+        $stmt = $db->prepare($sql);
+        $stmt->execute([(int)$eventId, (int)$userId]);
+        return ((int)$stmt->fetchColumn()) > 0;
+    } catch (Exception $e) {
+        error_log('[Planning] hasPlanningEventNotificationForUser failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * Bezpecny check, zda sloupec existuje (pro kompatibilitu bez migrace).
  * @param PDO $db
  * @param string $table
@@ -938,15 +965,16 @@ function handle_planning_messages_create($input, $config) {
             }
         }
 
-        // Vytvořit notifikace pro příjemce
-        $zprava = [
-            'id' => $zprava_id,
-            'nazev' => $nazev,
-            'obsah' => $obsah,
-            'autor_id' => $token_data['id'],
-            'dt_do' => $input['dt_do'] ?? null
-        ];
-        createPlanningNotifications($db, $zprava, 'zprava', 'PLANNING_MESSAGE_CREATED');
+        // ❌ ZAKOMENTOVÁNO: Zprávy se NEPOSÍLAJÍ automaticky (dle požadavku)
+        // Zprávy se zobrazují pouze v scroll info message boxu na dashboardu
+        // $zprava = [
+        //     'id' => $zprava_id,
+        //     'nazev' => $nazev,
+        //     'obsah' => $obsah,
+        //     'autor_id' => $token_data['id'],
+        //     'dt_do' => $input['dt_do'] ?? null
+        // ];
+        // createPlanningNotifications($db, $zprava, 'zprava', 'PLANNING_MESSAGE_CREATED');
 
         http_response_code(201);
         echo json_encode([
@@ -1769,15 +1797,17 @@ function handle_planning_events_create($input, $config) {
             ]);
         }
 
-        // Vytvořit notifikace pro příjemce
-        $udalost = [
-            'id' => $udalost_id,
-            'nazev' => $nazev,
-            'popis' => $input['popis'] ?? '',
-            'autor_id' => $token_data['id'],
-            'dt_od' => $input['dt_od'] ?? null
-        ];
-        createPlanningNotifications($db, $udalost, 'udalost', 'PLANNING_EVENT_CREATED');
+        // ⚠️ ZMĚNA: Automatické notifikace VYPNUTY
+        // Notifikace se odesílají MANUÁLNĚ přes tlačítko "Odeslat notifikace"
+        // viz endpoint: planning/events/send-notifications
+        // $udalost = [
+        //     'id' => $udalost_id,
+        //     'nazev' => $nazev,
+        //     'popis' => $input['popis'] ?? '',
+        //     'autor_id' => $token_data['id'],
+        //     'dt_od' => $input['dt_od'] ?? null
+        // ];
+        // createPlanningNotifications($db, $udalost, 'udalost', 'PLANNING_EVENT_CREATED');
 
         http_response_code(201);
         echo json_encode([
@@ -2268,8 +2298,47 @@ function handle_planning_events_calendar($input, $config) {
 
         $now = parseCzechDateTime(TimezoneHelper::getCzechDateTime());
         $filtered = [];
+        
+        // ✅ Načíst všechny příjemce pro události (pro frontend)
+        $sqlPrijemci = "SELECT udalost_id, typ_prijemce, kod_role, user_id
+                       FROM " . TBL_PLAN_UDALOSTI_PRIJEMCI . "
+                       WHERE udalost_id IN ($placeholders)";
+        $stmtPrijemci = $db->prepare($sqlPrijemci);
+        $stmtPrijemci->execute($eventIds);
+        $prijemciRows = $stmtPrijemci->fetchAll(PDO::FETCH_ASSOC);
+        
+        $prijemciByEvent = [];
+        foreach ($prijemciRows as $row) {
+            $prijemciByEvent[$row['udalost_id']][] = $row;
+        }
+        
+        // ✅ Načíst detaily uživatelů pro příjemce typu 'user'
+        $userIds = array_values(array_unique(array_filter(
+            array_map(fn($r) => $r['user_id'], 
+                array_filter($prijemciRows, fn($r) => $r['typ_prijemce'] === 'user' && !empty($r['user_id'])))
+        )));
+        
+        $userDetails = [];
+        if (!empty($userIds)) {
+            $userPlaceholders = implode(',', array_fill(0, count($userIds), '?'));
+            $sqlUsers = "SELECT id, username, jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id IN ($userPlaceholders)";
+            $stmtUsers = $db->prepare($sqlUsers);
+            $stmtUsers->execute($userIds);
+            $usersData = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($usersData as $u) {
+                $userDetails[$u['id']] = $u;
+            }
+        }
+        
         foreach ($events as $event) {
             if (!isUserRecipientForEvent($db, $event, $token_data['id'])) {
+                continue;
+            }
+
+            // ✅ Můj přehled/kalendář: příjemce vidí událost až po odeslání planning notifikace.
+            // Organizátor (autor) ji vidí vždy.
+            $isAuthor = ((int)($event['autor_id'] ?? 0) === (int)$token_data['id']);
+            if (!$isAuthor && !hasPlanningEventNotificationForUser($db, (int)$event['id'], (int)$token_data['id'])) {
                 continue;
             }
 
@@ -2301,6 +2370,32 @@ function handle_planning_events_calendar($input, $config) {
 
             $event['terminy'] = $eventTerms;
             $event['hlavni_termin_id'] = !empty($eventTerms) ? (int)$eventTerms[0]['id'] : null;
+            
+            // ✅ Přidat příjemce události
+            $eventPrijemci = $prijemciByEvent[$event['id']] ?? [];
+            $event['prijemci'] = array_map(function($p) use ($userDetails) {
+                if ($p['typ_prijemce'] === 'user' && $p['user_id'] && isset($userDetails[$p['user_id']])) {
+                    $u = $userDetails[$p['user_id']];
+                    return [
+                        'typ' => 'user',
+                        'id' => (int)$u['id'],
+                        'username' => $u['username'],
+                        'jmeno' => $u['jmeno'],
+                        'prijmeni' => $u['prijmeni']
+                    ];
+                } else if ($p['typ_prijemce'] === 'role' && $p['kod_role']) {
+                    return [
+                        'typ' => 'role',
+                        'kod_role' => $p['kod_role']
+                    ];
+                } else {
+                    return null;
+                }
+            }, $eventPrijemci);
+            
+            // Odfiltrovat null hodnoty
+            $event['prijemci'] = array_values(array_filter($event['prijemci']));
+            
             $filtered[] = $event;
         }
 
@@ -2462,6 +2557,64 @@ function handle_planning_events_respond($input, $config) {
         $isFull = false;
         if ($term['kapacita'] !== null && $term['kapacita'] > 0) {
             $isFull = ($acceptedCount >= $term['kapacita']);
+        }
+
+        // 🔔 ODESLAT NOTIFIKACI ORGANIZÁTOROVI (pouze in-app, BEZ emailu)
+        $organizatorId = (int)$event['autor_id'];
+        if ($organizatorId && $organizatorId !== $token_data['id']) {
+            // Načíst jméno respondenta
+            $sqlRespondent = "SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM " . TBL_UZIVATELE . " WHERE id = ?";
+            $stmtRespondent = $db->prepare($sqlRespondent);
+            $stmtRespondent->execute([$token_data['id']]);
+            $respondentData = $stmtRespondent->fetch(PDO::FETCH_ASSOC);
+            $respondentName = $respondentData ? $respondentData['full_name'] : 'Uživatel';
+            
+            // Formátovat datum termínu
+            $terminDate = formatCzechDateTime($term['dt_od']);
+            
+            $actionText = $typOdpovedi === 'accepted' ? 'přijal' : 'odmítl';
+            $nadpis = sprintf('%s %s termín: %s', $respondentName, $actionText, $event['nazev']);
+            $zprava = sprintf('%s %s termín události "%s" (%s)', 
+                $respondentName, 
+                $actionText, 
+                $event['nazev'], 
+                $terminDate
+            );
+            
+            if ($poznamka) {
+                $zprava .= "\nPoznámka: " . $poznamka;
+            }
+
+            try {
+                createNotification($db, [
+                    ':typ' => 'PLANNING_EVENT_RESPONSE',
+                    ':nadpis' => $nadpis,
+                    ':zprava' => $zprava,
+                    ':data_json' => json_encode([
+                        'event_id' => $eventId,
+                        'termin_id' => $terminId,
+                        'respondent_id' => $token_data['id'],
+                        'respondent_name' => $respondentName,
+                        'response_type' => $typOdpovedi,
+                        'poznamka' => $poznamka
+                    ]),
+                    ':od_uzivatele_id' => $token_data['id'],
+                    ':pro_uzivatele_id' => $organizatorId,
+                    ':prijemci_json' => null,
+                    ':pro_vsechny' => 0,
+                    ':priorita' => 'normal',
+                    ':kategorie' => 'planning',
+                    ':odeslat_email' => 0, // ❌ BEZ EMAILU
+                    ':objekt_typ' => 'planning_event_response',
+                    ':objekt_id' => $eventId,
+                    ':dt_expires' => null,
+                    ':dt_created' => TimezoneHelper::getCzechDateTime(),
+                    ':aktivni' => 1
+                ]);
+            } catch (Exception $notifyEx) {
+                // Selhání notifikace nesmí zablokovat uložení odpovědi.
+                error_log('[Planning] Organizer notification failed in events/respond: ' . $notifyEx->getMessage());
+            }
         }
 
         http_response_code(200);
@@ -2698,7 +2851,410 @@ function handle_planning_recipients_users($input, $config) {
     }
 }
 
-// Další event handlers (get, update, delete) - obdobné jako pro messages
-// Pro stručnost je vynechávám, budou přidány v další iteraci pokud potřeba
+// ==========================================
+// 🆕 MANUÁLNÍ ODESLÁNÍ NOTIFIKACÍ
+// ==========================================
+
+/**
+ * Manuální odeslání notifikací pro událost
+ * POST planning/events/send-notifications
+ * Body: {token, username, event_id}
+ * 
+ * Odesílá email notifikace s detaily události a termíny všem příjemcům.
+ * Volá se manuálně z adminu přes tlačítko "Odeslat notifikace".
+ */
+function handle_planning_events_send_notifications($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $eventId = $input['event_id'] ?? null;
+    
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+
+    if (!$eventId) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí event_id']);
+        return;
+    }
+
+    $token_data = verify_token_v2($username, $token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // Načíst událost
+        $sqlEvent = "SELECT * FROM " . TBL_PLAN_UDALOSTI . " WHERE id = ?";
+        $stmtEvent = $db->prepare($sqlEvent);
+        $stmtEvent->execute([$eventId]);
+        $event = $stmtEvent->fetch(PDO::FETCH_ASSOC);
+
+        if (!$event) {
+            http_response_code(404);
+            echo json_encode(['status' => 'error', 'message' => 'Událost nenalezena']);
+            return;
+        }
+
+        // ⚠️ KONTROLA: Nelze odesílat notifikace pro disabled událost
+        if (!$event['aktivni']) {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Nelze odesílat notifikace pro neaktivní událost']);
+            return;
+        }
+
+        $authorId = (int)($event['autor_id'] ?? 0);
+        $actorId = (int)($token_data['id'] ?? 0);
+
+        // Upozornění: pokud odesílá jiný uživatel než organizátor, akci povolíme,
+        // ale vrátíme warning (uživatel má přístup do administrace plánování).
+        $sentByNonAuthor = ($authorId !== $actorId);
+        if ($sentByNonAuthor) {
+            error_log("[Planning] Manual send-notifications by non-author: event_id={$eventId}, actor_id={$actorId}, author_id={$authorId}");
+        }
+
+        error_log("[Planning] Manual send-notifications: event_id={$eventId}, actor_id={$actorId}, author_id={$authorId}");
+
+        // Načíst termíny
+        $sqlTerminy = "SELECT * FROM " . TBL_PLAN_UDALOSTI_TERMINY . " WHERE udalost_id = ? ORDER BY poradi ASC, dt_od ASC";
+        $stmtTerminy = $db->prepare($sqlTerminy);
+        $stmtTerminy->execute([$eventId]);
+        $terminy = $stmtTerminy->fetchAll(PDO::FETCH_ASSOC);
+
+        // 📊 Spočítat statistiku příjemců (pro message)
+        $sqlStats = "SELECT 
+                        SUM(CASE WHEN typ_prijemce = 'role' THEN 1 ELSE 0 END) as roles_count,
+                        SUM(CASE WHEN typ_prijemce = 'user' THEN 1 ELSE 0 END) as users_count,
+                        SUM(CASE WHEN typ_prijemce = 'all' THEN 1 ELSE 0 END) as all_count
+                     FROM " . TBL_PLAN_UDALOSTI_PRIJEMCI . " 
+                     WHERE udalost_id = ?";
+        $stmtStats = $db->prepare($sqlStats);
+        $stmtStats->execute([$eventId]);
+        $stats = $stmtStats->fetch(PDO::FETCH_ASSOC);
+        $rolesCount = (int)($stats['roles_count'] ?? 0);
+        $usersCount = (int)($stats['users_count'] ?? 0);
+        $allCount = (int)($stats['all_count'] ?? 0);
+
+        // Vytvořit notifikace (IN-APP vždy, EMAIL pokud je možné)
+        $result = sendPlanningEventNotifications($db, $event, $terminy, $authorId);
+
+        if (($result['count'] ?? 0) <= 0) {
+            http_response_code(400);
+            echo json_encode([
+                'status' => 'error',
+                'message' => 'Notifikace nebyly odeslány žádnému příjemci. Zkontrolujte příjemce události.',
+                'data' => $result
+            ]);
+            return;
+        }
+
+        // 📝 Sestavit message podle statistiky
+        $parts = [];
+        if ($rolesCount > 0) {
+            $parts[] = sprintf('%d rol%s', $rolesCount, $rolesCount == 1 ? 'i' : 'ím');
+        }
+        if ($usersCount > 0) {
+            $parts[] = sprintf('%d konkrétn%s uživatel%s', 
+                $usersCount, 
+                $usersCount == 1 ? 'ímu' : 'ím',
+                $usersCount == 1 ? 'i' : 'ům'
+            );
+        }
+        if ($allCount > 0) {
+            $parts[] = 'všem uživatelům';
+        }
+        
+        $recipientsInfo = !empty($parts) ? implode(' a ', $parts) : 'žádným příjemcům';
+        
+        $message = sprintf('Notifikace odeslány %d uživatel%s (%s)', 
+            $result['count'],
+            $result['count'] == 1 ? 'i' : 'ům',
+            $recipientsInfo
+        );
+
+        $message .= sprintf(', e-mail odeslán %d×', (int)($result['email_sent_count'] ?? 0));
+
+        $warning = null;
+        if ($sentByNonAuthor) {
+            $warning = 'Notifikace byly odeslány uživatelem, který není organizátor události.';
+            $message = 'Upozornění: ' . $warning . ' ' . $message;
+        }
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'message' => $message,
+            'data' => $result,
+            'warning' => $warning
+        ]);
+
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při odesílání notifikací: ' . $e->getMessage()
+        ]);
+        error_log("[Planning] Exception in events/send-notifications: " . $e->getMessage());
+    }
+}
+
+/**
+ * Helper funkce pro odeslání email notifikací o události
+ * 
+ * @param PDO $db
+ * @param array $event Data události
+ * @param array $terminy Seznam termínů
+ * @param int $organizatorId ID organizátora
+ * @return array ['count' => int, 'recipients' => array]
+ */
+function sendPlanningEventNotifications($db, $event, $terminy, $organizatorId) {
+    // Načíst jméno organizátora
+    $sqlOrg = "SELECT CONCAT(jmeno, ' ', prijmeni) as full_name FROM " . TBL_UZIVATELE . " WHERE id = ?";
+    $stmtOrg = $db->prepare($sqlOrg);
+    $stmtOrg->execute([$organizatorId]);
+    $orgData = $stmtOrg->fetch(PDO::FETCH_ASSOC);
+    $organizatorName = $orgData ? $orgData['full_name'] : 'Neznámý organizátor';
+
+    // Načíst příjemce (role + konkrétní uživatelé)
+    $explicitRecipients = getPlanningRecipients($db, $event['id'], 'udalost');
+    
+    // Načíst globální nastavení hierarchie
+    $globalSettings = getPlanningGlobalSettings($db);
+    
+    // Pokud je zapnuta hierarchie → získat příjemce i z hierarchie
+    $hierarchyRecipients = [];
+    if ($globalSettings['use_hierarchy']) {
+        $hierarchyResult = resolveHierarchyNotificationRecipients(
+            $db,
+            'PLANNING_EVENT_CREATED',
+            [
+                'record_id' => $event['id'],
+                'nazev' => $event['nazev'],
+                'autor_id' => $organizatorId
+            ],
+            $globalSettings['hierarchy_profile_id']
+        );
+        
+        if ($hierarchyResult && isset($hierarchyResult['recipients']) && !empty($hierarchyResult['recipients'])) {
+            $hierarchyRecipients = $hierarchyResult['recipients'];
+        }
+    }
+    
+    // Merge příjemců
+    $allRecipients = mergeRecipients($explicitRecipients, $hierarchyRecipients);
+    
+    // Načíst FRONTEND_BASE_URL z .env (bez hardcoded domény)
+    $frontendBaseUrl = $_ENV['FRONTEND_BASE_URL'] ?? '/dev/eeo-v2';
+    
+    // Sestavit link na událost (otevře postranní panel)
+    $eventLink = $frontendBaseUrl . '?eventId=' . $event['id'] . '&openPanel=true';
+    
+    // Načíst email šablonu (volitelně - in-app notifikace nesmí selhat kvůli chybějící šabloně)
+    $sqlTemplate = "SELECT * FROM 25_notifikace_sablony WHERE typ = 'PLANNING_EVENT_CREATED' AND aktivni = 1 LIMIT 1";
+    $stmtTemplate = $db->prepare($sqlTemplate);
+    $stmtTemplate->execute();
+    $template = $stmtTemplate->fetch(PDO::FETCH_ASSOC);
+
+    if (!$template || empty($template['email_telo']) || empty($template['email_predmet'])) {
+        $template = null;
+        error_log('[Planning] Email template PLANNING_EVENT_CREATED not available - will send IN-APP only');
+    }
+    
+    // Formátovat termíny pro email (HTML sekce)
+    $terminyHtml = buildTermsSectionHtml($terminy);
+    
+    $sentCount = 0;
+    $emailSentCount = 0;
+    $recipientsList = [];
+    $skippedNoEmail = 0;
+    $skippedMissingUser = 0;
+    $failedCreateNotification = 0;
+    $totalTargets = count($allRecipients);
+    
+    // Odeslat každému příjemci
+    foreach ($allRecipients as $recipient) {
+        // Načíst data příjemce
+        $sqlUser = "SELECT id, email, jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id = ?";
+        $stmtUser = $db->prepare($sqlUser);
+        $stmtUser->execute([$recipient['user_id']]);
+        $userData = $stmtUser->fetch(PDO::FETCH_ASSOC);
+
+        if (!$userData) {
+            $skippedMissingUser++;
+            error_log('[Planning] Recipient user not found, user_id=' . (int)$recipient['user_id']);
+            continue;
+        }
+        $hasEmail = !empty($userData['email']);
+        $recipientName = trim($userData['jmeno'] . ' ' . $userData['prijmeni']);
+        if ($recipientName === '') {
+            $recipientName = 'Uživatel #' . (int)$userData['id'];
+        }
+        
+        // Nahradit placeholdery v emailu (jen pokud je šablona dostupná)
+        $emailBody = null;
+        $emailSubject = null;
+        if ($template) {
+            $emailBody = $template['email_telo'];
+            $emailBody = str_replace('{recipient_name}', htmlspecialchars($recipientName), $emailBody);
+            $emailBody = str_replace('{event_title}', htmlspecialchars($event['nazev']), $emailBody);
+            // ✅ POPIS: Zachovat HTML formatting (email je HTML dokument)
+            $emailBody = str_replace('{event_description}', $event['popis'] ?? '', $emailBody);
+            $emailBody = str_replace('{organizer_name}', htmlspecialchars($organizatorName), $emailBody);
+            $emailBody = str_replace('{event_date}', formatCzechDate($event['dt_od']), $emailBody);
+            $emailBody = str_replace('{event_link}', $eventLink, $emailBody);
+            $emailBody = str_replace('{terms_section}', $terminyHtml, $emailBody);
+
+            $emailSubject = $template['email_predmet'];
+            $emailSubject = str_replace('{event_title}', $event['nazev'], $emailSubject);
+        }
+        
+        // ✅ ZACHOVAT HTML formátování pro in-app notifikaci
+        $htmlPopis = '';
+        if (!empty($event['popis'])) {
+            // Zachovat HTML tagy pro formátování (b, strong, i, em, u, br, ul, ol, li)
+            $htmlPopis = strip_tags($event['popis'], '<b><strong><i><em><u><br><ul><ol><li>');
+            // Odstranit nadbytečné prázdné řádky
+            $htmlPopis = preg_replace('/(<br\s*\/?>){3,}/', '<br><br>', $htmlPopis);
+            $htmlPopis = trim($htmlPopis);
+        }
+        
+        // Vytvořit notifikaci (IN-APP + EMAIL)
+        $notifikaceId = createNotification($db, [
+            ':typ' => 'PLANNING_EVENT_CREATED',
+            ':nadpis' => $event['nazev'],
+            ':zprava' => $htmlPopis,
+            ':data_json' => json_encode([
+                'event_id' => $event['id'],
+                'nazev' => $event['nazev'],
+                'organizator' => $organizatorName,
+                'dt_od' => $event['dt_od'],
+                'terminy' => $terminy
+            ]),
+            ':od_uzivatele_id' => $organizatorId,
+            ':pro_uzivatele_id' => $recipient['user_id'],
+            ':prijemci_json' => null,
+            ':pro_vsechny' => 0,
+            ':priorita' => 'normal',
+            ':kategorie' => 'planning',
+            ':odeslat_email' => $hasEmail ? 1 : 0,
+            ':objekt_typ' => 'planning_event',
+            ':objekt_id' => $event['id'],
+            ':dt_expires' => null, // ❌ PLANNING notifikace NEVYPRŠUJÍ automaticky
+            ':dt_created' => TimezoneHelper::getCzechDateTime(),
+            ':aktivni' => 1
+        ]);
+
+        if (!$notifikaceId) {
+            $failedCreateNotification++;
+            error_log('[Planning] createNotification failed for user_id=' . (int)$recipient['user_id'] . ', event_id=' . (int)$event['id']);
+            continue;
+        }
+
+        $sentCount++;
+
+        // 📧 ODESLAT EMAIL - použít existující funkci z notificationHandlers.php
+        $emailSent = false;
+        if ($hasEmail && $template && $emailSubject !== null && $emailBody !== null) {
+            $emailResult = sendNotificationEmail($db, $recipient['user_id'], $emailSubject, $emailBody);
+            $emailSent = $emailResult['ok'] ?? false;
+
+            // Aktualizovat flag email_odeslan v DB
+            if ($emailSent) {
+                $sqlUpdateEmail = "UPDATE " . TBL_NOTIFIKACE . " 
+                                  SET email_odeslan = 1, email_odeslan_kdy = NOW() 
+                                  WHERE id = ?";
+                $stmtUpdateEmail = $db->prepare($sqlUpdateEmail);
+                $stmtUpdateEmail->execute([$notifikaceId]);
+                $emailSentCount++;
+            }
+        } else if (!$hasEmail) {
+            $skippedNoEmail++;
+        }
+
+        $recipientsList[] = [
+            'user_id' => $recipient['user_id'],
+            'email' => $userData['email'] ?? null,
+            'name' => $recipientName,
+            'email_sent' => $emailSent,
+            'notification_created' => true
+        ];
+    }
+
+    return [
+        'count' => $sentCount,
+        'email_sent_count' => $emailSentCount,
+        'recipients' => $recipientsList,
+        'total_targets' => $totalTargets,
+        'skipped_no_email' => $skippedNoEmail,
+        'skipped_missing_user' => $skippedMissingUser,
+        'failed_create_notification' => $failedCreateNotification
+    ];
+}
+
+/**
+ * Sestaví HTML sekci s termíny pro email
+ */
+function buildTermsSectionHtml($terminy) {
+    if (empty($terminy)) {
+        return '<p style="color: #6b7280; font-size: 14px;">Žádné termíny nebyly zadány.</p>';
+    }
+    
+    $html = '<table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="border-collapse: collapse; background-color: #f0fdf4; border: 2px solid #bbf7d0; margin-bottom: 30px;">';
+    $html .= '<tr><td style="padding: 20px;">';
+    $html .= '<h2 style="margin: 0 0 15px 0; color: #15803d; font-size: 18px; font-weight: 700; font-family: Arial, sans-serif;">📅 Dostupné termíny</h2>';
+    
+    foreach ($terminy as $idx => $termin) {
+        $dtOd = formatCzechDateTime($termin['dt_od']);
+        $dtDo = !empty($termin['dt_do']) ? ' - ' . formatCzechDateTime($termin['dt_do']) : '';
+        $kapacita = '';
+        if ($termin['kapacita']) {
+            $kapacita = ' <span style="color: #059669; font-weight: 600;">(Kapacita: ' . $termin['kapacita'] . ' míst)</span>';
+        }
+        $poznamka = !empty($termin['poznamka']) ? '<br><em style="color: #6b7280; font-size: 13px;">' . htmlspecialchars($termin['poznamka']) . '</em>' : '';
+        
+        $html .= '<p style="margin: 10px 0; font-size: 14px; color: #1f2937; font-family: Arial, sans-serif;">';
+        $html .= '<strong>Termín ' . ($idx + 1) . ':</strong> ' . $dtOd . $dtDo . $kapacita . $poznamka;
+        $html .= '</p>';
+    }
+    
+    $html .= '</td></tr></table>';
+    return $html;
+}
+
+/**
+ * Formátuje datum do češtiny
+ */
+function formatCzechDate($dateStr) {
+    if (!$dateStr) return '';
+    $date = new DateTime($dateStr);
+    $months = ['ledna', 'února', 'března', 'dubna', 'května', 'června', 'července', 'srpna', 'září', 'října', 'listopadu', 'prosince'];
+    return $date->format('j') . '. ' . $months[(int)$date->format('n') - 1] . ' ' . $date->format('Y');
+}
+
+/**
+ * Formátuje datum a čas do češtiny
+ */
+function formatCzechDateTime($dateStr) {
+    if (!$dateStr) return '';
+    $date = new DateTime($dateStr);
+    return formatCzechDate($dateStr) . ' v ' . $date->format('H:i');
+}
 
 ?>

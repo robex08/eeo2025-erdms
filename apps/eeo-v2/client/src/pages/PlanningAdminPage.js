@@ -7,7 +7,7 @@ import {
   faSearch, faEraser, faExclamationTriangle, faExpand, faCompress,
   faBold, faItalic, faUnderline, faListUl, faListOl, faLink, faUnlink, faCode,
   faEye, faEyeSlash, faCheckCircle, faTimesCircle, faUser,
-  faTrophy, faMinus, faSortAlphaDown, faFilter, faBolt
+  faTrophy, faMinus, faSortAlphaDown, faFilter, faBolt, faPaperPlane
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -368,7 +368,7 @@ const TableRow = styled.tr``;
 
 const TableHeader = styled.th`
   padding: 0.35rem 0.5rem 0.2rem 0.5rem;
-  text-align: left;
+  text-align: center;
   font-weight: 600;
   color: #334155 !important;
   text-transform: uppercase;
@@ -710,6 +710,29 @@ const ModalBody = styled.div`
   padding: 1rem 1.25rem;
   overflow-y: auto;
   flex: 1;
+
+  /* Custom scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f1f5f9;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 5px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 5px;
+    border: 2px solid #f1f5f9;
+
+    &:hover {
+      background: #94a3b8;
+    }
+  }
 `;
 
 const ModalFooter = styled.div`
@@ -798,7 +821,7 @@ const SendToAllToggle = styled.div`
 // Řádek s termínem (4 pickery + tlačítko odebrat)
 const TerminRow = styled.div`
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  grid-template-columns: 1fr 0.8fr 1fr 0.8fr auto auto;
   gap: 0.5rem;
   align-items: end;
   padding: 0.45rem;
@@ -814,6 +837,29 @@ const TerminyList = styled.div`
   max-height: 38vh;
   overflow-y: auto;
   padding-right: 0.25rem;
+
+  /* Custom scrollbar styling */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 #f8fafc;
+
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f8fafc;
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+    border: 2px solid #f8fafc;
+
+    &:hover {
+      background: #94a3b8;
+    }
+  }
 
   @media (max-height: 800px) {
     max-height: 32vh;
@@ -1178,7 +1224,7 @@ const EmptyState = styled.div`
 // =============================================================================
 
 const PlanningAdminPage = () => {
-  const { hasPermission } = useContext(AuthContext);
+  const { hasPermission, user_id } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
   const [activeTab, setActiveTab] = useState(() => {
@@ -1196,6 +1242,7 @@ const PlanningAdminPage = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState({ open: false, id: null, type: null, name: '' });
+  const [confirmSendNotifications, setConfirmSendNotifications] = useState({ open: false, event: null, nonAuthor: false });
   const [isModalFullScreen, setIsModalFullScreen] = useState(false);
   const [isHtmlView, setIsHtmlView] = useState(false);
   const editorRef = useRef(null);
@@ -1955,6 +2002,49 @@ const PlanningAdminPage = () => {
     } catch (error) {
       console.error('❌ Chyba změny stavu:', error);
       showToast('Chyba při změně stavu', 'error');
+    }
+  };
+
+  /**
+   * 🆕 Manuální odeslání notifikací pro událost - otevřít confirm dialog
+   */
+  const handleSendNotifications = (item) => {
+    // Kontrola zda je událost aktivní
+    if (Number(item?.aktivni) !== 1) {
+      showToast('Nelze odesílat notifikace pro neaktivní událost', 'error');
+      return;
+    }
+
+    const isAuthor = Number(item?.autor_id) === Number(user_id);
+
+    setConfirmSendNotifications({
+      open: true,
+      event: item,
+      nonAuthor: !isAuthor
+    });
+  };
+
+  const closeSendNotificationsConfirm = () => {
+    setConfirmSendNotifications({ open: false, event: null, nonAuthor: false });
+  };
+
+  const executeSendNotifications = async () => {
+    if (!confirmSendNotifications.event) {
+      closeSendNotificationsConfirm();
+      return;
+    }
+
+    try {
+      const result = await planningApi.sendEventNotifications(confirmSendNotifications.event.id);
+      // ✅ Použít message z backendu (obsahuje detaily o rolích a uživatelích)
+      const successMsg = result.data?.message || result.message || `Notifikace odeslány ${result.data?.count || 0} příjemcům`;
+      showToast(successMsg, 'success');
+    } catch (error) {
+      console.error('❌ Chyba odeslání notifikací:', error);
+      const errorMsg = error.response?.data?.message || 'Chyba při odesílání notifikací';
+      showToast(errorMsg, 'error');
+    } finally {
+      closeSendNotificationsConfirm();
     }
   };
 
@@ -2838,18 +2928,44 @@ const PlanningAdminPage = () => {
                               </TableCell>
                             )}
                             <TableCell className="center">
+                              {(() => {
+                                const isAuthor = Number(item?.autor_id) === Number(user_id);
+                                const canSendNotifications = isActive;
+                                const sendTitle = !isActive
+                                  ? 'Odeslat notifikace příjemcům (událost je neaktivní)'
+                                  : (isAuthor
+                                    ? 'Odeslat notifikace příjemcům'
+                                    : 'Nejste organizátor události - po potvrzení lze notifikaci odeslat');
+                                return (
+                                  <>
                               <IconButton
                                 onClick={() => handleToggleActive(item)}
                                 title={isActive ? 'Deaktivovat' : 'Aktivovat'}
                               >
                                 <FontAwesomeIcon icon={isActive ? faEye : faEyeSlash} style={{ color: toggleIconColor }} />
                               </IconButton>
+                              {activeTab === 'events' && (
+                                <IconButton
+                                  onClick={() => handleSendNotifications(item)}
+                                  title={sendTitle}
+                                  disabled={!canSendNotifications}
+                                  style={{
+                                    opacity: canSendNotifications ? 1 : 0.4,
+                                    cursor: canSendNotifications ? 'pointer' : 'not-allowed'
+                                  }}
+                                >
+                                  <FontAwesomeIcon icon={faPaperPlane} style={{ color: canSendNotifications ? '#3b82f6' : '#94a3b8' }} />
+                                </IconButton>
+                              )}
                               <IconButton onClick={() => handleEdit(item)} title="Upravit">
                                 <FontAwesomeIcon icon={faEdit} />
                               </IconButton>
                               <IconButton $variant="danger" onClick={() => openDeleteConfirm(item)} title="Smazat">
                                 <FontAwesomeIcon icon={faTrash} />
                               </IconButton>
+                                  </>
+                                );
+                              })()}
                             </TableCell>
                           </TableRow>
                           {activeTab === 'events' && isExpanded && responsesCount > 0 && (
@@ -3113,6 +3229,43 @@ const PlanningAdminPage = () => {
         variant="danger"
         cancelText="Zrušit"
         confirmText="Smazat"
+      />
+
+      <ConfirmDialog
+        isOpen={confirmSendNotifications.open}
+        onClose={closeSendNotificationsConfirm}
+        onConfirm={executeSendNotifications}
+        title="Odeslat notifikace?"
+        message={
+          confirmSendNotifications.event ? (() => {
+            const event = confirmSendNotifications.event;
+            const rolesCount = Array.isArray(event.prijemci_roles) ? event.prijemci_roles.length : 0;
+            const usersCount = Array.isArray(event.prijemci_users) ? event.prijemci_users.length : 0;
+            
+            let recipientsInfo = [];
+            if (rolesCount > 0) {
+              recipientsInfo.push(`${rolesCount} rol${rolesCount === 1 ? 'i' : 'ím'}`);
+            }
+            if (usersCount > 0) {
+              recipientsInfo.push(`${usersCount} konkrétn${usersCount === 1 ? 'ímu uživateli' : 'ím uživatelům'}`);
+            }
+            
+            const recipientsText = recipientsInfo.length > 0 
+              ? recipientsInfo.join(' a ') 
+              : 'příjemcům';
+
+            const organizerName = `${event.autor_jmeno || ''} ${event.autor_prijmeni || ''}`.trim() || 'neuveden';
+            const warningText = confirmSendNotifications.nonAuthor
+              ? `Upozornění: nejste organizátor této události (organizátor: ${organizerName}). Přesto chcete notifikace odeslat? `
+              : '';
+
+            return `${warningText}Notifikace o události "${event.nazev}" budou odeslány ${recipientsText}.`;
+          })() : ''
+        }
+        icon={faPaperPlane}
+        variant="primary"
+        cancelText="Zrušit"
+        confirmText="Odeslat"
       />
 
       {/* Modal pro vytváření/editaci */}

@@ -1631,13 +1631,6 @@ function _dashboard_get_notifications_recent($db, $user_id, $days = 7, $limit = 
     $stmt->execute([$user_id, (int)$days]);
     $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // DEBUG: Log prvních notifikací
-    if (count($notifications) > 0) {
-        error_log("🔔 [Dashboard Notifications] Počet: " . count($notifications));
-        $first = $notifications[0];
-        error_log("🔔 [First notif] typ={$first['typ']}, objekt_typ={$first['objekt_typ']}, stav_obj={$first['stav_objednavky']}, stav_fa={$first['faktura_stav']}");
-    }
-    
     // Parsuj data_json + doplň čísla a jména z DB
     return array_map(function($notif) {
         $data = $notif['data_json'] ? json_decode($notif['data_json'], true) : [];

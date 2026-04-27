@@ -7,7 +7,7 @@ import styled, { keyframes } from 'styled-components';
 import { AuthContext } from '../context/AuthContext';
 import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { getDashboardData, getCashbookSummary, getActiveUsersAdmin, getDashboardChartTimeline, getRssFeed, getFinanceMarkets, getFinanceChart } from '../services/apiDashboard';
-import { getAdminMessagesUnreadCount } from '../services/notificationsApi';
+import { getAdminMessagesUnreadCount, markNotificationAsRead } from '../services/notificationsApi';
 import { fetchUserSettings, saveUserSettings } from '../services/userSettingsApi';
 import { fetchMySubstitutions, fetchCurrentlySubstituting } from '../services/apiSubstitution';
 import * as planningApi from '../services/planningApi';
@@ -251,7 +251,7 @@ const createExternalStatsWindow = async (type, initialData, onCloseCallback) => 
   }
 
   if (!win) {
-    alert('Vyskakovací okno bylo zablokováno. Povolte prosím pop-up okna.');
+    console.warn('Vyskakovací okno bylo zablokováno. Povolte prosím pop-up okna.');
     return null;
   }
 
@@ -1452,6 +1452,12 @@ const AlertMsg = styled.div`
   margin-top: 0.1rem;
 `;
 
+const AlertMeta = styled.div`
+  font-size: 0.7rem;
+  color: ${theme.colors.gray400};
+  margin-top: 0.2rem;
+`;
+
 const NotifItem = styled.div`
   display: flex;
   gap: 0.6rem;
@@ -1885,12 +1891,14 @@ const getInitials = (jmeno, prijmeni) => {
 const getAlertBg = (type) => {
   if (type === 'danger') return '#fef2f2';
   if (type === 'warning') return '#fffbeb';
+  if (type === 'planning') return '#e0f2fe';
   return '#f0fdf4';
 };
 
 const getAlertColor = (type) => {
   if (type === 'danger') return '#dc2626';
   if (type === 'warning') return '#f59e0b';
+  if (type === 'planning') return '#0284c7';
   return '#10b981';
 };
 
@@ -3703,7 +3711,7 @@ const CAL_MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červ
 const CAL_DAYS   = ['Po','Út','St','Čt','Pá','So','Ne'];
 const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i);
 
-function CalendarWidget({ token, username, mySubstitutions, substituting, onHeaderButton }) {
+function CalendarWidget({ token, username, mySubstitutions, substituting, onHeaderButton, onPlanningEventsUpdate, urlEventId, urlOpenPanel }) {
   const today = new Date();
   
   // Načíst uložený stav kalendáře z localStorage
@@ -3728,6 +3736,8 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
   const [calendarError, setCalendarError] = useState(false);
   const [panelDayKey, setPanelDayKey] = useState(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [panelTargetEventId, setPanelTargetEventId] = useState(null);
+  const [panelDirectEvent, setPanelDirectEvent] = useState(null);
   const [termNotes, setTermNotes] = useState({}); // { [termId]: 'poznamka' }
   const [flashState, setFlashState] = useState({}); // { [termId]: 'accepted' | 'declined' }
   const [toast, setToast] = useState(null); // { type, message }
@@ -3855,22 +3865,11 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
       const dtOdpovedi = new Date().toISOString();
       const newResponse = { typ_odpovedi: type, poznamka, dt_odpovedi: dtOdpovedi, termin_id: terminId };
 
-      // Flash efekt
-      setFlashState(prev => ({ ...prev, [terminId]: `${type}-${Date.now()}` }));
-      setTimeout(() => {
-        setFlashState(prev => {
-          const copy = { ...prev };
-          delete copy[terminId];
-          return copy;
-        });
-      }, 3000);
-
-      // Toast hláška
-      setToast({
-        type,
-        message: type === 'accepted' ? '✓ Termín potvrzen' : '✕ Termín odmítnut'
-      });
-      setTimeout(() => setToast(null), 2200);
+      // Flash efekt pouze v postranním panelu (portal).
+      // Nevynucujeme timeout-clear, aby kalendář zbytečně neproblikával re-renderem.
+      if (panelOpen) {
+        setFlashState(prev => ({ ...prev, [terminId]: `${type}-${Date.now()}` }));
+      }
 
       setCalendarEvents(prev => prev.map(ev => {
         if (ev.id !== event.id) return ev;
@@ -3978,6 +3977,91 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
     return () => { cancelled = true; };
   }, [viewYear, viewMonth]);
 
+  // 📅 Filtrování planning událostí pro aktuálního uživatele (k reakci)
+  const myPlanningEvents = useMemo(() => {
+    if (!username || !calendarEvents || calendarEvents.length === 0) return [];
+    
+    const now = new Date();
+    
+    return calendarEvents.filter(event => {
+      // Pouze aktivní události
+      if (!event.aktivni || event.aktivni === 0) return false;
+      
+      // Má alespoň jeden termín v budoucnosti
+      const hasFutureTerm = event.terminy?.some(term => {
+        const termDate = term.dt_do ? new Date(term.dt_do) : (term.dt_od ? new Date(term.dt_od) : null);
+        return termDate && termDate > now;
+      });
+      if (!hasFutureTerm) return false;
+      
+      // Uživatel je v příjemcích nebo má na událost reagovat
+      const isPrijemce = event.prijemci?.some(p => p.username === username);
+      if (!isPrijemce) return false;
+      
+      // Ještě nemá odpověď nebo má odpověď 'null'
+      const hasResponse = event.terminy?.some(term => {
+        const response = term.responses?.find(r => r.username === username);
+        return response && response.odpoved && response.odpoved !== 'null';
+      });
+      
+      return !hasResponse; // Vrátit pouze pokud NEMÁ odpověď
+    });
+  }, [username, calendarEvents]);
+
+  // Posílat my planning events ven přes callback
+  useEffect(() => {
+    if (onPlanningEventsUpdate) {
+      onPlanningEventsUpdate(myPlanningEvents);
+    }
+  }, [myPlanningEvents, onPlanningEventsUpdate]);
+
+  // 🆕 Automatické otevření panelu události z URL parametrů (z emailové notifikace)
+  useEffect(() => {
+    if (!urlEventId || !urlOpenPanel) return;
+
+    setPanelTargetEventId(Number(urlEventId));
+
+    // Načíst konkrétní událost podle ID (ne čekat na calendarEvents)
+    const loadEventAndOpenPanel = async () => {
+      try {
+        const eventResponse = await planningApi.getEvent(urlEventId);
+        const event = eventResponse?.data || eventResponse || null;
+        setPanelDirectEvent(event || null);
+
+        if (event && event.terminy && event.terminy.length > 0) {
+          // Najít nejbližší termín
+          const firstTerm = event.terminy[0];
+          if (firstTerm && firstTerm.dt_od) {
+            // Parsovat datum termínu
+            const termDate = parseSqlDateTime(firstTerm.dt_od);
+            if (termDate) {
+
+              // Nastavit správný měsíc/rok v kalendáři
+              const eventYear = termDate.getFullYear();
+              const eventMonth = termDate.getMonth();
+              
+              // Přepnout kalendář na měsíc události
+              setViewYear(eventYear);
+              setViewMonth(eventMonth);
+              localStorage.setItem('dashboardCalendarState', JSON.stringify({ year: eventYear, month: eventMonth }));
+              
+              // Nastavit key pro panel (po krátké pauze, aby se stihly načíst události)
+              setTimeout(() => {
+                const key = `${eventYear}-${String(eventMonth + 1).padStart(2, '0')}-${String(termDate.getDate()).padStart(2, '0')}`;
+                setPanelDayKey(key);
+                setPanelOpen(true);
+              }, 500);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('❌ [CalendarWidget] Chyba při načítání události z URL:', error);
+      }
+    };
+
+    loadEventAndOpenPanel();
+  }, [urlEventId, urlOpenPanel]); // Spustit když se změní URL parametry
+
   const firstDay = new Date(viewYear, viewMonth, 1);
   const lastDay  = new Date(viewYear, viewMonth + 1, 0);
   const startPad = (firstDay.getDay() + 6) % 7;
@@ -4029,8 +4113,26 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
         if (!exists) grouped[event.id].terms.push(term);
       }
     });
-    return Object.values(grouped);
-  }, [eventsByDate, panelDayKey]);
+
+    const allEvents = Object.values(grouped);
+
+    // Režim cíleného detailu (proklik z Můj přehled / notifikace)
+    if (panelTargetEventId) {
+      if (panelDirectEvent && Number(panelDirectEvent.id) === Number(panelTargetEventId)) {
+        return [{
+          event: panelDirectEvent,
+          terms: Array.isArray(panelDirectEvent.terminy) ? panelDirectEvent.terminy : []
+        }];
+      }
+
+      const matched = allEvents.find(({ event }) => Number(event.id) === Number(panelTargetEventId));
+      if (matched) return [matched];
+
+      return [];
+    }
+
+    return allEvents;
+  }, [eventsByDate, panelDayKey, panelTargetEventId, panelDirectEvent]);
 
   const panelDateLabel = panelDayKey ? formatCzDate(panelDayKey) : '';
 
@@ -4395,6 +4497,9 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
                     return;
                   }
 
+                  // Běžný klik v kalendáři = denní režim (bez fixace na konkrétní událost)
+                  setPanelTargetEventId(null);
+                  setPanelDirectEvent(null);
                   setPanelDayKey(dayKey);
                   setPanelOpen(true);
                 }
@@ -4460,7 +4565,12 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
       {panelOpen && (
         <SlideInDetailPanel
           isOpen={panelOpen}
-          onClose={() => setPanelOpen(false)}
+          onClose={() => {
+            setPanelOpen(false);
+            setPanelTargetEventId(null);
+            setPanelDirectEvent(null);
+            setFlashState({});
+          }}
           entityType="planning_event"
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -4494,6 +4604,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
                   termNotes={termNotes}
                   onTermNoteChange={(id, note) => setTermNotes(prev => ({ ...prev, [id]: note }))}
                   isTermSelected={isTermOnSelectedDay}
+                  showResponseStatus={false}
                 />
               );
             })}
@@ -4584,7 +4695,7 @@ function CalendarWidget({ token, username, mySubstitutions, substituting, onHead
 }
 
 // ── Vítejte ──────────────────────────────────────────────────────────────────
-function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogin, myStats, navigate, substituting, mySubstitutions }) {
+function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogin, myStats, navigate, substituting, mySubstitutions, myPlanningEvents, onOpenPlanningEvent }) {
   // Helper - formátování data do CZ formátu
   const formatCzDate = (dateStr) => {
     if (!dateStr) return '';
@@ -4706,6 +4817,158 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
 
     const parsed = new Date(`${raw}T00:00:00`);
     return isNaN(parsed) ? null : parsed;
+  };
+
+  const planningOverviewItems = useMemo(() => {
+    const now = new Date();
+
+    return (Array.isArray(myPlanningEvents) ? myPlanningEvents : [])
+      .map(event => {
+        const validTerms = (Array.isArray(event.terminy) ? event.terminy : [])
+          .filter(term => {
+            const dt = parseSqlDateTime(term.dt_do || term.dt_od);
+            return dt && dt > now;
+          })
+          .sort((a, b) => {
+            const aTime = (parseSqlDateTime(a.dt_od || a.dt_do)?.getTime()) || Number.MAX_SAFE_INTEGER;
+            const bTime = (parseSqlDateTime(b.dt_od || b.dt_do)?.getTime()) || Number.MAX_SAFE_INTEGER;
+            return aTime - bTime;
+          });
+
+        if (validTerms.length === 0) return null;
+
+        const nearestTerm = validTerms[0];
+        const nearestTime = (parseSqlDateTime(nearestTerm.dt_od || nearestTerm.dt_do)?.getTime()) || Number.MAX_SAFE_INTEGER;
+
+        return {
+          event,
+          eventTitle: event.nadpis || event.nazev || 'Událost',
+          validTermsCount: validTerms.length,
+          validTerms,
+          nearestTime,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.nearestTime - b.nearestTime);
+  }, [myPlanningEvents]);
+
+  const formatOverviewDateTime = (value) => {
+    const d = parseSqlDateTime(value);
+    if (!d) return '';
+    const dd = String(d.getDate()).padStart(2, '0');
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    return `${dd}.${mm}.${yyyy} ${hh}:${min}`;
+  };
+
+  const formatOverviewResponseLabel = (value) => {
+    if (value === 'accepted') return 'Akceptováno';
+    if (value === 'declined') return 'Odmítnuto';
+    return value || '—';
+  };
+
+  const getOverviewTermLabel = (term) => {
+    if (!term?.dt_od) return 'Termín';
+    const start = formatOverviewDateTime(term.dt_od);
+    const end = term?.dt_do ? formatOverviewDateTime(term.dt_do) : '';
+    return end ? `${start} – ${end}` : start;
+  };
+
+  const renderPlanningOverviewTooltip = (item) => {
+    if (!item?.event) return null;
+
+    const event = item.event;
+    const terms = Array.isArray(item.validTerms) ? item.validTerms : [];
+    const primaryTerm = terms[0] || null;
+    const primaryResp = primaryTerm?.moje_odpoved?.typ_odpovedi;
+    const primaryIsFull = primaryTerm?.is_full === true;
+    const primaryIsUserAccepted = primaryResp === 'accepted';
+    const primaryIsBlocked = primaryIsFull && !primaryIsUserAccepted;
+    const organizator = event.autor_jmeno && event.autor_prijmeni
+      ? `${event.autor_jmeno} ${event.autor_prijmeni}`
+      : '—';
+    const telefon = event.autor_telefon || '—';
+    const email = event.autor_email || '—';
+
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.25rem' }}>
+          <span>📅</span>
+          <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 600 }}>{item.eventTitle}</span>
+          {primaryIsBlocked && (
+            <span style={{
+              marginLeft: 'auto',
+              background: '#fef9c3',
+              color: '#991b1b',
+              padding: '0.1rem 0.4rem',
+              borderRadius: '4px',
+              fontSize: '0.65rem',
+              fontWeight: 700
+            }}>
+              🔴 Obsazeno
+            </span>
+          )}
+        </div>
+
+        <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+          👤 {organizator}
+        </div>
+        <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+          📞 {telefon}
+        </div>
+        <div style={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+          📧 {email}
+        </div>
+
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.55rem', paddingTop: '0.4rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '0.35rem' }}>
+            Platné termíny ({terms.length})
+          </div>
+
+          {terms.map((term, idx) => {
+            const resp = term?.moje_odpoved?.typ_odpovedi;
+            const isFull = term?.is_full === true;
+            const isUserAccepted = resp === 'accepted';
+            const isBlocked = isFull && !isUserAccepted;
+
+            return (
+              <div key={term.id || `${event.id}-${idx}`} style={{ marginBottom: idx < terms.length - 1 ? '0.55rem' : 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                  <span>🕒</span>
+                  <span style={{ color: '#cbd5e1', fontSize: '0.75rem' }}>
+                    {getOverviewTermLabel(term)}{resp && ` • ${formatOverviewResponseLabel(resp)}`}
+                  </span>
+                  {isBlocked && (
+                    <span style={{
+                      marginLeft: 'auto',
+                      background: '#fef9c3',
+                      color: '#991b1b',
+                      padding: '0.08rem 0.35rem',
+                      borderRadius: '4px',
+                      fontSize: '0.64rem',
+                      fontWeight: 700
+                    }}>
+                      🔴 Obsazeno
+                    </span>
+                  )}
+                </div>
+                {idx < terms.length - 1 && (
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', marginTop: '0.35rem' }} />
+                )}
+              </div>
+            );
+          })}
+
+          {terms.length === 0 && (
+            <div style={{ color: '#94a3b8', fontSize: '0.72rem' }}>
+              Bez platných termínů
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   const activePlanningMessages = useMemo(() => {
@@ -4951,6 +5214,38 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
               <FontAwesomeIcon icon={faUser} style={{ marginRight: '0.3rem' }} />
               Můj přehled
             </NewsSectionTitle>
+            {/* 0. Planning události k reakci - vždy jako první */}
+            {planningOverviewItems.map(item => {
+              const planningItem = (
+                <NewsItem
+                  $bg="#e0f2fe"
+                  onClick={() => {
+                    if (onOpenPlanningEvent) {
+                      onOpenPlanningEvent(item.event.id);
+                    }
+                  }}
+                >
+                  <NewsIcon $color="#0284c7"><FontAwesomeIcon icon={faCalendarAlt} /></NewsIcon>
+                  <NewsText>{item.eventTitle}</NewsText>
+                  <NewsCount $color="#0284c7">{item.validTermsCount}</NewsCount>
+                </NewsItem>
+              );
+
+              return (
+                <SmartTooltip
+                  key={`event-${item.event.id}`}
+                  text={renderPlanningOverviewTooltip(item)}
+                  icon="none"
+                  multiline
+                  preferredPosition="right"
+                  maxWidth="430px"
+                  interactive
+                  stretch
+                >
+                  {planningItem}
+                </SmartTooltip>
+              );
+            })}
             {/* 1. Ke schválení / rozpracované */}
             {myStats.objednavky_k_vyrizeni > 0 && (
               <NewsItem $bg="#fef3c7" onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'ke_schvaleni', clearFilters: true } })}>
@@ -4993,11 +5288,11 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
                 <NewsCount $color="#7c3aed">{myStats.ke_zverejneni}</NewsCount>
               </NewsItem>
             )}
-            {/* 5. Faktury k potvrzení */}
+            {/* 5. Faktury k potvrzení věcné správnosti */}
             {myStats.faktury_k_potvrzeni > 0 && (
-              <NewsItem $bg="#e0f2fe" onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_invoices', clearFilters: true } })}>
+              <NewsItem $bg="#e0f2fe" onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_unchecked_invoices', clearFilters: true } })}>
                 <NewsIcon $color="#0284c7"><FontAwesomeIcon icon={faFileInvoice} /></NewsIcon>
-                <NewsText>Faktury k potvrzení</NewsText>
+                <NewsText>Faktury k potvrzení věcné správnosti</NewsText>
                 <NewsCount $color="#0284c7">{myStats.faktury_k_potvrzeni}</NewsCount>
               </NewsItem>
             )}
@@ -5014,7 +5309,7 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
                 <NewsCount $color="#059669">{myStats.vyfakturovane_nedokoncene.count}</NewsCount>
               </NewsItem>
             )}
-            {myStats.objednavky_k_vyrizeni === 0 && myStats.faktury_k_potvrzeni === 0 && myStats.ke_zverejneni === 0 && myStats.odeslane_bez_faktury?.count === 0 && myStats.schvalene_k_odeslani?.count === 0 && myStats.vyfakturovane_nedokoncene?.count === 0 && (
+            {myStats.objednavky_k_vyrizeni === 0 && myStats.faktury_k_potvrzeni === 0 && myStats.ke_zverejneni === 0 && myStats.odeslane_bez_faktury?.count === 0 && myStats.schvalene_k_odeslani?.count === 0 && myStats.vyfakturovane_nedokoncene?.count === 0 && planningOverviewItems.length === 0 && (
               <NewsEmpty>Vše vyřízeno ✓</NewsEmpty>
             )}
           </NewsSection>
@@ -5395,7 +5690,8 @@ function AlertsWidget({ alerts, navigate }) {
     'clock': faClock,
     'exclamation-triangle': faExclamationTriangle,
     'exclamation-circle': faExclamationCircle,
-    'globe': faGlobe
+    'globe': faGlobe,
+    'calendar-alt': faCalendarAlt
   };
 
   const alertInfoMap = {
@@ -5439,6 +5735,7 @@ function AlertsWidget({ alerts, navigate }) {
           <AlertText>
             <AlertTitle>{a.title}</AlertTitle>
             <AlertMsg>{a.message}</AlertMsg>
+            {a.meta && <AlertMeta>{a.meta}</AlertMeta>}
           </AlertText>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
             <WidgetBadge $bg={getAlertBg(a.type)} $color={getAlertColor(a.type)}>
@@ -7055,7 +7352,7 @@ function InvoiceStatsWidget({ stats, navigate }) {
     { key: 'se_smlouvou', label: 'Přiřazené SML', sub: 'Se smlouvou', value: stats.se_smlouvou, color: '#059669', bg: '#ecfdf5', filter: null },
     { key: 'zkontrolovano', label: 'Kontrola', sub: 'Zkontrolováno', value: stats.zkontrolovano, color: '#0891b2', bg: '#e0f2fe', filter: null },
     { key: 's_poznamkou', label: 'S poznámkou', sub: 'Faktury s poznámkou', value: stats.s_poznamkou, color: '#ea580c', bg: '#fff7ed', filter: 'with_note' },
-    { key: 'moje_faktury', label: 'Moje faktury', sub: 'Předané na mně', value: stats.moje_faktury, color: '#6366f1', bg: '#eef2ff', filter: 'my_invoices' },
+    { key: 'moje_faktury', label: 'Moje faktury k potvrzení věcné', sub: 'Předané na mně', value: stats.moje_faktury, color: '#6366f1', bg: '#eef2ff', filter: 'my_unchecked_invoices' },
     { key: 'moje_nezkontrolovane', label: 'Mé nezkontrolované', sub: 'Předané na mě / Věcná', value: stats.moje_nezkontrolovane, color: '#f59e0b', bg: '#fef3c7', filter: 'my_unchecked_invoices' }
   ];
 
@@ -7464,6 +7761,14 @@ export default function DashboardPage() {
   const weatherRefreshRef = useRef(null);
   const weatherCancelledRef = useRef(false);
 
+  // Planning events state (přijímá data z CalendarWidget)
+  const [myPlanningEvents, setMyPlanningEvents] = useState([]);
+  
+  // URL parametry pro automatické otevření události
+  const [urlEventId, setUrlEventId] = useState(null);
+  const [urlOpenPanel, setUrlOpenPanel] = useState(false);
+  const [calendarWidgetApi, setCalendarWidgetApi] = useState(null);
+
   // Finanční trhy state
   const [financeData, setFinanceData] = useState(null);
   const [financeLoading, setFinanceLoading] = useState(false);
@@ -7582,6 +7887,23 @@ export default function DashboardPage() {
   };
 
   const username = user?.username;
+  
+  // 🆕 Zpracování URL parametrů pro automatické otevření události z emailu
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const eventId = params.get('eventId');
+    const openPanel = params.get('openPanel');
+
+    if (eventId && openPanel === 'true') {
+      setUrlEventId(parseInt(eventId));
+      setUrlOpenPanel(true);
+      
+      // Vyčistit URL parametry po 2s (aby měl CalendarWidget čas je zpracovat)
+      setTimeout(() => {
+        window.history.replaceState({}, '', window.location.pathname);
+      }, 2000);
+    }
+  }, []); // Pouze při mount
 
   // SUPERADMIN check
   const isSuperAdmin = useMemo(() => {
@@ -7601,21 +7923,253 @@ export default function DashboardPage() {
     return () => clearInterval(iv);
   }, [isSuperAdmin, hasPermission, token, username]);
 
-  // Fetch zastupování dat pro Calendar + Welcome widget
+  // Fetch zastupování dat pro Calendar + Welcome widget + planning události pro Můj přehled
   useEffect(() => {
     if (!token || !username) return;
     let cancelled = false;
     Promise.all([
       fetchMySubstitutions({ token, username }).catch(() => []),
       fetchCurrentlySubstituting({ token, username }).catch(() => []),
-    ]).then(([my, cur]) => {
+      planningApi.getCalendarEvents({ 
+        year: new Date().getFullYear(), 
+        month: new Date().getMonth() + 1 
+      }).catch(() => ({ data: [] })),
+    ]).then(([my, cur, eventsResponse]) => {
       if (!cancelled) {
         setMySubstitutions(my || []);
         setSubstituting(cur || []);
+        
+        // Filtrovat planning události pro "Můj přehled"
+        const events = eventsResponse?.data || [];
+        const now = new Date();
+        
+        const myEvents = events.filter(event => {
+          // Pouze aktivní události
+          if (!event.aktivni || event.aktivni === 0) {
+            return false;
+          }
+          
+          // Má alespoň jeden termín v budoucnosti
+          const hasFutureTerm = event.terminy?.some(term => {
+            const termDate = term.dt_do ? new Date(term.dt_do) : (term.dt_od ? new Date(term.dt_od) : null);
+            return termDate && termDate > now;
+          });
+          if (!hasFutureTerm) {
+            return false;
+          }
+          
+          // Uživatel je v příjemcích
+          const isPrijemce = event.prijemci?.some(p => p.username === username);
+          if (!isPrijemce) {
+            return false;
+          }
+          
+          // Ještě nemá odpověď nebo má odpověď 'null'
+          const hasResponse = event.terminy?.some(term => {
+            const response = term.responses?.find(r => r.username === username);
+            return response && response.odpoved && response.odpoved !== 'null';
+          });
+          
+          if (hasResponse) {
+            return false;
+          }
+
+          return true;
+        });
+        
+        setMyPlanningEvents(myEvents);
       }
     });
     return () => { cancelled = true; };
   }, [token, username]);
+
+  const alertsWithPlanning = useMemo(() => {
+    const baseAlerts = Array.isArray(data?.alerts) ? data.alerts : [];
+
+    const unreadSource = Array.isArray(data?.notifications_unread)
+      ? data.notifications_unread
+      : (Array.isArray(data?.notifications_recent) ? data.notifications_recent.filter(n => !n.precteno || n.precteno === '0' || n.precteno === 0) : []);
+
+    const planningUnread = unreadSource.filter(n =>
+      n?.kategorie === 'planning'
+      || n?.objekt_typ === 'planning_event'
+      || n?.objekt_typ === 'planning_message'
+      || n?.typ === 'PLANNING_EVENT_CREATED'
+      || n?.typ === 'PLANNING_MESSAGE_CREATED'
+    );
+
+    if (planningUnread.length === 0) return baseAlerts;
+
+    const sortedPlanning = [...planningUnread].sort((a, b) => {
+      const aTime = a?.dt_created ? new Date(a.dt_created).getTime() : 0;
+      const bTime = b?.dt_created ? new Date(b.dt_created).getTime() : 0;
+      return bTime - aTime;
+    });
+
+    const parsePlanningPayload = (notification) => {
+      if (notification?.data && typeof notification.data === 'object') {
+        return notification.data;
+      }
+      if (typeof notification?.data === 'string') {
+        try { return JSON.parse(notification.data); } catch (_) {}
+      }
+      if (notification?.data_json && typeof notification.data_json === 'object') {
+        return notification.data_json;
+      }
+      if (typeof notification?.data_json === 'string') {
+        try { return JSON.parse(notification.data_json); } catch (_) {}
+      }
+      if (notification?.placeholder_data && typeof notification.placeholder_data === 'object') {
+        return notification.placeholder_data;
+      }
+      if (typeof notification?.placeholder_data === 'string') {
+        try { return JSON.parse(notification.placeholder_data); } catch (_) {}
+      }
+      return {};
+    };
+
+    const now = new Date();
+
+    const planningAlerts = sortedPlanning.map(notification => {
+      const payload = parsePlanningPayload(notification);
+      const eventId = Number(
+        notification?.objekt_id
+        || payload?.objekt_id
+        || payload?.event_id
+        || payload?.id
+        || 0
+      ) || null;
+
+      const matchedPlanningEvent = eventId && Array.isArray(myPlanningEvents)
+        ? myPlanningEvents.find(ev => Number(ev.id) === eventId)
+        : null;
+
+      const validTermsFromEvent = matchedPlanningEvent
+        ? (Array.isArray(matchedPlanningEvent.terminy)
+          ? matchedPlanningEvent.terminy.filter(term => {
+              const termDate = term?.dt_do ? new Date(term.dt_do) : (term?.dt_od ? new Date(term.dt_od) : null);
+              return termDate && termDate > now;
+            }).length
+          : 0)
+        : 0;
+
+      const termsFromNotificationData = Array.isArray(payload?.terminy)
+        ? payload.terminy.length
+        : Number(payload?.terminy_count || payload?.terms_count || 0);
+
+      const validTermsCount = Math.max(1, validTermsFromEvent || termsFromNotificationData || 1);
+
+      const title =
+        notification?.nadpis
+        || payload?.nazev
+        || payload?.event_name
+        || payload?.title
+        || 'Událost';
+
+      const organizer =
+        notification?.from_user_name
+        || payload?.organizator?.full_name
+        || payload?.placeholders?.organizer_name
+        || payload?.organizer_name
+        || 'Neuveden';
+
+      const sentAt = notification?.dt_created
+        ? new Date(notification.dt_created).toLocaleString('cs-CZ', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+        : null;
+
+      return {
+        title: `Plánovaná událost: ${title}`,
+        message: `Platné termíny: ${validTermsCount}`,
+        meta: `Organizátor: ${organizer}${sentAt ? ` • Notifikace odeslána: ${sentAt}` : ''}`,
+        type: 'planning',
+        icon: 'calendar-alt',
+        count: validTermsCount,
+        link: '/notifications'
+      };
+    });
+
+    return [...planningAlerts, ...baseAlerts];
+  }, [data?.alerts, data?.notifications_unread, data?.notifications_recent, myPlanningEvents]);
+
+  const openPlanningEventFromOverview = useCallback((eventId) => {
+    if (!eventId) return;
+
+    // Pokud uživatel otevře událost z "Můj přehled", označíme navázané
+    // planning notifikace pro tuto událost jako přečtené.
+    (async () => {
+      try {
+        const unreadSource = Array.isArray(data?.notifications_unread)
+          ? data.notifications_unread
+          : (Array.isArray(data?.notifications_recent)
+            ? data.notifications_recent.filter(n => !n.precteno || n.precteno === '0' || n.precteno === 0)
+            : []);
+
+        const relatedIds = Array.from(new Set(
+          unreadSource
+            .filter(n => (
+              (n?.kategorie === 'planning'
+                || n?.objekt_typ === 'planning_event'
+                || n?.objekt_typ === 'planning_message'
+                || n?.typ === 'PLANNING_EVENT_CREATED'
+                || n?.typ === 'PLANNING_MESSAGE_CREATED')
+              && Number(n?.objekt_id) === Number(eventId)
+            ))
+            .map(n => Number(n?.id))
+            .filter(Boolean)
+        ));
+
+        if (relatedIds.length === 0) {
+          return;
+        }
+
+        await Promise.all(relatedIds.map(id => markNotificationAsRead(id).catch(() => null)));
+
+        // Optimistická synchronizace lokálního dashboard stavu.
+        setData(prev => {
+          if (!prev) return prev;
+
+          const markList = (list) => Array.isArray(list)
+            ? list.map(n => relatedIds.includes(Number(n?.id)) ? { ...n, precteno: 1 } : n)
+            : list;
+
+          const unread = Array.isArray(prev.notifications_unread)
+            ? prev.notifications_unread.filter(n => !relatedIds.includes(Number(n?.id)))
+            : prev.notifications_unread;
+
+          return {
+            ...prev,
+            notifications_recent: markList(prev.notifications_recent),
+            notifications_unread: unread
+          };
+        });
+
+        // Do-refreshovat z backendu, aby byl dashboard konzistentní se zvonečkem.
+        if (token && username) {
+          const refreshed = await getDashboardData({ token, username, days: 7 });
+          if (refreshed?.status === 'success' && refreshed?.data) {
+            setData(refreshed.data);
+          }
+        }
+      } catch (err) {
+        console.warn('[Dashboard] Nepodařilo se označit planning notifikaci jako přečtenou:', err);
+      }
+    })();
+
+    // Vynutí re-open i při opakovaném kliku na stejnou událost.
+    setUrlOpenPanel(false);
+    setUrlEventId(null);
+
+    setTimeout(() => {
+      setUrlEventId(Number(eventId));
+      setUrlOpenPanel(true);
+    }, 0);
+  }, [data, token, username]);
 
   // RSS Feed: načtení po přihlášení + auto-refresh dle intervalu z app settings
   const rssRefreshRef = useRef(null);
@@ -8318,7 +8872,10 @@ export default function DashboardPage() {
     if (!cfg) return null;
     if (!availableWidgets.includes(tileId)) return null;
     // alwaysOn widgety (např. active_users_admin) ignorují visibleTiles
-    if (!cfg.alwaysOn && !visibleTiles.includes(tileId)) return null;
+    if (!cfg.alwaysOn && !visibleTiles.includes(tileId)) {
+      const isCalendarDeepLink = tileId === 'calendar' && Boolean(urlEventId && urlOpenPanel);
+      if (!isCalendarDeepLink) return null;
+    }
 
     const isSpan2 = tileId === 'orders_stats' || tileId === 'invoices_stats' || tileId === 'chart_timeline' || tileId === 'top_suppliers' || tileId === 'cashbook_summary' || tileId === 'rss_news' || tileId === 'chart_majetek' || tileId === 'chart_fees' || tileId === 'finance_markets';
     const isSpanFull = tileId === 'active_users_admin';
@@ -8330,7 +8887,7 @@ export default function DashboardPage() {
 
     switch (tileId) {
       case 'welcome':
-        content = <WelcomeWidget user={data?.user} userDetail={userDetail} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} myStats={data?.my_stats} navigate={navigate} substituting={substituting} mySubstitutions={mySubstitutions} />;
+        content = <WelcomeWidget user={data?.user} userDetail={userDetail} rolesDetected={data?.roles_detected} nameday={data?.nameday} newsSinceLogin={data?.news_since_login} myStats={data?.my_stats} navigate={navigate} substituting={substituting} mySubstitutions={mySubstitutions} myPlanningEvents={myPlanningEvents} onOpenPlanningEvent={openPlanningEventFromOverview} />;
         break;
       case 'orders_stats':
         content = <OrderStatsWidget stats={data?.orders_stats} navigate={navigate} />;
@@ -8389,8 +8946,8 @@ export default function DashboardPage() {
         badgeCount = data?.orders_published_recent?.items?.length;
         break;
       case 'alerts':
-        content = <AlertsWidget alerts={data?.alerts} navigate={navigate} />;
-        badgeCount = data?.alerts?.length;
+        content = <AlertsWidget alerts={alertsWithPlanning} navigate={navigate} />;
+        badgeCount = alertsWithPlanning.length;
         break;
       case 'notifications':
         content = <NotificationsWidget notifications={data?.notifications_recent || data?.notifications_unread} navigate={navigate} />;
@@ -8632,6 +9189,9 @@ export default function DashboardPage() {
           onHeaderButton={(btn) => {
             setWidgetHeaderExtras(prev => ({ ...prev, calendar: btn }));
           }}
+          onPlanningEventsUpdate={setMyPlanningEvents}
+          urlEventId={urlEventId}
+          urlOpenPanel={urlOpenPanel}
         />;
         headerExtra = widgetHeaderExtras.calendar;
         break;

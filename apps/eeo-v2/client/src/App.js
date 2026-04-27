@@ -241,6 +241,16 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
   useEffect(() => {
     // ⏳ KRITICKÉ: Počkat na načtení moduleSettings PŘED navigací
     if (isLoggedIn && location.pathname === '/' && moduleSettingsLoaded) {
+      // 🔗 NOVINKA: Pokud má URL parametry (např. eventId=1&openPanel=true), NEPROVÁDĚT redirect!
+      const searchParams = new URLSearchParams(location.search);
+      const hasEventParams = searchParams.has('eventId') && searchParams.has('openPanel');
+      
+      if (hasEventParams) {
+        console.log('🔗 [App] URL obsahuje eventId parametry → redirect PŘESKOČEN, navigace na /dashboard s parametry');
+        navigate('/dashboard' + location.search, { replace: true });
+        return;
+      }
+      
       // 🎨 PRIORITA: userSettings.vychozi_sekce_po_prihlaseni → lastRoute → fallback
       // Po čerstvém přihlášení má prioritu nastavení uživatele
       
@@ -1128,6 +1138,8 @@ function App() {
                   {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
                   {isLoggedIn && <Route path="/dashboard" element={<DashboardPage />} />}
+                  {/* Redirect root to dashboard for logged in users */}
+                  {isLoggedIn && <Route path="/" element={<DashboardPage />} />}
                   {isLoggedIn && <Route path="/help" element={<HelpPage />} />}
                   {isLoggedIn && <Route path="/about" element={<About />} />}
                   {isLoggedIn && <Route path="/change-password" element={<ChangePasswordPage />} />}

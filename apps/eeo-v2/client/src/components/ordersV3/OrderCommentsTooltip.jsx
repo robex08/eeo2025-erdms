@@ -121,8 +121,8 @@ const TooltipTitle = styled.div`
 `;
 
 const CommentsSearchRow = styled.div`
-  margin-top: 6px;
   width: 100%;
+  flex-shrink: 0;
 `;
 
 const CommentsSearchInput = styled.input`
@@ -1319,14 +1319,6 @@ const OrderCommentsTooltip = ({
                 Poslední: {formatDate(lastComment.dt_vytvoreni)} od {lastComment.autor_jmeno || 'Neznámý'}
               </TooltipTitleSub>
             )}
-            <CommentsSearchRow>
-              <CommentsSearchInput
-                type="text"
-                placeholder="Hledat ve jménu autora nebo textu komentáře..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </CommentsSearchRow>
           </TooltipTitle>
           <HeaderButtons>
             <FullscreenButton 
@@ -1341,6 +1333,16 @@ const OrderCommentsTooltip = ({
             </CloseButton>
           </HeaderButtons>
         </TooltipHeader>
+        
+        {/* 🔍 SEARCH INPUT - VEN z TooltipHeader, aby nebyl v draggable bloku */}
+        <CommentsSearchRow style={{ padding: '0.75rem 1rem', borderBottom: '1px solid #e2e8f0', background: '#f9fafb' }}>
+          <CommentsSearchInput
+            type="text"
+            placeholder="Hledat ve jménu autora nebo textu komentáře..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </CommentsSearchRow>
         
         <TooltipContent>
           {loading && (
