@@ -2145,13 +2145,16 @@ const PlanningAdminPage = () => {
     // (dt_od/dt_do události je pouze MIN/MAX agregát dopočtený DB triggery).
     const dates = Array.isArray(item?.terminy) ? item.terminy : [];
     if (dates.length === 0) return null;
+    const MAX_TOOLTIP_TERMS = 10;
+    const visibleDates = dates.slice(0, MAX_TOOLTIP_TERMS);
+    const hiddenDatesCount = Math.max(0, dates.length - visibleDates.length);
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
         <div style={{ color: '#e0f2fe', fontSize: '0.75rem', fontWeight: 700, marginBottom: '0.2rem' }}>
           📅 Všechny termíny ({dates.length})
         </div>
-        {dates.map((term, index) => {
+        {visibleDates.map((term, index) => {
           const od = formatTooltipDateTime(term?.dt_od);
           const doVal = term?.dt_do ? formatTooltipDateTime(term.dt_do) : '';
           const range = doVal ? `${od} - ${doVal}` : od;
@@ -2185,6 +2188,18 @@ const PlanningAdminPage = () => {
             </div>
           );
         })}
+        {hiddenDatesCount > 0 && (
+          <div style={{
+            color: '#cbd5e1',
+            fontSize: '0.72rem',
+            fontStyle: 'italic',
+            borderTop: '1px solid rgba(255,255,255,0.18)',
+            paddingTop: '0.4rem',
+            marginTop: '0.1rem'
+          }}>
+            … a zbývá dalších {hiddenDatesCount} termínů
+          </div>
+        )}
       </div>
     );
   };

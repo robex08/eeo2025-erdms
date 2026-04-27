@@ -1628,6 +1628,9 @@ function handle_planning_events_get($input, $config) {
         // Zpetna kompatibilita
         $udalost['terminy_vse'] = $terminyVse;
         $udalost['hlavni_termin_id'] = !empty($terminyVse) ? (int)$terminyVse[0]['id'] : null;
+        $udalost['isRecipient'] = isUserRecipientForEvent($db, $udalost, $token_data['id']);
+        // Přesnější flag pro odkazy z emailu: uživatel musí mít doručenou notifikaci k události.
+        $udalost['isEmailLinkRecipient'] = hasPlanningEventNotificationForUser($db, (int)$id, (int)$token_data['id']);
 
         http_response_code(200);
         echo json_encode([
