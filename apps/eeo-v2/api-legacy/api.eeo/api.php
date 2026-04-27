@@ -1643,6 +1643,15 @@ switch ($endpoint) {
         }
         break;
 
+    case 'planning/events/send-notifications':
+        if ($request_method === 'POST') {
+            handle_planning_events_send_notifications($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+
     case 'planning/events/responses/list':
         if ($request_method === 'POST') {
             handle_planning_events_responses_list($input, $config);

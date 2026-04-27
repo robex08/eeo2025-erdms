@@ -2604,8 +2604,9 @@ const OrdersTableV3 = ({
     });
     
     if (allEmpty) {
-      // Všechny filtry jsou prázdné → vymaž všechny lokální filtry
+      // ✅ OPRAVA: Všechny filtry jsou prázdné → vymaž všechny lokální filtry A input values
       setLocalColumnFilters({});
+      setInputValues({}); // 🔥 Toto chybělo - proto zůstávaly hodnoty v input polích!
       return;
     }
     

@@ -69,7 +69,12 @@ const getAuthData = async () => {
  */
 const handleApiResponse = (response) => {
   if (response.data.status === 'error') {
-    throw new Error(response.data.message || 'API error');
+    const error = new Error(response.data.message || 'API error');
+    error.response = {
+      data: response.data,
+      status: response.status
+    };
+    throw error;
   }
 
   return response.data;
@@ -388,6 +393,23 @@ export const getActiveUsers = async () => {
   }
 };
 
+/**
+ * 🆕 Manuální odeslání notifikací pro událost
+ * @param {number} eventId - ID události
+ * @returns {Promise<Object>} - { status, message, data: {count, recipients} }
+ */
+export const sendEventNotifications = async (eventId) => {
+  try {
+    const auth = await getAuthData();
+    const payload = { ...auth, event_id: eventId };
+    const response = await planningApi.post('/planning/events/send-notifications', payload);
+    return handleApiResponse(response);
+  } catch (error) {
+    console.error('❌ [Planning] sendEventNotifications error:', error);
+    throw error;
+  }
+};
+
 // =============================================================================
 // EXPORTS
 // =============================================================================
@@ -409,6 +431,7 @@ export default {
   getCalendarEvents,
   respondToEvent,
   getEventResponsesList,
+  sendEventNotifications,
   
   // Recipients
   getActiveRoles,

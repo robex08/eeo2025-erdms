@@ -32,7 +32,7 @@ const InputWithIcon = styled.div`
   }
 `;
 
-const TimeInputButton = styled.button`
+const TimeInput = styled.input`
   width: 100%;
   display: flex;
   align-items: center;
@@ -45,9 +45,10 @@ const TimeInputButton = styled.button`
   background: ${props => props.disabled ? '#f3f4f6' : 'white'};
   color: ${props => props.disabled ? '#9ca3af' : props.hasValue ? '#111827' : '#9ca3af'};
   font-size: 0.875rem;
-  cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
+  cursor: ${props => props.disabled ? 'not-allowed' : 'text'};
   transition: all 0.2s ease;
   text-align: left;
+  font-family: inherit;
 
   &:hover:not(:disabled) {
     border-color: #3b82f6;
@@ -58,6 +59,10 @@ const TimeInputButton = styled.button`
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &::placeholder {
+    color: #9ca3af;
   }
 `;
 
@@ -375,6 +380,31 @@ function TimePicker({ value, onChange, onTimeComplete, disabled = false, hasErro
     return time; // Already in HH:MM format
   };
 
+  // Handle ruční editace inputu
+  const handleManualInput = (e) => {
+    const inputValue = e.target.value;
+    
+    // Povolit jen čísla a dvojtečku
+    const filtered = inputValue.replace(/[^0-9:]/g, '');
+    
+    // Validace formátu HH:MM
+    if (filtered.match(/^\d{1,2}:?\d{0,2}$/)) {
+      onChange(filtered);
+      
+      // Pokud je kompletní formát HH:MM, zkontrolovat validitu
+      if (filtered.match(/^\d{2}:\d{2}$/)) {
+        const [hours, minutes] = filtered.split(':').map(Number);
+        if (hours >= 0 && hours < 24 && minutes >= 0 && minutes < 60) {
+          // Platný čas - zavrít popup
+          setIsOpen(false);
+          if (onTimeComplete) {
+            onTimeComplete(filtered);
+          }
+        }
+      }
+    }
+  };
+
   // Format time for input (HH:MM)
   const formatTime = (h, m) => {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
@@ -460,16 +490,18 @@ function TimePicker({ value, onChange, onTimeComplete, disabled = false, hasErro
     <TimePickerWrapper ref={wrapperRef}>
       <InputWithIcon hasIcon>
         <Clock />
-        <TimeInputButton
-          type="button"
-          onClick={() => !disabled && setIsOpen(!isOpen)}
+        <TimeInput
+          type="text"
+          value={value || ''}
+          onChange={handleManualInput}
+          onFocus={() => !disabled && setIsOpen(true)}
           disabled={disabled}
           hasError={hasError}
           hasValue={!!value}
+          placeholder={placeholder}
+          maxLength={5}
           data-time-input="true"
-        >
-          {formatDisplayTime(value)}
-        </TimeInputButton>
+        />
 
         {/* Křížek pro smazání */}
         {value && !disabled && (

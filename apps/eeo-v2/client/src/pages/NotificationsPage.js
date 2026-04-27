@@ -502,28 +502,6 @@ const FilterButton = styled.button`
   }
 `;
 
-const TypeFilterBadge = styled.button`
-  padding: 0.35rem 0.85rem;
-  border: 2px solid ${props => props.$active ? props.$color : '#e2e8f0'};
-  background: ${props => props.$active ? `${props.$color}15` : 'white'};
-  color: ${props => props.$active ? props.$color : '#64748b'};
-  border-radius: 20px;
-  font-size: 0.8rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  letter-spacing: 0.5px;
-
-  &:hover {
-    border-color: ${props => props.$color};
-    color: ${props => props.$color};
-    background: ${props => `${props.$color}10`};
-  }
-`;
-
 const ActionButton = styled.button`
   display: flex;
   align-items: center;
@@ -1077,12 +1055,6 @@ export const NotificationsPage = () => {
     return saved !== null ? JSON.parse(saved) : false;
   });
 
-  // 🗄️ Dashboard stat filter s localStorage
-  const [activeStatFilter, setActiveStatFilter] = useState(() => {
-    const saved = localStorage.getItem('notifications_activeStatFilter');
-    return saved || null;
-  });
-
   // 🏷️ Filtr dle typu objektu (OBJ/FAK/KOM)
   const [activeTypeFilter, setActiveTypeFilter] = useState(null);
 
@@ -1153,10 +1125,6 @@ export const NotificationsPage = () => {
   }, [showNormal]);
 
   useEffect(() => {
-    localStorage.setItem('notifications_activeStatFilter', activeStatFilter || '');
-  }, [activeStatFilter]);
-
-  useEffect(() => {
     localStorage.setItem('notifications_threadMode', JSON.stringify(threadMode));
   }, [threadMode]);
 
@@ -1193,7 +1161,8 @@ export const NotificationsPage = () => {
       'todo': 'TODO úkoly',
       'system': 'Systém',
       'mentions': 'Zmínky',
-      'reminders': 'Připomínky'
+      'reminders': 'Připomínky',
+      'planning': 'Plánování'
     };
     return labels[category] || category;
   };
@@ -1287,49 +1256,50 @@ export const NotificationsPage = () => {
     loadNotifications(true);
   };
 
-  // Handler pro kliknutí na statistickou dlaždici (filtr)
-  const handleStatCardClick = (filterValue) => {
-    if (filterValue === 'total') {
-      // Celkem - zruš VŠECHNY filtry
-      setActiveStatFilter(null);
-      setShowUnread(false);
-      setShowRead(false);
-      setShowUrgent(false);
-      setShowHigh(false);
-      setShowNormal(false);
-      setSearchQuery(''); // Zruš i vyhledávání
-      return;
+  const isUnreadNotification = (notification) => {
+    return !notification.precteno || notification.precteno === 0 || notification.precteno === false;
+  };
+
+  const matchesTypeFilter = (notification, typeFilter) => {
+    if (!typeFilter) return true;
+
+    const typLower = (notification.typ || '').toLowerCase();
+    const objTyp = notification.objekt_typ || '';
+
+    if (typeFilter === 'OBJ') {
+      return typLower.includes('order') || ['orders', 'order'].includes(objTyp);
+    }
+    if (typeFilter === 'FAK') {
+      return typLower.includes('invoice') || ['invoices', 'invoice'].includes(objTyp);
+    }
+    if (typeFilter === 'KOM') {
+      return typLower.includes('comment') || objTyp === 'objednavka';
+    }
+    if (typeFilter === 'SYS') {
+      return typLower.includes('system') || typLower.includes('alarm') || objTyp === 'todo' || !objTyp;
+    }
+    if (typeFilter === 'ZASTUP') {
+      return objTyp === 'zastupovani' || typLower.includes('substitution');
+    }
+    if (typeFilter === 'REZ') {
+      return objTyp === 'planning_event' || objTyp === 'planning_message' || typLower.includes('planning');
+    }
+    if (typeFilter === 'MSG') {
+      return notification.typ === 'ADMIN_MESSAGE';
     }
 
-    if (activeStatFilter === filterValue) {
-      // Zrušit filtr - kliknutí podruhé
-      setActiveStatFilter(null);
-      setShowUnread(false);
-      setShowRead(false);
-      setShowUrgent(false);
-      setShowHigh(false);
-      setShowNormal(false);
-    } else {
-      // Nastavit filtr
-      setActiveStatFilter(filterValue);
+    return true;
+  };
 
-      // Vypnout ostatní filtry
-      setShowUnread(false);
-      setShowRead(false);
-      setShowUrgent(false);
-      setShowHigh(false);
-      setShowNormal(false);
-
-      // Zapnout příslušný filtr podle typu
-      if (filterValue === 'unread') {
-        setShowUnread(true);
-      } else if (filterValue === 'urgent') {
-        setShowUrgent(true);
-      } else if (filterValue === 'high') {
-        setShowHigh(true);
-      }
-      // Pro stavy objednávek se filtr uloží do activeStatFilter a použije ve filteredNotifications
-    }
+  const resetAllFilters = () => {
+    setShowUnread(false);
+    setShowRead(false);
+    setShowUrgent(false);
+    setShowHigh(false);
+    setShowNormal(false);
+    setActiveTypeFilter(null);
+    setSearchQuery('');
+    localStorage.removeItem('notifications_activeStatFilter');
   };
 
   // Filtered notifications
@@ -1345,61 +1315,15 @@ export const NotificationsPage = () => {
       if (!matchesSearch) return false;
     }
 
-    // Filtr podle typu notifikace (z dashboard dlaždic)
-    if (activeStatFilter && !['total', 'unread', 'urgent', 'high'].includes(activeStatFilter)) {
-      // Mapování filterValue na notification type
-      const typeMapping = {
-        'nova': 'ORDER_CREATED',
-        'keSchvaleni': 'ORDER_PENDING_APPROVAL',
-        'schvalena': 'ORDER_APPROVED',
-        'zamitnuta': 'ORDER_REJECTED',
-        'cekaSe': 'ORDER_AWAITING_CHANGES',
-        'odeslana': 'ORDER_SENT_TO_SUPPLIER',
-        'potvrzena': 'ORDER_CONFIRMED_BY_SUPPLIER',
-        'cekaKontrola': 'INVOICE_MATERIAL_CHECK_REQUESTED',
-        'vecnaSpravnost': 'INVOICE_MATERIAL_CHECK_APPROVED',
-        'registrZverejnena': 'ORDER_REGISTRY_PUBLISHED',
-        'dokoncena': 'ORDER_COMPLETED',
-        'zrusena': 'ORDER_CANCELLED',
-      };
-
-      const notificationType = typeMapping[activeStatFilter];
-      if (notificationType && notification.typ !== notificationType) {
-        return false;
-      }
-    }
-
     // Filtr dle typu objektu (OBJ/FAK/KOM)
-    if (activeTypeFilter) {
-      const typLower = (notification.typ || '').toLowerCase();
-      const objTyp = notification.objekt_typ || '';
-      if (activeTypeFilter === 'OBJ') {
-        const isOrder = typLower.includes('order') || ['orders', 'order'].includes(objTyp);
-        if (!isOrder) return false;
-      } else if (activeTypeFilter === 'FAK') {
-        const isInvoice = typLower.includes('invoice') || ['invoices', 'invoice'].includes(objTyp);
-        if (!isInvoice) return false;
-      } else if (activeTypeFilter === 'KOM') {
-        const isComment = typLower.includes('comment') || objTyp === 'objednavka';
-        if (!isComment) return false;
-      } else if (activeTypeFilter === 'SYS') {
-        const isSys = typLower.includes('system') || typLower.includes('alarm') || objTyp === 'todo' || !objTyp;
-        if (!isSys) return false;
-      } else if (activeTypeFilter === 'ZASTUP') {
-        const isZastup = objTyp === 'zastupovani' || typLower.includes('substitution');
-        if (!isZastup) return false;
-      } else if (activeTypeFilter === 'REZ') {
-        const isPlanning = objTyp === 'planning_event' || objTyp === 'planning_message' || typLower.includes('planning');
-        if (!isPlanning) return false;
-      } else if (activeTypeFilter === 'MSG') {
-        if (notification.typ !== 'ADMIN_MESSAGE') return false;
-      }
+    if (activeTypeFilter && !matchesTypeFilter(notification, activeTypeFilter)) {
+      return false;
     }
 
     // Čtení/Nepřečteno - pokud je alespoň jeden zaškrtnutý, filtruj podle toho
     const hasReadFilter = showUnread || showRead;
     if (hasReadFilter) {
-      const isUnread = !notification.precteno || notification.precteno === 0;
+      const isUnread = isUnreadNotification(notification);
       const matchesReadFilter =
         (showUnread && isUnread) ||
         (showRead && !isUnread);
@@ -1531,25 +1455,25 @@ export const NotificationsPage = () => {
     setExpandedThreads(new Set());
   };
 
-  // Statistics
-  // Statistiky - pouze celkové a podle typů objednávek
+  const unreadCount = notifications.filter(isUnreadNotification).length;
   const stats = {
     total: notifications.length,
-
-    // Statistiky podle stavů objednávek
-    nova: notifications.filter(n => n.typ === 'ORDER_CREATED').length,
-    keSchvaleni: notifications.filter(n => n.typ === 'ORDER_PENDING_APPROVAL').length,
-    schvalena: notifications.filter(n => n.typ === 'ORDER_APPROVED').length,
-    zamitnuta: notifications.filter(n => n.typ === 'ORDER_REJECTED').length,
-    cekaSe: notifications.filter(n => n.typ === 'ORDER_AWAITING_CHANGES').length,
-    odeslana: notifications.filter(n => n.typ === 'ORDER_SENT_TO_SUPPLIER').length,
-    potvrzena: notifications.filter(n => n.typ === 'ORDER_CONFIRMED_BY_SUPPLIER').length,
-    cekaKontrola: notifications.filter(n => n.typ === 'INVOICE_MATERIAL_CHECK_REQUESTED').length,
-    vecnaSpravnost: notifications.filter(n => n.typ === 'INVOICE_MATERIAL_CHECK_APPROVED').length,
-    registrZverejnena: notifications.filter(n => n.typ === 'ORDER_REGISTRY_PUBLISHED').length,
-    dokoncena: notifications.filter(n => n.typ === 'ORDER_COMPLETED').length,
-    zrusena: notifications.filter(n => n.typ === 'ORDER_CANCELLED').length,
+    unread: unreadCount,
+    read: Math.max(0, notifications.length - unreadCount),
+    urgent: notifications.filter(n => (n.priorita || 'normal') === 'urgent').length,
+    high: notifications.filter(n => (n.priorita || 'normal') === 'high').length,
+    normal: notifications.filter(n => (n.priorita || 'normal') === 'normal').length,
+    MSG: notifications.filter(n => matchesTypeFilter(n, 'MSG')).length,
+    OBJ: notifications.filter(n => matchesTypeFilter(n, 'OBJ')).length,
+    FAK: notifications.filter(n => matchesTypeFilter(n, 'FAK')).length,
+    KOM: notifications.filter(n => matchesTypeFilter(n, 'KOM')).length,
+    SYS: notifications.filter(n => matchesTypeFilter(n, 'SYS')).length,
+    ZASTUP: notifications.filter(n => matchesTypeFilter(n, 'ZASTUP')).length,
+    REZ: notifications.filter(n => matchesTypeFilter(n, 'REZ')).length
   };
+
+  const noFiltersActive = !searchQuery && !showUnread && !showRead && !showUrgent && !showHigh && !showNormal && !activeTypeFilter;
+  const hasAnyFilter = !noFiltersActive;
 
   // ✅ Paginace - výpočet
   const totalPages = Math.ceil(threadedNotifications.length / pageSize);
@@ -1580,7 +1504,7 @@ export const NotificationsPage = () => {
   // ✅ Reset stránky na 0 při změně filtrů
   useEffect(() => {
     setCurrentPage(0);
-  }, [searchQuery, showUnread, showRead, showUrgent, showHigh, showNormal, threadMode]);
+  }, [searchQuery, showUnread, showRead, showUrgent, showHigh, showNormal, activeTypeFilter, threadMode]);
 
   // 🔒 Handlery pro locked order dialog
   const handleLockedOrderCancel = () => {
@@ -1995,7 +1919,7 @@ export const NotificationsPage = () => {
   // ✅ DELETE ALL - Smazat všechny nebo filtrované notifikace z DB
   const handleDeleteAll = () => {
     // Pokud je aktivní filtr, smaž pouze zobrazené notifikace
-    const hasActiveFilter = searchQuery || showUnread || showRead || showUrgent || showHigh || showNormal;
+    const hasActiveFilter = searchQuery || showUnread || showRead || showUrgent || showHigh || showNormal || activeTypeFilter;
     const notificationsToDelete = hasActiveFilter ? filteredNotifications : notifications;
     const count = notificationsToDelete.length;
     const actionText = hasActiveFilter ? 'zobrazené' : 'VŠECHNY';
@@ -2190,7 +2114,7 @@ export const NotificationsPage = () => {
               </HeaderActionButton>
             )}
             {notifications.length > 0 && (() => {
-              const hasActiveFilter = searchQuery || showUnread || showRead || showUrgent || showHigh || showNormal;
+              const hasActiveFilter = searchQuery || showUnread || showRead || showUrgent || showHigh || showNormal || activeTypeFilter;
               const count = hasActiveFilter ? filteredNotifications.length : notifications.length;
               const buttonText = hasActiveFilter ? `Smazat zobrazené (${count})` : 'Smazat vše trvale';
 
@@ -2235,8 +2159,8 @@ export const NotificationsPage = () => {
           <StatCard
             $color="#3b82f6"
             $clickable={true}
-            $isActive={!searchQuery && !activeStatFilter}
-            onClick={() => handleStatCardClick('total')}
+            $isActive={noFiltersActive}
+            onClick={resetAllFilters}
             title="Kliknutím zrušíte všechny filtry"
           >
             <StatValue>{stats.total}</StatValue>
@@ -2245,147 +2169,153 @@ export const NotificationsPage = () => {
           </StatCard>
 
           <StatCard
+            $color="#3b82f6"
+            $clickable={true}
+            $isActive={showUnread}
+            onClick={() => {
+              setShowUnread(!showUnread);
+              if (!showUnread) setShowRead(false);
+            }}
+            title="Filtrovat: nepřečtené"
+          >
+            <StatValue>{stats.unread}</StatValue>
+            <StatIcon $color="#3b82f6"><FontAwesomeIcon icon={faBell} /></StatIcon>
+            <StatLabel>Nepřečtené</StatLabel>
+          </StatCard>
+
+          <StatCard
             $color="#64748b"
             $clickable={true}
-            $isActive={activeStatFilter === 'nova'}
-            onClick={() => handleStatCardClick('nova')}
-            title="Filtrovat: Objednávka vytvořena"
+            $isActive={showRead}
+            onClick={() => {
+              setShowRead(!showRead);
+              if (!showRead) setShowUnread(false);
+            }}
+            title="Filtrovat: přečtené"
           >
-            <StatValue>{stats.nova}</StatValue>
-            <StatIcon $color="#64748b"><FontAwesomeIcon icon={faPlay} /></StatIcon>
-            <StatLabel>Nová</StatLabel>
+            <StatValue>{stats.read}</StatValue>
+            <StatIcon $color="#64748b"><FontAwesomeIcon icon={faCheckDouble} /></StatIcon>
+            <StatLabel>Přečtené</StatLabel>
           </StatCard>
 
           <StatCard
             $color="#dc2626"
             $clickable={true}
-            $isActive={activeStatFilter === 'keSchvaleni'}
-            onClick={() => handleStatCardClick('keSchvaleni')}
-            title="Filtrovat: Objednávka ke schválení"
+            $isActive={showUrgent}
+            onClick={() => setShowUrgent(!showUrgent)}
+            title="Filtrovat: urgentní"
           >
-            <StatValue>{stats.keSchvaleni}</StatValue>
-            <StatIcon $color="#dc2626"><FontAwesomeIcon icon={faHourglassHalf} /></StatIcon>
-            <StatLabel>Ke schválení</StatLabel>
-          </StatCard>
-
-          <StatCard
-            $color="#ea580c"
-            $clickable={true}
-            $isActive={activeStatFilter === 'schvalena'}
-            onClick={() => handleStatCardClick('schvalena')}
-            title="Filtrovat: Objednávka schválena"
-          >
-            <StatValue>{stats.schvalena}</StatValue>
-            <StatIcon $color="#ea580c"><FontAwesomeIcon icon={faCheckCircle} /></StatIcon>
-            <StatLabel>Schválená</StatLabel>
-          </StatCard>
-
-          <StatCard
-            $color="#6b7280"
-            $clickable={true}
-            $isActive={activeStatFilter === 'zamitnuta'}
-            onClick={() => handleStatCardClick('zamitnuta')}
-            title="Filtrovat: Objednávka zamítnuta"
-          >
-            <StatValue>{stats.zamitnuta}</StatValue>
-            <StatIcon $color="#6b7280"><FontAwesomeIcon icon={faTimesCircle} /></StatIcon>
-            <StatLabel>Zamítnutá</StatLabel>
+            <StatValue>{stats.urgent}</StatValue>
+            <StatIcon $color="#dc2626"><FontAwesomeIcon icon={faExclamationCircle} /></StatIcon>
+            <StatLabel>Urgentní</StatLabel>
           </StatCard>
 
           <StatCard
             $color="#f59e0b"
             $clickable={true}
-            $isActive={activeStatFilter === 'cekaSe'}
-            onClick={() => handleStatCardClick('cekaSe')}
-            title="Filtrovat: Objednávka čeká"
+            $isActive={showHigh}
+            onClick={() => setShowHigh(!showHigh)}
+            title="Filtrovat: vysoká priorita"
           >
-            <StatValue>{stats.cekaSe}</StatValue>
+            <StatValue>{stats.high}</StatValue>
             <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faClock} /></StatIcon>
-            <StatLabel>Čeká se</StatLabel>
+            <StatLabel>Vysoká</StatLabel>
+          </StatCard>
+
+          <StatCard
+            $color="#2563eb"
+            $clickable={true}
+            $isActive={showNormal}
+            onClick={() => setShowNormal(!showNormal)}
+            title="Filtrovat: normální priorita"
+          >
+            <StatValue>{stats.normal}</StatValue>
+            <StatIcon $color="#2563eb"><FontAwesomeIcon icon={faInfoCircle} /></StatIcon>
+            <StatLabel>Normální</StatLabel>
+          </StatCard>
+
+          <StatCard
+            $color="#f59e0b"
+            $clickable={true}
+            $isActive={activeTypeFilter === 'MSG'}
+            onClick={() => setActiveTypeFilter(activeTypeFilter === 'MSG' ? null : 'MSG')}
+            title="Filtrovat: zprávy správce"
+          >
+            <StatValue>{stats.MSG}</StatValue>
+            <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faEnvelope} /></StatIcon>
+            <StatLabel>MSG</StatLabel>
           </StatCard>
 
           <StatCard
             $color="#3b82f6"
             $clickable={true}
-            $isActive={activeStatFilter === 'odeslana'}
-            onClick={() => handleStatCardClick('odeslana')}
-            title="Filtrovat: Objednávka odeslána dodavateli"
+            $isActive={activeTypeFilter === 'OBJ'}
+            onClick={() => setActiveTypeFilter(activeTypeFilter === 'OBJ' ? null : 'OBJ')}
+            title="Filtrovat: objednávky"
           >
-            <StatValue>{stats.odeslana}</StatValue>
-            <StatIcon $color="#3b82f6"><FontAwesomeIcon icon={faPaperPlane} /></StatIcon>
-            <StatLabel>Odeslána dodavateli</StatLabel>
+            <StatValue>{stats.OBJ}</StatValue>
+            <StatIcon $color="#3b82f6"><FontAwesomeIcon icon={faShoppingCart} /></StatIcon>
+            <StatLabel>OBJ</StatLabel>
+          </StatCard>
+
+          <StatCard
+            $color="#10b981"
+            $clickable={true}
+            $isActive={activeTypeFilter === 'FAK'}
+            onClick={() => setActiveTypeFilter(activeTypeFilter === 'FAK' ? null : 'FAK')}
+            title="Filtrovat: faktury"
+          >
+            <StatValue>{stats.FAK}</StatValue>
+            <StatIcon $color="#10b981"><FontAwesomeIcon icon={faFileInvoiceDollar} /></StatIcon>
+            <StatLabel>FAK</StatLabel>
           </StatCard>
 
           <StatCard
             $color="#8b5cf6"
             $clickable={true}
-            $isActive={activeStatFilter === 'potvrzena'}
-            onClick={() => handleStatCardClick('potvrzena')}
-            title="Filtrovat: Objednávka potvrzena dodavatelem"
+            $isActive={activeTypeFilter === 'KOM'}
+            onClick={() => setActiveTypeFilter(activeTypeFilter === 'KOM' ? null : 'KOM')}
+            title="Filtrovat: komentáře"
           >
-            <StatValue>{stats.potvrzena}</StatValue>
-            <StatIcon>✔️</StatIcon>
-            <StatLabel>Potvrzena dodavatelem</StatLabel>
+            <StatValue>{stats.KOM}</StatValue>
+            <StatIcon $color="#8b5cf6"><FontAwesomeIcon icon={faComment} /></StatIcon>
+            <StatLabel>KOM</StatLabel>
+          </StatCard>
+
+          <StatCard
+            $color="#64748b"
+            $clickable={true}
+            $isActive={activeTypeFilter === 'SYS'}
+            onClick={() => setActiveTypeFilter(activeTypeFilter === 'SYS' ? null : 'SYS')}
+            title="Filtrovat: systémové"
+          >
+            <StatValue>{stats.SYS}</StatValue>
+            <StatIcon $color="#64748b"><FontAwesomeIcon icon={faCog} /></StatIcon>
+            <StatLabel>SYS</StatLabel>
+          </StatCard>
+
+          <StatCard
+            $color="#0891b2"
+            $clickable={true}
+            $isActive={activeTypeFilter === 'ZASTUP'}
+            onClick={() => setActiveTypeFilter(activeTypeFilter === 'ZASTUP' ? null : 'ZASTUP')}
+            title="Filtrovat: zastupování"
+          >
+            <StatValue>{stats.ZASTUP}</StatValue>
+            <StatIcon $color="#0891b2"><FontAwesomeIcon icon={faUsers} /></StatIcon>
+            <StatLabel>ZASTUP</StatLabel>
           </StatCard>
 
           <StatCard
             $color="#f59e0b"
             $clickable={true}
-            $isActive={activeStatFilter === 'cekaKontrola'}
-            onClick={() => handleStatCardClick('cekaKontrola')}
-            title="Filtrovat: Čeká na kontrolu"
+            $isActive={activeTypeFilter === 'REZ'}
+            onClick={() => setActiveTypeFilter(activeTypeFilter === 'REZ' ? null : 'REZ')}
+            title="Filtrovat: rezervace/plánování"
           >
-            <StatValue>{stats.cekaKontrola}</StatValue>
-            <StatIcon>🔍</StatIcon>
-            <StatLabel>Čeká na kontrolu</StatLabel>
-          </StatCard>
-
-          <StatCard
-            $color="#10b981"
-            $clickable={true}
-            $isActive={activeStatFilter === 'vecnaSpravnost'}
-            onClick={() => handleStatCardClick('vecnaSpravnost')}
-            title="Filtrovat: Věcná správnost potvrzena"
-          >
-            <StatValue>{stats.vecnaSpravnost}</StatValue>
-            <StatIcon>✅</StatIcon>
-            <StatLabel>Věcná správnost</StatLabel>
-          </StatCard>
-
-          <StatCard
-            $color="#10b981"
-            $clickable={true}
-            $isActive={activeStatFilter === 'registrZverejnena'}
-            onClick={() => handleStatCardClick('registrZverejnena')}
-            title="Filtrovat: Zveřejněna v registru smluv"
-          >
-            <StatValue>{stats.registrZverejnena}</StatValue>
-            <StatIcon>📢</StatIcon>
-            <StatLabel>Zveřejněna v registru</StatLabel>
-          </StatCard>
-
-          <StatCard
-            $color="#059669"
-            $clickable={true}
-            $isActive={activeStatFilter === 'dokoncena'}
-            onClick={() => handleStatCardClick('dokoncena')}
-            title="Filtrovat: Objednávka dokončena"
-          >
-            <StatValue>{stats.dokoncena}</StatValue>
-            <StatIcon>🎯</StatIcon>
-            <StatLabel>Dokončená</StatLabel>
-          </StatCard>
-
-          <StatCard
-            $color="#6b7280"
-            $clickable={true}
-            $isActive={activeStatFilter === 'zrusena'}
-            onClick={() => handleStatCardClick('zrusena')}
-            title="Filtrovat: Objednávka zrušena"
-          >
-            <StatValue>{stats.zrusena}</StatValue>
-            <StatIcon>🚫</StatIcon>
-            <StatLabel>Zrušená</StatLabel>
+            <StatValue>{stats.REZ}</StatValue>
+            <StatIcon $color="#f59e0b"><FontAwesomeIcon icon={faCalendarAlt} /></StatIcon>
+            <StatLabel>REZ</StatLabel>
           </StatCard>
         </StatsBar>
         )}
@@ -2409,125 +2339,6 @@ export const NotificationsPage = () => {
           </SearchBox>
 
           <FilterGroup>
-            <FilterButton
-              $active={!showUnread && !showRead}
-              onClick={() => {
-                setShowUnread(false);
-                setShowRead(false);
-              }}
-            >
-              Všechny
-            </FilterButton>
-            <FilterButton
-              $active={showUnread}
-              onClick={() => {
-                setShowUnread(!showUnread);
-                if (!showUnread) setShowRead(false);
-              }}
-            >
-              <FontAwesomeIcon icon={faBell} />
-              Nepřečtené
-            </FilterButton>
-            <FilterButton
-              $active={showRead}
-              onClick={() => {
-                setShowRead(!showRead);
-                if (!showRead) setShowUnread(false);
-              }}
-            >
-              <FontAwesomeIcon icon={faCheckDouble} />
-              Přečtené
-            </FilterButton>
-            <FilterButton
-              $active={showUrgent}
-              onClick={() => setShowUrgent(!showUrgent)}
-            >
-              <FontAwesomeIcon icon={faExclamationCircle} />
-              Urgentní
-            </FilterButton>
-            <FilterButton
-              $active={showHigh}
-              onClick={() => setShowHigh(!showHigh)}
-            >
-              <FontAwesomeIcon icon={faClock} />
-              Vysoká
-            </FilterButton>
-            <FilterButton
-              $active={showNormal}
-              onClick={() => setShowNormal(!showNormal)}
-            >
-              <FontAwesomeIcon icon={faInfoCircle} />
-              Normální
-            </FilterButton>
-
-            {/* Oddělovač */}
-            <div style={{ width: '1px', height: '28px', background: '#e2e8f0', margin: '0 4px' }} />
-
-            {/* 🏷️ Filtry dle typu - barevné badge */}
-            <TypeFilterBadge
-              $active={activeTypeFilter === 'MSG'}
-              $color="#f59e0b"
-              onClick={() => setActiveTypeFilter(activeTypeFilter === 'MSG' ? null : 'MSG')}
-              title="Zprávy správce systému"
-            >
-              <FontAwesomeIcon icon={faEnvelope} size="xs" />
-              MSG
-            </TypeFilterBadge>
-            <TypeFilterBadge
-              $active={activeTypeFilter === 'OBJ'}
-              $color="#3b82f6"
-              onClick={() => setActiveTypeFilter(activeTypeFilter === 'OBJ' ? null : 'OBJ')}
-              title="Objednávky"
-            >
-              <FontAwesomeIcon icon={faShoppingCart} size="xs" />
-              OBJ
-            </TypeFilterBadge>
-            <TypeFilterBadge
-              $active={activeTypeFilter === 'FAK'}
-              $color="#10b981"
-              onClick={() => setActiveTypeFilter(activeTypeFilter === 'FAK' ? null : 'FAK')}
-              title="Faktury"
-            >
-              <FontAwesomeIcon icon={faFileInvoiceDollar} size="xs" />
-              FAK
-            </TypeFilterBadge>
-            <TypeFilterBadge
-              $active={activeTypeFilter === 'KOM'}
-              $color="#8b5cf6"
-              onClick={() => setActiveTypeFilter(activeTypeFilter === 'KOM' ? null : 'KOM')}
-              title="Komentáře"
-            >
-              <FontAwesomeIcon icon={faComment} size="xs" />
-              KOM
-            </TypeFilterBadge>
-            <TypeFilterBadge
-              $active={activeTypeFilter === 'SYS'}
-              $color="#64748b"
-              onClick={() => setActiveTypeFilter(activeTypeFilter === 'SYS' ? null : 'SYS')}
-              title="Systémové a upomínky"
-            >
-              <FontAwesomeIcon icon={faCog} size="xs" />
-              SYS
-            </TypeFilterBadge>
-            <TypeFilterBadge
-              $active={activeTypeFilter === 'ZASTUP'}
-              $color="#0891b2"
-              onClick={() => setActiveTypeFilter(activeTypeFilter === 'ZASTUP' ? null : 'ZASTUP')}
-              title="Zastupování"
-            >
-              <FontAwesomeIcon icon={faUsers} size="xs" />
-              ZASTUP
-            </TypeFilterBadge>
-            <TypeFilterBadge
-              $active={activeTypeFilter === 'REZ'}
-              $color="#f59e0b"
-              onClick={() => setActiveTypeFilter(activeTypeFilter === 'REZ' ? null : 'REZ')}
-              title="Rezervace / Plánování"
-            >
-              <FontAwesomeIcon icon={faCalendarAlt} size="xs" />
-              REZ
-            </TypeFilterBadge>
-
             {/* ✅ Globální tlačítka pro rozbalení/sbalení vláken - pouze v thread módu */}
             {threadMode && threadedNotifications.some(item => item.isThread && item.olderNotifications.length > 0) && (
               <>
@@ -2576,13 +2387,13 @@ export const NotificationsPage = () => {
             <EmptyState>
               <EmptyIcon>🔔</EmptyIcon>
               <EmptyText>
-                {searchQuery || showUnread || showRead || showUrgent || showHigh || showNormal
+                {hasAnyFilter
                   ? 'Žádné notifikace neodpovídají filtrům'
                   : 'Žádné notifikace'
                 }
               </EmptyText>
               <EmptySubtext>
-                {searchQuery || showUnread || showRead || showUrgent || showHigh || showNormal
+                {hasAnyFilter
                   ? 'Zkuste změnit filtry nebo vyhledávání'
                   : 'Budete informováni o nových událostech'
                 }

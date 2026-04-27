@@ -3087,28 +3087,6 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
               <FontAwesomeIcon icon={faComment} />
               Komentáře k objednávce ({order.comments_count || comments.length || 0})
               <span style={{ marginLeft: 'auto', display: 'flex', gap: '0.35rem', alignItems: 'center' }}>
-                <InlineCommentsSearchWrapper>
-                  <InlineCommentsSearchInput
-                    value={commentsSearchQuery}
-                    onChange={(e) => setCommentsSearchQuery(e.target.value)}
-                    placeholder="Hledat v komentářích…"
-                    title="Hledat v komentářích (autor + text)"
-                  />
-                  {!!(commentsSearchQuery || '').trim() && (
-                    <InlineCommentsSearchClearButton
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setCommentsSearchQuery('');
-                      }}
-                      title="Vymazat"
-                      aria-label="Vymazat hledání"
-                    >
-                      <FontAwesomeIcon icon={faXmark} />
-                    </InlineCommentsSearchClearButton>
-                  )}
-                </InlineCommentsSearchWrapper>
-
                 <SmartTooltip text="Obnovit komentáře z databáze" icon="info" preferredPosition="top">
                   <button
                     type="button"
@@ -3152,6 +3130,33 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 </SmartTooltip>
               </span>
             </CardTitle>
+
+            {/* 🔍 SEARCH INPUT - VEN z CardTitle, aby nebyl v draggable bloku */}
+            {isCommentsBlockExpanded && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <InlineCommentsSearchWrapper>
+                  <InlineCommentsSearchInput
+                    value={commentsSearchQuery}
+                    onChange={(e) => setCommentsSearchQuery(e.target.value)}
+                    placeholder="Hledat v komentářích…"
+                    title="Hledat v komentářích (autor + text)"
+                  />
+                  {!!(commentsSearchQuery || '').trim() && (
+                    <InlineCommentsSearchClearButton
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCommentsSearchQuery('');
+                      }}
+                      title="Vymazat"
+                      aria-label="Vymazat hledání"
+                    >
+                      <FontAwesomeIcon icon={faXmark} />
+                    </InlineCommentsSearchClearButton>
+                  )}
+                </InlineCommentsSearchWrapper>
+              </div>
+            )}
 
             {isCommentsBlockExpanded && commentsLoading && (
               <div style={{ padding: '1rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -3270,4 +3275,4 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
   );
 };
 
-export default OrderExpandedRowV3;
+export default React.memo(OrderExpandedRowV3);

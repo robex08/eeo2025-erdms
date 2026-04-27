@@ -49,97 +49,68 @@ require_once __DIR__ . '/handlers.php';
  * Kontrola, zda má uživatel přístup k objednávce a jejím komentářům
  * 
  * ✅ PRAVIDLA PŘÍSTUPU:
- * 1. ADMINI (isAdmin) - má přístup ke VŠEM objednávkám a komentářům
- * 2. Pokud uživatel VIDÍ objednávku (dle Orders V3 logiky) - má přístup k jejím komentářům
- *    - To zahrnuje: vlastní objednávky, podřízené (příkazce), účastníky (12 rolí)
+ * Komentáře jsou přístupné VŠEM, kdo vidí danou objednávku podle Order V3 logiky.
+ * 
+ * Používá STEJNOU logiku jako Order V3 list endpoint (applyOrderV3UserPermissions).
+ * To zahrnuje:
+ * - Admin/Superadmin role
+ * - ORDER_READ_ALL / ORDER_VIEW_ALL permissions
+ * - 12 rolí v objednávce (autor, garant, schvalovatel, ...)
+ * - Hierarchie (příkazce vidí podřízené)
+ * - Department subordinate (ORDER_READ_SUBORDINATE)
+ * - Zastupování (substitution)
  * 
  * @param PDO $db DB připojení
  * @param int $user_id ID uživatele
  * @param int $order_id ID objednávky
- * @param array $user_roles Role uživatele
- * @param bool $is_admin Je uživatel admin (isAdmin flag)
  * @return bool True pokud má přístup
  */
-function can_access_order_comments($db, $user_id, $order_id, $user_roles = array(), $is_admin = false) {
-    // 1. ADMINI má přístup ke VŠEM objednávkám (isAdmin flag)
+function can_access_order_comments($db, $user_id, $order_id) {
+    // Použít stejnou logiku jako Order V3 list - applyOrderV3UserPermissions()
+    // Pokud uživatel VIDÍ objednávku → má přístup k jejím komentářům
+    
+    $where_conditions = array();
+    $where_params = array();
+    
+    // Aplikovat Order V3 user permissions (vrací TRUE pokud je admin)
+    $is_admin = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
+    
     if ($is_admin) {
-        error_log("✅ User ID $user_id má přístup - isAdmin");
+        // Admin vidí všechny objednávky → má přístup ke všem komentářům
+        error_log("✅ User ID $user_id má přístup k objednávce $order_id - ADMIN");
         return true;
     }
     
-    // 2. SUPERADMIN a ADMINISTRATOR mají přístup ke VŠEM objednávkám
-    if (in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles)) {
-        error_log("✅ User ID $user_id má přístup - SUPERADMIN/ADMINISTRATOR role");
-        return true;
+    // Non-admin: Zkontrolovat, zda objednávka s tímto ID projde přes Order V3 visibility filter
+    if (empty($where_conditions)) {
+        error_log("⛔ User ID $user_id NEMÁ přístup k objednávce $order_id - žádné visibility podmínky");
+        return false;
     }
     
-    // 3. Zkontrolovat, zda uživatel VIDÍ objednávku podle Orders V3 logiky:
-    //    a) Je účastníkem objednávky (12 rolí)
-    //    b) Je příkazce nadřízený autorovi objednávky (hierarchie)
+    // Sestavit WHERE klauzuli z podmínek (spojeno přes OR)
+    $visibility_sql = '(' . implode(' OR ', $where_conditions) . ')';
     
-    // 3a) Přímý účastník objednávky (12 rolí)
-    $stmt = $db->prepare("
-        SELECT COUNT(*) as is_participant
-        FROM " . TBL_OBJEDNAVKY . "
-        WHERE id = ?
-          AND (
-              uzivatel_id = ?
-              OR objednatel_id = ?
-              OR garant_uzivatel_id = ?
-              OR schvalovatel_id = ?
-              OR prikazce_id = ?
-              OR uzivatel_akt_id = ?
-              OR odesilatel_id = ?
-              OR dodavatel_potvrdil_id = ?
-              OR zverejnil_id = ?
-              OR fakturant_id = ?
-              OR dokoncil_id = ?
-              OR potvrdil_vecnou_spravnost_id = ?
-          )
-    ");
+    // Zkontrolovat, zda existuje objednávka s tímto ID, která projde přes visibility filter
+    $sql = "
+        SELECT COUNT(*) as has_access
+        FROM " . TBL_OBJEDNAVKY . " o
+        WHERE o.id = ?
+          AND " . $visibility_sql . "
+    ";
     
-    $params = array($order_id);
-    for ($i = 0; $i < 12; $i++) {
-        $params[] = $user_id;
-    }
+    // Přidat order_id jako první parametr
+    array_unshift($where_params, $order_id);
     
-    $stmt->execute($params);
+    $stmt = $db->prepare($sql);
+    $stmt->execute($where_params);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    if ($result && $result['is_participant'] > 0) {
-        error_log("✅ User ID $user_id má přístup - účastník objednávky");
+    if ($result && $result['has_access'] > 0) {
+        error_log("✅ User ID $user_id má přístup k objednávce $order_id - vidí ji v Order V3");
         return true;
     }
     
-    // 3b) Příkazce vidí objednávky svých podřízených (hierarchie)
-    // Získat autora objednávky
-    $stmt = $db->prepare("
-        SELECT uzivatel_id 
-        FROM " . TBL_OBJEDNAVKY . " 
-        WHERE id = ?
-    ");
-    $stmt->execute(array($order_id));
-    $order = $stmt->fetch(PDO::FETCH_ASSOC);
-    
-    if ($order) {
-        $order_author_id = (int)$order['uzivatel_id'];
-        
-        // Zkontrolovat, zda je current user příkazce autora objednávky
-        $stmt = $db->prepare("
-            SELECT prikazce_id 
-            FROM " . TBL_UZIVATELE . " 
-            WHERE id = ?
-        ");
-        $stmt->execute(array($order_author_id));
-        $author = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if ($author && (int)$author['prikazce_id'] === $user_id) {
-            error_log("✅ User ID $user_id má přístup - příkazce autora objednávky");
-            return true;
-        }
-    }
-    
-    error_log("⛔ User ID $user_id NEMÁ přístup k objednávce $order_id");
+    error_log("⛔ User ID $user_id NEMÁ přístup k objednávce $order_id - nevidí ji v Order V3");
     return false;
 }
 
@@ -204,26 +175,9 @@ function handle_order_v3_comments_list($input, $config) {
         TimezoneHelper::setMysqlTimezone($db);
         
         $user_id = (int)$token_data['id'];
-        
-        // Získat role uživatele
-        $stmt = $db->prepare("
-            SELECT r.kod_role
-            FROM " . TBL_UZIVATELE_ROLE . " ur
-            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
-            WHERE ur.uzivatel_id = ?
-        ");
-        $stmt->execute(array($user_id));
-        $roles_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $user_roles = array();
-        foreach ($roles_result as $row) {
-            $user_roles[] = $row['kod_role'];
-        }
-        
-        // ✅ Kontrola admin práv podle rolí (ne podle DB sloupce)
-        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
 
-        // 4. Kontrola přístupu k objednávce
-        if (!can_access_order_comments($db, $user_id, $order_id, $user_roles, $is_admin)) {
+        // 4. Kontrola přístupu k objednávce (používá Order V3 logiku)
+        if (!can_access_order_comments($db, $user_id, $order_id)) {
             error_log("⛔ User ID $user_id nemá přístup k objednávce $order_id");
             http_response_code(403);
             echo json_encode(array(
@@ -427,26 +381,9 @@ function handle_order_v3_comments_add($input, $config) {
         TimezoneHelper::setMysqlTimezone($db);
         
         $user_id = (int)$token_data['id'];
-        
-        // Získat role uživatele a isAdmin flag
-        $stmt = $db->prepare("
-            SELECT r.kod_role
-            FROM " . TBL_UZIVATELE_ROLE . " ur
-            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
-            WHERE ur.uzivatel_id = ?
-        ");
-        $stmt->execute(array($user_id));
-        $roles_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $user_roles = array();
-        foreach ($roles_result as $row) {
-            $user_roles[] = $row['kod_role'];
-        }
-        
-        // ✅ Kontrola admin práv podle rolí (ne podle DB sloupce)
-        $is_admin = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
 
-        // 4. Kontrola přístupu k objednávce
-        if (!can_access_order_comments($db, $user_id, $order_id, $user_roles, $is_admin)) {
+        // 4. Kontrola přístupu k objednávce (používá Order V3 logiku)
+        if (!can_access_order_comments($db, $user_id, $order_id)) {
             error_log("⛔ User ID $user_id nemá přístup k objednávce $order_id");
             http_response_code(403);
             echo json_encode(array(
