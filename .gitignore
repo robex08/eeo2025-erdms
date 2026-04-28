@@ -1,9 +1,12 @@
-# Environment variables
-.env
-.env.local
-.env.production
-.env.development
-**/.env.development
+# Environment variables (default deny)
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+!**/.env.example.*
+
+# Explicitly ignore backup env snapshots
+**/.env.backup*
 
 # Dependencies
 node_modules/
