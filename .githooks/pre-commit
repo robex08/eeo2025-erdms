@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Secret scanning for staged content only.
+# Blocks commit when likely credentials/secrets are detected.
+
+staged_files=$(git diff --cached --name-only --diff-filter=ACM)
+if [[ -z "${staged_files}" ]]; then
+  exit 0
+fi
+
+secret_pattern='BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|(DB_PASSWORD|EEO_DB_PASSWORD|EEO_LEGACY_DB_PASSWORD|FTP_PASS|WEBDISPECINK_PASSWORD|API_KEY|CLIENT_SECRET|SECRET_KEY|PASSWORD|PASSWD|TOKEN)[[:space:]]*[:=][[:space:]]*[^[:space:]#]{6,}|https?://[^[:space:]/:@]+:[^[:space:]/:@]+@|mysql://[^[:space:]]+:[^[:space:]]+@|jdbc:[^[:space:]]+:[^[:space:]]+@'
+ignore_pattern='CHANGE_ME_|your-|your_|YOUR_|example|placeholder|\*\*\*|=\s*$|=\.\.\.|=x{4,}|=tvoje-|\$\{|<[^>]+>'
+
+hits=""
+
+while IFS= read -r file; do
+  [[ -z "$file" ]] && continue
+
+  # Avoid self-matching on the regex definitions in this hook file.
+  if [[ "$file" == ".githooks/pre-commit" ]]; then
+    continue
+  fi
+
+  # Skip deleted/renamed paths not present in index blob.
+  if ! git cat-file -e ":$file" 2>/dev/null; then
+    continue
+  fi
+
+  # Skip binary staged blobs.
+  if ! git show ":$file" | grep -Iq .; then
+    continue
+  fi
+
+  file_hits=$(git show ":$file" | grep -nE "$secret_pattern" | grep -Ev "$ignore_pattern" || true)
+  if [[ -n "$file_hits" ]]; then
+    hits+=$'\n'
+    hits+="[$file]"
+    hits+=$'\n'
+    hits+="$file_hits"
+    hits+=$'\n'
+  fi
+done <<< "$staged_files"
+
+if [[ -n "$hits" ]]; then
+  echo ""
+  echo "ERROR: Potential secret detected in staged changes. Commit blocked."
+  echo "$hits"
+  echo ""
+  echo "If this is a placeholder, rename it (e.g. CHANGE_ME_...) or move it to local .env not tracked by git."
+  exit 1
+fi
+
+exit 0
