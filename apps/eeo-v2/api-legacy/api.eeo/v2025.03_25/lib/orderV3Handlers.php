@@ -3960,7 +3960,8 @@ function handle_orderV3_lp_expand($input, $config) {
             // Faktury
             $sql_fa = "
                 SELECT f.id, f.objednavka_id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_castka, f.stav, 
-                       f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
+                       f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena, f.fa_poznamka,
+                       f.vecna_spravnost_potvrzeno
                 FROM " . TBL_FAKTURY . " f
                 WHERE f.objednavka_id IN ($placeholders) AND f.aktivni = 1
                 ORDER BY f.fa_datum_vystaveni DESC
@@ -3978,7 +3979,9 @@ function handle_orderV3_lp_expand($input, $config) {
                     'stav' => $fa['stav'],
                     'fa_datum_vystaveni' => $fa['fa_datum_vystaveni'],
                     'fa_datum_splatnosti' => $fa['fa_datum_splatnosti'],
-                    'fa_zaplacena' => (bool)$fa['fa_zaplacena']
+                    'fa_zaplacena' => (bool)$fa['fa_zaplacena'],
+                    'fa_poznamka' => $fa['fa_poznamka'],
+                    'vecna_spravnost_potvrzeno' => (bool)$fa['vecna_spravnost_potvrzeno']
                 ];
                 $faktura_ids[] = (int)$fa['id'];
             }
