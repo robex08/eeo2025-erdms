@@ -88,7 +88,8 @@ export async function getSmlouvyList({
   limit = 1000,
   offset = 0,
   pouzit_v_obj_formu = null,
-  include_stats = false  // ⚡ OPTIMALIZACE: Defaultně bez statistik pro rychlejší načítání
+  include_stats = false,  // ⚡ OPTIMALIZACE: Defaultně bez statistik pro rychlejší načítání
+  restrict_view = false
 }) {
   try {
     const payload = {
@@ -104,7 +105,8 @@ export async function getSmlouvyList({
       limit,
       offset,
       pouzit_v_obj_formu,
-      include_stats  // ⚡ Statistiky jen když explicitně požadováno
+      include_stats,  // ⚡ Statistiky jen když explicitně požadováno
+      restrict_view
     };
 
     const response = await api.post('ciselniky/smlouvy/list', payload);

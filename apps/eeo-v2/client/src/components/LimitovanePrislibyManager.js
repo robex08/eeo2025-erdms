@@ -1393,6 +1393,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   // State pro data
   const [lpData, setLpData] = useState([]);
   const [myUsageData, setMyUsageData] = useState(null); // Pro /moje-cerpani endpoint (objednávky)
+  const [myUsageLoading, setMyUsageLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [initializing, setInitializing] = useState(false);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -1527,7 +1528,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   
   // User info
   const userUsekId = user?.usek_id || userDetail?.usek_id;
-  const userId = user?.id;
+  const userId = user?.id ?? userDetail?.id;
   
   // ===== NAČTENÍ DAT podle role (v3.0) =====
   const loadLPData = useCallback(async () => {
@@ -1739,6 +1740,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
       
       // ===== PRO BĚŽNÉ UŽIVATELE: Načíst osobní čerpání a sloučit s globálním stavem =====
       if (!isAdmin && !isLPManager && userId && userUsekId) {
+        setMyUsageLoading(true);
         try {
           
           // ⚡ OPTIMALIZACE: Použít již načtená lpData místo druhého dotazu s isAdmin: true
@@ -1771,6 +1773,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               
               return {
                 id: globalLp?.id || `my-${idx}`,
+                lp_master_id: globalLp?.lp_master_id || mojeLp.lp_master_id || globalLp?.id || `my-${idx}`,
                 cislo_lp: mojeLp.cislo_lp,
                 kategorie: mojeLp.kategorie || globalLp?.kategorie || '',
                 nazev_uctu: mojeLp.nazev_uctu || globalLp?.nazev_uctu || '',
@@ -1804,7 +1807,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 usek_nazev: mojeLp.usek_nazev || globalLp?.usek_nazev || '',
                 usek_id: parseInt(mojeLp.usek_id || globalLp?.usek_id || 0),
                 user_id: parseInt(globalLp?.user_id || 0),
-                spravce: globalLp?.spravce ? `${globalLp.spravce.prijmeni || ''} ${globalLp.spravce.jmeno || ''}`.trim() : ''
+                spravce: mojeLp.spravce || globalLp?.spravce || ''
               };
             });
             
@@ -1813,11 +1816,18 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               objednavky: myUsageResult.data.objednavky || []
             });
           } else {
+            setMyUsageData(null);
             console.error('/moje-cerpani Error:', myUsageResponse.status, myUsageText);
           }
         } catch (error) {
+          setMyUsageData(null);
           console.error('Chyba při načítání a slučování osobního čerpání:', error);
+        } finally {
+          setMyUsageLoading(false);
         }
+      } else {
+        setMyUsageLoading(false);
+        setMyUsageData(null);
       }
       
     } catch (error) {
@@ -1840,25 +1850,38 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     if (!token || !username) return;
     const expandedKeys = Object.keys(expandedLPs).filter(k => expandedLPs[k]);
     if (expandedKeys.length === 0) return;
-    expandedKeys.forEach(async (lpMasterId) => {
-      if (lpExpandOrders[lpMasterId]) return; // data už máme
-      setLpExpandLoading(prev => ({ ...prev, [lpMasterId]: true }));
+    expandedKeys.forEach(async (expandKey) => {
+      if (lpExpandOrders[expandKey]) return; // data už máme
+
+      const isPersonal = expandKey.startsWith('me-');
+      const keyWithoutPrefix = expandKey.replace(/^me-/, '').replace(/^all-/, '');
+      const lpMasterId = Number(keyWithoutPrefix);
+      if (!lpMasterId) return;
+
+      if (isPersonal && !userId) return;
+
+      setLpExpandLoading(prev => ({ ...prev, [expandKey]: true }));
       try {
         const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const body = {
+          token,
+          username,
+          lp_master_id: lpMasterId,
+          ...(isPersonal ? { requesting_user_id: Number(userId) } : {})
+        };
         const resp = await fetch(`${API_BASE_URL}order-v3/lp-expand`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, username, lp_master_id: lpMasterId })
+          body: JSON.stringify(body)
         });
         const json = await resp.json();
-        setLpExpandOrders(prev => ({ ...prev, [lpMasterId]: Array.isArray(json.data) ? json.data : [] }));
+        setLpExpandOrders(prev => ({ ...prev, [expandKey]: Array.isArray(json.data) ? json.data : [] }));
       } catch {
-        setLpExpandOrders(prev => ({ ...prev, [lpMasterId]: [] }));
+        setLpExpandOrders(prev => ({ ...prev, [expandKey]: [] }));
       }
-      setLpExpandLoading(prev => ({ ...prev, [lpMasterId]: false }));
+      setLpExpandLoading(prev => ({ ...prev, [expandKey]: false }));
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, username]);
+  }, [token, username, userId, expandedLPs, lpExpandOrders]);
   
   const handleInitializace = async () => {
     // Zobrazit confirm dialog místo window.confirm
@@ -2013,6 +2036,9 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   
   // ===== DATA PRO RŮZNÉ ROLE =====
   // Všichni vidí LP úseku z /stav endpoint
+  const statsSource = (viewOwnOnly && userUsekId)
+    ? filteredData.filter(lp => lp.usek_id && Number(lp.usek_id) === Number(userUsekId))
+    : filteredData;
   
   // Seskupení podle úseků pro adminy
   const groupedByUsek = {};
@@ -2032,23 +2058,23 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   
   // Statistiky - TŘI TYPY ČERPÁNÍ
   const stats = {
-    celkem_lp: filteredData.length,
-    celkovy_limit: filteredData.reduce((sum, lp) => sum + lp.vyse_financniho_kryti, 0),
+    celkem_lp: statsSource.length,
+    celkovy_limit: statsSource.reduce((sum, lp) => sum + lp.vyse_financniho_kryti, 0),
     // TŘI TYPY:
-    celkove_rezervovano: filteredData.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0),
-    celkove_predpokladane: filteredData.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0),
+    celkove_rezervovano: statsSource.reduce((sum, lp) => sum + (lp.rezervovano || 0), 0),
+    celkove_predpokladane: statsSource.reduce((sum, lp) => sum + (lp.predpokladane_cerpani || 0), 0),
     // DŮLEŽITĚ: celkove_skutecne = faktury + pokladna
-    celkove_skutecne: filteredData.reduce((sum, lp) => sum + ((lp.skutecne_cerpano || 0) + (lp.cerpano_pokladna || 0)), 0),
+    celkove_skutecne: statsSource.reduce((sum, lp) => sum + ((lp.skutecne_cerpano || 0) + (lp.cerpano_pokladna || 0)), 0),
     // Pokladna - jen pro informaci
-    celkove_pokladna: filteredData.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0),
+    celkove_pokladna: statsSource.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0),
     // Zpětná kompatibilita:
-    celkove_cerpano: filteredData.reduce((sum, lp) => sum + lp.aktualne_cerpano, 0),
-    prekroceno: filteredData.filter(lp => lp.je_prekroceno).length
+    celkove_cerpano: statsSource.reduce((sum, lp) => sum + lp.aktualne_cerpano, 0),
+    prekroceno: statsSource.filter(lp => lp.je_prekroceno).length
   };
   // Zbývá - tři typy (sčítat přímo z LP, backend už to počítá správně):
-  stats.celkem_zbyva_rezervace = filteredData.reduce((sum, lp) => sum + (lp.zbyva_rezervace || 0), 0);
-  stats.celkem_zbyva_predpoklad = filteredData.reduce((sum, lp) => sum + (lp.zbyva_predpoklad || 0), 0);
-  stats.celkem_zbyva_skutecne = filteredData.reduce((sum, lp) => sum + (lp.zbyva_skutecne || 0), 0);
+  stats.celkem_zbyva_rezervace = statsSource.reduce((sum, lp) => sum + (lp.zbyva_rezervace || 0), 0);
+  stats.celkem_zbyva_predpoklad = statsSource.reduce((sum, lp) => sum + (lp.zbyva_predpoklad || 0), 0);
+  stats.celkem_zbyva_skutecne = statsSource.reduce((sum, lp) => sum + (lp.zbyva_skutecne || 0), 0);
   stats.celkem_zbyva = stats.celkem_zbyva_skutecne; // Zpětná kompatibilita
   
   // Procenta - tři typy:
@@ -2056,6 +2082,22 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   stats.prumerne_procento_predpokladane = stats.celkovy_limit > 0 ? (stats.celkove_predpokladane / stats.celkovy_limit * 100) : 0;
   stats.prumerne_procento_skutecne = stats.celkovy_limit > 0 ? (stats.celkove_skutecne / stats.celkovy_limit * 100) : 0;
   stats.prumerne_procento = stats.prumerne_procento_skutecne; // Zpětná kompatibilita
+
+  const myUsageSource = (myUsageData?.lp_cerpani || []).filter(lp => {
+    if (!viewOwnOnly || !userUsekId) return true;
+    return !lp.usek_id || Number(lp.usek_id) !== Number(userUsekId);
+  });
+  const myUsageStats = {
+    skutecne: myUsageSource.reduce(
+      (sum, lp) => sum + (parseFloat(lp.moje_skutecne || lp.skutecne_cerpano || 0) + parseFloat(lp.moje_pokladna || 0)),
+      0
+    ),
+    vProcesu: myUsageSource.reduce(
+      (sum, lp) => sum + (parseFloat(lp.moje_predpoklad || lp.predpokladane_cerpani || 0) + parseFloat(lp.moje_rezervovano || lp.rezervovano || 0)),
+      0
+    )
+  };
+  const myUsageTitle = viewOwnOnly ? 'Moje skutečné čerpání z jiných úseků' : 'Moje skutečné čerpání';
   
   // Formátování částky
   const formatAmount = (amount) => {
@@ -2068,29 +2110,40 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   };
 
   // Expand/collapse LP řádku s lazy-load objednávek + faktur
-  const toggleLPExpand = useCallback(async (lpMasterId) => {
-    const isExpanding = !expandedLPs[lpMasterId];
-    setExpandedLPs(prev => ({ ...prev, [lpMasterId]: isExpanding }));
-    if (isExpanding && !lpExpandOrders[lpMasterId]) {
-      setLpExpandLoading(prev => ({ ...prev, [lpMasterId]: true }));
+  const toggleLPExpand = useCallback(async (lpMasterId, filterByUser = false, expandKey = null) => {
+    const key = expandKey || lpMasterId;
+    const isExpanding = !expandedLPs[key];
+    setExpandedLPs(prev => ({ ...prev, [key]: isExpanding }));
+    if (isExpanding && !lpExpandOrders[key]) {
+      setLpExpandLoading(prev => ({ ...prev, [key]: true }));
       try {
         const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
         const url = `${API_BASE_URL}order-v3/lp-expand`;
-        const body = { token, username, lp_master_id: lpMasterId };
+        const requestingUserId = userId ?? null;
+        const body = { 
+          token, 
+          username, 
+          lp_master_id: lpMasterId,
+          ...(filterByUser && requestingUserId != null ? { requesting_user_id: Number(requestingUserId) } : {})
+        };
+        
+        // 🔍 DEBUG
+        console.log('🔍 toggleLPExpand:', { lpMasterId, filterByUser, expandKey: key, userId: requestingUserId, body });
+        
         const resp = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body)
         });
         const json = await resp.json();
-        setLpExpandOrders(prev => ({ ...prev, [lpMasterId]: Array.isArray(json.data) ? json.data : [] }));
+        setLpExpandOrders(prev => ({ ...prev, [key]: Array.isArray(json.data) ? json.data : [] }));
       } catch (err) {
         console.error('🔴 [LP-Expand] ERROR:', err);
-        setLpExpandOrders(prev => ({ ...prev, [lpMasterId]: [] }));
+        setLpExpandOrders(prev => ({ ...prev, [key]: [] }));
       }
-      setLpExpandLoading(prev => ({ ...prev, [lpMasterId]: false }));
+      setLpExpandLoading(prev => ({ ...prev, [key]: false }));
     }
-  }, [expandedLPs, lpExpandOrders, token, username]);
+  }, [expandedLPs, lpExpandOrders, token, username, userId]);
 
   // 💡 Render částky s tooltipem (pro objednávky detail)
   const renderAmountWithTooltip = (amount, objednavkyDetail, typ = 'skutecne') => {
@@ -2397,7 +2450,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         
         {/* Tooltip s detaily */}
         <TooltipContent>
-          <TooltipTitle>{lp.nazev_uctu || lp.cislo_lp}</TooltipTitle>
+          <TooltipTitle style={{ color: color.color }}>{lp.nazev_uctu || lp.cislo_lp}</TooltipTitle>
           <TooltipTable>
             <tbody>
               <tr>
@@ -2619,7 +2672,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         {/* Tooltip s detaily čerpání - vykreslen přes Portal */}
         <TooltipPortal targetRef={containerRef} isVisible={isHovered}>
           <TooltipContent $isVisible={isHovered}>
-            <TooltipTitle>LP čerpání: {lp.cislo_lp}</TooltipTitle>
+            <TooltipTitle style={{ color: barColor }}>LP čerpání: {lp.cislo_lp}</TooltipTitle>
             <TooltipTable>
               <tbody>
                 <tr>
@@ -2715,6 +2768,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         </InfoBox>
       );
     }
+
+    const totalRezervovano = data.reduce((sum, lp) => sum + parseFloat(lp.rezervovano || 0), 0);
+    const totalPredpoklad = data.reduce((sum, lp) => sum + parseFloat(lp.predpokladane_cerpani || 0), 0);
+    const totalSkutecne = data.reduce((sum, lp) => sum + parseFloat(lp.skutecne_cerpano || 0), 0);
+    const totalObjednavek = data.reduce((sum, lp) => sum + parseInt(lp.pocet_objednavek || 0), 0);
     
     return (
       <div style={{ marginTop: '2rem' }}>
@@ -2726,75 +2784,262 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
           <Table>
             <Thead>
               <tr>
+                <th style={{ width: '40px' }}></th>
                 <th>Kód LP</th>
                 <th>Kategorie</th>
+                <th>Účet</th>
                 <th>Název účtu</th>
-                <th>Celkový limit</th>
-                <th title="Dokončeno (potvrzeno) / V procesu (odeslané obj. + ve schvalování)">Moje čerpání</th>
-                <th>% z limitu</th>
-                <th>Zbývá</th>
-                <th>Objednávky</th>
+                <th>Příkazce operace</th>
+                <th style={{ textAlign: 'right' }}>Moje čerpání</th>
+                <th style={{ textAlign: 'center' }}>Objednávky</th>
               </tr>
             </Thead>
             <Tbody>
               {data.map((lp, idx) => {
+                const lpKey = lp.lp_master_id || lp.id || `my-${idx}`;
+                const expandKey = `me-${lpKey}`;
+                const lpMasterId = lp.lp_master_id || lp.id;
                 const rezervovano = parseFloat(lp.rezervovano || 0);
                 const predpoklad = parseFloat(lp.predpokladane_cerpani || 0);
-                // ✅ OPRAVA: Skutečně = faktury + pokladna
-                const skutecne = parseFloat(lp.skutecne_cerpano || 0) + parseFloat(lp.cerpano_pokladna || 0);
-                const limit = parseFloat(lp.vyse_financniho_kryti || 0);
-                const zbyva = limit - skutecne;
-                const procento = limit > 0 ? (skutecne / limit * 100) : 0;
+                // ✅ Moje skutečné čerpání
+                const skutecne = parseFloat(lp.skutecne_cerpano || 0);
+                const pocetObj = parseInt(lp.pocet_objednavek || 0);
+                const canExpand = pocetObj > 0;
                 
                 return (
-                  <tr key={lp.cislo_lp || idx}>
+                  <React.Fragment key={lp.cislo_lp || idx}>
+                  <tr>
+                    <td>
+                      {canExpand ? (
+                        <button
+                          onClick={() => toggleLPExpand(lpMasterId, true, expandKey)}
+                          title={expandedLPs[expandKey] ? 'Skrýt objednávky' : 'Zobrazit moje objednávky'}
+                          style={{
+                            background: expandedLPs[expandKey] ? '#fee2e2' : '#eff6ff',
+                            border: `1px solid ${expandedLPs[expandKey] ? '#fca5a5' : '#93c5fd'}`,
+                            borderRadius: '4px',
+                            width: '22px',
+                            cursor: 'pointer',
+                            display: 'inline-flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center',
+                            color: expandedLPs[expandKey] ? '#dc2626' : '#3b82f6',
+                            flexShrink: 0, padding: '1px 0', gap: 0,
+                            lineHeight: 1
+                          }}
+                        >
+                          <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1, color: expandedLPs[expandKey] ? '#dc2626' : '#1e40af', opacity: 0.85 }}>
+                            {pocetObj}
+                          </span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
+                            {expandedLPs[expandKey] ? '−' : '+'}
+                          </span>
+                        </button>
+                      ) : (
+                        <button
+                          disabled
+                          title="Žádné objednávky"
+                          style={{
+                            background: '#f3f4f6',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '4px',
+                            width: '22px',
+                            cursor: 'not-allowed',
+                            display: 'inline-flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center',
+                            color: '#9ca3af',
+                            flexShrink: 0, padding: '1px 0', gap: 0,
+                            lineHeight: 1, opacity: 0.5
+                          }}
+                        >
+                          <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1 }}>0</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>+</span>
+                        </button>
+                      )}
+                    </td>
                     <td>
                       <LPCode>{lp.cislo_lp}</LPCode>
                     </td>
                     <td>
                       <Category>{lp.kategorie}</Category>
                     </td>
+                    <td>{lp.cislo_uctu}</td>
                     <td>{lp.nazev_uctu}</td>
                     <td>
-                      <Amount $color="#6b7280">
-                        {formatAmount(limit)}
-                      </Amount>
+                      <UserInfo>
+                        <User size={14} />
+                        {lp.spravce && lp.spravce.trim() !== '' ? lp.spravce : '—'}
+                      </UserInfo>
                     </td>
-                    <td>
-                      <ThreeTypeAmountContainer>
-                        <ThreeTypeAmountRow title="Potvrzené faktury s věcnou správností">
-                          <ThreeTypeLabel style={{ color: '#10b981' }}>Dokončeno:</ThreeTypeLabel>
-                          <ThreeTypeValue style={{ color: '#10b981', fontWeight: '700' }}>{formatAmount(skutecne)}</ThreeTypeValue>
-                        </ThreeTypeAmountRow>
-                        <ThreeTypeAmountRow title="Objednávky s položkami dle LP + objednávky ve schvalování">
-                          <ThreeTypeLabel style={{ color: '#3b82f6' }}>V procesu:</ThreeTypeLabel>
-                          <ThreeTypeValue style={{ color: '#3b82f6' }}>{formatAmount(predpoklad + rezervovano)}</ThreeTypeValue>
-                        </ThreeTypeAmountRow>
-                      </ThreeTypeAmountContainer>
+                    <td style={{ textAlign: 'right' }}>
+                      <ThreeTypeAmount>
+                        <MainAmount $color="#10b981" title="Potvrzené faktury + pokladna">
+                          {formatAmount(skutecne)}
+                        </MainAmount>
+                        <SubAmounts>
+                          <SubAmount title="V procesu (objednávky s položkami) + Požadováno (ve schvalování)">
+                            <span style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 600 }}>+</span>&nbsp;{formatAmount(predpoklad + rezervovano)} v procesu
+                          </SubAmount>
+                        </SubAmounts>
+                      </ThreeTypeAmount>
                     </td>
-                    <td style={{ minWidth: '240px', position: 'relative', overflow: 'visible' }}>
-                      {renderJezevcikBar({
-                        vyse_financniho_kryti: limit,
-                        skutecne_cerpano: skutecne,
-                        predpokladane_cerpani: predpoklad,
-                        rezervovano: rezervovano,
-                        procento_skutecne: procento
-                      })}
-                    </td>
-                    <td>
-                      <Amount $color={zbyva < 0 ? '#ef4444' : '#10b981'}>
-                        {formatAmount(zbyva)}
-                      </Amount>
-                    </td>
-                    <td>
-                      <span style={{ fontSize: '0.9rem', color: '#6b7280' }}>
-                        {lp.pocet_objednavek || 0}×
+                    <td style={{ textAlign: 'center' }}>
+                      <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 600 }}>
+                        {pocetObj}×
                       </span>
                     </td>
                   </tr>
+                  
+                  {/* Expand detail - zobrazit jen objednávky uživatele */}
+                  {expandedLPs[expandKey] && (
+                    <tr style={{ background: '#f8fafc' }}>
+                      <td colSpan={8} style={{ padding: '0.5rem 1rem 0.75rem 2rem', borderBottom: '2px solid #cbd5e1' }}>
+                        {lpExpandLoading[expandKey] ? (
+                          <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '0.5rem 0' }}>Načítám objednávky…</div>
+                        ) : !lpExpandOrders[expandKey] || lpExpandOrders[expandKey].length === 0 ? (
+                          <div style={{ color: '#94a3b8', fontSize: '0.82rem', padding: '0.5rem 0' }}>Nemáte žádné objednávky pro tento LP kód</div>
+                        ) : (() => {
+                          const sortState = lpExpandSort[expandKey] || { col: null, dir: null };
+                          const pageState = lpExpandPage[expandKey] || { page: 1, pageSize: 25 };
+                          const PAGE_SIZES = [5, 10, 25, 50, 100];
+                          const toggleSort = (col) => {
+                            setLpExpandSort(prev => {
+                              const cur = prev[expandKey] || { col: null, dir: null };
+                              let newDir = null;
+                              if (cur.col !== col) newDir = 'asc';
+                              else if (cur.dir === 'asc') newDir = 'desc';
+                              else if (cur.dir === 'desc') newDir = null;
+                              return { ...prev, [expandKey]: { col: newDir ? col : null, dir: newDir } };
+                            });
+                            setLpExpandPage(prev => ({ ...prev, [expandKey]: { ...pageState, page: 1 } }));
+                          };
+                          const sortIcon = (col) => (
+                            <span style={{ marginLeft: '0.2rem', fontSize: '0.65rem', opacity: sortState.col === col ? 1 : 0.3, color: sortState.col === col ? '#2563eb' : 'inherit' }}>
+                              {sortState.col !== col ? '⇅' : sortState.dir === 'asc' ? '↑' : '↓'}
+                            </span>
+                          );
+                          const sorted = [...lpExpandOrders[expandKey]].sort((a, b) => {
+                            if (!sortState.col || !sortState.dir) return 0;
+                            const m = sortState.dir === 'asc' ? 1 : -1;
+                            switch (sortState.col) {
+                              case 'cislo': return m * (a.cislo_objednavky || '').localeCompare(b.cislo_objednavky || '', 'cs');
+                              case 'predmet': return m * (a.predmet || '').localeCompare(b.predmet || '', 'cs');
+                              case 'datum': return m * (a.dt_vytvoreni || '').localeCompare(b.dt_vytvoreni || '');
+                              case 'stav': return m * (a.stav || '').localeCompare(b.stav || '', 'cs');
+                              case 'dodavatel': return m * (a.dodavatel_nazev || '').localeCompare(b.dodavatel_nazev || '', 'cs');
+                              case 'cena': return m * ((a.planovana_castka_lp || a.max_cena_s_dph || 0) - (b.planovana_castka_lp || b.max_cena_s_dph || 0));
+                              case 'faktury': return m * ((a.pocet_faktur || 0) - (b.pocet_faktur || 0));
+                              default: return 0;
+                            }
+                          });
+                          const totalRows = sorted.length;
+                          const totalPages = Math.ceil(totalRows / pageState.pageSize);
+                          const startIdx = (pageState.page - 1) * pageState.pageSize;
+                          const paged = sorted.slice(startIdx, startIdx + pageState.pageSize);
+                          const setPage = (p) => setLpExpandPage(prev => ({ ...prev, [expandKey]: { ...pageState, page: p } }));
+                          const setPageSize = (ps) => setLpExpandPage(prev => ({ ...prev, [expandKey]: { page: 1, pageSize: ps } }));
+                          const czDate = (d) => { if (!d) return '—'; const s = d.substring(0,10); const p = s.split('-'); return p.length === 3 ? `${parseInt(p[2])}.${parseInt(p[1])}.${p[0]}` : s; };
+                          const thBase = { padding: '0.35rem 0.5rem', fontWeight: 600, fontSize: '0.75rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.025em', borderBottom: '2px solid #cbd5e1', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' };
+                          return (
+                          <>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.82rem', letterSpacing: '-0.01em' }}>
+                            <colgroup>
+                              <col style={{ width: '140px' }} />
+                              <col style={{ width: '320px' }} />
+                              <col style={{ width: '110px' }} />
+                              <col style={{ width: '110px' }} />
+                              <col style={{ width: '240px' }} />
+                              <col style={{ width: '120px' }} />
+                            </colgroup>
+                            <thead>
+                              <tr style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
+                                <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('cislo')}>Č. obj.{sortIcon('cislo')}</th>
+                                <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('predmet')}>Předmět obj.{sortIcon('predmet')}</th>
+                                <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('datum')}>Datum{sortIcon('datum')}</th>
+                                <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
+                                <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('dodavatel')}>Dodavatel{sortIcon('dodavatel')}</th>
+                                <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('cena')}>Částka{sortIcon('cena')}</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {paged.map((ord, oi) => (
+                                <tr key={ord.id || oi} style={{ borderBottom: '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc' }}>
+                                  <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
+                                    <button
+                                      onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
+                                      style={{ 
+                                        background: 'none', 
+                                        border: 'none', 
+                                        color: '#3b82f6',
+                                        fontWeight: 600, 
+                                        cursor: 'pointer', 
+                                        padding: 0, 
+                                        fontSize: 'inherit'
+                                      }}
+                                      title="Otevřít objednávku"
+                                    >
+                                      {ord.cislo_objednavky || '—'}
+                                    </button>
+                                  </td>
+                                  <td style={{ padding: '0.25rem 0.5rem' }}>{ord.predmet || '—'}</td>
+                                  <td style={{ padding: '0.25rem 0.5rem' }}>{czDate(ord.dt_vytvoreni)}</td>
+                                  <td style={{ padding: '0.25rem 0.5rem' }}>{ord.stav || '—'}</td>
+                                  <td style={{ padding: '0.25rem 0.5rem' }}>{ord.dodavatel_nazev || '—'}</td>
+                                  <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
+                                    {formatAmount(ord.planovana_castka_lp || ord.max_cena_s_dph || 0)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                          {totalRows > PAGE_SIZES[0] && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.5rem 0.25rem 0', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.75rem', color: '#64748b' }}>
+                              <span>Zobrazeno {startIdx + 1}–{Math.min(startIdx + pageState.pageSize, totalRows)} z {totalRows}</span>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                <select value={pageState.pageSize} onChange={(e) => setPageSize(Number(e.target.value))} style={{ padding: '2px 4px', border: '1px solid #cbd5e1', borderRadius: '4px', fontSize: '0.75rem', fontFamily: 'inherit', cursor: 'pointer', background: 'white' }}>
+                                  {PAGE_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                                <button onClick={() => setPage(1)} disabled={pageState.page <= 1} style={{ padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', background: 'white', cursor: pageState.page <= 1 ? 'not-allowed' : 'pointer', opacity: pageState.page <= 1 ? 0.4 : 1, fontSize: '0.7rem' }}>«</button>
+                                <button onClick={() => setPage(pageState.page - 1)} disabled={pageState.page <= 1} style={{ padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', background: 'white', cursor: pageState.page <= 1 ? 'not-allowed' : 'pointer', opacity: pageState.page <= 1 ? 0.4 : 1, fontSize: '0.7rem' }}>‹</button>
+                                <span style={{ fontWeight: 600, minWidth: '3rem', textAlign: 'center' }}>{pageState.page} / {totalPages}</span>
+                                <button onClick={() => setPage(pageState.page + 1)} disabled={pageState.page >= totalPages} style={{ padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', background: 'white', cursor: pageState.page >= totalPages ? 'not-allowed' : 'pointer', opacity: pageState.page >= totalPages ? 0.4 : 1, fontSize: '0.7rem' }}>›</button>
+                                <button onClick={() => setPage(totalPages)} disabled={pageState.page >= totalPages} style={{ padding: '2px 6px', border: '1px solid #cbd5e1', borderRadius: '4px', background: 'white', cursor: pageState.page >= totalPages ? 'not-allowed' : 'pointer', opacity: pageState.page >= totalPages ? 0.4 : 1, fontSize: '0.7rem' }}>»</button>
+                              </div>
+                            </div>
+                          )}
+                          </>
+                          );
+                        })()}
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 );
               })}
             </Tbody>
+            <Tfoot>
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'right', fontSize: '0.95rem', fontWeight: 700 }}>
+                  CELKEM:
+                </td>
+                <td>
+                  <ThreeTypeAmount>
+                    <MainAmount $color="#10b981">
+                      {formatAmount(totalSkutecne)}
+                    </MainAmount>
+                    <SubAmounts>
+                      <SubAmount>
+                        <span style={{ color: '#94a3b8', fontSize: '0.65rem', fontWeight: 600 }}>+</span>&nbsp;{formatAmount(totalPredpoklad + totalRezervovano)} v procesu
+                      </SubAmount>
+                    </SubAmounts>
+                  </ThreeTypeAmount>
+                </td>
+                <td style={{ textAlign: 'center' }}>
+                  <span style={{ fontSize: '0.9rem', color: '#6b7280', fontWeight: 600 }}>
+                    {totalObjednavek}×
+                  </span>
+                </td>
+              </tr>
+            </Tfoot>
           </Table>
         </TableContainer>
       </div>
@@ -2822,6 +3067,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         <Tbody>
           {data.map(lp => {
           const lpKey = lp.lp_master_id || lp.id;
+          const expandKey = `all-${lpKey}`;
           // +/- jen kde jsou objednávky (celkový počet - lp-expand endpoint vrací všechny)
           const canExpand = (lp.pocet_objednavek > 0);
           // Počet pro zobrazení nad ikonou: vždy celkový (odpovídá tomu co lp-expand vrátí)
@@ -2836,26 +3082,26 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   {canExpand ? (
                     <button
-                      onClick={() => toggleLPExpand(lpKey)}
-                      title={expandedLPs[lpKey] ? 'Skrýt objednávky' : 'Zobrazit objednávky'}
+                      onClick={() => toggleLPExpand(lpKey, false, expandKey)}
+                      title={expandedLPs[expandKey] ? 'Skrýt objednávky' : 'Zobrazit objednávky'}
                       style={{
-                        background: expandedLPs[lpKey] ? '#fee2e2' : '#eff6ff',
-                        border: `1px solid ${expandedLPs[lpKey] ? '#fca5a5' : '#93c5fd'}`,
+                        background: expandedLPs[expandKey] ? '#fee2e2' : '#eff6ff',
+                        border: `1px solid ${expandedLPs[expandKey] ? '#fca5a5' : '#93c5fd'}`,
                         borderRadius: '4px',
                         width: '22px',
                         cursor: 'pointer',
                         display: 'inline-flex', flexDirection: 'column',
                         alignItems: 'center', justifyContent: 'center',
-                        color: expandedLPs[lpKey] ? '#dc2626' : '#3b82f6',
+                        color: expandedLPs[expandKey] ? '#dc2626' : '#3b82f6',
                         flexShrink: 0, padding: '1px 0', gap: 0,
                         lineHeight: 1
                       }}
                     >
-                      <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1, color: expandedLPs[lpKey] ? '#dc2626' : '#1e40af', opacity: 0.85 }}>
+                      <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1, color: expandedLPs[expandKey] ? '#dc2626' : '#1e40af', opacity: 0.85 }}>
                         {expandCount}
                       </span>
                       <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
-                        {expandedLPs[lpKey] ? '−' : '+'}
+                        {expandedLPs[expandKey] ? '−' : '+'}
                       </span>
                     </button>
                   ) : (
@@ -2952,34 +3198,34 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 })()}
               </td>
             </tr>
-            {expandedLPs[lpKey] && (
+            {expandedLPs[expandKey] && (
               <tr style={{ background: '#f8fafc' }}>
                 <td colSpan={showUserColumn ? 11 : 10} style={{ padding: '0.5rem 1rem 0.75rem 2rem', borderBottom: '2px solid #cbd5e1' }}>
-                  {lpExpandLoading[lpKey] ? (
+                  {lpExpandLoading[expandKey] ? (
                     <div style={{ color: '#64748b', fontSize: '0.82rem', padding: '0.5rem 0', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif" }}>Načítám objednávky…</div>
-                  ) : !lpExpandOrders[lpKey] || lpExpandOrders[lpKey].length === 0 ? (
+                  ) : !lpExpandOrders[expandKey] || lpExpandOrders[expandKey].length === 0 ? (
                     <div style={{ color: '#94a3b8', fontSize: '0.82rem', padding: '0.5rem 0', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif" }}>Žádné objednávky k tomuto LP</div>
                   ) : (() => {
-                    const sortState = lpExpandSort[lpKey] || { col: null, dir: null };
-                    const pageState = lpExpandPage[lpKey] || { page: 1, pageSize: 25 };
+                    const sortState = lpExpandSort[expandKey] || { col: null, dir: null };
+                    const pageState = lpExpandPage[expandKey] || { page: 1, pageSize: 25 };
                     const PAGE_SIZES = [5, 10, 25, 50, 100];
                     const toggleSort = (col) => {
                       setLpExpandSort(prev => {
-                        const cur = prev[lpKey] || { col: null, dir: null };
+                        const cur = prev[expandKey] || { col: null, dir: null };
                         let newDir = null;
                         if (cur.col !== col) newDir = 'asc';
                         else if (cur.dir === 'asc') newDir = 'desc';
                         else if (cur.dir === 'desc') newDir = null;
-                        return { ...prev, [lpKey]: { col: newDir ? col : null, dir: newDir } };
+                        return { ...prev, [expandKey]: { col: newDir ? col : null, dir: newDir } };
                       });
-                      setLpExpandPage(prev => ({ ...prev, [lpKey]: { ...pageState, page: 1 } }));
+                      setLpExpandPage(prev => ({ ...prev, [expandKey]: { ...pageState, page: 1 } }));
                     };
                     const sortIcon = (col) => (
                       <span style={{ marginLeft: '0.2rem', fontSize: '0.65rem', opacity: sortState.col === col ? 1 : 0.3, color: sortState.col === col ? '#2563eb' : 'inherit' }}>
                         {sortState.col !== col ? '⇅' : sortState.dir === 'asc' ? '↑' : '↓'}
                       </span>
                     );
-                    const sorted = [...lpExpandOrders[lpKey]].sort((a, b) => {
+                    const sorted = [...lpExpandOrders[expandKey]].sort((a, b) => {
                       if (!sortState.col || !sortState.dir) return 0;
                       const m = sortState.dir === 'asc' ? 1 : -1;
                       switch (sortState.col) {
@@ -2997,8 +3243,8 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                     const totalPages = Math.ceil(totalRows / pageState.pageSize);
                     const startIdx = (pageState.page - 1) * pageState.pageSize;
                     const paged = sorted.slice(startIdx, startIdx + pageState.pageSize);
-                    const setPage = (p) => setLpExpandPage(prev => ({ ...prev, [lpKey]: { ...pageState, page: p } }));
-                    const setPageSize = (ps) => setLpExpandPage(prev => ({ ...prev, [lpKey]: { page: 1, pageSize: ps } }));
+                    const setPage = (p) => setLpExpandPage(prev => ({ ...prev, [expandKey]: { ...pageState, page: p } }));
+                    const setPageSize = (ps) => setLpExpandPage(prev => ({ ...prev, [expandKey]: { page: 1, pageSize: ps } }));
                     const czDate = (d) => { if (!d) return '—'; const s = d.substring(0,10); const p = s.split('-'); return p.length === 3 ? `${parseInt(p[2])}.${parseInt(p[1])}.${p[0]}` : s; };
                     const thBase = { padding: '0.35rem 0.5rem', fontWeight: 600, fontSize: '0.75rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.025em', borderBottom: '2px solid #cbd5e1', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' };
                     return (
@@ -3354,6 +3600,21 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <StatValue $light>{formatAmount(stats.celkove_skutecne)}</StatValue>
               </StatContent>
             </StatCard>
+
+            <StatCard $gradient="linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)">
+              <StatIcon $bg="white" $color="#0ea5e9" $shadow="rgba(14, 165, 233, 0.3)">
+                <User size={28} />
+              </StatIcon>
+              <StatContent>
+                <StatLabel $light>{myUsageTitle}</StatLabel>
+                <StatValue $light style={{ marginBottom: '0.35rem' }}>
+                  {myUsageLoading ? 'Načítám…' : formatAmount(myUsageStats.skutecne)}
+                </StatValue>
+                <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.3 }}>
+                  {myUsageLoading ? '→ V procesu: —' : `→ V procesu: ${formatAmount(myUsageStats.vProcesu)}`}
+                </div>
+              </StatContent>
+            </StatCard>
             
             <StatCard $gradient="linear-gradient(135deg, #f59e0b 0%, #d97706 100%)">
               <StatIcon $bg="white" $color="#f59e0b" $shadow="rgba(245, 158, 11, 0.3)">
@@ -3705,7 +3966,12 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         // ===== VIEW_OWN: LP vlastního úseku + osobně čerpané z cizích úseků =====
         (() => {
           const vlastniUsek = filteredData.filter(lp => lp.usek_id && Number(lp.usek_id) === Number(userUsekId));
-          const cizi = filteredData.filter(lp => !lp.usek_id || Number(lp.usek_id) !== Number(userUsekId));
+          
+          // Pro cizí LP použít data z myUsageData (jen osobní čerpání)
+          const ciziLPFromMyUsage = myUsageData?.lp_cerpani?.filter(lp => 
+            !lp.usek_id || Number(lp.usek_id) !== Number(userUsekId)
+          ) || [];
+          
           return (
             <>
               <InfoBox style={{ marginBottom: '1.5rem' }}>
@@ -3720,16 +3986,16 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 : <p style={{ color: '#6b7280', fontStyle: 'italic', marginBottom: '1.5rem' }}>Žádná LP pro váš úsek.</p>
               }
 
-              {cizi.length > 0 && (
+              {ciziLPFromMyUsage.length > 0 && (
                 <>
                   <InfoBox style={{ marginBottom: '1.5rem', marginTop: '2rem', background: '#f0fdf4', borderColor: '#22c55e' }}>
                     <User size={20} style={{ color: '#22c55e' }} />
                     <div>
-                      <h4 style={{ color: '#15803d' }}>Čerpání z jiných úseků</h4>
-                      <p>LP ze kterých jste osobně čerpal/a ve svých objednávkách nebo pokladně, ale patří jinému úseku.</p>
+                      <h4 style={{ color: '#15803d' }}>Moje čerpání z jiných úseků</h4>
+                      <p>LP ze kterých jste osobně čerpal/a ve svých objednávkách, ale patří jinému úseku. Zobrazeny jsou pouze vaše objednávky a vaše čerpání.</p>
                     </div>
                   </InfoBox>
-                  {renderLPTable(cizi, true)}
+                  {renderMyPersonalLP(ciziLPFromMyUsage)}
                 </>
               )}
             </>

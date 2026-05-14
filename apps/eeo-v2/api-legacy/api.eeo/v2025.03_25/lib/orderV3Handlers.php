@@ -3883,8 +3883,9 @@ function enrichOrderWithAttachmentStatus($db, &$order) {
 /**
  * POST - Expand objednávek + faktur pro LP kód
  * Endpoint: order-v3/lp-expand
- * POST: {token, username, lp_master_id}
+ * POST: {token, username, lp_master_id, requesting_user_id (optional)}
  * Vrací objednávky s přiřazenými fakturami pro dané LP (dle lp_master_id v financovani.lp_kody)
+ * Pokud je requesting_user_id, vrací jen objednávky kde je uživatel účastníkem
  */
 function handle_orderV3_lp_expand($input, $config) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -3896,6 +3897,12 @@ function handle_orderV3_lp_expand($input, $config) {
     $token = $input['token'] ?? '';
     $username = $input['username'] ?? '';
     $lp_master_id = isset($input['lp_master_id']) ? (int)$input['lp_master_id'] : 0;
+    $requesting_user_id = isset($input['requesting_user_id']) ? (int)$input['requesting_user_id'] : null;
+
+    // 🔍 DEBUG: Log vstupních parametrů
+    if ($lp_master_id == 128) {
+        error_log("🔍 LP-EXPAND INPUT: lp_master_id=$lp_master_id, requesting_user_id=$requesting_user_id, username=$username");
+    }
 
     if (!$token || !$username || !$lp_master_id) {
         http_response_code(400);
@@ -3941,6 +3948,11 @@ function handle_orderV3_lp_expand($input, $config) {
         $stmt_ids->execute([$cislo_lp]);
         $master_ids = $stmt_ids->fetchAll(PDO::FETCH_COLUMN);
 
+        // 🔍 DEBUG: Log nalezených master IDs
+        if ($cislo_lp === 'LPN3') {
+            error_log("🔍 LP-EXPAND MASTER_IDS: cislo_lp=$cislo_lp, master_ids=" . json_encode($master_ids) . ", requesting_user_id=$requesting_user_id");
+        }
+
         if (empty($master_ids)) {
             echo json_encode(['status' => 'ok', 'data' => [], 'meta' => ['count' => 0]]);
             return;
@@ -3949,6 +3961,13 @@ function handle_orderV3_lp_expand($input, $config) {
         // Objednávky které mají v financovani.lp_kody některé z master IDs
         // JSON_CONTAINS porovnává správně čísla (int), ne stringy
         $id_conditions = implode(' OR ', array_fill(0, count($master_ids), 'JSON_CONTAINS(o.financovani, ?, \'$.lp_kody\')'));
+        
+        // Pokud je requesting_user_id, přidat podmínku na účastníka objednávky
+        $user_condition = '';
+        if ($requesting_user_id) {
+            $user_condition = " AND (o.uzivatel_id = $requesting_user_id OR o.garant_uzivatel_id = $requesting_user_id OR o.prikazce_id = $requesting_user_id OR o.schvalovatel_id = $requesting_user_id)";
+        }
+        
         $sql = "
             SELECT 
                 o.id,
@@ -3965,12 +3984,18 @@ function handle_orderV3_lp_expand($input, $config) {
             WHERE ($id_conditions)
               AND o.aktivni = 1
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+              $user_condition
             ORDER BY o.dt_vytvoreni DESC
         ";
         $stmt = $db->prepare($sql);
         // Předáme každé master ID jako integer (JSON_CONTAINS potřebuje číslo, ne string)
         $stmt->execute(array_map('intval', $master_ids));
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // 🔍 DEBUG: Log počtu načtených objednávek z DB
+        if (in_array(128, $master_ids)) {
+            error_log("🔍 LP-EXPAND SQL RESULT: master_ids=" . json_encode($master_ids) . ", requesting_user_id=$requesting_user_id, počet_z_DB=" . count($orders));
+        }
 
         // Pro expand tlačítko potřebujeme první master_id pro LP rozpis z faktur
         $first_lp_master_id = (int)$master_ids[0];
@@ -4101,6 +4126,11 @@ function handle_orderV3_lp_expand($input, $config) {
             ];
         }
 
+        // 🔍 DEBUG: Log počtu objednávek pro konkrétní LP
+        if (!empty($master_ids) && in_array(128, $master_ids)) {
+            error_log("🔍 LP-EXPAND DEBUG: LPN3 (master_id=128), requesting_user_id=$requesting_user_id, počet_objednávek=" . count($result));
+        }
+
         echo json_encode([
             'status' => 'ok',
             'data' => $result,
@@ -4117,7 +4147,7 @@ function handle_orderV3_lp_expand($input, $config) {
 /**
  * POST - Expand objednávek + faktur pro smlouvu
  * Endpoint: order-v3/smlouva-expand
- * POST: {token, username, smlouva_id}
+ * POST: {token, username, smlouva_id, requesting_user_id}
  * Vrací: objednávky které odkazují na smlouvu (financovani.cislo_smlouvy) + přímé faktury na smlouvu
  */
 function handle_orderV3_smlouva_expand($input, $config) {
@@ -4130,6 +4160,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
     $token = $input['token'] ?? '';
     $username = $input['username'] ?? '';
     $smlouva_id = isset($input['smlouva_id']) ? (int)$input['smlouva_id'] : 0;
+    $requesting_user_id = isset($input['requesting_user_id']) ? (int)$input['requesting_user_id'] : 0;
 
     if (!$token || !$username || !$smlouva_id) {
         http_response_code(400);
@@ -4161,6 +4192,13 @@ function handle_orderV3_smlouva_expand($input, $config) {
         $cislo_smlouvy = $smlouva['cislo_smlouvy'];
         $cislo_smlouvy_escaped = str_replace('/', '\\/', $cislo_smlouvy);
 
+        $participant_where = '';
+        $participant_params = [];
+        if ($requesting_user_id > 0) {
+            $participant_where = " AND (o.objednatel_id = ? OR o.uzivatel_id = ? OR o.garant_uzivatel_id = ? OR o.prikazce_id = ? OR o.schvalovatel_id = ?)";
+            $participant_params = array_fill(0, 5, $requesting_user_id);
+        }
+
         // 1) Objednávky které mají financovani.cislo_smlouvy = cislo_smlouvy
         // ⚠️ OPRAVA: Používat REPLACE + LIKE kvůli escaped \/ v JSON (stejný pattern jako smlouvyHandlers.php)
         $sql = "
@@ -4182,10 +4220,11 @@ function handle_orderV3_smlouva_expand($input, $config) {
                                 OR o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
                             )
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+              $participant_where
             ORDER BY o.dt_vytvoreni DESC
         ";
         $stmt = $db->prepare($sql);
-                $stmt->execute([$cislo_smlouvy, $cislo_smlouvy_escaped]);
+        $stmt->execute(array_merge([$cislo_smlouvy, $cislo_smlouvy_escaped], $participant_params));
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Faktury na objednávkách
@@ -4236,15 +4275,23 @@ function handle_orderV3_smlouva_expand($input, $config) {
         }
 
         // 2) Přímé faktury na smlouvu (bez objednávky)
+        $direct_where = '';
+        $direct_params = [$smlouva_id];
+        if ($requesting_user_id > 0) {
+            $direct_where = " AND (f.vytvoril_uzivatel_id = ? OR f.potvrdil_vecnou_spravnost_id = ?)";
+            $direct_params[] = $requesting_user_id;
+            $direct_params[] = $requesting_user_id;
+        }
         $sql_direct = "
             SELECT f.id, f.fa_cislo_vema, f.fa_vema_kod, f.fa_poznamka, f.fa_castka, f.stav,
                    f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena
             FROM " . TBL_FAKTURY . " f
             WHERE f.smlouva_id = ? AND f.objednavka_id IS NULL AND f.aktivni = 1
+            $direct_where
             ORDER BY f.fa_datum_vystaveni DESC
         ";
         $stmt_direct = $db->prepare($sql_direct);
-        $stmt_direct->execute([$smlouva_id]);
+        $stmt_direct->execute($direct_params);
         $direct_faktury = [];
         foreach ($stmt_direct->fetchAll(PDO::FETCH_ASSOC) as $fa) {
             $direct_faktury[] = [

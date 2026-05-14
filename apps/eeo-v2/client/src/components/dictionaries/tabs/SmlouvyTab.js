@@ -978,6 +978,43 @@ const JezBarHatch = styled.div`
   );
 `;
 
+/* Target line – svislá čárka pro časový progress u „bez stropu" smluv */
+const JezBarTargetLine = styled.div`
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #1e293b;
+  z-index: 20;
+  left: ${props => Math.min(props.$pct || 0, 100)}%;
+  transform: translateX(-50%);
+  box-shadow: 0 0 4px rgba(30, 41, 59, 0.4);
+  &::before {
+    content: '';
+    position: absolute;
+    top: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 4px solid #1e293b;
+  }
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: -3px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-bottom: 4px solid #1e293b;
+  }
+`;
+
 /* ─── Split skupiny: smlouvy se stropem / bez stropu ─────────────────────── */
 const SkupinyRow = styled.div`
   display: grid;
@@ -1352,6 +1389,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   // kontrolují SPENDING/CONTRACT/LP _MANAGE a _VIEW_ALL práva)
   const userUsekId = user?.usek_id || userDetail?.usek_id || null;
   const userUsekZkr = String(user?.usek_zkr || userDetail?.usek_zkr || '').trim().toUpperCase();
+  const userId = user?.id ? parseInt(user.id, 10) : (userDetail?.id ? parseInt(userDetail.id, 10) : null);
   const isAdminUser = typeof hasAdminRole === 'function' ? hasAdminRole() : false;
   const isRestrictedCerpaniUser = readOnly && !forceUnrestrictedReadOnly && !isAdminUser;
 
@@ -1464,21 +1502,48 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     try { localStorage.setItem(`smlouvy_expand_page_${user?.id || 'default'}`, JSON.stringify(contractExpandPage)); } catch {}
   }, [contractExpandPage, user?.id]);
 
-  const toggleContractExpand = useCallback(async (smlouvaId) => {
+  const isRowInUserUsek = useCallback((smlouva) => {
+    const smlouvaUsekId = smlouva?.usek_id ? parseInt(smlouva.usek_id, 10) : null;
+    const smlouvaUsekZkr = String(smlouva?.usek_zkr || '').trim().toUpperCase();
+    const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
+    const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
+    return matchByZkr || matchById;
+  }, [userUsekId, userUsekZkr]);
+
+  const resolveCerpani = useCallback((smlouva) => {
+    const isMujUsek = isRowInUserUsek(smlouva);
+    const usePersonal = isRestrictedCerpaniUser && !isMujUsek;
+    const dokonceno = usePersonal
+      ? (parseFloat(smlouva?.cerpano_faktury_dokoncene_uzivatel) || 0)
+      : (parseFloat(smlouva?.cerpano_faktury_dokoncene) || 0);
+    const vProcesu = usePersonal
+      ? (parseFloat(smlouva?.cerpano_v_procesu_uzivatel) || 0)
+      : (parseFloat(smlouva?.cerpano_v_procesu) || 0);
+    const celkem = usePersonal
+      ? (dokonceno + vProcesu)
+      : (parseFloat(smlouva?.cerpano_celkem) || 0);
+    return { isMujUsek, usePersonal, celkem, dokonceno, vProcesu };
+  }, [isRestrictedCerpaniUser, isRowInUserUsek]);
+
+  const toggleContractExpand = useCallback(async (smlouvaId, filterByUser = false) => {
     const isExpanding = !expandedContracts[smlouvaId];
     setExpandedContracts(prev => ({ ...prev, [smlouvaId]: isExpanding }));
     if (isExpanding && !contractExpandOrders[smlouvaId]) {
       setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: true }));
       try {
         const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const payload = {
+          token,
+          username: user.username,
+          smlouva_id: smlouvaId
+        };
+        if (filterByUser && userId) {
+          payload.requesting_user_id = userId;
+        }
         const resp = await fetch(`${API_BASE_URL}order-v3/smlouva-expand`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            token,
-            username: user.username,
-            smlouva_id: smlouvaId
-          })
+          body: JSON.stringify(payload)
         });
         const json = await resp.json();
         // Endpoint vrací { objednavky: [...], prime_faktury: [...] }
@@ -1488,22 +1553,29 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       }
       setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: false }));
     }
-  }, [expandedContracts, contractExpandOrders, token, user]);
+  }, [expandedContracts, contractExpandOrders, token, user, userId]);
 
   // Auto-načtení dat pro rozbalené řádky z LS (po mount)
   useEffect(() => {
-    if (!token || !user?.username) return;
+    if (!token || !user?.username || smlouvy.length === 0) return;
     const expandedKeys = Object.keys(expandedContracts).filter(k => expandedContracts[k]);
     if (expandedKeys.length === 0) return;
     expandedKeys.forEach(async (smlouvaId) => {
       if (contractExpandOrders[smlouvaId]) return;
+      const smlouva = smlouvy.find(item => String(item.id) === String(smlouvaId));
+      if (!smlouva) return;
+      const filterByUser = isRestrictedCerpaniUser && !isRowInUserUsek(smlouva);
       setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: true }));
       try {
         const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const payload = { token, username: user.username, smlouva_id: smlouvaId };
+        if (filterByUser && userId) {
+          payload.requesting_user_id = userId;
+        }
         const resp = await fetch(`${API_BASE_URL}order-v3/smlouva-expand`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, username: user.username, smlouva_id: smlouvaId })
+          body: JSON.stringify(payload)
         });
         const json = await resp.json();
         setContractExpandOrders(prev => ({ ...prev, [smlouvaId]: json.data || { objednavky: [], prime_faktury: [] } }));
@@ -1512,8 +1584,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       }
       setContractExpandLoading(prev => ({ ...prev, [smlouvaId]: false }));
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token, user?.username]);
+  }, [token, user?.username, smlouvy, expandedContracts, contractExpandOrders, isRestrictedCerpaniUser, isRowInUserUsek, userId]);
 
   // =============================================================================
   // DATA LOADING
@@ -1535,6 +1606,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         platnost_od: filters.platnost_od || '',
         platnost_do: filters.platnost_do || '',
         show_inactive: filters.show_inactive || filters.stav === 'NEAKTIVNI',
+        restrict_view: isRestrictedCerpaniUser,
         include_stats: true  // ⚡ SmlouvyTab potřebuje statistiky pro zobrazení v tabulce
       };
 
@@ -1587,11 +1659,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   const baseSmlouvy = useMemo(() => {
     return smlouvy.filter(smlouva => {
       if (isRestrictedCerpaniUser) {
-        const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
-        const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
-        const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
-        const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
-        const jeMujUsek = matchByZkr || matchById;
+        const jeMujUsek = isRowInUserUsek(smlouva);
         const pouzitVObjFormu = Number(smlouva.pouzit_v_obj_formu || 0);
         const cerpalUzivatel = pouzitVObjFormu === 1
           ? Number(smlouva.pocet_objednavek_uzivatel || 0) > 0
@@ -1601,7 +1669,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       if (!filters.show_inactive && smlouva.aktivni !== 1) return false;
       return true;
     });
-  }, [smlouvy, isRestrictedCerpaniUser, filters.show_inactive, userUsekId, userUsekZkr]);
+  }, [smlouvy, isRestrictedCerpaniUser, filters.show_inactive, isRowInUserUsek]);
 
   // Dynamické options - pouze hodnoty které uživatel skutečně vidí
   const availableStavOptions = useMemo(() => {
@@ -1614,18 +1682,14 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     return DRUH_SMLOUVY_OPTIONS.filter(opt => druhSet.has(opt.value));
   }, [baseSmlouvy]);
 
-  const filteredSmlouvy = useMemo(() => {
+  const filteredSmlouvyBase = useMemo(() => {
     const result = smlouvy.filter(smlouva => {
       // 🎯 OMEZENÍ POUZE PRO MENUBAR "ČERPÁNÍ":
       // Běžný uživatel (VIEW_OWN) vidí:
       // 1) VŠECHNY smlouvy svého úseku
       // 2) Smlouvy z jiných úseků pouze pokud z nich osobně čerpal
       if (isRestrictedCerpaniUser) {
-        const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
-        const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
-        const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
-        const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
-        const jeMujUsek = matchByZkr || matchById;
+        const jeMujUsek = isRowInUserUsek(smlouva);
         // Symbol +/- pro rozbalení a viditelnost řádku:
         // - pouzit_v_obj_formu=1 → objednávky uživatele
         // - pouzit_v_obj_formu=0 → faktury uživatele (vytvořil nebo potvrdil)
@@ -1720,11 +1784,6 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         return false;
       }
 
-      // Skupinový filtr (klik na dlaždici)
-      // Filtr "se stropem" = limit >= 100 Kč, "bez stropu" = limit < 100 Kč
-      if (skupinaFilter === 'se_stropem' && !((parseFloat(smlouva.hodnota_s_dph) || 0) >= MIN_CAP_THRESHOLD)) return false;
-      if (skupinaFilter === 'bez_stropu'  &&  (parseFloat(smlouva.hodnota_s_dph) || 0) >= MIN_CAP_THRESHOLD)  return false;
-
       return true;
     });
 
@@ -1736,11 +1795,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     // 1) Smlouvy vlastního úseku první, 2) ostatní (osobně čerpané z cizích úseků)
     return [...result].sort((a, b) => {
       const getPriority = (smlouva) => {
-        const smlouvaUsekId = smlouva.usek_id ? parseInt(smlouva.usek_id, 10) : null;
-        const smlouvaUsekZkr = String(smlouva.usek_zkr || '').trim().toUpperCase();
-        const matchByZkr = Boolean(userUsekZkr && smlouvaUsekZkr && userUsekZkr === smlouvaUsekZkr);
-        const matchById = Boolean(userUsekId && smlouvaUsekId && Number(userUsekId) === Number(smlouvaUsekId));
-        return (matchByZkr || matchById) ? 1 : 2;
+        return isRowInUserUsek(smlouva) ? 1 : 2;
       };
       const pa = getPriority(a);
       const pb = getPriority(b);
@@ -1750,7 +1805,19 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         sensitivity: 'base'
       });
     });
-  }, [smlouvy, filters, columnFilters, skupinaFilter, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
+  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, isRowInUserUsek]);
+
+  const filteredSmlouvy = useMemo(() => {
+    if (!skupinaFilter) {
+      return filteredSmlouvyBase;
+    }
+    return filteredSmlouvyBase.filter(smlouva => {
+      const limit = parseFloat(smlouva.hodnota_s_dph) || 0;
+      if (skupinaFilter === 'se_stropem') return limit >= MIN_CAP_THRESHOLD;
+      if (skupinaFilter === 'bez_stropu') return limit < MIN_CAP_THRESHOLD;
+      return true;
+    });
+  }, [filteredSmlouvyBase, skupinaFilter]);
 
   // =============================================================================
   // PAGINATION - useEffects (před table)
@@ -1781,7 +1848,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
 
   const statistics = useMemo(() => {
     // ✅ AKTIVNÍ = kde aktivni != 0 (nebo aktivni === true / aktivni === 1)
-    const aktivniSmlouvy = filteredSmlouvy.filter(s => s.aktivni == 1 || s.aktivni === true);
+    const aktivniSmlouvy = filteredSmlouvyBase.filter(s => s.aktivni == 1 || s.aktivni === true);
     
     // ✅ PLATNÉ = aktivní a platnost_do >= dnes (nebo platnost_do IS NULL)
     const today = new Date();
@@ -1795,11 +1862,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     
     // ✅ PRAVIDLO: Pokud je show_inactive=false, vyloučit smlouvy kde aktivni==0
     const smlouvyProStatistiku = filters.show_inactive 
-      ? filteredSmlouvy      // Zobrazují se i neaktivní → sečíst všechny zobrazené
+      ? filteredSmlouvyBase      // Zobrazují se i neaktivní → sečíst všechny zobrazené
       : aktivniSmlouvy;       // Nezobrazují se neaktivní → sečíst jen kde aktivni!=0
     
     // ✅ CELKEM ČERPÁNO: Podle pravidla výše
-    const celkemCerpano = smlouvyProStatistiku.reduce((sum, s) => sum + (parseFloat(s.cerpano_celkem) || 0), 0);
+    const celkemCerpano = smlouvyProStatistiku.reduce((sum, s) => sum + resolveCerpani(s).celkem, 0);
     
     // ✅ CELKOVÝ LIMIT: sečíst jen smlouvy se stropem (hodnota_s_dph >= MIN_CAP_THRESHOLD)
     // Smlouvy s limitem < 100 Kč (symbolické 1 Kč apod.) se považují za bez stropu
@@ -1807,7 +1874,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     const celkemLimit = smlouvySeStropem.reduce((sum, s) => sum + (parseFloat(s.hodnota_s_dph) || 0), 0);
     // ✅ ZBÝVÁ: jen pro smlouvy se stropem; pro smlouvy bez stropu je to nedefinované
     const celkemZbyva = smlouvySeStropem.length > 0
-      ? smlouvySeStropem.reduce((sum, s) => sum + (s.zbyva === null || s.zbyva === undefined ? 0 : (parseFloat(s.zbyva) || 0)), 0)
+      ? smlouvySeStropem.reduce((sum, s) => {
+          const limit = parseFloat(s.hodnota_s_dph) || 0;
+          const cerpano = resolveCerpani(s).celkem;
+          return sum + (limit - cerpano);
+        }, 0)
       : null;
     
     // ℹ️ CELKOVÉ PLNĚNÍ VŠECH aktivních smluv (včetně vypršených)
@@ -1823,7 +1894,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       : null;
 
     return {
-      pocet_celkem: filteredSmlouvy.length,
+      pocet_celkem: filteredSmlouvyBase.length,
       pocet_aktivnich: aktivniSmlouvy.length,
       pocet_platnych: platneSmlouvy.length,
       pocet_vyprsenych: vyprselychSmluv,
@@ -1837,17 +1908,21 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       skupina_se_stropem: (() => {
         const arr = smlouvyProStatistiku.filter(s => (parseFloat(s.hodnota_s_dph) || 0) >= MIN_CAP_THRESHOLD);
         const limit = arr.reduce((s, x) => s + (parseFloat(x.hodnota_s_dph) || 0), 0);
-        const cerpano = arr.reduce((s, x) => s + (parseFloat(x.cerpano_celkem) || 0), 0);
-        const zbyva = arr.reduce((s, x) => s + (parseFloat(x.zbyva) || 0), 0);
+        const cerpano = arr.reduce((s, x) => s + resolveCerpani(x).celkem, 0);
+        const zbyva = arr.reduce((s, x) => {
+          const limitValue = parseFloat(x.hodnota_s_dph) || 0;
+          const cerpanoValue = resolveCerpani(x).celkem;
+          return s + (limitValue - cerpanoValue);
+        }, 0);
         return { pocet: arr.length, limit, cerpano, zbyva, pct: limit > 0 ? (cerpano / limit) * 100 : 0 };
       })(),
       skupina_bez_stropu: (() => {
         const arr = smlouvyProStatistiku.filter(s => (parseFloat(s.hodnota_s_dph) || 0) < MIN_CAP_THRESHOLD);
-        const cerpano = arr.reduce((s, x) => s + (parseFloat(x.cerpano_celkem) || 0), 0);
+        const cerpano = arr.reduce((s, x) => s + resolveCerpani(x).celkem, 0);
         return { pocet: arr.length, cerpano };
       })(),
     };
-  }, [filteredSmlouvy, filters.show_inactive]);
+  }, [filteredSmlouvyBase, filters.show_inactive, resolveCerpani]);
 
   // =============================================================================
   // HANDLERS
@@ -2054,15 +2129,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         const userOrders = Number(row?.pocet_objednavek_uzivatel || 0);
         const totalInvoices = Number(row?.pocet_faktur_celkem || 0);
         const userInvoices = Number(row?.pocet_faktur_uzivatel || 0);
-        const cerpano = Number(row?.cerpano_skutecne || 0);
         
         // Smlouva vlastního úseku? → uživatel vidí VŠECHNA čerpání (expand vrací vše)
-        const rowUsekId = row?.usek_id ? parseInt(row.usek_id, 10) : null;
-        const rowUsekZkr = String(row?.usek_zkr || '').trim().toUpperCase();
-        const isMujUsek = isRestrictedCerpaniUser && (
-          (userUsekZkr && rowUsekZkr && userUsekZkr === rowUsekZkr) ||
-          (userUsekId && rowUsekId && Number(userUsekId) === Number(rowUsekId))
-        );
+        const isMujUsek = isRestrictedCerpaniUser && isRowInUserUsek(row);
         // Pro admin, smlouvu vlastního úseku nebo uživatele s neomezeným přístupem
         // (forceUnrestrictedReadOnly=true, CONTRACT_VIEW_ALL) zobrazit celkové počty.
         // Jinak jen uživatelovy vlastní.
@@ -2075,8 +2144,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           // Smlouva S objednávkovým formulářem → PRIMÁRNĚ objednávky, ale i faktury
           const hasOrders = useTotal ? (totalOrders > 0) : (userOrders > 0);
           const hasInvoices = useTotal ? (totalInvoices > 0) : (userInvoices > 0);
-          canExpand = hasOrders || hasInvoices || (cerpano > 0);
           expandCount = useTotal ? (totalOrders + totalInvoices) : (userOrders + userInvoices);
+          canExpand = expandCount > 0;
           expandTitle = isAdminUser 
             ? (canExpand ? 'Zobrazit objednávky a faktury' : 'Žádné čerpání')
             : (canExpand ? 'Zobrazit čerpání smlouvy' : 'Žádné čerpání');
@@ -2084,8 +2153,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           // Smlouva BEZ obj. formuláře → PRIMÁRNĚ faktury, ale může mít i objednávky
           const hasOrders = useTotal ? (totalOrders > 0) : (userOrders > 0);
           const hasInvoices = useTotal ? (totalInvoices > 0) : (userInvoices > 0);
-          canExpand = hasInvoices || hasOrders || (cerpano > 0);
           expandCount = useTotal ? (totalInvoices + totalOrders) : (userInvoices + userOrders);
+          canExpand = expandCount > 0;
           expandTitle = isAdminUser 
             ? (canExpand ? 'Zobrazit faktury a objednávky' : 'Žádné čerpání')
             : (canExpand ? 'Zobrazit čerpání smlouvy' : 'Žádné čerpání');
@@ -2093,9 +2162,11 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         
         const isExpanded = expandedContracts[row.id];
         
+        const filterByUser = isRestrictedCerpaniUser && !isMujUsek;
+
         const expandBtn = canExpand ? (
           <button
-            onClick={(e) => { e.stopPropagation(); toggleContractExpand(row.id); }}
+            onClick={(e) => { e.stopPropagation(); toggleContractExpand(row.id, filterByUser); }}
             title={isExpanded ? `Skrýt ${pouzitVObjFormu === 1 ? 'objednávky' : 'faktury'}` : expandTitle}
             style={{
               background: isExpanded ? '#fee2e2' : '#eff6ff',
@@ -2205,11 +2276,12 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       header: 'Čerpání s DPH',
       cell: info => {
         const row = info.row.original;
+        const { usePersonal, celkem, dokonceno, vProcesu } = resolveCerpani(row);
         const pocatecniStav = parseFloat(row.hodnota_s_dph) || 0;
         // Smlouva má reálný strop (>= 100 Kč) - symbolické částky jako 1 Kč = bez stropu
         const hasCap = pocatecniStav >= MIN_CAP_THRESHOLD;
-        const cerpano = parseFloat(info.getValue()) || 0;
-        const backendPercent = row.procento_cerpani === null || row.procento_cerpani === undefined
+        const cerpano = celkem;
+        const backendPercent = usePersonal || row.procento_cerpani === null || row.procento_cerpani === undefined
           ? null
           : Number(row.procento_cerpani);
 
@@ -2238,13 +2310,14 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         const calcTargetPct = () => {
           if (isInfinite) return null;
           const platnostDo = row.platnost_do;
-          const platnostOd = row.platnost_od;
+          const platnostOd = row.platnost_od || row.dt_vytvoreni;
           // Musí mít OBA datumy, jinak nemůžeme spočítat
           if (!platnostDo || !platnostOd) return null;
           
           const now = new Date();
           const end = new Date(platnostDo);
           const start = new Date(platnostOd);
+          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
           
           // Smlouva ještě nezačala → cíl je 0%
           if (now < start) return 0;
@@ -2274,6 +2347,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
             ? 'warning'
             : 'ok';
         const barColor = barLevel === 'critical' ? '#ef4444' : (barLevel === 'warning' ? '#f59e0b' : '#10b981');
+        const barColorLight = barColor === '#ef4444' ? '#fca5a5' : (barColor === '#f59e0b' ? '#fcd34d' : '#86efac');
 
         // Pro smlouvy bez stropu: používáme stejný targetPct (časový průběh platnosti)
         const timePct = targetPct;
@@ -2288,18 +2362,28 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         );
 
         // 🆕 Textové zobrazení čerpání (jako u LP)
-        const dokonceno = parseFloat(row.cerpano_faktury_dokoncene) || 0;
-        const vProcesu = parseFloat(row.cerpano_v_procesu) || 0;
         const volne = hasCap ? Math.max(0, pocatecniStav - (dokonceno + vProcesu)) : 0;
+        const showVolne = !usePersonal && volne > 0;
+        const personalBadge = usePersonal ? (
+          <div style={{ fontSize: '0.6rem', fontWeight: 700, color: '#475569', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+            Moje čerpání
+          </div>
+        ) : null;
 
         return (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', minWidth: '220px' }}>
             {hasCap ? (
               <>
+                {personalBadge}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '2px' }}>
-                  <span style={{ fontSize: '0.95rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>
-                    {percentText}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
+                    <span style={{ fontSize: '0.95rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>
+                      {percentText}
+                    </span>
+                    <span style={{ fontSize: '0.55rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#94a3b8' }}>
+                      Čerpání
+                    </span>
+                  </div>
                   {targetPct !== null ? (
                     <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#64748b' }}>
                       cíl&nbsp;{targetPct}%
@@ -2308,40 +2392,6 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.04em' }}>
                       ∞&nbsp;nekonečná
                     </span>
-                  )}
-                </div>
-                {/* 🆕 Textové zobrazení jako u LP */}
-                <div style={{ 
-                  display: 'flex', 
-                  gap: '12px', 
-                  marginBottom: '4px', 
-                  fontSize: '0.7rem',
-                  fontWeight: 600,
-                  flexWrap: 'wrap'
-                }}>
-                  {dokonceno > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ color: '#64748b' }}>Dokončeno:</span>
-                      <span style={{ color: '#10b981', fontWeight: 700 }}>
-                        {dokonceno.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
-                      </span>
-                    </div>
-                  )}
-                  {vProcesu > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ color: '#64748b' }}>V procesu:</span>
-                      <span style={{ color: '#f59e0b', fontWeight: 700 }}>
-                        {vProcesu.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
-                      </span>
-                    </div>
-                  )}
-                  {volne > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                      <span style={{ color: '#64748b' }}>Volné:</span>
-                      <span style={{ color: '#3b82f6', fontWeight: 700 }}>
-                        {volne.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
-                      </span>
-                    </div>
                   )}
                 </div>
                 <ProgressBarWithTooltipWrapper
@@ -2359,14 +2409,14 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                         <JezBarPlanned
                           $left={Math.min((dokonceno / pocatecniStav * 100), 100)}
                           $percent={vProcesu / pocatecniStav * 100}
-                          $color={barColor === '#ef4444' ? '#fca5a5' : (barColor === '#f59e0b' ? '#fcd34d' : '#86efac')}
+                          $color={barColorLight}
                         />
                       )}
                     </JezBarOuter>
                   }
                   tooltipContent={
                     <>
-                      <TooltipTitle>Čerpání smlouvy: {row.cislo_smlouvy}</TooltipTitle>
+                      <TooltipTitle style={{ color: barColor }}>Čerpání smlouvy: {row.cislo_smlouvy}</TooltipTitle>
                       <TooltipTable>
                         <tbody>
                           <tr>
@@ -2389,7 +2439,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                             <td>Celkem čerpáno:</td>
                             <td style={{ color: barColor }}>{formatCurrency(cerpano)} ({percentText})</td>
                           </tr>
-                          {volne > 0 && (
+                          {showVolne && (
                             <tr>
                               <td>Volné:</td>
                               <td style={{ color: '#93c5fd' }}>{formatCurrency(volne)}</td>
@@ -2419,7 +2469,16 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                   }
                 />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-                  <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', fontSize: '0.65rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '-0.02em' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#94a3b8' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: barColor }} />
+                      Dokončeno&nbsp;{formatCurrency(dokonceno)}
+                    </span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#94a3b8' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: barColorLight, opacity: 0.6 }} />
+                      V&nbsp;procesu&nbsp;{formatCurrency(vProcesu)}
+                    </span>
+                  </div>
                   <JezStatusBadge $level={barLevel}>
                     {barLevel === 'critical' ? '⛔ Kritické' : barLevel === 'warning' ? '⚠ Pozor' : barLevel === 'completed' ? '✓ Dokončeno' : '✓ V normě'}
                   </JezStatusBadge>
@@ -2428,6 +2487,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
             ) : (
               /* Smlouva bez finančního stropu */
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '200px' }}>
+                {personalBadge}
                 {/* Horní řádek: jen label (bez částky – ta je dole jako u stropové) */}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '2px' }}>
                   <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
@@ -2440,6 +2500,56 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     const yearStart = new Date(now.getFullYear(), 0, 1);
                     const yearEnd   = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
                     const yearPct   = Math.round(((now - yearStart) / (yearEnd - yearStart)) * 100);
+                    const hasCerpani = cerpano > 0;
+                    
+                    // 🆕 Roční čerpání pro spending-based progress
+                    const cerpanoRokAktualni = parseFloat(row.cerpano_rok_aktualni) || 0;
+                    const cerpanoRokMax = parseFloat(row.cerpano_rok_max) || 0;
+                    const planValueRaw = parseFloat(row.hodnota_plneni_s_dph) || 0;
+                    const planValue = planValueRaw >= MIN_CAP_THRESHOLD ? planValueRaw : 0;
+                    const totalCerpani = dokonceno + vProcesu;
+                    const progressBase = planValue > 0
+                      ? planValue
+                      : (cerpanoRokMax > 0 ? cerpanoRokMax : totalCerpani);
+                    const timeBased = planValue <= 0 && cerpanoRokMax <= 0 && totalCerpani > 0;
+                    const calcValidityPct = () => {
+                      const platnostDo = row.platnost_do;
+                      const platnostOd = row.platnost_od || row.dt_vytvoreni;
+                      if (!platnostDo || !platnostOd) return null;
+                      const now = new Date();
+                      const end = new Date(platnostDo);
+                      const start = new Date(platnostOd);
+                      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+                      if (now < start) return 0;
+                      if (now >= end) return 100;
+                      const total = end - start;
+                      if (total <= 0) return 100;
+                      return Math.max(0, Math.min(100, Math.round(((now - start) / total) * 100)));
+                    };
+                    const validityPct = calcValidityPct();
+                    const timeScalePct = validityPct !== null ? validityPct : yearPct;
+                    const totalPct = timeBased
+                      ? Math.min(timeScalePct, 100)
+                      : (progressBase > 0
+                        ? Math.min(Math.round((totalCerpani / progressBase) * 100), 100)
+                        : 0);
+                    const completedPct = timeBased
+                      ? (totalCerpani > 0 ? (totalPct * (dokonceno / totalCerpani)) : 0)
+                      : (progressBase > 0 ? Math.min((dokonceno / progressBase) * 100, 100) : 0);
+                    const inProcessPct = timeBased
+                      ? (totalCerpani > 0 ? (totalPct * (vProcesu / totalCerpani)) : 0)
+                      : (progressBase > 0 ? Math.min((vProcesu / progressBase) * 100, 100) : 0);
+                    const progressBasisLabel = timeBased
+                      ? 'časového poměru'
+                      : (planValue > 0
+                        ? 'plánovaného plnění'
+                        : (cerpanoRokMax > 0 ? 'max. ročního čerpání' : 'aktuálního čerpání'));
+                    
+                    // Fill bar = dokončeno, Planned bar = v procesu, Target line = time progress
+                    const fillPct = hasCerpani ? completedPct : 0;
+                    const plannedPct = hasCerpani ? inProcessPct : 0;
+                    const targetLinePct = yearPct;
+                    
                     return (
                       <>
                         <ProgressBarWithTooltipWrapper
@@ -2447,12 +2557,20 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                             <JezBarOuter>
                               {monthGrid}
                               <JezBarHatch />
-                              <JezBarFill $pct={yearPct} $color="#64748b" />
+                              <JezBarFill $pct={fillPct} $color="#64748b" />
+                              {vProcesu > 0 && hasCerpani && (
+                                <JezBarPlanned
+                                  $left={Math.min(fillPct, 100)}
+                                  $percent={plannedPct}
+                                  $color="#94a3b8"
+                                />
+                              )}
+                              <JezBarTargetLine $pct={targetLinePct} />
                             </JezBarOuter>
                           }
                           tooltipContent={
                             <>
-                              <TooltipTitle>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
+                              <TooltipTitle style={{ color: barColor }}>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
                               <TooltipTable>
                                 <tbody>
                                   <tr>
@@ -2463,14 +2581,51 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                     <td>Celkem čerpáno:</td>
                                     <td>{formatCurrency(cerpano)}</td>
                                   </tr>
-                                  <tr className="divider">
-                                    <td>Progress ukazuje:</td>
-                                    <td>Uplynulý čas v roce {now.getFullYear()}</td>
-                                  </tr>
-                                  <tr>
-                                    <td>Aktuální rok:</td>
-                                    <td>{yearPct}% uplynulo</td>
-                                  </tr>
+                                  {hasCerpani ? (
+                                    <>
+                                      {planValue > 0 && (
+                                        <tr>
+                                          <td>Plánované plnění:</td>
+                                          <td>{formatCurrency(planValue)}</td>
+                                        </tr>
+                                      )}
+                                      {dokonceno > 0 && (
+                                        <tr>
+                                          <td>Dokončeno:</td>
+                                          <td style={{ color: '#64748b' }}>{formatCurrency(dokonceno)}</td>
+                                        </tr>
+                                      )}
+                                      {vProcesu > 0 && (
+                                        <tr>
+                                          <td>V procesu:</td>
+                                          <td style={{ color: '#94a3b8' }}>{formatCurrency(vProcesu)}</td>
+                                        </tr>
+                                      )}
+                                      <tr className="divider">
+                                        <td>Čerpání v roce {now.getFullYear()}:</td>
+                                        <td>{formatCurrency(cerpanoRokAktualni)}</td>
+                                      </tr>
+                                      {cerpanoRokMax > 0 && (
+                                        <tr>
+                                          <td>Max. roční čerpání (historie):</td>
+                                          <td>{formatCurrency(cerpanoRokMax)}</td>
+                                        </tr>
+                                      )}
+                                      <tr className="divider">
+                                        <td>Progress baru:</td>
+                                        <td>{totalPct}% {progressBasisLabel}</td>
+                                      </tr>
+                                      <tr>
+                                        <td>Čárka (časový progress):</td>
+                                        <td>{yearPct}% roku {now.getFullYear()} uplynulo</td>
+                                      </tr>
+                                    </>
+                                  ) : (
+                                    <tr className="divider">
+                                      <td>Progress:</td>
+                                      <td>Bez čerpání</td>
+                                    </tr>
+                                  )}
                                   {row.platnost_od && (
                                     <tr className="divider">
                                       <td>Platnost od:</td>
@@ -2491,25 +2646,167 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
                           <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
                           <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
-                            rok&nbsp;{yearPct}%
+                            {hasCerpani ? `2026:\u00a0${formatCurrency(cerpanoRokAktualni)}` : 'bez čerpání'}
                           </span>
                         </div>
                       </>
                     );
                   })()
                 ) : timePct !== null ? (
-                  /* Konečná platnost – časový progress bar */
+                  /* Konečná platnost – spending-based progress bar + časová čárka */
+                  <>
+                    {(() => {
+                      const hasCerpani = cerpano > 0;
+                      
+                      // 🆕 Roční čerpání pro spending-based progress
+                      const cerpanoRokAktualni = parseFloat(row.cerpano_rok_aktualni) || 0;
+                      const cerpanoRokMax = parseFloat(row.cerpano_rok_max) || 0;
+                      const planValueRaw = parseFloat(row.hodnota_plneni_s_dph) || 0;
+                      const planValue = planValueRaw >= MIN_CAP_THRESHOLD ? planValueRaw : 0;
+                      const totalCerpani = dokonceno + vProcesu;
+                      const progressBase = planValue > 0
+                        ? planValue
+                        : (cerpanoRokMax > 0 ? cerpanoRokMax : totalCerpani);
+                      const timeBased = planValue <= 0 && cerpanoRokMax <= 0 && totalCerpani > 0;
+                      const totalPct = timeBased
+                        ? Math.min(timePct, 100)
+                        : (progressBase > 0
+                          ? Math.min(Math.round((totalCerpani / progressBase) * 100), 100)
+                          : 0);
+                      const completedPct = timeBased
+                        ? (totalCerpani > 0 ? (totalPct * (dokonceno / totalCerpani)) : 0)
+                        : (progressBase > 0 ? Math.min((dokonceno / progressBase) * 100, 100) : 0);
+                      const inProcessPct = timeBased
+                        ? (totalCerpani > 0 ? (totalPct * (vProcesu / totalCerpani)) : 0)
+                        : (progressBase > 0 ? Math.min((vProcesu / progressBase) * 100, 100) : 0);
+                      const progressBasisLabel = timeBased
+                        ? 'časového poměru'
+                        : (planValue > 0
+                          ? 'plánovaného plnění'
+                          : (cerpanoRokMax > 0 ? 'max. ročního čerpání' : 'aktuálního čerpání'));
+                      
+                      // Fill bar = dokončeno, Planned bar = v procesu, Target line = time progress
+                      const fillPct = hasCerpani ? completedPct : 0;
+                      const plannedPct = hasCerpani ? inProcessPct : 0;
+                      const targetLinePct = timePct;
+                      
+                      return (
+                        <>
+                          <ProgressBarWithTooltipWrapper
+                            barContent={
+                              <JezBarOuter>
+                                {monthGrid}
+                                <JezBarHatch />
+                                <JezBarFill $pct={fillPct} $color="#64748b" />
+                                {vProcesu > 0 && hasCerpani && (
+                                  <JezBarPlanned
+                                    $left={Math.min(fillPct, 100)}
+                                    $percent={plannedPct}
+                                    $color="#94a3b8"
+                                  />
+                                )}
+                                <JezBarTargetLine $pct={targetLinePct} />
+                              </JezBarOuter>
+                            }
+                            tooltipContent={
+                              <>
+                                <TooltipTitle style={{ color: barColor }}>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
+                                <TooltipTable>
+                                  <tbody>
+                                    <tr>
+                                      <td>Typ smlouvy:</td>
+                                      <td>Bez finančního limitu</td>
+                                    </tr>
+                                    <tr>
+                                      <td>Celkem čerpáno:</td>
+                                      <td>{formatCurrency(cerpano)}</td>
+                                    </tr>
+                                    {hasCerpani ? (
+                                      <>
+                                        {planValue > 0 && (
+                                          <tr>
+                                            <td>Plánované plnění:</td>
+                                            <td>{formatCurrency(planValue)}</td>
+                                          </tr>
+                                        )}
+                                        {dokonceno > 0 && (
+                                          <tr>
+                                            <td>Dokončeno:</td>
+                                            <td style={{ color: '#64748b' }}>{formatCurrency(dokonceno)}</td>
+                                          </tr>
+                                        )}
+                                        {vProcesu > 0 && (
+                                          <tr>
+                                            <td>V procesu:</td>
+                                            <td style={{ color: '#94a3b8' }}>{formatCurrency(vProcesu)}</td>
+                                          </tr>
+                                        )}
+                                        <tr className="divider">
+                                          <td>Čerpání v roce 2026:</td>
+                                          <td>{formatCurrency(cerpanoRokAktualni)}</td>
+                                        </tr>
+                                        {cerpanoRokMax > 0 && (
+                                          <tr>
+                                            <td>Max. roční čerpání (historie):</td>
+                                            <td>{formatCurrency(cerpanoRokMax)}</td>
+                                          </tr>
+                                        )}
+                                        <tr className="divider">
+                                          <td>Progress baru:</td>
+                                          <td>{totalPct}% {progressBasisLabel}</td>
+                                        </tr>
+                                        <tr>
+                                          <td>Čárka (časový progress):</td>
+                                          <td>{timePct}% doby platnosti uplynulo</td>
+                                        </tr>
+                                      </>
+                                    ) : (
+                                      <tr className="divider">
+                                        <td>Progress:</td>
+                                        <td>Bez čerpání</td>
+                                      </tr>
+                                    )}
+                                    {row.platnost_od && (
+                                      <tr className="divider">
+                                        <td>Platnost od:</td>
+                                        <td>{new Date(row.platnost_od).toLocaleDateString('cs-CZ')}</td>
+                                      </tr>
+                                    )}
+                                    {row.platnost_do && (
+                                      <tr>
+                                        <td>Platnost do:</td>
+                                        <td>{new Date(row.platnost_do).toLocaleDateString('cs-CZ')}</td>
+                                      </tr>
+                                    )}
+                                  </tbody>
+                                </TooltipTable>
+                              </>
+                            }
+                          />
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                            <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
+                            <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
+                              {hasCerpani ? `2026:\u00a0${formatCurrency(cerpanoRokAktualni)}` : 'bez čerpání'}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </>
+                ) : (
+                  /* Neznámá platnost – zobrazit prázdný bar */
                   <>
                     <ProgressBarWithTooltipWrapper
                       barContent={
                         <JezBarOuter>
                           {monthGrid}
-                          <JezBarFill $pct={timePct} $color="#64748b" />
+                          <JezBarHatch />
+                          <JezBarFill $pct={0} $color="#64748b" />
                         </JezBarOuter>
                       }
                       tooltipContent={
                         <>
-                          <TooltipTitle>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
+                          <TooltipTitle style={{ color: barColor }}>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
                           <TooltipTable>
                             <tbody>
                               <tr>
@@ -2521,25 +2818,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                 <td>{formatCurrency(cerpano)}</td>
                               </tr>
                               <tr className="divider">
-                                <td>Progress ukazuje:</td>
-                                <td>Uplynulý čas platnosti</td>
+                                <td>Platnost:</td>
+                                <td>Neuvedena</td>
                               </tr>
-                              <tr>
-                                <td>Uplynulo:</td>
-                                <td>{timePct}% doby platnosti</td>
-                              </tr>
-                              {row.platnost_od && (
-                                <tr className="divider">
-                                  <td>Platnost od:</td>
-                                  <td>{new Date(row.platnost_od).toLocaleDateString('cs-CZ')}</td>
-                                </tr>
-                              )}
-                              {row.platnost_do && (
-                                <tr>
-                                  <td>Platnost do:</td>
-                                  <td>{new Date(row.platnost_do).toLocaleDateString('cs-CZ')}</td>
-                                </tr>
-                              )}
                             </tbody>
                           </TooltipTable>
                         </>
@@ -2548,12 +2829,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
                       <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
                       <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
-                        platnost&nbsp;{timePct}%&nbsp;uplynulo
+                        platnost&nbsp;neuvedena
                       </span>
                     </div>
                   </>
-                ) : (
-                  <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
                 )}
               </div>
             )}
@@ -2562,8 +2841,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       },
       enableSorting: true,
       sortingFn: (rowA, rowB) => {
-        const a = parseFloat(rowA.original.cerpano_celkem) || 0;
-        const b = parseFloat(rowB.original.cerpano_celkem) || 0;
+        const a = resolveCerpani(rowA.original).celkem;
+        const b = resolveCerpani(rowB.original).celkem;
         return a - b;
       }
     }),
@@ -2703,7 +2982,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         </ActionCell>
       )
     })
-  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, forceUnrestrictedReadOnly, expandedContracts, toggleContractExpand, isAdminUser, isRestrictedCerpaniUser, userUsekId, userUsekZkr]);
+  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, forceUnrestrictedReadOnly, expandedContracts, toggleContractExpand, isAdminUser, isRestrictedCerpaniUser, isRowInUserUsek, resolveCerpani]);
 
   const table = useReactTable({
     data: filteredSmlouvy,
@@ -2891,7 +3170,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           </StatIcon>
           <StatContent>
             <StatLabel $light>Zbývá</StatLabel>
-            <StatValue $light>{statistics.celkem_zbyva !== null ? statistics.celkem_zbyva.toLocaleString('cs-CZ') + ' Kč' : 'N/A'}</StatValue>
+            <StatValue $light>{statistics.celkem_zbyva !== null ? statistics.celkem_zbyva.toLocaleString('cs-CZ') + ' Kč' : 'bez stropu'}</StatValue>
           </StatContent>
         </StatCard>
 
@@ -2901,7 +3180,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           </StatIcon>
           <StatContent>
             <StatLabel $light>Průměrné čerpání</StatLabel>
-            <StatValue $light>{statistics.prumerne_cerpani !== null ? statistics.prumerne_cerpani.toFixed(1) + '%' : 'N/A'}</StatValue>
+            <StatValue $light>{statistics.prumerne_cerpani !== null ? statistics.prumerne_cerpani.toFixed(1) + '%' : 'bez stropu'}</StatValue>
           </StatContent>
         </StatCard>
       </StatsGrid>
@@ -3050,17 +3329,18 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
               </SkupinaMiniItem>
               <SkupinaMiniItem>
                 <SkupinaMiniLabel>Zbývá</SkupinaMiniLabel>
-                <SkupinaMiniValue $color={statistics.celkem_zbyva < 0 ? '#dc2626' : '#0f766e'}>
-                  {formatCurrency(statistics.celkem_zbyva)}
+                <SkupinaMiniValue $color={statistics.celkem_zbyva === null ? '#94a3b8' : (statistics.celkem_zbyva < 0 ? '#dc2626' : '#0f766e')}>
+                  {statistics.celkem_zbyva !== null ? formatCurrency(statistics.celkem_zbyva) : 'bez stropu'}
                 </SkupinaMiniValue>
               </SkupinaMiniItem>
               <SkupinaMiniItem>
                 <SkupinaMiniLabel>Čerpání</SkupinaMiniLabel>
                 <SkupinaMiniValue $color={
+                  statistics.prumerne_cerpani === null ? '#94a3b8' :
                   statistics.prumerne_cerpani >= 100 ? '#dc2626' :
                   statistics.prumerne_cerpani >= 80  ? '#ea580c' : '#10b981'
                 }>
-                  {statistics.prumerne_cerpani !== null ? statistics.prumerne_cerpani.toFixed(1) + '%' : '—'}
+                  {statistics.prumerne_cerpani !== null ? statistics.prumerne_cerpani.toFixed(1) + '%' : 'bez stropu'}
                 </SkupinaMiniValue>
               </SkupinaMiniItem>
             </SkupinaMini>

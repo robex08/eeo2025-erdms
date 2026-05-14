@@ -6658,12 +6658,17 @@ switch ($endpoint) {
                         c.cislo_lp,
                         c.kategorie,
                         c.celkovy_limit,
-                        c.cislo_uctu,
-                        c.nazev_uctu,
+                        m.cislo_uctu,
+                        m.nazev_uctu,
                         c.usek_id,
-                        us.usek_nazev
+                        us.usek_nazev,
+                        c.user_id as spravce_id,
+                        u.jmeno as spravce_jmeno,
+                        u.prijmeni as spravce_prijmeni
                     FROM " . TBL_LP_CERPANI . " c
+                    LEFT JOIN " . TBL_LP_MASTER . " m ON c.cislo_lp = m.cislo_lp AND c.usek_id = m.usek_id
                     LEFT JOIN 25_useky us ON c.usek_id = us.id
+                    LEFT JOIN " . TBL_UZIVATELE . " u ON c.user_id = u.id
                     WHERE c.rok = :rok
                 ";
                 try {
@@ -6678,7 +6683,7 @@ switch ($endpoint) {
                     // Pokračuj s prázdným array - není to fatální chyba
                 }
                 
-                // KROK 1: Načíst LP objednávky POUZE tam, kde je uživatel objednatelem
+                // KROK 1: Načíst LP objednávky kde je uživatel ÚČASTNÍKEM (objednatel, garant, příkazce, schvalovatel)
                 // ⚠️ DISTINCT pro zamezení duplikátů
                 $sql_orders = "
                     SELECT DISTINCT
@@ -6692,22 +6697,28 @@ switch ($endpoint) {
                     WHERE obj.financovani IS NOT NULL
                     AND obj.financovani != ''
                     AND obj.financovani LIKE '%\"typ\":\"LP\"%'
-                    AND obj.objednatel_id = :objednatel_id
+                    AND (
+                        obj.uzivatel_id = :user_id
+                        OR obj.garant_uzivatel_id = :user_id
+                        OR obj.prikazce_id = :user_id
+                        OR obj.schvalovatel_id = :user_id
+                    )
                     AND YEAR(obj.dt_vytvoreni) = :rok
                     AND obj.aktivni = 1
+                    AND obj.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                     ORDER BY obj.dt_vytvoreni DESC
                 ";
                 
                 try {
                     $stmt = $db->prepare($sql_orders);
                     $stmt->execute([
-                        'objednatel_id' => $vytvoril_user_id,
+                        'user_id' => $vytvoril_user_id,
                         'rok' => $rok
                     ]);
                     $result_orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     
                     // 🔍 DEBUG: Log počet načtených objednávek
-                    error_log("LP /moje-cerpani DEBUG: user_id=$vytvoril_user_id, rok=$rok, počet_objednávek_objednatele=" . count($result_orders));
+                    error_log("LP /moje-cerpani DEBUG: user_id=$vytvoril_user_id, rok=$rok, počet_objednávek_účastníka=" . count($result_orders));
                     
                     // Pokud nejsou objednávky, je to OK - vrátíme prázdné pole
                 } catch (Exception $e) {
@@ -6839,11 +6850,14 @@ switch ($endpoint) {
                                 
                                 $lp_cerpani[$cislo_lp] = array(
                                     'cislo_lp' => $cislo_lp,
+                                    'lp_master_id' => $lp_id_int,
                                     'kategorie' => $lp_meta['kategorie'],
                                     'celkovy_limit' => (float)$lp_meta['celkovy_limit'],
                                     'cislo_uctu' => $lp_meta['cislo_uctu'],
                                     'nazev_uctu' => $lp_meta['nazev_uctu'],
                                     'usek_nazev' => $lp_meta['usek_nazev'],
+                                    'usek_id' => $lp_usek_id,
+                                    'spravce' => trim(($lp_meta['spravce_jmeno'] ?? '') . ' ' . ($lp_meta['spravce_prijmeni'] ?? '')),
                                     'je_z_meho_useku' => $je_z_meho_useku,
                                     'moje_rezervovano' => 0,
                                     'moje_predpoklad' => 0,
@@ -6856,11 +6870,14 @@ switch ($endpoint) {
                                 // LP nenalezeno (nemělo by nastat)
                                 $lp_cerpani[$cislo_lp] = array(
                                     'cislo_lp' => $cislo_lp,
+                                    'lp_master_id' => $lp_id_int,
                                     'kategorie' => null,
                                     'celkovy_limit' => 0,
                                     'cislo_uctu' => null,
                                     'nazev_uctu' => null,
                                     'usek_nazev' => null,
+                                    'usek_id' => null,
+                                    'spravce' => '',
                                     'je_z_meho_useku' => false,
                                     'moje_rezervovano' => 0,
                                     'moje_predpoklad' => 0,
