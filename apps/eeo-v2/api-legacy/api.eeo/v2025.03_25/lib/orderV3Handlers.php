@@ -1966,6 +1966,27 @@ function handle_order_v3_list($input, $config, $queries) {
         
         $is_admin_v2 = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
 
+        // ⚠️ Vyloučit zrušené, zamítnuté a smazané objednávky (vždy, pokud není explicitně požadováno v filtru)
+        // Kontrola, jestli uživatel explicitně nežádá tyto stavy přes filtr
+        $explicit_cancelled_states = false;
+        if (!empty($filters['stav']) && is_array($filters['stav'])) {
+            foreach ($filters['stav'] as $stav_key) {
+                $stav_upper = strtoupper(trim($stav_key));
+                if ($stav_upper === 'ZRUSENA' || $stav_upper === 'ZAMITNUTA' || $stav_upper === 'SMAZANA') {
+                    $explicit_cancelled_states = true;
+                    break;
+                }
+            }
+        }
+        
+        // Pokud uživatel explicitně nepožaduje zrušené stavy, vyl ouč je
+        if (!$explicit_cancelled_states) {
+            $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN (?, ?, ?)";
+            $where_params[] = 'ZRUSENA';
+            $where_params[] = 'ZAMITNUTA';
+            $where_params[] = 'SMAZANA';
+        }
+
         $where_sql = implode(' AND ', $where_conditions);
 
         // 9. Sestavit ORDER BY
@@ -2807,6 +2828,12 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
     // 3. ✅ CRITICAL: User permissions - STEJNÁ LOGIKA JAKO handle_order_v3_list!
     // Používáme jednotnou funkci applyOrderV3UserPermissions pro konzistenci
     $is_admin = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
+    
+    // ⚠️ Vyloučit zrušené, zamítnuté a smazané objednávky (vždy při výpočtu statistik)
+    $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN (?, ?, ?)";
+    $where_params[] = 'ZRUSENA';
+    $where_params[] = 'ZAMITNUTA';
+    $where_params[] = 'SMAZANA';
     
     // 4. Dodatečné filtry (pokud jsou předané z hlavní query)
     if ($filtered_where_sql !== null && trim($filtered_where_sql) !== '') {
