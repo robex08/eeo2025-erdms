@@ -2264,6 +2264,113 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     );
   };
   
+  // ===== CELKOVÝ PROGRESS BAR PRO ŘÁDEK "CELKEM:" V TABULCE =====
+  const TabulkaCelkemProgressWithTooltip = ({ data, formatAmount }) => {
+    const [showTooltip, setShowTooltip] = React.useState(false);
+    const containerRef = React.useRef(null);
+    
+    const totalLimit = data.reduce((sum, lp) => sum + (lp.vyse_financniho_kryti || 0), 0);
+    const totalSkutecne = data.reduce((sum, lp) => sum + ((lp.skutecne_cerpano || 0) + (lp.cerpano_pokladna || 0)), 0);
+    const totalProces = data.reduce((sum, lp) => sum + ((lp.predpokladane_cerpani || 0) + (lp.rezervovano || 0)), 0);
+    const totalPokladna = data.reduce((sum, lp) => sum + (lp.cerpano_pokladna || 0), 0);
+    const spentPct = totalLimit > 0 ? (totalSkutecne / totalLimit * 100) : 0;
+    const plannedPct = totalLimit > 0 ? (totalProces / totalLimit * 100) : 0;
+    const totalPct = spentPct + plannedPct;
+    const currentMonth = new Date().getMonth();
+    const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
+    const isCritical = totalPct > targetPct * 2 || spentPct >= 100;
+    const isWarning = !isCritical && totalPct > targetPct * 1.3;
+    const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
+    const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
+    const totalZbyva = totalLimit - totalSkutecne;
+    
+    return (
+      <div 
+        ref={containerRef}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', cursor: 'pointer' }}
+      >
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '3px' }}>
+            <span style={{ fontSize: '1.1rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>
+              {spentPct.toFixed(1)}%
+            </span>
+            <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>
+              celkové čerpání
+            </span>
+          </div>
+          <div style={{ position: 'relative', height: '18px', background: '#e2e8f0', borderRadius: '5px', overflow: 'hidden' }}>
+            <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${Math.min(spentPct, 100)}%`, background: barColor, transition: 'width 0.7s ease' }} />
+            {plannedPct > 0 && (
+              <div style={{
+                position: 'absolute', top: 0, height: '100%',
+                left: `${Math.min(spentPct, 100)}%`,
+                width: `${Math.min(plannedPct, 100 - Math.min(spentPct, 100))}%`,
+                background: barColorLight, opacity: 0.5,
+                backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.3) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.3) 50%, rgba(255,255,255,.3) 75%, transparent 75%, transparent)',
+                backgroundSize: '8px 8px'
+              }} />
+            )}
+            <div style={{ position: 'absolute', top: 0, bottom: 0, width: '2px', background: 'rgba(100,116,139,0.6)', left: `${targetPct}%`, zIndex: 10 }} />
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', minWidth: '120px' }}>
+          <div style={{ fontSize: '0.6rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Volné prostředky</div>
+          <div style={{ fontSize: '1.15rem', fontWeight: 800, color: totalZbyva < 0 ? '#ef4444' : '#10b981', letterSpacing: '-0.02em' }}>
+            {formatAmount(totalZbyva)}
+          </div>
+        </div>
+        
+        <TooltipPortal targetRef={containerRef} isVisible={showTooltip}>
+          <TooltipContent $isVisible={showTooltip}>
+            <TooltipTitle>Celkové čerpání všech LP</TooltipTitle>
+            <TooltipTable>
+              <tbody>
+                <tr>
+                  <td>Celkový limit:</td>
+                  <td style={{ color: '#fcd34d' }}>{formatAmount(totalLimit)}</td>
+                </tr>
+                <tr className="divider">
+                  <td>Dokončeno (fakturace + pokladna):</td>
+                  <td style={{ color: barColor }}>{formatAmount(totalSkutecne)} ({spentPct.toFixed(1)}%)</td>
+                </tr>
+                <tr>
+                  <td>V procesu (objednávky):</td>
+                  <td style={{ color: 'rgba(255,255,255,0.7)' }}>{formatAmount(totalProces)} ({plannedPct.toFixed(1)}%)</td>
+                </tr>
+                <tr className="divider">
+                  <td>Celkem s procesem:</td>
+                  <td style={{ color: totalPct >= 100 ? '#f87171' : '#fcd34d' }}>{formatAmount(totalSkutecne + totalProces)} ({totalPct.toFixed(1)}%)</td>
+                </tr>
+                <tr>
+                  <td>Zbývá (dle čerpaného):</td>
+                  <td style={{ color: totalZbyva < 0 ? '#f87171' : '#86efac' }}>{formatAmount(totalZbyva)}</td>
+                </tr>
+                <tr>
+                  <td>Volné prostředky:</td>
+                  <td style={{ color: '#86efac' }}>{formatAmount(totalLimit - totalSkutecne - totalProces)}</td>
+                </tr>
+                <tr className="divider">
+                  <td>Z pokladny:</td>
+                  <td style={{ color: 'rgba(255,255,255,0.85)' }}>{formatAmount(totalPokladna)}</td>
+                </tr>
+                <tr>
+                  <td>Cíl k datu:</td>
+                  <td style={{ color: 'rgba(255,255,255,0.85)' }}>{targetPct}% ({new Date().toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long' })})</td>
+                </tr>
+                <tr>
+                  <td>Počet LP kódů:</td>
+                  <td style={{ color: 'rgba(255,255,255,0.85)' }}>{data.length}</td>
+                </tr>
+              </tbody>
+            </TooltipTable>
+          </TooltipContent>
+        </TooltipPortal>
+      </div>
+    );
+  };
+  
   // ===== LP PROGRESS BAR s TŘI TYPY ČERPÁNÍ =====
   const renderLPProgressBar = (lp, showThreeTypes = true) => {
     const color = getLPColor(lp);
@@ -3142,56 +3249,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               })()}
             </td>
             <td colSpan="2">
-              {(() => {
-                const totalLimit = data.reduce((sum, lp) => sum + (lp.vyse_financniho_kryti || 0), 0);
-                // ✅ OPRAVA: Skutečně = faktury + pokladna
-                const totalSkutecne = data.reduce((sum, lp) => sum + ((lp.skutecne_cerpano || 0) + (lp.cerpano_pokladna || 0)), 0);
-                const totalProces = data.reduce((sum, lp) => sum + ((lp.predpokladane_cerpani || 0) + (lp.rezervovano || 0)), 0);
-                const spentPct = totalLimit > 0 ? (totalSkutecne / totalLimit * 100) : 0;
-                const plannedPct = totalLimit > 0 ? (totalProces / totalLimit * 100) : 0;
-                const totalPct = spentPct + plannedPct;
-                const currentMonth = new Date().getMonth();
-                const targetPct = Math.round(((currentMonth + 1) / 12) * 100);
-                const isCritical = totalPct > targetPct * 2 || spentPct >= 100;
-                const isWarning = !isCritical && totalPct > targetPct * 1.3;
-                const barColor = isCritical ? '#ef4444' : isWarning ? '#f59e0b' : '#10b981';
-                const barColorLight = isCritical ? '#fca5a5' : isWarning ? '#fdba74' : '#86efac';
-                const totalZbyva = totalLimit - totalSkutecne;
-                return (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                    <div style={{ flex: 1, minWidth: '200px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '3px' }}>
-                        <span style={{ fontSize: '1.1rem', fontWeight: 800, color: barColor, letterSpacing: '-0.02em' }}>
-                          {spentPct.toFixed(1)}%
-                        </span>
-                        <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#64748b' }}>
-                          celkové čerpání
-                        </span>
-                      </div>
-                      <div style={{ position: 'relative', height: '18px', background: '#e2e8f0', borderRadius: '5px', overflow: 'hidden' }}>
-                        <div style={{ position: 'absolute', top: 0, left: 0, height: '100%', width: `${Math.min(spentPct, 100)}%`, background: barColor, transition: 'width 0.7s ease' }} />
-                        {plannedPct > 0 && (
-                          <div style={{
-                            position: 'absolute', top: 0, height: '100%',
-                            left: `${Math.min(spentPct, 100)}%`,
-                            width: `${Math.min(plannedPct, 100 - Math.min(spentPct, 100))}%`,
-                            background: barColorLight, opacity: 0.5,
-                            backgroundImage: 'linear-gradient(45deg, rgba(255,255,255,.3) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.3) 50%, rgba(255,255,255,.3) 75%, transparent 75%, transparent)',
-                            backgroundSize: '8px 8px'
-                          }} />
-                        )}
-                        <div style={{ position: 'absolute', top: 0, bottom: 0, width: '2px', background: 'rgba(100,116,139,0.6)', left: `${targetPct}%`, zIndex: 10 }} />
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right', minWidth: '120px' }}>
-                      <div style={{ fontSize: '0.6rem', fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Volné prostředky</div>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: totalZbyva < 0 ? '#ef4444' : '#10b981', letterSpacing: '-0.02em' }}>
-                        {formatAmount(totalZbyva)}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
+              <TabulkaCelkemProgressWithTooltip data={data} formatAmount={formatAmount} />
             </td>
           </tr>
         </Tfoot>
