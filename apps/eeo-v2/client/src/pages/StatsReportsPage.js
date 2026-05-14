@@ -90,6 +90,7 @@ import { getStrediska25, completeOrder25 } from '../services/api25orders';
 import FkInlineCell from '../components/FkInlineCell';
 import { getCashbookOverview, getCashbookOverviewEntries } from '../services/apiCashbookOverview';
 import { fetchDohadnePolozky } from '../services/api25reports';
+import { exportToExcel } from '../utils/excelExport';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
 
@@ -949,6 +950,40 @@ const BlockSelectButton = styled.button`
   cursor: pointer;
   box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
 `;
+
+const ExcelExportButton = styled.button`
+  border: 1px solid #10b981;
+  background: #10b981;
+  color: #ffffff;
+  border-radius: 10px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.08);
+  margin-right: 0.5rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background: #059669;
+    border-color: #059669;
+    box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
+  }
+
+  &:active {
+    transform: scale(0.98);
+  }
+`;
+
+const TabsBarActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0;
+`;
+
 
 const BlockMenu = styled.div`
   position: absolute;
@@ -7001,6 +7036,166 @@ export default function StatsReportsPage() {
     downloadCsv(headers, rows, `zrusene-objednavky-${new Date().toISOString().slice(0,10)}.csv`);
   }, [controlSections.cancelledOrders, invoicesByOrderId, orderToCsvRow, downloadCsv, getSearchQuery, searchInVisibleColumns]);
 
+  // ─── Export: Všechny sekce finanční kontroly do Excel ───────────────────────
+  const handleExportAllToExcel = useCallback(() => {
+    try {
+      // Pomocná funkce pro získání FK filtrace
+      const getFkFilteredData = (data, sectionKey) => {
+        return data.filter(item => {
+          const itemId = item.order?.id || item.id || 0;
+          const invId = item.invoice?.id || 0;
+          const stav = fkStavMapRef.current[`${sectionKey}_${itemId}_${invId}`];
+          if (!showFkIgnorovano && stav === 'IGNORED') return false;
+          if (!showFkVyreseno && stav === 'RESOLVED') return false;
+          return true;
+        });
+      };
+
+      const sheets = [];
+
+      // 1. Faktury vyšší než schválená objednávka
+      const ordersOverLimitData = getFkFilteredData(controlSections.ordersOverLimit, 'ordersOverLimit');
+      if (ordersOverLimitData.length > 0) {
+        const headers = ['Ev.číslo obj.','Fa VS','Typ FA','Dt. obj.','Objednatel','Schvalovatel','Věcná správnost','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Max cena DPH (Kč)','Částka FA DPH (Kč)'];
+        const rows = ordersOverLimitData.map(order => {
+          const r = orderToCsvRow(order);
+          const vecnaSpravnost = order.potvrdil_vecnou_spravnost_zkracene || '';
+          const maxCena = getOrderLimit(order) || '';
+          const faPartka = r.fa_castka || '';
+          return [r.ev_cislo, r.fa_vs, r.fa_typ, r.dt_obj, r.objednatel, r.schvalovatel, vecnaSpravnost, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, maxCena, faPartka];
+        });
+        sheets.push({ name: 'Faktury > obj', headers, rows });
+      }
+
+      // 2. Objednávka vytvořená po doručení faktury
+      const ordersAfterInvoiceData = getFkFilteredData(controlSections.ordersAfterInvoice, 'ordersAfterInvoice');
+      if (ordersAfterInvoiceData.length > 0) {
+        const headers = ['Ev.číslo obj.','Fa VS','Typ FA','Fa doručena','Obj vytvořena','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','FA částka (Kč)'];
+        const rows = ordersAfterInvoiceData.map(({ order, invoice }) => {
+          const r = orderToCsvRow(order);
+          const faVs = invoice.cislo_faktury || '';
+          const faVema = invoice.fa_vema_kod || '';
+          const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+          const faDorucena = formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni) || '';
+          const stav_fa = getInvoiceStatusLabel(invoice) || '';
+          const faCastka = getInvoiceAmount(invoice) || '';
+          return [r.ev_cislo, faDisplay, getTypFakturyLabel(invoice.fa_typ) || '', faDorucena, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, stav_fa, faCastka];
+        });
+        sheets.push({ name: 'Obj po faktuře', headers, rows });
+      }
+
+      // 3. Objednávky s fakturami bez příloh
+      const ordersInvoicesWithoutAttachmentsData = getFkFilteredData(controlSections.ordersInvoicesWithoutAttachments, 'ordersInvoicesWithoutAttachments');
+      if (ordersInvoicesWithoutAttachmentsData.length > 0) {
+        const headers = ['Objednávka','Fa VS','Typ FA','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav OBJ','Stav FA','Příl. OBJ','Příl. FA','FA částka (Kč)'];
+        const rows = ordersInvoicesWithoutAttachmentsData.map(order => {
+          const invs = invoicesByOrderId[String(order.id)] || [];
+          const r = orderToCsvRow(order);
+          const pocetPrilohObj = order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0;
+          const pocetPrilohFA = invs.map(inv => inv.pocet_priloh ?? inv.prilohy?.length ?? 0).join(' | ');
+          return [r.ev_cislo, r.fa_vs, r.fa_typ, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, r.stav_fa, pocetPrilohObj, pocetPrilohFA, r.fa_castka];
+        });
+        sheets.push({ name: 'Obj FA bez příloh', headers, rows });
+      }
+
+      // 4. Faktury bez přílohy
+      const invoicesWithoutAttachmentsData = getFkFilteredData(controlSections.invoicesWithoutAttachments, 'invoicesWithoutAttachments');
+      if (invoicesWithoutAttachmentsData.length > 0) {
+        const headers = ['Fa VS','Typ FA','Doručena','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
+        const rows = invoicesWithoutAttachmentsData.map(invoice => {
+          const order = ordersById.get ? ordersById.get(String(invoice.objednavka_id)) : ordersById[String(invoice.objednavka_id)];
+          const faVs = invoice.cislo_faktury || '';
+          const faVema = invoice.fa_vema_kod || '';
+          const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+          const dorucena = formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni) || '';
+          const zaevidoval = invoice.vytvoril_uzivatel_zkracene || '';
+          const predana = invoice.fa_predana_zam_jmeno_cele || '';
+          const objednavkaSmlouva = order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || '');
+          const usek = order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || '');
+          const financovani = order ? (getOrderFinancingLabel(order) || '') : '';
+          const detailFin = order ? (getOrderFinancingRef(order) || '') : '';
+          const druh = order ? (getOrderTypeLabel(order) || '') : '';
+          const stavObj = order ? (getOrderStatusLabel(order) || '') : '';
+          const stavFa = getInvoiceStatusLabel(invoice) || '';
+          const pocetPrilohObj = order ? (order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0) : '';
+          const pocetPrilohFA = invoice.pocet_priloh ?? invoice.prilohy?.length ?? 0;
+          const castka = getInvoiceAmount(invoice) || '';
+          return [faDisplay, getTypFakturyLabel(invoice.fa_typ) || '', dorucena, zaevidoval, predana, objednavkaSmlouva, usek, financovani, detailFin, druh, stavObj, stavFa, pocetPrilohObj, pocetPrilohFA, castka];
+        });
+        sheets.push({ name: 'FA bez příloh', headers, rows });
+      }
+
+      // 5. Faktury po splatnosti 14+ dní
+      const overdueInvoicesData = getFkFilteredData(controlSections.overdueInvoices, 'overdueInvoices');
+      if (overdueInvoicesData.length > 0) {
+        const headers = ['Fa VS','Typ FA','Doručena','Splatnost','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Příl. OBJ','Příl. FA','Částka (Kč)'];
+        const rows = overdueInvoicesData.map(invoice => {
+          const order = ordersById.get ? ordersById.get(String(invoice.objednavka_id)) : ordersById[String(invoice.objednavka_id)];
+          const faVs = invoice.cislo_faktury || '';
+          const faVema = invoice.fa_vema_kod || '';
+          const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+          const dorucena = formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni) || '';
+          const splatnost = formatDateCz(invoice.datum_splatnosti) || '';
+          const zaevidoval = invoice.vytvoril_uzivatel_zkracene || '';
+          const predana = invoice.fa_predana_zam_jmeno_cele || '';
+          const objednavkaSmlouva = order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || '');
+          const usek = order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || '');
+          const financovani = order ? (getOrderFinancingLabel(order) || '') : '';
+          const detailFin = order ? (getOrderFinancingRef(order) || '') : '';
+          const druh = order ? (getOrderTypeLabel(order) || '') : '';
+          const stavObj = order ? (getOrderStatusLabel(order) || '') : '';
+          const stavFa = getInvoiceStatusLabel(invoice) || '';
+          const pocetPrilohObj = order ? (order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0) : '';
+          const pocetPrilohFA = invoice.pocet_priloh ?? invoice.prilohy?.length ?? 0;
+          const castka = getInvoiceAmount(invoice) || '';
+          return [faDisplay, getTypFakturyLabel(invoice.fa_typ) || '', dorucena, splatnost, zaevidoval, predana, objednavkaSmlouva, usek, financovani, detailFin, druh, stavObj, stavFa, pocetPrilohObj, pocetPrilohFA, castka];
+        });
+        sheets.push({ name: 'FA po splatnosti', headers, rows });
+      }
+
+      // 6. Zrušené a zamítnuté objednávky
+      if (controlSections.cancelledOrders.length > 0) {
+        const headers = ['Objednávka','Dt. obj.','Objednatel','Schvalovatel','Úsek','Financování','Detail fin.','Druh','Stav obj.','Počet FA'];
+        const rows = controlSections.cancelledOrders.map(order => {
+          const r = orderToCsvRow(order);
+          const pocetFaktur = (invoicesByOrderId[String(order.id)] || []).length;
+          return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, pocetFaktur];
+        });
+        sheets.push({ name: 'Zrušené obj', headers, rows });
+      }
+
+      // Export do Excel
+      if (sheets.length === 0) {
+        showToast && showToast('Žádná data k exportu', { type: 'warning' });
+        return;
+      }
+
+      exportToExcel(sheets, 'ExportFinKontrola');
+      showToast && showToast(`Export dokončen: ${sheets.length} sekcí exportováno do Excel`, { type: 'success' });
+    } catch (error) {
+      console.error('Chyba při exportu do Excel:', error);
+      showToast && showToast(`Chyba při exportu: ${error.message}`, { type: 'error' });
+    }
+  }, [
+    controlSections,
+    invoicesByOrderId,
+    ordersById,
+    orderToCsvRow,
+    getOrderLimit,
+    getInvoiceAmount,
+    getTypFakturyLabel,
+    getInvoiceStatusLabel,
+    getOrderStatusLabel,
+    getOrdererUsekCode,
+    getOrderFinancingLabel,
+    getOrderFinancingRef,
+    getOrderTypeLabel,
+    formatDateCz,
+    showFkIgnorovano,
+    showFkVyreseno,
+    showToast
+  ]);
+
   // ─── Export: Vzdělávání lékařské ────────────────────────────────────────────
   const handleExportCsv_vzdelLekarsky = useCallback(() => {
     const query = getSearchQuery('vzdelLekarsky');
@@ -8590,7 +8785,14 @@ export default function StatsReportsPage() {
               </TabButton>
             ))}
           </Tabs>
-          {renderBlockSelect()}
+          <TabsBarActions>
+            {activeTab === 'control' && (
+              <ExcelExportButton onClick={handleExportAllToExcel} title="Exportovat všechny sekce do Excel souboru">
+                <FontAwesomeIcon icon={faFileExcel} /> Export vše do XLS
+              </ExcelExportButton>
+            )}
+            {renderBlockSelect()}
+          </TabsBarActions>
         </TabsBar>
 
         <ContentGrid>
