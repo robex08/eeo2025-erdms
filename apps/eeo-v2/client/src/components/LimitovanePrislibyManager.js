@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useContext, useCallback } from 'react';
+import React, { useState, useEffect, useContext, useCallback, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes, css } from '@emotion/react';
@@ -396,6 +397,7 @@ const CashbookYearSelect = styled.select`
 
 const TableContainer = styled.div`
   overflow-x: auto;
+  overflow-y: visible;
   border-radius: 12px;
   border: 2px solid #e5e7eb;
   background: white;
@@ -1158,33 +1160,105 @@ const JezevcikStatusBadge = styled.div`
   }}
 `;
 
+// Tooltip Portal komponenta - vykresluje tooltip mimo DOM hierarchii s viewport detection
+const TooltipPortal = ({ children, targetRef, isVisible }) => {
+  const [position, setPosition] = React.useState({ top: 0, left: 0, adjustX: 0, adjustY: 0 });
+  const tooltipRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!targetRef.current || !isVisible) return;
+
+    const updatePosition = () => {
+      const rect = targetRef.current.getBoundingClientRect();
+      const baseLeft = rect.left + window.scrollX + rect.width / 2;
+      const baseTop = rect.top + window.scrollY;
+      
+      let adjustX = 0;
+      let adjustY = 0;
+      
+      // Detekce viewport boundaries po renderování
+      if (tooltipRef.current) {
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Kontrola horizontální hranice
+        if (tooltipRect.right > viewportWidth - 10) {
+          adjustX = -(tooltipRect.right - viewportWidth + 20);
+        } else if (tooltipRect.left < 10) {
+          adjustX = 10 - tooltipRect.left + 20;
+        }
+        
+        // Kontrola vertikální hranice - pokud by zmizel nahoře, zobraz pod prvkem
+        if (tooltipRect.top < 10) {
+          adjustY = rect.height + tooltipRect.height + 24;
+        }
+      }
+      
+      setPosition({
+        top: baseTop,
+        left: baseLeft,
+        adjustX,
+        adjustY,
+      });
+    };
+
+    updatePosition();
+    // Další update pro adjustování po renderování
+    const timer = setTimeout(updatePosition, 0);
+    
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [targetRef, isVisible]);
+
+  if (!isVisible) return null;
+
+  return ReactDOM.createPortal(
+    <div 
+      ref={tooltipRef}
+      style={{
+        position: 'absolute',
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        zIndex: 99999,
+        pointerEvents: 'none',
+      }}>
+      <div style={{ transform: `translate(${position.adjustX}px, ${position.adjustY}px)` }}>
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
 // Tooltip komponenty
 const TooltipContainer = styled.div`
   position: relative;
-  display: inline-block;
-  
-  &:hover > div {
-    opacity: 1;
-    visibility: visible;
-  }
+  display: block;
+  width: 100%;
 `;
 
 const TooltipContent = styled.div`
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  margin-bottom: 0.5rem;
+  position: relative;
+  transform: translate(-50%, calc(-100% - 16px));
   padding: 1rem;
   background: #1f2937;
   color: white;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   min-width: 280px;
-  opacity: 0;
-  visibility: hidden;
+  max-width: 400px;
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
   transition: opacity 0.2s ease, visibility 0.2s ease;
-  z-index: 1000;
+  pointer-events: none;
+  white-space: normal;
   
   &::after {
     content: '';
@@ -1192,7 +1266,7 @@ const TooltipContent = styled.div`
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    border: 6px solid transparent;
+    border: 8px solid transparent;
     border-top-color: #1f2937;
   }
 `;
@@ -1208,6 +1282,7 @@ const TooltipTitle = styled.div`
 const TooltipTable = styled.table`
   width: 100%;
   font-size: 0.875rem;
+  border-collapse: collapse;
   
   tr {
     &:not(:last-child) td {
@@ -1215,30 +1290,26 @@ const TooltipTable = styled.table`
     }
     
     &.divider td {
-      padding-top: 0.5rem;
-      border-top: 1px solid rgba(255,255,255,0.2);
+      padding-top: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-top: 1px solid rgba(255,255,255,0.15);
     }
   }
   
   td {
     padding: 0.25rem 0;
+    vertical-align: top;
     
     &:first-of-type {
-      color: #d1d5db;
+      color: rgba(255,255,255,0.65);
       padding-right: 1rem;
+      font-weight: 500;
     }
     
     &:last-child {
       text-align: right;
       font-weight: 600;
-      
-      &.negative {
-        color: #fca5a5;
-      }
-      
-      &.positive {
-        color: #86efac;
-      }
+      color: white;
     }
   }
 `;
@@ -2072,6 +2143,126 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     );
   };
   
+  // ===== CELKOVÝ PROGRESS BAR s TOOLTIPEM (pro statistiky) =====
+  const CelkovyProgressWithTooltip = ({ stats, prumerneProcentoSkutecne, prumerneProcentoVProcesu }) => {
+    const [showTooltip, setShowTooltip] = React.useState(false);
+    const containerRef = React.useRef(null);
+    
+    const getColorForPercent = (pct) => {
+      if (pct >= 100) return '#ef4444'; // Červená
+      if (pct >= 85) return '#f59e0b'; // Oranžová
+      if (pct >= 70) return '#fcd34d'; // Žlutá
+      return '#10b981'; // Zelená
+    };
+    
+    const color = getColorForPercent(prumerneProcentoSkutecne);
+    const totalPct = prumerneProcentoSkutecne + prumerneProcentoVProcesu;
+    
+    return (
+      <div
+        ref={containerRef}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        style={{ cursor: 'pointer', marginBottom: '0.5rem' }}
+      >
+        <StatValue $light style={{ marginBottom: '0.25rem' }}>
+          {prumerneProcentoSkutecne.toFixed(1)}%
+        </StatValue>
+        
+        {/* Mini progress bar */}
+        <div style={{
+          position: 'relative',
+          height: '8px',
+          background: 'rgba(255,255,255,0.2)',
+          borderRadius: '4px',
+          overflow: 'visible',
+          marginTop: '0.25rem'
+        }}>
+          <div style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            height: '100%',
+            width: `${Math.min(prumerneProcentoSkutecne, 100)}%`,
+            background: color,
+            borderRadius: '4px',
+            transition: 'all 0.3s ease'
+          }} />
+          
+          {/* V procesu - světlejší */}
+          <div style={{
+            position: 'absolute',
+            left: `${Math.min(prumerneProcentoSkutecne, 100)}%`,
+            top: 0,
+            height: '100%',
+            width: `${Math.min(prumerneProcentoVProcesu, 100 - prumerneProcentoSkutecne)}%`,
+            background: 'rgba(255,255,255,0.4)',
+            borderRadius: '4px',
+            transition: 'all 0.3s ease'
+          }} />
+          
+          {/* Overflow indikátor */}
+          {totalPct > 100 && (
+            <div style={{
+              position: 'absolute',
+              right: '-24px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              fontSize: '0.65rem',
+              color: '#ef4444',
+              fontWeight: 700,
+              whiteSpace: 'nowrap'
+            }}>
+              +{(totalPct - 100).toFixed(1)}%
+            </div>
+          )}
+        </div>
+        
+        <TooltipPortal targetRef={containerRef} isVisible={showTooltip}>
+          <TooltipContent $isVisible={showTooltip}>
+            <TooltipTitle>Celkové čerpání všech LP</TooltipTitle>
+            <TooltipTable>
+              <tbody>
+                <tr>
+                  <td>Celkový limit:</td>
+                  <td style={{ color: '#fcd34d' }}>{formatAmount(stats.celkovy_limit)}</td>
+                </tr>
+                <tr className="divider">
+                  <td>Dokončeno (fakturace + pokladna):</td>
+                  <td style={{ color: color }}>{formatAmount(stats.celkove_skutecne)} ({prumerneProcentoSkutecne.toFixed(1)}%)</td>
+                </tr>
+                <tr>
+                  <td>V procesu (objednávky):</td>
+                  <td style={{ color: 'rgba(255,255,255,0.7)' }}>{formatAmount(stats.celkove_rezervovano + stats.celkove_predpokladane)} ({prumerneProcentoVProcesu.toFixed(1)}%)</td>
+                </tr>
+                <tr className="divider">
+                  <td>Celkem s procesem:</td>
+                  <td style={{ color: totalPct >= 100 ? '#f87171' : '#fcd34d' }}>{formatAmount(stats.celkove_skutecne + stats.celkove_rezervovano + stats.celkove_predpokladane)} ({totalPct.toFixed(1)}%)</td>
+                </tr>
+                <tr>
+                  <td>Zbývá (dle čerpaného):</td>
+                  <td style={{ color: stats.celkem_zbyva_skutecne < 0 ? '#f87171' : '#86efac' }}>{formatAmount(stats.celkem_zbyva_skutecne)}</td>
+                </tr>
+                <tr>
+                  <td>Volné prostředky:</td>
+                  <td style={{ color: '#86efac' }}>{formatAmount(stats.celkem_zbyva_skutecne - (stats.celkove_rezervovano + stats.celkove_predpokladane))}</td>
+                </tr>
+                <tr className="divider">
+                  <td>Z pokladny:</td>
+                  <td style={{ color: 'rgba(255,255,255,0.85)' }}>{formatAmount(stats.celkove_pokladna)}</td>
+                </tr>
+                <tr>
+                  <td>Počet LP kódů:</td>
+                  <td style={{ color: 'rgba(255,255,255,0.85)' }}>{stats.celkem_lp}</td>
+                </tr>
+              </tbody>
+            </TooltipTable>
+          </TooltipContent>
+        </TooltipPortal>
+      </div>
+    );
+  };
+  
   // ===== LP PROGRESS BAR s TŘI TYPY ČERPÁNÍ =====
   const renderLPProgressBar = (lp, showThreeTypes = true) => {
     const color = getLPColor(lp);
@@ -2222,85 +2413,169 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     return { spentPct, plannedPct, totalPct, targetPct, level, barColor, barColorLight, currentMonth };
   }, []);
   
-  const renderJezevcikBar = useCallback((lp) => {
+  // Komponenta pro Jezevcik bar s tooltip supportem
+  const JezevcikBarWithTooltip = ({ lp, getJezevcikState }) => {
+    const [isHovered, setIsHovered] = React.useState(false);
+    const containerRef = React.useRef(null);
+    
     const limit = lp.vyse_financniho_kryti || 0;
     if (limit === 0) return <span style={{ color: '#94a3b8', fontSize: '0.8rem' }}>—</span>;
     
     const { spentPct, plannedPct, totalPct, targetPct, level, barColor, barColorLight, currentMonth } = getJezevcikState(lp);
     
+    const skutecne = (lp.skutecne_cerpano || 0) + (lp.cerpano_pokladna || 0);
+    const planovano = (lp.predpokladane_cerpani || 0);
+    const pozadovano = (lp.rezervovano || 0);
+    const vProcesu = planovano + pozadovano;
+    const zbyva = lp.zbyva_skutecne || 0;
+    
     return (
-      <JezevcikWrap>
-        <JezevcikHeader>
-          <JezevcikPercent>
-            <JezevcikPercentValue $color={barColor}>
-              {totalPct.toFixed(1)}%
-            </JezevcikPercentValue>
-            <JezevcikPercentLabel>Čerpání</JezevcikPercentLabel>
-          </JezevcikPercent>
-          <JezevcikTarget>
-            <JezevcikTargetLabel>Cíl k datu</JezevcikTargetLabel>
-            <JezevcikTargetValue>{targetPct}%</JezevcikTargetValue>
-          </JezevcikTarget>
-        </JezevcikHeader>
-        
-        <JezevcikBarOuter>
-          {/* Měsíční rastr */}
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
-            {Array.from({ length: 12 }).map((_, i) => (
-              <div
-                key={i}
-                style={{
-                  flex: 1,
-                  borderRight: '1px solid rgba(203, 213, 225, 0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  background: i === currentMonth ? 'rgba(100, 116, 139, 0.05)' : 'transparent'
-                }}
-              >
-                <span className="jez-month-num" style={{ fontSize: '0.4rem', fontWeight: 700, color: 'transparent', transition: 'color 0.2s ease' }}>
-                  {i + 1}
-                </span>
-              </div>
-            ))}
-          </div>
+      <div 
+        ref={containerRef}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{ width: '100%' }}
+      >
+        <JezevcikWrap>
+          <JezevcikHeader>
+            <JezevcikPercent>
+              <JezevcikPercentValue $color={barColor}>
+                {totalPct.toFixed(1)}%
+              </JezevcikPercentValue>
+              <JezevcikPercentLabel>Čerpání</JezevcikPercentLabel>
+            </JezevcikPercent>
+            <JezevcikTarget>
+              <JezevcikTargetLabel>Cíl k datu</JezevcikTargetLabel>
+              <JezevcikTargetValue>{targetPct}%</JezevcikTargetValue>
+            </JezevcikTarget>
+          </JezevcikHeader>
           
-          {/* Cílová ryska */}
-          <JezevcikTargetLine $percent={targetPct} />
-          
-          {/* Hlavní bar: Skutečně vyčerpáno (solid) */}
-          <JezevcikBarFill $percent={spentPct} $color={barColor} />
-          
-          {/* Sekundární bar: Plánováno + Požadováno (šrafovaný) */}
-          {plannedPct > 0 && (
-            <JezevcikBarPlanned
-              $left={Math.min(spentPct, 100)}
-              $percent={plannedPct}
-              $color={barColorLight}
-            />
-          )}
-        </JezevcikBarOuter>
-        
-        <JezevcikLegend>
-          <JezevcikLegendItems>
-            <JezevcikLegendItem>
-              <JezevcikLegendDot $color={barColor} />
-              <JezevcikLegendText>Dokončeno</JezevcikLegendText>
-            </JezevcikLegendItem>
-            <JezevcikLegendItem>
-              <JezevcikLegendDot $color={barColorLight} $opacity={0.6} />
-              <JezevcikLegendText>V procesu</JezevcikLegendText>
-            </JezevcikLegendItem>
-          </JezevcikLegendItems>
-          {level === 'critical' && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#ef4444' }}>
-              <AlertTriangle size={10} />
-              <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase' }}>Kritické přečerpání</span>
+          <JezevcikBarOuter>
+            {/* Měsíční rastr */}
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', zIndex: 20, pointerEvents: 'none' }}>
+              {Array.from({ length: 12 }).map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    flex: 1,
+                    borderRight: '1px solid rgba(203, 213, 225, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    background: i === currentMonth ? 'rgba(100, 116, 139, 0.05)' : 'transparent'
+                  }}
+                >
+                  <span className="jez-month-num" style={{ fontSize: '0.4rem', fontWeight: 700, color: 'transparent', transition: 'color 0.2s ease' }}>
+                    {i + 1}
+                  </span>
+                </div>
+              ))}
             </div>
-          )}
-        </JezevcikLegend>
-      </JezevcikWrap>
+            
+            {/* Cílová ryska */}
+            <JezevcikTargetLine $percent={targetPct} />
+            
+            {/* Hlavní bar: Skutečně vyčerpáno (solid) */}
+            <JezevcikBarFill $percent={spentPct} $color={barColor} />
+            
+            {/* Sekundární bar: Plánováno + Požadováno (šrafovaný) */}
+            {plannedPct > 0 && (
+              <JezevcikBarPlanned
+                $left={Math.min(spentPct, 100)}
+                $percent={plannedPct}
+                $color={barColorLight}
+              />
+            )}
+          </JezevcikBarOuter>
+          
+          <JezevcikLegend>
+            <JezevcikLegendItems>
+              <JezevcikLegendItem>
+                <JezevcikLegendDot $color={barColor} />
+                <JezevcikLegendText>Dokončeno</JezevcikLegendText>
+              </JezevcikLegendItem>
+              <JezevcikLegendItem>
+                <JezevcikLegendDot $color={barColorLight} $opacity={0.6} />
+                <JezevcikLegendText>V procesu</JezevcikLegendText>
+              </JezevcikLegendItem>
+            </JezevcikLegendItems>
+            {level === 'critical' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#ef4444' }}>
+                <AlertTriangle size={10} />
+                <span style={{ fontSize: '0.5rem', fontWeight: 800, textTransform: 'uppercase' }}>Kritické přečerpání</span>
+              </div>
+            )}
+          </JezevcikLegend>
+        </JezevcikWrap>
+        
+        {/* Tooltip s detaily čerpání - vykreslen přes Portal */}
+        <TooltipPortal targetRef={containerRef} isVisible={isHovered}>
+          <TooltipContent $isVisible={isHovered}>
+            <TooltipTitle>LP čerpání: {lp.cislo_lp}</TooltipTitle>
+            <TooltipTable>
+              <tbody>
+                <tr>
+                  <td>Limit:</td>
+                  <td>{formatAmount(limit)}</td>
+                </tr>
+                <tr>
+                  <td>Dokončeno:</td>
+                  <td style={{ color: '#86efac' }}>{formatAmount(skutecne)} ({spentPct.toFixed(1)}%)</td>
+                </tr>
+                {lp.cerpano_pokladna > 0 && (
+                  <tr style={{ fontSize: '0.8rem' }}>
+                    <td style={{ paddingLeft: '1rem', color: 'rgba(255,255,255,0.5)' }}>z toho pokladna:</td>
+                    <td style={{ color: 'rgba(255,255,255,0.7)' }}>{formatAmount(lp.cerpano_pokladna)}</td>
+                  </tr>
+                )}
+                {vProcesu > 0 && (
+                  <>
+                    <tr>
+                      <td>V procesu:</td>
+                      <td style={{ color: '#fcd34d' }}>{formatAmount(vProcesu)} ({plannedPct.toFixed(1)}%)</td>
+                    </tr>
+                    {planovano > 0 && (
+                      <tr style={{ fontSize: '0.8rem' }}>
+                        <td style={{ paddingLeft: '1rem', color: 'rgba(255,255,255,0.5)' }}>plánováno:</td>
+                        <td style={{ color: 'rgba(255,255,255,0.7)' }}>{formatAmount(planovano)}</td>
+                      </tr>
+                    )}
+                    {pozadovano > 0 && (
+                      <tr style={{ fontSize: '0.8rem' }}>
+                        <td style={{ paddingLeft: '1rem', color: 'rgba(255,255,255,0.5)' }}>požadováno:</td>
+                        <td style={{ color: 'rgba(255,255,255,0.7)' }}>{formatAmount(pozadovano)}</td>
+                      </tr>
+                    )}
+                  </>
+                )}
+                <tr className="divider">
+                  <td>Celkem:</td>
+                  <td style={{ color: totalPct >= 100 ? '#f87171' : '#fcd34d' }}>{formatAmount(skutecne + vProcesu)} ({totalPct.toFixed(1)}%)</td>
+                </tr>
+                <tr>
+                  <td>Zbývá:</td>
+                  <td style={{ color: zbyva < 0 ? '#f87171' : '#86efac' }}>{formatAmount(zbyva)}</td>
+                </tr>
+                <tr className="divider">
+                  <td>Cíl k datu:</td>
+                  <td style={{ color: 'rgba(255,255,255,0.85)' }}>{targetPct}% ({new Date().toLocaleDateString('cs-CZ', { day: 'numeric', month: 'long' })})</td>
+                </tr>
+                {lp.nazev_uctu && (
+                  <tr className="divider">
+                    <td>Účet:</td>
+                    <td style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.75)' }}>{lp.nazev_uctu}</td>
+                  </tr>
+                )}
+              </tbody>
+            </TooltipTable>
+          </TooltipContent>
+        </TooltipPortal>
+      </div>
     );
+  };
+  
+  const renderJezevcikBar = useCallback((lp) => {
+    return <JezevcikBarWithTooltip lp={lp} getJezevcikState={getJezevcikState} />;
   }, [getJezevcikState]);
 
   // Toggle sekce (s ukládáním do localStorage)
@@ -2389,7 +2664,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                         </ThreeTypeAmountRow>
                       </ThreeTypeAmountContainer>
                     </td>
-                    <td style={{ minWidth: '240px' }}>
+                    <td style={{ minWidth: '240px', position: 'relative', overflow: 'visible' }}>
                       {renderJezevcikBar({
                         vyse_financniho_kryti: limit,
                         skutecne_cerpano: skutecne,
@@ -2549,7 +2824,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                   </SubAmounts>
                 </ThreeTypeAmount>
               </td>
-              <td style={{ minWidth: '280px' }}>
+              <td style={{ minWidth: '280px', position: 'relative', overflow: 'visible' }}>
                 {renderJezevcikBar(lp)}
               </td>
               <td>
@@ -3087,7 +3362,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               </StatIcon>
               <StatContent>
                 <StatLabel $light>Průměrné čerpání (dokončeno)</StatLabel>
-                <StatValue $light style={{ marginBottom: '0.5rem' }}>{stats.prumerne_procento_skutecne.toFixed(1)}%</StatValue>
+                <CelkovyProgressWithTooltip 
+                  stats={stats}
+                  prumerneProcentoSkutecne={stats.prumerne_procento_skutecne}
+                  prumerneProcentoVProcesu={stats.prumerne_procento_rezervovano + stats.prumerne_procento_predpokladane}
+                />
                 <div style={{ fontSize: '0.75rem', opacity: 0.85, lineHeight: 1.4 }}>
                   <div title="Průměrné % v procesu (plánované objednávky + ve schvalování)">→ V procesu: {(stats.prumerne_procento_rezervovano + stats.prumerne_procento_predpokladane).toFixed(1)}%</div>
                 </div>
