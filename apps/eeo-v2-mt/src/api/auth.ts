@@ -16,11 +16,27 @@ export interface TokenRefreshRequest {
   old_token: string;
 }
 
+const LOGIN_ENDPOINTS = ['/login', '/user/login'];
+
 /**
  * 1️⃣ Login - POST /login
  */
 export const login = async (credentials: LoginRequest): Promise<LoginResponse> => {
-  const response = await apiClient.post<LoginResponse>('/login', credentials, false);
+  let lastError: unknown = null;
+  let response: Awaited<ReturnType<typeof apiClient.post<LoginResponse>>> | null = null;
+
+  for (const endpoint of LOGIN_ENDPOINTS) {
+    try {
+      response = await apiClient.post<LoginResponse>(endpoint, credentials, false);
+      break;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  if (!response) {
+    throw (lastError instanceof Error ? lastError : new Error('Přihlášení selhalo'));
+  }
   
   if (response.status === 'error') {
     throw new Error(response.message || 'Přihlášení selhalo');

@@ -1,6 +1,6 @@
 // API configuration
 export const API_CONFIG = {
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://erdms.zachranka.cz/dev/api.eeo',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api.eeo',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',

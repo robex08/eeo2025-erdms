@@ -13,7 +13,8 @@
  * @date 2025-11-23
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -504,7 +505,8 @@ const StatItem = styled.div`
 const TableContainer = styled.div`
   background: white;
   border-radius: 8px;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 `;
 
@@ -638,6 +640,8 @@ const TableCell = styled.td`
   font-size: 0.85rem;
   text-align: center;
   font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  position: relative;
+  overflow: visible;
 
   &:first-of-type {
     text-align: left;
@@ -807,6 +811,155 @@ const JezStatusBadge = styled.div`
     if (props.$level === 'warning')  return 'background:#fff7ed;color:#ea580c;border-color:#fed7aa;';
     return 'background:#f0fdf4;color:#16a34a;border-color:#bbf7d0;';
   }}
+`;
+
+/* Tooltip Portal - vykresluje tooltip mimo DOM hierarchii */
+const TooltipPortal = ({ children, targetRef, isVisible }) => {
+  const [position, setPosition] = React.useState({ top: 0, left: 0, adjustX: 0, adjustY: 0 });
+  const tooltipRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!targetRef.current || !isVisible) return;
+
+    const updatePosition = () => {
+      const rect = targetRef.current.getBoundingClientRect();
+      const baseLeft = rect.left + window.scrollX + rect.width / 2;
+      const baseTop = rect.top + window.scrollY;
+      
+      let adjustX = 0;
+      let adjustY = 0;
+      
+      // Detekce viewport boundaries po renderování
+      if (tooltipRef.current) {
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Kontrola horizontální hranice
+        if (tooltipRect.right > viewportWidth - 10) {
+          adjustX = -(tooltipRect.right - viewportWidth + 20);
+        } else if (tooltipRect.left < 10) {
+          adjustX = 10 - tooltipRect.left + 20;
+        }
+        
+        // Kontrola vertikální hranice - pokud by zmizel nahoře, zobraz pod prvkem
+        if (tooltipRect.top < 10) {
+          adjustY = rect.height + tooltipRect.height + 24;
+        }
+      }
+      
+      setPosition({
+        top: baseTop,
+        left: baseLeft,
+        adjustX,
+        adjustY,
+      });
+    };
+
+    updatePosition();
+    // Další update pro adjustování po renderování
+    const timer = setTimeout(updatePosition, 0);
+    
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [targetRef, isVisible]);
+
+  if (!isVisible) return null;
+
+  return ReactDOM.createPortal(
+    <div 
+      ref={tooltipRef}
+      style={{
+        position: 'absolute',
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        zIndex: 99999,
+        pointerEvents: 'none',
+      }}>
+      <div style={{ transform: `translate(${position.adjustX}px, ${position.adjustY}px)` }}>
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+/* Tooltip komponenty pro progress bar (stejné jako u LP) */
+const TooltipContainer = styled.div`
+  position: relative;
+  display: block;
+  width: 100%;
+`;
+
+const TooltipContent = styled.div`
+  position: relative;
+  transform: translate(-50%, calc(-100% - 16px));
+  padding: 1rem;
+  background: #1f2937;
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  min-width: 280px;
+  max-width: 400px;
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  white-space: normal;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: #1f2937;
+  }
+`;
+
+const TooltipTitle = styled.div`
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+`;
+
+const TooltipTable = styled.table`
+  width: 100%;
+  font-size: 0.875rem;
+  
+  tr {
+    &:not(:last-child) td {
+      padding-bottom: 0.375rem;
+    }
+    
+    &.divider td {
+      padding-top: 0.5rem;
+      border-top: 1px solid rgba(255,255,255,0.2);
+    }
+  }
+  
+  td {
+    padding: 0.25rem 0;
+    
+    &:first-child {
+      color: rgba(255,255,255,0.7);
+      padding-right: 1rem;
+    }
+    
+    &:last-child {
+      text-align: right;
+      font-weight: 600;
+    }
+  }
 `;
 
 /* Hatched overlay – celá šíře baru, diagonální pruhy pro „bez stropu / nekonečné" */
@@ -1857,6 +2010,31 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   };
 
   // =============================================================================
+  // HELPER KOMPONENTA PRO PROGRESS BAR S TOOLTIP
+  // =============================================================================
+  
+  const ProgressBarWithTooltipWrapper = ({ barContent, tooltipContent }) => {
+    const [isHovered, setIsHovered] = React.useState(false);
+    const containerRef = React.useRef(null);
+    
+    return (
+      <div 
+        ref={containerRef}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{ width: '100%' }}
+      >
+        {barContent}
+        <TooltipPortal targetRef={containerRef} isVisible={isHovered}>
+          <TooltipContent $isVisible={isHovered}>
+            {tooltipContent}
+          </TooltipContent>
+        </TooltipPortal>
+      </div>
+    );
+  };
+
+  // =============================================================================
   // TANSTACK TABLE - COLUMNS & INSTANCE
   // =============================================================================
 
@@ -2055,47 +2233,49 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         })();
 
         // Cíl k datu = uplynulá část doby trvání smlouvy (null pokud nekonečná nebo bez dat)
+        // Platí pro VŠECHNY smlouvy (s i bez stropu), pokud mají validní platnost
         const calcTargetPct = () => {
           if (isInfinite) return null;
           const platnostDo = row.platnost_do;
-          if (!platnostDo) return null;
+          const platnostOd = row.platnost_od;
+          // Musí mít OBA datumy, jinak nemůžeme spočítat
+          if (!platnostDo || !platnostOd) return null;
+          
           const now = new Date();
           const end = new Date(platnostDo);
+          const start = new Date(platnostOd);
+          
+          // Smlouva ještě nezačala → cíl je 0%
+          if (now < start) return 0;
+          // Smlouva už skončila → cíl je 100%
           if (now >= end) return 100;
-          const start = row.platnost_od ? new Date(row.platnost_od) : new Date(end.getFullYear(), 0, 1);
+          
           const total = end - start;
           if (total <= 0) return 100;
+          
           return Math.max(0, Math.min(100, Math.round(((now - start) / total) * 100)));
         };
         // targetPct: number (0-100) nebo null (nekonečná / neznámá platnost)
-        const targetPct = hasCap ? calcTargetPct() : null;
+        // Počítá se pro VŠECHNY smlouvy s validní platností (ne jen s finančním stropem)
+        const targetPct = calcTargetPct();
 
         // Status barevného baru:
-        // - KRITICKÉ (červená): čerpání >= 100% limitu
+        // - KRITICKÉ (červená): čerpání >= 100% limitu A smlouva není ukončená
+        // - DOKONČENO (zelená): čerpání >= 100% A smlouva je ukončená (normální stav)
         // - POZOR (oranžová): čerpání > 130% cíle k datu (čerpáš rychleji než bys měl)
+        //   POUZE pokud absolutní čerpání >= 15% (ignorujeme malé odchylky na začátku)
         //   Např.: Smlouva na rok, začala před měsícem → cíl k datu ~8.3%, měl bys mít 8.3%,
         //   ale máš 10% → 10% > 8.3% × 1.3 = 10.8%? NE → OK. Ale 12% > 10.8% → POZOR!
         // - OK (zelená): vše v normě
         const barLevel = percentForBar >= 100
-          ? 'critical'
-          : (targetPct !== null && percentForBar > targetPct * 1.3)
+          ? (row.stav === 'UKONCENA' ? 'completed' : 'critical')
+          : (targetPct !== null && percentForBar > targetPct * 1.3 && percentForBar >= 15)
             ? 'warning'
             : 'ok';
-        const barColor = barLevel === 'critical' ? '#ef4444' : barLevel === 'warning' ? '#f59e0b' : '#10b981';
+        const barColor = barLevel === 'critical' ? '#ef4444' : (barLevel === 'warning' ? '#f59e0b' : '#10b981');
 
-        // Pro smlouvy bez stropu: časový progress platnosti (null pokud nekonečná)
-        const timePct = (!hasCap && !isInfinite) ? (() => {
-          const platnostDo = row.platnost_do;
-          if (!platnostDo) return null;
-          const now = new Date();
-          const end = new Date(platnostDo);
-          const start = row.platnost_od ? new Date(row.platnost_od) : null;
-          if (!start) return null;
-          if (now >= end) return 100;
-          const total = end - start;
-          if (total <= 0) return 100;
-          return Math.max(0, Math.min(100, Math.round(((now - start) / total) * 100)));
-        })() : null;
+        // Pro smlouvy bez stropu: používáme stejný targetPct (časový průběh platnosti)
+        const timePct = targetPct;
 
         // 12 pravidelných svislých čárek (stejný rastr jako LP)
         const monthGrid = (
@@ -2163,27 +2343,84 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     </div>
                   )}
                 </div>
-                <JezBarOuter>
-                  {monthGrid}
-                  {targetPct !== null && <JezTargetLine $pct={targetPct} />}
-                  {/* Solid bar - Dokončeno (faktury DOKONCENA, ZAPLACENO) */}
-                  <JezBarFill 
-                    $pct={hasCap ? (dokonceno / pocatecniStav * 100) : 0} 
-                    $color={barColor} 
-                  />
-                  {/* Šrafovaný bar - V procesu (ostatní faktury) */}
-                  {vProcesu > 0 && hasCap && (
-                    <JezBarPlanned
-                      $left={Math.min((dokonceno / pocatecniStav * 100), 100)}
-                      $percent={vProcesu / pocatecniStav * 100}
-                      $color={barColor === '#ef4444' ? '#fca5a5' : (barColor === '#f59e0b' ? '#fcd34d' : '#86efac')}
-                    />
-                  )}
-                </JezBarOuter>
+                <ProgressBarWithTooltipWrapper
+                  barContent={
+                    <JezBarOuter>
+                      {monthGrid}
+                      {targetPct !== null && <JezTargetLine $pct={targetPct} />}
+                      {/* Solid bar - Dokončeno (faktury DOKONCENA, ZAPLACENO) */}
+                      <JezBarFill 
+                        $pct={hasCap ? (dokonceno / pocatecniStav * 100) : 0} 
+                        $color={barColor} 
+                      />
+                      {/* Šrafovaný bar - V procesu (ostatní faktury) */}
+                      {vProcesu > 0 && hasCap && (
+                        <JezBarPlanned
+                          $left={Math.min((dokonceno / pocatecniStav * 100), 100)}
+                          $percent={vProcesu / pocatecniStav * 100}
+                          $color={barColor === '#ef4444' ? '#fca5a5' : (barColor === '#f59e0b' ? '#fcd34d' : '#86efac')}
+                        />
+                      )}
+                    </JezBarOuter>
+                  }
+                  tooltipContent={
+                    <>
+                      <TooltipTitle>Čerpání smlouvy: {row.cislo_smlouvy}</TooltipTitle>
+                      <TooltipTable>
+                        <tbody>
+                          <tr>
+                            <td>Hodnota smlouvy:</td>
+                            <td>{formatCurrency(pocatecniStav)}</td>
+                          </tr>
+                          {dokonceno > 0 && (
+                            <tr>
+                              <td>Dokončeno:</td>
+                              <td style={{ color: '#86efac' }}>{formatCurrency(dokonceno)}</td>
+                            </tr>
+                          )}
+                          {vProcesu > 0 && (
+                            <tr>
+                              <td>V procesu:</td>
+                              <td style={{ color: '#fcd34d' }}>{formatCurrency(vProcesu)}</td>
+                            </tr>
+                          )}
+                          <tr className="divider">
+                            <td>Celkem čerpáno:</td>
+                            <td style={{ color: barColor }}>{formatCurrency(cerpano)} ({percentText})</td>
+                          </tr>
+                          {volne > 0 && (
+                            <tr>
+                              <td>Volné:</td>
+                              <td style={{ color: '#93c5fd' }}>{formatCurrency(volne)}</td>
+                            </tr>
+                          )}
+                          {targetPct !== null && (
+                            <tr className="divider">
+                              <td>Cíl k datu:</td>
+                              <td>{targetPct}% platnosti uplynulo</td>
+                            </tr>
+                          )}
+                          {row.platnost_od && row.platnost_do && (
+                            <>
+                              <tr>
+                                <td>Platnost od:</td>
+                                <td>{new Date(row.platnost_od).toLocaleDateString('cs-CZ')}</td>
+                              </tr>
+                              <tr>
+                                <td>Platnost do:</td>
+                                <td>{new Date(row.platnost_do).toLocaleDateString('cs-CZ')}</td>
+                              </tr>
+                            </>
+                          )}
+                        </tbody>
+                      </TooltipTable>
+                    </>
+                  }
+                />
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
                   <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
                   <JezStatusBadge $level={barLevel}>
-                    {barLevel === 'critical' ? '⛔ Kritické' : barLevel === 'warning' ? '⚠ Pozor' : '✓ V normě'}
+                    {barLevel === 'critical' ? '⛔ Kritické' : barLevel === 'warning' ? '⚠ Pozor' : barLevel === 'completed' ? '✓ Dokončeno' : '✓ V normě'}
                   </JezStatusBadge>
                 </div>
               </>
@@ -2204,11 +2441,52 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     const yearPct   = Math.round(((now - yearStart) / (yearEnd - yearStart)) * 100);
                     return (
                       <>
-                        <JezBarOuter>
-                          {monthGrid}
-                          <JezBarHatch />
-                          <JezBarFill $pct={yearPct} $color="#64748b" />
-                        </JezBarOuter>
+                        <ProgressBarWithTooltipWrapper
+                          barContent={
+                            <JezBarOuter>
+                              {monthGrid}
+                              <JezBarHatch />
+                              <JezBarFill $pct={yearPct} $color="#64748b" />
+                            </JezBarOuter>
+                          }
+                          tooltipContent={
+                            <>
+                              <TooltipTitle>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
+                              <TooltipTable>
+                                <tbody>
+                                  <tr>
+                                    <td>Typ smlouvy:</td>
+                                    <td>Bez finančního limitu</td>
+                                  </tr>
+                                  <tr>
+                                    <td>Celkem čerpáno:</td>
+                                    <td>{formatCurrency(cerpano)}</td>
+                                  </tr>
+                                  <tr className="divider">
+                                    <td>Progress ukazuje:</td>
+                                    <td>Uplynulý čas v roce {now.getFullYear()}</td>
+                                  </tr>
+                                  <tr>
+                                    <td>Aktuální rok:</td>
+                                    <td>{yearPct}% uplynulo</td>
+                                  </tr>
+                                  {row.platnost_od && (
+                                    <tr className="divider">
+                                      <td>Platnost od:</td>
+                                      <td>{new Date(row.platnost_od).toLocaleDateString('cs-CZ')}</td>
+                                    </tr>
+                                  )}
+                                  {row.platnost_do && (
+                                    <tr>
+                                      <td>Platnost do:</td>
+                                      <td>{new Date(row.platnost_do).toLocaleDateString('cs-CZ')}</td>
+                                    </tr>
+                                  )}
+                                </tbody>
+                              </TooltipTable>
+                            </>
+                          }
+                        />
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
                           <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
                           <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
@@ -2221,10 +2499,51 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                 ) : timePct !== null ? (
                   /* Konečná platnost – časový progress bar */
                   <>
-                    <JezBarOuter>
-                      {monthGrid}
-                      <JezBarFill $pct={timePct} $color="#64748b" />
-                    </JezBarOuter>
+                    <ProgressBarWithTooltipWrapper
+                      barContent={
+                        <JezBarOuter>
+                          {monthGrid}
+                          <JezBarFill $pct={timePct} $color="#64748b" />
+                        </JezBarOuter>
+                      }
+                      tooltipContent={
+                        <>
+                          <TooltipTitle>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
+                          <TooltipTable>
+                            <tbody>
+                              <tr>
+                                <td>Typ smlouvy:</td>
+                                <td>Bez finančního limitu</td>
+                              </tr>
+                              <tr>
+                                <td>Celkem čerpáno:</td>
+                                <td>{formatCurrency(cerpano)}</td>
+                              </tr>
+                              <tr className="divider">
+                                <td>Progress ukazuje:</td>
+                                <td>Uplynulý čas platnosti</td>
+                              </tr>
+                              <tr>
+                                <td>Uplynulo:</td>
+                                <td>{timePct}% doby platnosti</td>
+                              </tr>
+                              {row.platnost_od && (
+                                <tr className="divider">
+                                  <td>Platnost od:</td>
+                                  <td>{new Date(row.platnost_od).toLocaleDateString('cs-CZ')}</td>
+                                </tr>
+                              )}
+                              {row.platnost_do && (
+                                <tr>
+                                  <td>Platnost do:</td>
+                                  <td>{new Date(row.platnost_do).toLocaleDateString('cs-CZ')}</td>
+                                </tr>
+                              )}
+                            </tbody>
+                          </TooltipTable>
+                        </>
+                      }
+                    />
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
                       <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
                       <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
