@@ -6340,6 +6340,7 @@ switch ($endpoint) {
                                     c.id,
                                     c.cislo_lp,
                                     c.kategorie,
+                                    c.usek_id,
                                     c.celkovy_limit,
                                     (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                     (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
@@ -6369,9 +6370,11 @@ switch ($endpoint) {
                                 ) as pocet_objednavek,
                                     c.ma_navyseni,
                                     u.prijmeni,
-                                    u.jmeno
+                                    u.jmeno,
+                                    us.usek_nazev
                                 FROM " . TBL_LP_CERPANI . " c
                                 LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                                LEFT JOIN 25_useky us ON c.usek_id = us.id
                                 WHERE (c.usek_id = ? OR c.cislo_lp IN (
                                     -- LP ze kterých uživatel čerpal z objednávek
                                     SELECT lp.cislo_lp
@@ -6402,6 +6405,7 @@ switch ($endpoint) {
                                     c.id,
                                     c.cislo_lp,
                                     c.kategorie,
+                                    c.usek_id,
                                     c.celkovy_limit,
                                     (SELECT cislo_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as cislo_uctu,
                                     (SELECT nazev_uctu FROM " . TBL_LP_MASTER . " WHERE cislo_lp = c.cislo_lp LIMIT 1) as nazev_uctu,
@@ -6431,9 +6435,11 @@ switch ($endpoint) {
                                 ) as pocet_objednavek,
                                     c.ma_navyseni,
                                     u.prijmeni,
-                                    u.jmeno
+                                    u.jmeno,
+                                    us.usek_nazev
                                 FROM " . TBL_LP_CERPANI . " c
                                 LEFT JOIN 25_uzivatele u ON c.user_id = u.id
+                                LEFT JOIN 25_useky us ON c.usek_id = us.id
                                 WHERE c.usek_id = ?
                                 AND c.rok = ?
                                 ORDER BY c.kategorie, c.cislo_lp
@@ -6454,6 +6460,8 @@ switch ($endpoint) {
                             'lp_master_id' => (int)$row['lp_master_id'],
                             'cislo_lp' => $row['cislo_lp'],
                             'kategorie' => $row['kategorie'],
+                            'usek_id' => isset($row['usek_id']) ? (int)$row['usek_id'] : null,
+                            'usek_nazev' => isset($row['usek_nazev']) ? $row['usek_nazev'] : null,
                             'celkovy_limit' => (float)$row['celkovy_limit'],
                             'cislo_uctu' => $row['cislo_uctu'],
                             'nazev_uctu' => $row['nazev_uctu'],

@@ -301,6 +301,24 @@ function MobileDashboard() {
         return;
       }
 
+      // 🔒 VALIDACE ÚSEKU: Kontrola zda může uživatel schvalovat objednávku
+      const isPrikazce = String(currentOrder.prikazce_id) === String(userDetail?.id);
+      
+      if (!isPrikazce && !isAdmin) {
+        // Uživatel není přímo příkazce ani admin - zkontroluj úsek
+        const myUsekId = userDetail?.usek_id || userDetail?.usek;
+        const prikazceUsekId = currentOrder?.prikazce_usek_id || currentOrder?.prikazce?.usek_id;
+        
+        if (!myUsekId || !prikazceUsekId || String(myUsekId) !== String(prikazceUsekId)) {
+          setErrorDialog({ 
+            isOpen: true, 
+            title: 'Nemáte oprávnění', 
+            message: 'Můžete schvalovat pouze objednávky příkazců ze svého úseku.' 
+          });
+          return;
+        }
+      }
+
       // Zpracuj workflow stavy
       let workflowStates = [];
       try {
