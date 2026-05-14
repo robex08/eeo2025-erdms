@@ -1170,8 +1170,9 @@ const TooltipPortal = ({ children, targetRef, isVisible }) => {
 
     const updatePosition = () => {
       const rect = targetRef.current.getBoundingClientRect();
-      const baseLeft = rect.left + window.scrollX + rect.width / 2;
-      const baseTop = rect.top + window.scrollY;
+      // Fixed position - relativní k viewportu, ne k dokumentu (bez scrollY/scrollX)
+      const baseLeft = rect.left + rect.width / 2;
+      const baseTop = rect.top;
       
       let adjustX = 0;
       let adjustY = 0;
@@ -1223,7 +1224,7 @@ const TooltipPortal = ({ children, targetRef, isVisible }) => {
     <div 
       ref={tooltipRef}
       style={{
-        position: 'absolute',
+        position: 'fixed',
         top: `${position.top}px`,
         left: `${position.left}px`,
         zIndex: 99999,
