@@ -327,6 +327,63 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         // Build WHERE clause
         $where = array();
         $params = array();
+
+        // Restrict view: pouze vlastni usek + smlouvy s osobnim cerpanim
+        $restrict_view = isset($input['restrict_view']) && $input['restrict_view'];
+        if ($restrict_view) {
+            $stmt_usek = $db->prepare("SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+            $stmt_usek->execute([(int)$user_id]);
+            $user_usek_id = (int)$stmt_usek->fetchColumn();
+
+            $restrict_clauses = array();
+            if ($user_usek_id > 0) {
+                $restrict_clauses[] = 's.usek_id = :restrict_usek_id';
+                $params['restrict_usek_id'] = $user_usek_id;
+            }
+
+            $restrict_clauses[] = "(
+                s.pouzit_v_obj_formu = 1 AND EXISTS (
+                    SELECT 1
+                    FROM " . TBL_OBJEDNAVKY . " o
+                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                      AND o.aktivni = 1
+                      AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                      AND (
+                          o.objednatel_id = :restrict_user_id
+                          OR o.uzivatel_id = :restrict_user_id
+                          OR o.garant_uzivatel_id = :restrict_user_id
+                          OR o.prikazce_id = :restrict_user_id
+                          OR o.schvalovatel_id = :restrict_user_id
+                      )
+                )
+            )";
+
+            $restrict_clauses[] = "(
+                s.pouzit_v_obj_formu = 0 AND EXISTS (
+                    SELECT 1
+                    FROM " . TBL_FAKTURY . " f
+                    LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                    WHERE (
+                        (f.smlouva_id = s.id AND f.objednavka_id IS NULL
+                            AND (f.vytvoril_uzivatel_id = :restrict_user_id
+                                 OR f.potvrdil_vecnou_spravnost_id = :restrict_user_id))
+                        OR (o.id IS NOT NULL AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                            AND (
+                                o.objednatel_id = :restrict_user_id
+                                OR o.uzivatel_id = :restrict_user_id
+                                OR o.garant_uzivatel_id = :restrict_user_id
+                                OR o.prikazce_id = :restrict_user_id
+                                OR o.schvalovatel_id = :restrict_user_id
+                            ))
+                    )
+                      AND f.aktivni = 1
+                      AND f.stav != 'STORNO'
+                )
+            )";
+
+            $where[] = '(' . implode(' OR ', $restrict_clauses) . ')';
+            $params['restrict_user_id'] = (int)$user_id;
+        }
         
         // Filter: show_inactive
         $show_inactive = isset($input['show_inactive']) && $input['show_inactive'];
@@ -399,6 +456,8 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         
         // Count query
         $count_sql = "SELECT COUNT(*) as total FROM " . TBL_SMLOUVY . " s $where_sql";
+        error_log("🔍 COUNT SQL: " . $count_sql);
+        error_log("🔍 PARAMS: " . json_encode($params));
         $stmt = $db->prepare($count_sql);
         foreach ($params as $key => $value) {
             $stmt->bindValue(':' . $key, $value);
@@ -428,7 +487,11 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                     0 AS pocet_faktur_celkem,
                     0 AS pocet_faktur_uzivatel,
                     0 AS cerpano_faktury_dokoncene,
-                    0 AS cerpano_v_procesu
+                    0 AS cerpano_v_procesu,
+                    0 AS cerpano_faktury_dokoncene_uzivatel,
+                    0 AS cerpano_v_procesu_uzivatel,
+                    0 AS cerpano_rok_aktualni,
+                    0 AS cerpano_rok_max
                 FROM " . TBL_SMLOUVY . " s
                 LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
                 $where_sql
@@ -456,15 +519,21 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                         WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
                                             AND o.aktivni = 1
                                             AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                            AND o.objednatel_id = :current_user_id
+                                            AND (
+                                                o.objednatel_id = :current_user_id
+                                                OR o.uzivatel_id = :current_user_id
+                                                OR o.garant_uzivatel_id = :current_user_id
+                                                OR o.prikazce_id = :current_user_id
+                                                OR o.schvalovatel_id = :current_user_id
+                                            )
                                 ) AS pocet_objednavek_uzivatel,
                                 (
                                         SELECT COUNT(DISTINCT f.id)
                                         FROM " . TBL_FAKTURY . " f
                                         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
                                         WHERE (
-                                                (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
-                                                OR (o.id IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = s.cislo_smlouvy)
+                                            (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
+                                            OR (o.id IS NOT NULL AND REPLACE(o.financovani, '\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
                                         )
                                             AND f.aktivni = 1
                                             AND f.stav != 'STORNO'
@@ -474,13 +543,20 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                         FROM " . TBL_FAKTURY . " f
                                         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
                                         WHERE (
-                                                (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
-                                                OR (o.id IS NOT NULL AND JSON_UNQUOTE(JSON_EXTRACT(o.financovani, '$.cislo_smlouvy')) = s.cislo_smlouvy)
+                                                (f.smlouva_id = s.id AND f.objednavka_id IS NULL
+                                                    AND (f.vytvoril_uzivatel_id = :current_user_id
+                                                         OR f.potvrdil_vecnou_spravnost_id = :current_user_id))
+                                                OR (o.id IS NOT NULL AND REPLACE(o.financovani, '\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                                    AND (
+                                                        o.objednatel_id = :current_user_id
+                                                        OR o.uzivatel_id = :current_user_id
+                                                        OR o.garant_uzivatel_id = :current_user_id
+                                                        OR o.prikazce_id = :current_user_id
+                                                        OR o.schvalovatel_id = :current_user_id
+                                                    ))
                                         )
                                             AND f.aktivni = 1
                                             AND f.stav != 'STORNO'
-                                            AND (f.vytvoril_uzivatel_id = :current_user_id 
-                                                 OR f.potvrdil_vecnou_spravnost_id = :current_user_id)
                                 ) AS pocet_faktur_uzivatel,
                                 -- ── Faktury dokončené: věcná správnost + ZAPLACENO/DOKONCENA ──────────
                                 (
@@ -498,6 +574,35 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                     AND f.stav IN ('ZAPLACENO', 'DOKONCENA')
                                     AND f.vecna_spravnost_potvrzeno = 1
                                 ) AS cerpano_faktury_dokoncene,
+                                -- ── Faktury dokončené (uživatel): jen vlastní účast ──────────
+                                (
+                                    SELECT COALESCE(SUM(f.fa_castka), 0)
+                                    FROM " . TBL_FAKTURY . " f
+                                    LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                                    WHERE (
+                                        (f.objednavka_id IS NOT NULL AND o.aktivni = 1
+                                            AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                            AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                        OR
+                                        (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
+                                    )
+                                    AND f.aktivni = 1
+                                    AND f.stav IN ('ZAPLACENO', 'DOKONCENA')
+                                    AND f.vecna_spravnost_potvrzeno = 1
+                                    AND (
+                                        (f.objednavka_id IS NOT NULL AND (
+                                            o.objednatel_id = :current_user_id
+                                            OR o.uzivatel_id = :current_user_id
+                                            OR o.garant_uzivatel_id = :current_user_id
+                                            OR o.prikazce_id = :current_user_id
+                                            OR o.schvalovatel_id = :current_user_id
+                                        ))
+                                        OR (f.objednavka_id IS NULL AND (
+                                            f.vytvoril_uzivatel_id = :current_user_id
+                                            OR f.potvrdil_vecnou_spravnost_id = :current_user_id
+                                        ))
+                                    )
+                                ) AS cerpano_faktury_dokoncene_uzivatel,
                                 -- ── V procesu: faktury nedokončené + objednávky bez faktury ──────────
                                 (
                                     SELECT COALESCE(SUM(f.fa_castka), 0)
@@ -536,6 +641,99 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                             WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.stav NOT IN ('STORNO')
                                         )
                                 ) AS cerpano_v_procesu
+                                ,
+                                -- ── V procesu (uživatel): jen vlastní účast ──────────
+                                (
+                                    SELECT COALESCE(SUM(f.fa_castka), 0)
+                                    FROM " . TBL_FAKTURY . " f
+                                    INNER JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                        AND o.aktivni = 1
+                                        AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                        AND f.aktivni = 1
+                                        AND f.stav NOT IN ('STORNO')
+                                        AND NOT (f.vecna_spravnost_potvrzeno = 1 AND f.stav IN ('ZAPLACENO', 'DOKONCENA'))
+                                        AND (
+                                            o.objednatel_id = :current_user_id
+                                            OR o.uzivatel_id = :current_user_id
+                                            OR o.garant_uzivatel_id = :current_user_id
+                                            OR o.prikazce_id = :current_user_id
+                                            OR o.schvalovatel_id = :current_user_id
+                                        )
+                                )
+                                +
+                                (
+                                    SELECT COALESCE(SUM(f.fa_castka), 0)
+                                    FROM " . TBL_FAKTURY . " f
+                                    WHERE f.smlouva_id = s.id AND f.objednavka_id IS NULL
+                                        AND f.aktivni = 1
+                                        AND f.stav NOT IN ('STORNO')
+                                        AND NOT (f.vecna_spravnost_potvrzeno = 1 AND f.stav IN ('ZAPLACENO', 'DOKONCENA'))
+                                        AND (
+                                            f.vytvoril_uzivatel_id = :current_user_id
+                                            OR f.potvrdil_vecnou_spravnost_id = :current_user_id
+                                        )
+                                )
+                                +
+                                (
+                                    SELECT COALESCE(SUM(
+                                        COALESCE(
+                                            NULLIF((SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id), 0),
+                                            o.max_cena_s_dph
+                                        )
+                                    ), 0)
+                                    FROM " . TBL_OBJEDNAVKY . " o
+                                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                        AND o.aktivni = 1
+                                        AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena', 'Dokončená', 'Archivovaná', 'Smazaná')
+                                        AND NOT EXISTS (
+                                            SELECT 1 FROM " . TBL_FAKTURY . " f2
+                                            WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.stav NOT IN ('STORNO')
+                                        )
+                                        AND (
+                                            o.objednatel_id = :current_user_id
+                                            OR o.uzivatel_id = :current_user_id
+                                            OR o.garant_uzivatel_id = :current_user_id
+                                            OR o.prikazce_id = :current_user_id
+                                            OR o.schvalovatel_id = :current_user_id
+                                        )
+                                ) AS cerpano_v_procesu_uzivatel,
+                                -- ── Roční čerpání: aktuální rok (2026) ──────────
+                                (SELECT COALESCE(SUM(f.fa_castka), 0)
+                                    FROM " . TBL_FAKTURY . " f
+                                    LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                                    WHERE (
+                                        (f.objednavka_id IS NOT NULL AND o.aktivni = 1
+                                            AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                            AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                        OR
+                                        (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
+                                    )
+                                    AND f.aktivni = 1
+                                    AND f.stav IN ('ZAPLACENO', 'DOKONCENA')
+                                    AND f.vecna_spravnost_potvrzeno = 1
+                                    AND YEAR(f.fa_datum_zaplaceni) = 2026
+                                ) AS cerpano_rok_aktualni,
+                                -- ── Roční čerpání: max v historii ──────────
+                                COALESCE((
+                                    SELECT SUM(f.fa_castka)
+                                    FROM " . TBL_FAKTURY . " f
+                                    LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+                                    WHERE (
+                                        (f.objednavka_id IS NOT NULL AND o.aktivni = 1
+                                            AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                            AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                        OR
+                                        (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
+                                    )
+                                    AND f.aktivni = 1
+                                    AND f.stav IN ('ZAPLACENO', 'DOKONCENA')
+                                    AND f.vecna_spravnost_potvrzeno = 1
+                                    AND f.fa_datum_zaplaceni IS NOT NULL
+                                    GROUP BY YEAR(f.fa_datum_zaplaceni)
+                                    ORDER BY SUM(f.fa_castka) DESC
+                                    LIMIT 1
+                                ), 0) AS cerpano_rok_max
                 FROM " . TBL_SMLOUVY . " s
                 LEFT JOIN " . TBL_USEKY . " u ON s.usek_id = u.id
                 $where_sql
@@ -562,6 +760,8 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $row['pouzit_v_obj_formu'] = isset($row['pouzit_v_obj_formu']) ? (int)$row['pouzit_v_obj_formu'] : 0;
             $row['pocet_objednavek'] = (int)$row['pocet_objednavek'];
             $row['pocet_objednavek_uzivatel'] = isset($row['pocet_objednavek_uzivatel']) ? (int)$row['pocet_objednavek_uzivatel'] : 0;
+            $row['pocet_faktur_celkem'] = isset($row['pocet_faktur_celkem']) ? (int)$row['pocet_faktur_celkem'] : 0;
+            $row['pocet_faktur_uzivatel'] = isset($row['pocet_faktur_uzivatel']) ? (int)$row['pocet_faktur_uzivatel'] : 0;
             $row['hodnota_bez_dph'] = (float)$row['hodnota_bez_dph'];
             $row['hodnota_s_dph'] = (float)$row['hodnota_s_dph'];
             $row['sazba_dph'] = (float)$row['sazba_dph'];
@@ -570,6 +770,10 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $row['cerpano_celkem'] = (float)$row['cerpano_celkem'];
             $row['cerpano_faktury_dokoncene'] = (float)($row['cerpano_faktury_dokoncene'] ?? 0);
             $row['cerpano_v_procesu'] = (float)($row['cerpano_v_procesu'] ?? 0);
+            $row['cerpano_faktury_dokoncene_uzivatel'] = (float)($row['cerpano_faktury_dokoncene_uzivatel'] ?? 0);
+            $row['cerpano_v_procesu_uzivatel'] = (float)($row['cerpano_v_procesu_uzivatel'] ?? 0);
+            $row['cerpano_rok_aktualni'] = (float)($row['cerpano_rok_aktualni'] ?? 0);
+            $row['cerpano_rok_max'] = (float)($row['cerpano_rok_max'] ?? 0);
             // ⚠️ Smlouvy bez stropu (hodnota_s_dph=0) mají v DB zbyva/procento = NULL.
             // Nechceme to castovat na 0.0, protože UI pak ukazuje „0 Kč“ a „0%“ místo „bez stropu“.
             $row['zbyva'] = ($row['zbyva'] !== null) ? (float)$row['zbyva'] : null;
