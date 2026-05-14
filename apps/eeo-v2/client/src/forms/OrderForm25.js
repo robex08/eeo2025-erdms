@@ -7105,7 +7105,9 @@ function OrderForm25() {
   const isAdmin = userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR');
   const isPrikazce = userDetail?.roles?.some(role => role.kod_role === 'PRIKAZCE');
   const hasOrderManagePermission = hasPermission && hasPermission('ORDER_MANAGE');
+  const hasEducationManagePermission = hasPermission && hasPermission('EDUCATION_MANAGE');
   const canUnlockAnything = isSuperAdmin || isAdmin || hasOrderManagePermission; // SUPER, ADMIN a ORDER_MANAGE mohou odemknout cokoliv
+  const canConfirmOrderCompletion = isSuperAdmin || isAdmin || hasOrderManagePermission || hasEducationManagePermission; // Může potvrdit dokončení objednávky (včetně EDUCATION_MANAGE pro vzdělávací objednávky)
 
   const isPrikazceOfOrder = formData.prikazce_id && parseInt(formData.prikazce_id, 10) === user_id;
 
@@ -7397,12 +7399,12 @@ function OrderForm25() {
       };
     }
     
-    // 🔒 DOKONČENÍ - rozšířit viditelnost pro ADMIN + ORDER_MANAGE
-    // WorkflowManager kontroluje stav DOKONCENA, my přidáme viditelnost pro adminy ve fázi 8+
-    if (states.dokonceni && canUnlockAnything && currentPhase >= 8) {
+    // 🔒 DOKONČENÍ - rozšířit viditelnost pro ADMIN + ORDER_MANAGE + EDUCATION_MANAGE
+    // WorkflowManager kontroluje stav DOKONCENA, my přidáme viditelnost pro oprávněné uživatele ve fázi 8+
+    if (states.dokonceni && canConfirmOrderCompletion && currentPhase >= 8) {
       states.dokonceni = {
         ...states.dokonceni,
-        visible: true  // Admin vidí sekci od fáze 8 (i když není dokončená)
+        visible: true  // Oprávnění uživatelé vidí sekci od fáze 8 (i když není dokončená)
       };
     }
     
@@ -7410,7 +7412,7 @@ function OrderForm25() {
   }, [allSectionStates, currentPhase, canManageInvoices, canPublishRegistry, 
       formData.financovani?.platba, formData.dodavatel_zpusob_potvrzeni?.platba, 
       formData.faktury, formData.dt_zverejneni, formData.registr_iddt, 
-      formData.id, isPrilohyLocked, canUnlockAnything, getAttachmentsInfo]);
+      formData.id, isPrilohyLocked, canConfirmOrderCompletion, getAttachmentsInfo]);
 
   // 🔧 HELPER: Zjistí jestli je pole disabled (kombinace workflow lock + UI stav)
   const isFieldDisabled = useCallback((sectionState) => {
@@ -26784,9 +26786,9 @@ function OrderForm25() {
 
               {/* ✅ SEKCE: DOKONČENÍ OBJEDNÁVKY - FÁZE 10 */}
               {/* ZOBRAZIT pouze pokud: */}
-              {/* 1. Uživatel je ADMIN nebo má právo ORDER_MANAGE NEBO objednávka je již DOKONCENA */}
+              {/* 1. Uživatel je ADMIN nebo má právo ORDER_MANAGE/EDUCATION_MANAGE NEBO objednávka je již DOKONCENA */}
               {/* 2. Workflow obsahuje ZKONTROLOVANA nebo DOKONCENA (věcná správnost potvrzena) */}
-              {(canUnlockAnything || hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA')) && 
+              {(canConfirmOrderCompletion || hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA')) && 
                (hasWorkflowState(formData.stav_workflow_kod, 'ZKONTROLOVANA') || hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA')) &&
                (() => {
                 // 🔒 Logika zamčení sekce dokončení - STEJNĚ JAKO U VĚCNÉ SPRÁVNOSTI
@@ -26804,8 +26806,8 @@ function OrderForm25() {
                 // ✅ Použít dokonceniState z workflowManager (už zahrnuje unlock logic)
                 const isDokonceniLockedLocal = !dokonceniState.enabled;
 
-                // Kho může odemknout? Pouze admin + ORDER_MANAGE
-                const canUnlockDokonceni = canUnlockAnything; // Pouze admin/ORDER_MANAGE
+                // Kdo může odemknout? Admin + ORDER_MANAGE + EDUCATION_MANAGE
+                const canUnlockDokonceni = canConfirmOrderCompletion; // Admin/ORDER_MANAGE/EDUCATION_MANAGE
 
                 return (
                 <FormSection data-section="dokonceni">

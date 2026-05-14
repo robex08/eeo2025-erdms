@@ -5972,7 +5972,7 @@ switch ($endpoint) {
                 $is_admin = isset($input['isAdmin']) && ($input['isAdmin'] === true || $input['isAdmin'] === 'true' || $input['isAdmin'] === 1);
                 
                 // ADMIN MODE: Pokud FE pošle isAdmin=true, vracíme VŠE z agregované tabulky
-                // OPRAVA: Používat skutecne_cerpano (faktury) a cerpano_pokladna přímo z agregace
+                // OPRAVA: skutecne_cerpano z agregace, REAL-TIME cerpano_pokladna z pokladních položek
                 if ($is_admin) {
                     try {
                         $stmt = $pdo->prepare("
@@ -5991,8 +5991,8 @@ switch ($endpoint) {
                                 c.predpokladane_cerpani,
                                 -- Z agregované tabulky: skutecne_cerpano = faktury
                                 c.skutecne_cerpano,
-                                -- Z agregované tabulky: cerpano_pokladna = pokladna
-                                c.cerpano_pokladna,
+                                -- 🔥 OPRAVA: REAL-TIME čerpání z pokladny místo zastaralé agregace
+                                COALESCE(pokladna_realtime.celkem_pokladna, 0) as cerpano_pokladna,
                                 c.zbyva_rezervace,
                                 c.zbyva_predpoklad,
                                 c.zbyva_skutecne,
@@ -6018,10 +6018,40 @@ switch ($endpoint) {
                             FROM " . TBL_LP_CERPANI . " c
                             LEFT JOIN 25_uzivatele u ON c.user_id = u.id
                             LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            -- 🔥 OPRAVA: JOIN na aktuální data z pokladny
+                            LEFT JOIN (
+                                SELECT 
+                                    lp_kod,
+                                    SUM(castka) as celkem_pokladna
+                                FROM (
+                                    -- Multi-LP: detail položky
+                                    SELECT d.lp_kod, d.castka
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE k.rok = ?
+                                      AND p.typ_dokladu = 'vydaj'
+                                      AND p.smazano = 0
+                                      AND d.lp_kod IS NOT NULL AND d.lp_kod != ''
+                                    
+                                    UNION ALL
+                                    
+                                    -- Single-LP: staré záznamy BEZ detailů
+                                    SELECT p.lp_kod, COALESCE(p.castka_vydaj, p.castka_celkem) as castka
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE k.rok = ?
+                                      AND p.typ_dokladu = 'vydaj'
+                                      AND p.smazano = 0
+                                      AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                      AND p.lp_kod IS NOT NULL AND p.lp_kod != ''
+                                ) as pokladna_data
+                                GROUP BY lp_kod
+                            ) pokladna_realtime ON pokladna_realtime.lp_kod = c.cislo_lp
                             WHERE c.rok = ?
                             ORDER BY c.kategorie, c.cislo_lp
                         ");
-                        $stmt->execute([$rok]);
+                        $stmt->execute([$rok, $rok, $rok]);
                         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {
                         http_response_code(500);
@@ -6101,7 +6131,7 @@ switch ($endpoint) {
                                 c.rezervovano,
                                 c.predpokladane_cerpani,
                                 c.skutecne_cerpano,
-                                c.cerpano_pokladna,
+                                COALESCE(pokladna_realtime.celkem_pokladna, 0) as cerpano_pokladna,
                                 c.zbyva_rezervace,
                                 c.zbyva_predpoklad,
                                 c.zbyva_skutecne,
@@ -6127,11 +6157,32 @@ switch ($endpoint) {
                             FROM " . TBL_LP_CERPANI . " c
                             LEFT JOIN 25_uzivatele u ON c.user_id = u.id
                             LEFT JOIN 25_useky us ON c.usek_id = us.id
+                            LEFT JOIN (
+                                SELECT 
+                                    lp_kod,
+                                    SUM(castka) as celkem_pokladna
+                                FROM (
+                                    SELECT d.lp_kod, d.castka
+                                    FROM 25a_pokladni_polozky_detail d
+                                    JOIN 25a_pokladni_polozky p ON p.id = d.polozka_id
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE k.rok = ? AND p.typ_dokladu = 'vydaj' AND p.smazano = 0
+                                      AND d.lp_kod IS NOT NULL AND d.lp_kod != ''
+                                    UNION ALL
+                                    SELECT p.lp_kod, COALESCE(p.castka_vydaj, p.castka_celkem) as castka
+                                    FROM 25a_pokladni_polozky p
+                                    JOIN 25a_pokladni_knihy k ON k.id = p.pokladni_kniha_id
+                                    WHERE k.rok = ? AND p.typ_dokladu = 'vydaj' AND p.smazano = 0
+                                      AND (p.ma_detail = 0 OR p.ma_detail IS NULL)
+                                      AND p.lp_kod IS NOT NULL AND p.lp_kod != ''
+                                ) as pokladna_data
+                                GROUP BY lp_kod
+                            ) pokladna_realtime ON pokladna_realtime.lp_kod = c.cislo_lp
                             WHERE c.cislo_lp = ?
                             AND c.rok = ?
                             LIMIT 1
                         ");
-                        $stmt->execute([$cislo_lp, $rok]);
+                        $stmt->execute([$rok, $rok, $cislo_lp, $rok]);
                         $row = $stmt->fetch(PDO::FETCH_ASSOC);
                     } catch (PDOException $e) {
                         http_response_code(500);

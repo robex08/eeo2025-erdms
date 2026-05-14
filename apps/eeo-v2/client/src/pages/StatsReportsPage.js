@@ -1465,6 +1465,40 @@ const ChartExpandBtn = styled.button`
   &:hover { color: #1d4ed8; background: #eff6ff; }
 `;
 
+const ChartLegendScroll = styled.div`
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  height: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.45rem 0.75rem;
+  align-content: start;
+  padding-right: 0.25rem;
+  
+  /* Custom scrollbar - decentní styl */
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+    
+    &:hover {
+      background: #94a3b8;
+    }
+  }
+  
+  /* Firefox scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+`;
+
 const ChartOverlay = styled.div`
   position: fixed;
   inset: 0;
@@ -2412,7 +2446,7 @@ export default function StatsReportsPage() {
       hasPermission('SPENDING_MANAGE') || hasPermission('REPORT_MANAGE') ||
       hasPermission('STATISTICS_MANAGE') || hasPermission('ATTACHMENTS_MANAGE') ||
       hasPermission('PIVOT_MANAGE') || hasPermission('ORDER_MANAGE') ||
-      hasPermission('SPENDING_VIEW_ALL');
+      hasPermission('SPENDING_VIEW_ALL') || hasPermission('EDUCATION_VIEW_ALL');
   }, [isAdminUser, hasPermission]);
   const visibleTabs = useMemo(() => {
     if (isAdminUser) return PAGE_TABS;
@@ -2422,7 +2456,7 @@ export default function StatsReportsPage() {
         case 'control':
           return hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE');
         case 'vzdel':
-          return hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE');
+          return hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') || hasPermission('EDUCATION_VIEW_ALL');
         case 'spend':
           return hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE');
         case 'reports':
@@ -5003,7 +5037,7 @@ export default function StatsReportsPage() {
     };
     const typDefs = [
       { key: 'lekarsky',   label: 'Vzdělávání – kurzy zdravotnické a lékařské', kws: VZDEL_LEKARSKY_KW,   tone: 'info' },
-      { key: 'nelekarsky', label: 'Školení – nelékařské',                        kws: VZDEL_NELEKARSKY_KW, tone: 'warn' },
+      { key: 'nelekarsky', label: 'Školení nezdravotnické',                      kws: VZDEL_NELEKARSKY_KW, tone: 'warn' },
     ];
     return typDefs.map(typDef => {
       const orders = vzdelSections[typDef.key] || [];
@@ -9525,11 +9559,11 @@ export default function StatsReportsPage() {
                   </SectionCard>
                 )}
 
-                {/* Blok 2 – Školení nelékařské (styl Úsek → Financování → Objednávky) */}
+                {/* Blok 2 – Školení nezdravotnické (styl Úsek → Financování → Objednávky) */}
                 {isBlockVisible('vzdel', 'vzdelNelekarsky') && (
                   <SectionCard id="section-vzdelNelekarsky">
                     <SectionHeader>
-                      <SectionTitle>Školení – nelékařské</SectionTitle>
+                      <SectionTitle>Školení nezdravotnické</SectionTitle>
                       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                         <ExpandAllBtn
                           onClick={() => {
@@ -9569,7 +9603,7 @@ export default function StatsReportsPage() {
                     </SearchBox>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
                       {vzdelNelByUsekFin.length === 0 ? (
-                        <EmptyState>Žádné objednávky typu Školení – nelékařské</EmptyState>
+                        <EmptyState>Žádné objednávky typu Školení nezdravotnické</EmptyState>
                       ) : (() => {
                         const query = getSearchQuery('vzdelNelekarsky');
                         const filtered = query ? vzdelNelByUsekFin.filter(group => {
@@ -14076,7 +14110,30 @@ export default function StatsReportsPage() {
                       }
                     });
                   });
-                  const lpSorted  = Object.entries(lpMap).sort((a, b) => b[1].vydaje - a[1].vydaje);
+                  
+                  // ✨ Seskupení LP kódů podle prefixu (např. LPPT1,2,3 u sebe)
+                  const lpSorted  = Object.entries(lpMap).sort((a, b) => {
+                    // Extrahovat prefix (část před první číslicí)
+                    const getPrefixAndNum = (kod) => {
+                      const match = kod.match(/^([A-Za-z]+)(\d+)?$/);
+                      if (match) {
+                        return { prefix: match[1], num: parseInt(match[2] || '0', 10) };
+                      }
+                      return { prefix: kod, num: 0 };
+                    };
+                    
+                    const prefixA = getPrefixAndNum(a[0]);
+                    const prefixB = getPrefixAndNum(b[0]);
+                    
+                    // Nejprve řadit podle prefixu (abecedně)
+                    if (prefixA.prefix !== prefixB.prefix) {
+                      return prefixA.prefix.localeCompare(prefixB.prefix);
+                    }
+                    
+                    // V rámci stejného prefixu řadit podle čísla
+                    return prefixA.num - prefixB.num;
+                  });
+                  
                   const lpLabels  = lpSorted.map(([k]) => k);
                   const lpVydaje  = lpSorted.map(([, v]) => Math.round(v.vydaje));
                   const lpPocet   = lpSorted.map(([, v]) => v.pocet);
@@ -14125,19 +14182,22 @@ export default function StatsReportsPage() {
                             <div style={{ flex: '0 0 52%', position: 'relative', height: '100%' }}>
                               <Doughnut data={donut1Data} options={donut1Opts} plugins={[ChartDataLabels]} />
                             </div>
-                            <div style={{ flex: 1, overflowY: 'auto', height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem 0.75rem', alignContent: 'start', paddingRight: '0.25rem' }}>
+                            <ChartLegendScroll>
                               {p1Entries.map((p, i) => (
                                 <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
                                   <div style={{ width: 12, height: 12, background: p1Colors[i], borderRadius: 3, flexShrink: 0, marginTop: 3 }} />
-                                  <div style={{ lineHeight: 1.35 }}>
+                                  <div style={{ lineHeight: 1.5, display: 'flex', flexDirection: 'column', gap: '0.05rem' }}>
                                     <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{p.label}</div>
-                                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                                      Výdaje: {fmtCurrency(p.vydaje)} · Příjmy: {fmtCurrency(p.prijmy)}
+                                    <div style={{ fontSize: '0.7rem', color: '#dc2626' }}>
+                                      Výdaje: {fmtCurrency(p.vydaje)}
+                                    </div>
+                                    <div style={{ fontSize: '0.7rem', color: '#10b981' }}>
+                                      Příjmy: {fmtCurrency(p.prijmy)}
                                     </div>
                                   </div>
                                 </div>
                               ))}
-                            </div>
+                            </ChartLegendScroll>
                           </div>
                         </ChartCard>
 
@@ -14163,19 +14223,38 @@ export default function StatsReportsPage() {
                                 <div style={{ flex: '0 0 52%', position: 'relative', height: '100%' }}>
                                   <Doughnut data={donut2Data} options={donut2Opts} plugins={[ChartDataLabels]} />
                                 </div>
-                                <div style={{ flex: 1, overflowY: 'auto', height: '100%', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.45rem 0.75rem', alignContent: 'start', paddingRight: '0.25rem' }}>
-                                  {lpSorted.map(([kod, vals], i) => (
-                                    <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem' }}>
-                                      <div style={{ width: 12, height: 12, background: lpColors[i], borderRadius: 3, flexShrink: 0, marginTop: 3 }} />
-                                      <div style={{ lineHeight: 1.35 }}>
-                                        <div style={{ fontSize: '0.78rem', fontWeight: 600, color: '#1e293b' }}>{kod}</div>
-                                        <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
-                                          {fmtCurrency(vals.vydaje)} · {vals.pocet} položek
+                                <ChartLegendScroll>
+                                  {lpSorted.map(([kod, vals], i) => {
+                                    // Extrahovat prefix pro vizuální oddělení skupin
+                                    const getPrefix = (k) => k.match(/^([A-Za-z]+)/)?.[1] || k;
+                                    const currentPrefix = getPrefix(kod);
+                                    const prevPrefix = i > 0 ? getPrefix(lpSorted[i - 1][0]) : null;
+                                    const showDivider = i > 0 && currentPrefix !== prevPrefix;
+                                    
+                                    return (
+                                      <React.Fragment key={i}>
+                                        {showDivider && (
+                                          <div style={{ 
+                                            gridColumn: '1 / -1', 
+                                            height: '1px', 
+                                            background: 'linear-gradient(to right, #cbd5e1 0%, #cbd5e1 50%, transparent 50%)',
+                                            backgroundSize: '8px 1px',
+                                            margin: '0.35rem 0',
+                                            opacity: 0.6
+                                          }} />
+                                        )}
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                          <div style={{ width: 12, height: 12, background: lpColors[i], borderRadius: 3, flexShrink: 0 }} />
+                                          <div style={{ fontSize: '0.75rem', color: '#1e293b', whiteSpace: 'nowrap' }}>
+                                            <span style={{ fontWeight: 600 }}>{kod}</span>
+                                            <span style={{ color: '#64748b', fontWeight: 500 }}>({vals.pocet})</span>
+                                            <span style={{ color: '#64748b', marginLeft: '0.35rem' }}>: {fmtCurrency(vals.vydaje)}</span>
+                                          </div>
                                         </div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                </ChartLegendScroll>
                               </div>
                             </>
                           ) : (
