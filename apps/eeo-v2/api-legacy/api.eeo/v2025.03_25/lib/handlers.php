@@ -3517,6 +3517,7 @@ function handle_users_list($input, $config, $queries) {
                     l.typ as lokalita_typ,
                     l.parent_id as lokalita_parent_id,
                     
+                    u.usek_id,
                     IFNULL(us.usek_zkr, '') as usek_zkr,
                     IFNULL(us.usek_nazev, '') as usek_nazev,
                     
@@ -3528,7 +3529,7 @@ function handle_users_list($input, $config, $queries) {
                     LEFT JOIN " . TBL_USEKY . " us ON u.usek_id = us.id
                     LEFT JOIN " . TBL_UZIVATELE . " u_nadrizeny ON p.parent_id = u_nadrizeny.pozice_id AND u_nadrizeny.aktivni = 1
                 WHERE u.id > 0 AND u.aktivni = :aktivni
-                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.dt_posledni_prihlaseni, u.aktivita_metadata, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, us.usek_zkr, us.usek_nazev
+                GROUP BY u.id, u.username, u.titul_pred, u.jmeno, u.prijmeni, u.dt_posledni_aktivita, u.dt_posledni_prihlaseni, u.aktivita_metadata, u.titul_za, u.email, u.telefon, u.aktivni, u.vynucena_zmena_hesla, u.dt_vytvoreni, u.dt_aktualizace, u.viditelny_v_tel_seznamu, p.nazev_pozice, p.parent_id, l.nazev, l.typ, l.parent_id, u.usek_id, us.usek_zkr, us.usek_nazev
                 ORDER BY u.aktivni DESC, u.jmeno, u.prijmeni
             ";
             $stmt = $db->prepare($sql);
