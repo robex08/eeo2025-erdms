@@ -1255,33 +1255,24 @@ const PlanningAdminPage = () => {
     }
   });
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
-  const [columnFilters, setColumnFilters] = useState(() => {
-    try {
-      const saved = localStorage.getItem('planning_column_filters');
-      return saved ? JSON.parse(saved) : {
-        nazev: '',
-        organizator: '',
-        text: '',
-        dt_od: '',
-        dt_do: ''
-      };
-    } catch (e) {
-      return {
-        nazev: '',
-        organizator: '',
-        text: '',
-        dt_od: '',
-        dt_do: ''
-      };
-    }
-  });
-  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState({
+  const defaultColumnFilters = {
     nazev: '',
     organizator: '',
     text: '',
     dt_od: '',
-    dt_do: ''
+    dt_do: '',
+    status: ''
+  };
+
+  const [columnFilters, setColumnFilters] = useState(() => {
+    try {
+      const saved = localStorage.getItem('planning_column_filters');
+      return saved ? { ...defaultColumnFilters, ...JSON.parse(saved) } : defaultColumnFilters;
+    } catch (e) {
+      return defaultColumnFilters;
+    }
   });
+  const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(defaultColumnFilters);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
@@ -1503,6 +1494,7 @@ const PlanningAdminPage = () => {
         filter_text: debouncedColumnFilters.text,
         filter_dt_od: debouncedColumnFilters.dt_od,
         filter_dt_do: debouncedColumnFilters.dt_do,
+        filter_status: debouncedColumnFilters.status,
         include_inactive: includeInactive ? 1 : 0,
         sort_field: sortField,
         sort_direction: sortDirection
@@ -1531,13 +1523,7 @@ const PlanningAdminPage = () => {
 
   const handleClearFilters = () => {
     setSearchTerm('');
-    setColumnFilters({
-      nazev: '',
-      organizator: '',
-      text: '',
-      dt_od: '',
-      dt_do: ''
-    });
+    setColumnFilters(defaultColumnFilters);
     setCurrentPage(1);
     
     // Vymazat z localStorage
@@ -2341,6 +2327,78 @@ const PlanningAdminPage = () => {
     return rows;
   };
 
+  const EVENT_STATUS_META = {
+    ACTIVE: {
+      label: 'AKTIVNÍ',
+      style: { background: '#dcfce7', color: '#166534', border: '1px solid #86efac' },
+      tooltip: 'Událost je odeslána a termíny ještě neuplynuly.'
+    },
+    PLANNED: {
+      label: 'PLÁNOVÁNO',
+      style: { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5' },
+      tooltip: 'Událost je naplánována, ale nebyla odeslána příjemcům. Do odeslání ji příjemci neuvidí v kalendáři.'
+    },
+    EXPIRED: {
+      label: 'UKONČENO',
+      style: { background: '#fef3c7', color: '#92400e', border: '1px solid #fbbf24' },
+      tooltip: 'Událost už proběhla – všechny termíny jsou v minulosti.'
+    },
+    CANCELED: {
+      label: 'ZRUŠENO',
+      style: { background: '#e2e8f0', color: '#475569', border: '1px solid #cbd5e1' },
+      tooltip: 'Událost je deaktivovaná.'
+    }
+  };
+
+  const getEventStatusInfo = (item) => {
+    if (!item) return null;
+    let code = item.status_code;
+
+    if (!code) {
+      const isActive = Number(item.aktivni) === 1;
+      if (!isActive) {
+        code = 'CANCELED';
+      } else {
+        const hasNotifications = Number(item.notif_count || 0) > 0;
+        const now = new Date();
+        const toDate = (value, endOfDay) => {
+          if (!value) return null;
+          const parsed = parseDateTimeParts(value);
+          if (!parsed.date) return null;
+          const time = parsed.time || (endOfDay ? '23:59' : '00:00');
+          return new Date(`${parsed.date}T${time}:00`);
+        };
+
+        const terms = Array.isArray(item.terminy) ? item.terminy : [];
+        const hasFutureTerm = terms.length > 0
+          ? terms.some(t => {
+              const end = toDate(t.dt_do, true) || toDate(t.dt_od, true);
+              return end && end >= now;
+            })
+          : (() => {
+              const end = toDate(item.dt_do, true) || toDate(item.dt_od, true);
+              return end ? end >= now : false;
+            })();
+
+        if (!hasFutureTerm) {
+          code = 'EXPIRED';
+        } else if (!hasNotifications) {
+          code = 'PLANNED';
+        } else {
+          code = 'ACTIVE';
+        }
+      }
+    }
+
+    const meta = EVENT_STATUS_META[code] || {
+      label: item.status_label || String(code || ''),
+      style: {},
+      tooltip: ''
+    };
+
+    return { code, ...meta };
+  };
+
   const toggleExpandEvent = (id) => {
     setExpandedEvents(prev => {
       const next = new Set(prev);
@@ -2481,6 +2539,13 @@ const PlanningAdminPage = () => {
                     >
                       Název{sortIcon('nazev')}
                     </SortableHeader>
+                    {activeTab === 'events' && (
+                      <SortableHeader
+                        onClick={() => handleSort('stav')}
+                      >
+                        Stav{sortIcon('stav')}
+                      </SortableHeader>
+                    )}
                     <SortableHeader
                       onClick={() => handleSort('organizator')}
                     >
@@ -2530,6 +2595,21 @@ const PlanningAdminPage = () => {
                         )}
                       </div>
                     </TableHeader>
+                    {activeTab === 'events' && (
+                      <TableHeader className="filter-cell">
+                        <select
+                          className="filter-input"
+                          value={columnFilters.status}
+                          onChange={(e) => setColumnFilters(prev => ({ ...prev, status: e.target.value }))}
+                        >
+                          <option value="">Všechny stavy</option>
+                          <option value="ACTIVE">Aktivní</option>
+                          <option value="PLANNED">Plánováno</option>
+                          <option value="EXPIRED">Ukončeno</option>
+                          <option value="CANCELED">Zrušeno</option>
+                        </select>
+                      </TableHeader>
+                    )}
                     <TableHeader className="filter-cell">
                       <div className="text-filter-wrapper">
                         <FontAwesomeIcon icon={faSearch} className="filter-icon" />
@@ -2601,7 +2681,7 @@ const PlanningAdminPage = () => {
                 <tbody>
                   {currentData.length === 0 ? (
                     <TableRow>
-                      <TableCell className="center" colSpan={activeTab === 'events' ? 10 : 8}>
+                      <TableCell className="center" colSpan={activeTab === 'events' ? 11 : 8}>
                         {activeTab === 'messages' ? 'Žádné zprávy' : 'Žádné události'}
                       </TableCell>
                     </TableRow>
@@ -2610,6 +2690,7 @@ const PlanningAdminPage = () => {
                       const extraTermCount = activeTab === 'events' && Array.isArray(item.terminy) ? item.terminy.length : 0;
                       const previewHtml = activeTab === 'messages' ? item.obsah : item.popis;
                       const isActive = Number(item.aktivni) === 1;
+                      const statusInfo = activeTab === 'events' ? getEventStatusInfo(item) : null;
                       
                       // ✅ Kontrola, zda má událost nějaký plný termín
                       const hasFullTerm = activeTab === 'events' && Array.isArray(item.terminy) && item.terminy.some(t => t.is_full === true);
@@ -2638,7 +2719,7 @@ const PlanningAdminPage = () => {
                       const declinedCount = responses.filter(r => r.typ_odpovedi === 'declined').length;
                       const isExpanded = expandedEvents.has(item.id);
                       const agreement = activeTab === 'events' ? buildTermAgreement(item, responses) : [];
-                      const colCount = activeTab === 'events' ? 10 : 8;
+                      const colCount = activeTab === 'events' ? 11 : 8;
                       return (
                         <React.Fragment key={item.id}>
                           <TableRow style={rowStyle}>
@@ -2703,6 +2784,25 @@ const PlanningAdminPage = () => {
                               )}
                               <strong>{item.nazev}</strong>
                             </TableCell>
+                            {activeTab === 'events' && (
+                              <TableCell className="center" style={cellStyle}>
+                                {statusInfo && (
+                                  <Badge
+                                    $type="role"
+                                    style={{
+                                      ...statusInfo.style,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      minWidth: '96px'
+                                    }}
+                                    title={statusInfo.tooltip}
+                                  >
+                                    {statusInfo.label}
+                                  </Badge>
+                                )}
+                              </TableCell>
+                            )}
                             <TableCell style={cellStyle}>
                               <div style={{ fontSize: '0.82rem' }}>
                                 <div style={{ fontWeight: 600, marginBottom: '0.15rem' }}>

@@ -2939,6 +2939,7 @@ function _dashboard_get_active_users($db, $period = '5min') {
                 IFNULL(us.usek_zkr,    '') AS usek_zkr,
                 IFNULL(us.usek_nazev,  '') AS usek_nazev,
                 IFNULL(p.nazev_pozice, '') AS pozice,
+                IFNULL(lok.nazev,      '') AS lokalita,
                 u.email,
                 u.telefon,
 
@@ -2979,6 +2980,7 @@ function _dashboard_get_active_users($db, $period = '5min') {
             FROM `" . TBL_UZIVATELE . "` u
             LEFT JOIN `" . TBL_USEKY . "`  us ON u.usek_id    = us.id
             LEFT JOIN `" . TBL_POZICE . "`  p  ON u.pozice_id  = p.id
+            LEFT JOIN `" . TBL_LOKALITY . "` lok ON u.lokalita_id = lok.id
             WHERE u.dt_posledni_aktivita IS NOT NULL
               AND u.dt_posledni_aktivita >= DATE_SUB(NOW(), INTERVAL :minutes MINUTE)
               AND u.aktivni = 1
@@ -3007,6 +3009,7 @@ function _dashboard_get_active_users($db, $period = '5min') {
                 'usek_zkr'                    => $row['usek_zkr'],
                 'usek_nazev'                  => $row['usek_nazev'],
                 'pozice'                      => $row['pozice'],
+                'lokalita'                    => $row['lokalita'],
                 'ip_adresa'                   => $meta['last_public_ip'] ?? ($meta['last_local_ip'] ?? null),
                 'ip_local'                    => $meta['last_local_ip'] ?? null,
                 'modul'                       => $meta['last_module'] ?? null,

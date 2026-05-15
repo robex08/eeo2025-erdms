@@ -2516,6 +2516,7 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
               {[
                 { field: 'cele_jmeno',                  label: 'Uživatel',          align: 'left'   },
                 { field: 'usek_zkr',                    label: 'Úsek / Pozice',     align: 'left'   },
+                { field: 'lokalita',                    label: 'Lokalita',          align: 'left'   },
                 { field: 'pocet_objednavek_objednatel', label: 'Objednal',          align: 'center' },
                 { field: 'pocet_schvalenych',           label: 'Schválil',          align: 'center' },
                 { field: 'pocet_ke_schvaleni',          label: 'Ke schválení',      align: 'center' },
@@ -2615,6 +2616,13 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
                   <td className="dash-act-td" style={{ color: '#475569' }}>
                     {u.usek_zkr && <span style={{ fontWeight: 600 }}>{u.usek_zkr}</span>}
                     {u.pozice && <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>{u.pozice}</div>}
+                  </td>
+                  <td className="dash-act-td" style={{ color: '#475569' }}>
+                    {u.lokalita ? (
+                      <span style={{ fontSize: '0.85rem' }}>{u.lokalita}</span>
+                    ) : (
+                      <span style={{ color: '#cbd5e1' }}>–</span>
+                    )}
                   </td>
                   <td className="dash-act-td" style={{ textAlign: 'center', fontWeight: 600, color: u.pocet_objednavek_objednatel > 0 ? '#1d4ed8' : '#94a3b8' }}>
                     {u.pocet_objednavek_objednatel}

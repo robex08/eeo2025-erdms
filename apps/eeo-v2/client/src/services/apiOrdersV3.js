@@ -58,6 +58,7 @@ export async function listOrdersV3({
   period = 'all',
   filters = {},
   sorting = [],
+  access_context = null,
   signal = undefined
 }) {
   const response = await fetch(`${API_BASE_URL}/order-v3/list`, {
@@ -73,7 +74,8 @@ export async function listOrdersV3({
       per_page,
       period,
       filters,
-      sorting
+      sorting,
+      access_context
     }),
   });
 

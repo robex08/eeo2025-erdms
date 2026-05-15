@@ -7097,89 +7097,73 @@ function OrderForm25() {
   const canEditPhase3 = hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_EDIT_ALL')); // Pro odemykání FÁZE 3
   const canEditApprovedSections = canApproveOrders || canManageOrders;
   const canPublishRegistry = hasPermission && hasPermission('ORDER_PUBLISH_REGISTRY'); // 🆕 Pro editaci polí registru smluv
-  const canManageInvoices = hasPermission && hasPermission('INVOICE_MANAGE'); // 🆕 Pro editaci faktur ve Fázi 7
-  const canSaveOrder = !isViewOnly && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_APPROVE') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_EDIT_ALL')); // Pro ukládání objednávek (včetně schválení) - viewOnly režim blokuje
+  const canManageInvoices = hasPermission && hasPermission('INVOICE_MANAGE');
+  const canSaveOrder = !isViewOnly && hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_APPROVE') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_EDIT_ALL'));
 
-  // Kontrola rolí pro speciální oprávnění - MUSÍ BÝT PŘED použitím!
+  // Kontrola rolí pro speciální oprávnění
   const isSuperAdmin = userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
   const isAdmin = userDetail?.roles?.some(role => role.kod_role === 'ADMINISTRATOR');
   const isPrikazce = userDetail?.roles?.some(role => role.kod_role === 'PRIKAZCE');
+  const isBudgetManagerRole = userDetail?.roles?.some(role => role.kod_role === 'SPRAVCE_ROZPOCTU');
   const hasOrderManagePermission = hasPermission && hasPermission('ORDER_MANAGE');
-  const hasEducationManagePermission = hasPermission && hasPermission('EDUCATION_MANAGE');
-  const canUnlockAnything = isSuperAdmin || isAdmin || hasOrderManagePermission; // SUPER, ADMIN a ORDER_MANAGE mohou odemknout cokoliv
-  const canConfirmOrderCompletion = isSuperAdmin || isAdmin || hasOrderManagePermission || hasEducationManagePermission; // Může potvrdit dokončení objednávky (včetně EDUCATION_MANAGE pro vzdělávací objednávky)
+  const hasOrderCompletePermission = hasPermission && hasPermission('ORDER_COMPLETE');
+  const hasEducationCompletePermission = hasPermission && hasPermission('EDUCATION_COMPLETE');
+  const canUnlockAnything = isSuperAdmin || isAdmin || hasOrderManagePermission;
+  const canConfirmOrderCompletion = isSuperAdmin || isAdmin || hasOrderManagePermission || hasOrderCompletePermission || hasEducationCompletePermission;
 
   const isPrikazceOfOrder = formData.prikazce_id && parseInt(formData.prikazce_id, 10) === user_id;
 
-  // 🆕 Schválení kolegou: jiný příkazce ze STEJNÉHO úseku může schválit objednávku
-  // (příklad: úsek PTU – objednávku s příkazcem Fajka může schválit i Sulgan)
-  const canApproveAsSameUsekPrikazce = useMemo(() => {
-    try {
-      if (!isPrikazce) return false;
-      const prikazceIdRaw = formData.prikazce_id;
-      const prikazceId = prikazceIdRaw ? parseInt(String(prikazceIdRaw), 10) : null;
-      if (!prikazceId || !Number.isFinite(prikazceId)) return false;
-      if (!user_id || !Number.isFinite(user_id)) return false;
-      if (prikazceId === user_id) return true; // je to přímo příkazce objednávky
-
-      const getUid = (u) => {
-        const id = u?.id ?? u?.user_id;
-        const n = typeof id === 'string' ? parseInt(id, 10) : id;
-        return Number.isFinite(n) ? n : null;
-      };
-
-      const normalizeUsekZkr = (val) => {
-        if (!val) return [];
-        if (Array.isArray(val)) return val.filter(Boolean).map(v => String(v).trim()).filter(Boolean);
-        if (typeof val === 'string') {
-          const t = val.trim();
-          if (!t || t === 'null' || t === '[]') return [];
-          if (t.startsWith('[')) {
-            try {
-              const parsed = JSON.parse(t);
-              if (Array.isArray(parsed)) return parsed.filter(Boolean).map(v => String(v).trim()).filter(Boolean);
-            } catch {
-              // ignore
-            }
-          }
-          return [t];
-        }
-        return [String(val).trim()].filter(Boolean);
-      };
-
-      const me = (allUsers || []).find(u => getUid(u) === user_id);
-      const prikazce = (approvers || []).find(u => getUid(u) === prikazceId)
-        || (allUsers || []).find(u => getUid(u) === prikazceId);
-
-      const myUsekId = me?.usek_id ?? me?.usek;
-      const prikazceUsekId = prikazce?.usek_id ?? prikazce?.usek;
-
-      // Primárně dle usek_id (spolehlivější)
-      if (myUsekId && prikazceUsekId) {
-        return String(myUsekId) === String(prikazceUsekId);
-      }
-
-      // Fallback dle usek_zkr (může být string / JSON string / array)
-      const myUsekyZkr = normalizeUsekZkr(me?.usek_zkr);
-      const prikazceUsekyZkr = normalizeUsekZkr(prikazce?.usek_zkr);
-      if (myUsekyZkr.length === 0 || prikazceUsekyZkr.length === 0) return false;
-      return myUsekyZkr.some(zkr => prikazceUsekyZkr.includes(zkr));
-    } catch {
-      return false;
-    }
-  }, [allUsers, approvers, formData.prikazce_id, isPrikazce, user_id]);
+  // ❌ ODSTRANENO: canApproveAsSameUsekPrikazce (řádky 7116-7172)
+  // Důvod: Nekonzistence s rychlým schvalováním v OrdersTableV3
+  // Příkazce ze stejného úseku (ale jiný než příkazce objednávky) již NEMŮŽE schvalovat objednávku
+  // Schvalovat může pouze:
+  // - Přímý příkazce objednávky (isPrikazceOfOrder)
+  // - Správce rozpočtu (isBudgetManagerRole)
+  // - Admin/Superadmin
+  // - Uživatel s právy ORDER_APPROVE/ORDER_MANAGE
 
   // 🆕 Rozšířená logika schvalování podle zadání:
-  // - příkazce objednávky
-  // - jiný příkazce ze stejného úseku
-  // - SUPERADMIN / ADMINISTRATOR
-  // - uživatel s právy ORDER_APPROVE / ORDER_MANAGE
-  const canViewApprovalSection = isPrikazceOfOrder || canApproveAsSameUsekPrikazce || isSuperAdmin || isAdmin || canApproveOrders || canManageOrders;
+  // - příkazce objednávky (isPrikazceOfOrder)
+  // - SUPERADMIN / ADMINISTRATOR (mohou schvalovat vše)
+  // - uživatel s právy ORDER_APPROVE / ORDER_MANAGE (mohou schvalovat vše)
+  // ❌ ODSTRANENO: Schválení kolegou ze stejného úseku
+  // ❌ ODSTRANENO: Správce rozpočtu - může schvalovat pouze SVOJE objednávky (kde je příkazcem)
+  //    Pro konzistenci s rychlým schvalováním v OrdersTableV3
+  
+  // 🔒 Důvod, proč uživatel nemůže schvalovat (zobrazí se infobox místo schvalovací sekce)
+  const cannotApproveReason = useMemo(() => {
+    // Pokud je uživatel admin, může schvalovat vše
+    if (isSuperAdmin || isAdmin) {
+      return null; // Žádné omezení
+    }
+
+    // Pokud je příkazce této objednávky, může schvalovat
+    if (isPrikazceOfOrder) {
+      return null; // Žádné omezení
+    }
+
+    // Pokud je příkazce (ale jiné objednávky) nebo správce rozpočtu
+    if (isPrikazce || isBudgetManagerRole) {
+      // Zjisti jméno příkazce objednávky
+      const prikazceId = parseInt(formData.prikazce_id, 10);
+      const prikazceName = getUserNameById(prikazceId) || 'jiného příkazce';
+
+      return `Nemůžete schvalovat tuto objednávku – je určena pro ${prikazceName} z jiného oddělení.`;
+    }
+
+    return null; // Ostatní uživatelé vůbec neuvidí sekci schválení
+  }, [isSuperAdmin, isAdmin, isPrikazceOfOrder, isPrikazce, isBudgetManagerRole, formData.prikazce_id]);
+
+  // Sekci schválení vidí pouze:
+  // - Příkazce objednávky
+  // - Admin/Superadmin
+  // ❌ NEVIDÍ: Příkazce jiné objednávky, Správce rozpočtu (pokud nejsou příkazcem této objednávky)
+  const canViewApprovalSection = (isPrikazceOfOrder || isSuperAdmin || isAdmin) && !cannotApproveReason;
 
   // 🔒 EDITACE VE FÁZI 2 (KE SCHVÁLENÍ)
   // Běžný uživatel po znovu-otevření nesmí upravovat sekce Objednatel/Schválení/Financování.
-  // Výjimka: role/permission pro schvalování nebo správu (ORDER_APPROVE/ORDER_MANAGE), příkazce objednávky, admin.
-  const canEditDuringApprovalPhase = canManageOrders || canApproveOrders || isPrikazceOfOrder || isSuperAdmin || isAdmin;
+  // Výjimka: role/permission pro schvalování nebo správu (ORDER_APPROVE/ORDER_MANAGE), příkazce objednávky, správce rozpočtu, admin.
+  const canEditDuringApprovalPhase = canManageOrders || canApproveOrders || isPrikazceOfOrder || isBudgetManagerRole || isSuperAdmin || isAdmin;
 
   // 💰 Helper: Jednotná detekce LP financování (primárně dle KÓDU, fallback dle názvu v číselníku)
   // DŮVOD: detekce dle názvu je citlivá na timing (financovaniOptions nemusí být ready) a na změny textů.
@@ -7448,8 +7432,15 @@ function OrderForm25() {
         const hasGeneralRole = userDetail?.roles?.some(role => 
           role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
         );
+        const isBudgetManagerRole = userDetail?.roles?.some(role => role.kod_role === 'SPRAVCE_ROZPOCTU');
         const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
-        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder || canApproveAsSameUsekPrikazce;
+        
+        // 🔒 OPRÁVNĚNÍ KE SCHVALOVÁNÍ (konzistentní s OrdersTableV3):
+        // - Pouze přímý příkazce objednávky
+        // - Správce rozpočtu
+        // - Admin/Superadmin
+        // ❌ NEPOVOLENO: Příkazce ze stejného úseku (ale jiný než příkazce objednávky)
+        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder || isBudgetManagerRole;
         const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
         
         // Pokud má uživatel speciální oprávnění a objednávka je zamítnuta VE FÁZI SCHVALOVÁNÍ, nechej checkboxy aktivní
@@ -21919,7 +21910,7 @@ function OrderForm25() {
                               }
 
                               return filtered.map((smlouva, index) => {
-                                // ⚠️ Kontrola vypršené smlouvy
+                                // ⚠️ Kontrola ukoncene smlouvy
                                 const jeVyprsela = smlouva.stav === 'VYPRSELA' || smlouva.stav === 'UKONCENA';
                                 const isSelected = index === selectedSmlouvaSuggestionIndex;
                                 
@@ -21942,7 +21933,7 @@ function OrderForm25() {
                                   >
                                     <SmlouvaSuggestionTitle>
                                       {smlouva.cislo_smlouvy || smlouva.evidencni_cislo}
-                                      {jeVyprsela && <span style={{ color: '#f97316', marginLeft: '8px', fontSize: '0.85em' }}>⚠️ VYPRŠELA</span>}
+                                      {jeVyprsela && <span style={{ color: '#f97316', marginLeft: '8px', fontSize: '0.85em' }}>⚠️ UKONČENÁ</span>}
                                     </SmlouvaSuggestionTitle>
                                     <SmlouvaSuggestionMeta>
                                       {smlouva.nazev_smlouvy && <span>{smlouva.nazev_smlouvy}</span>}
@@ -21996,7 +21987,7 @@ function OrderForm25() {
                     </FormGroup>
                   </FormRow>
                   
-                  {/* ⚠️ VAROVÁNÍ PRO VYPRŠELOU SMLOUVU - přes celou šířku */}
+                  {/* ⚠️ VAROVANI PRO UKONCENOU SMLOUVU - pres celou sirku */}
                   {formData.cislo_smlouvy && smlouvaDetail && !smlouvaDetail.notFound && 
                     (smlouvaDetail.stav === 'VYPRSELA' || smlouvaDetail.stav === 'UKONCENA') && (
                     <div style={{
@@ -22013,7 +22004,7 @@ function OrderForm25() {
                       alignItems: 'center',
                       gap: '8px'
                     }}>
-                      ⚠️ Smlouva již vypršela!!! 
+                      ⚠️ Smlouva je ukončená!!! 
                       {smlouvaDetail.platnost_do && (
                         <span style={{ fontSize: '0.85rem', fontWeight: 500 }}>
                           Platnost byla do {new Date(smlouvaDetail.platnost_do).toLocaleDateString('cs-CZ')}
@@ -22130,57 +22121,103 @@ function OrderForm25() {
               {/* 🔧 Sekce STAV SCHVÁLENÍ se zobrazí když:
                   1. Objednávka je uložena v DB (má ID)
                   2. Workflow NENÍ ve stavu NOVA (tzn. má jiný stav než nová objednávka)
-                  3. Uživatel má oprávnění ke schvalování nebo je v rolích PRIKAZCE, SUPERADMIN, ADMINISTRATOR
+                  3. Uživatel má oprávnění ke schvalování
 
                   Zobrazuje se pro stavy: CEKA_SE, ZAMITNUTO, SCHVALENO, ODESLAN_KE_SCHVALENI a další
                   Skrývá se pouze pro stav NOVA nebo pokud uživatel nemá oprávnění */}
               {!!formData.id &&
-               !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') &&
-               canViewApprovalSection && (
+               !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') && (
                 <>
-                  {/* Šedivá oddělovací linka NAD celou sekcí schválení */}
-                  <div style={{
-                    borderTop: '1px solid #d1d5db',
-                    marginBottom: '1.5rem',
-                    marginTop: '1rem'
-                  }} />
-
-                  <div style={{
-                    gridColumn: '1 / -1',
-                    ...((lpWouldExceedInForm || smlouvaWouldExceedInForm) ? {
-                      border: '3px solid #dc2626',
-                      borderRadius: '12px',
-                      padding: '1rem',
-                      backgroundColor: '#fff5f5'
-                    } : {})
-                  }}>
-                    {/* Checkboxy - zobrazit JEN když je objednávka ULOŽENA v DB */}
-                    {!!formData.id && (
-                      <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-                          <Label style={{ fontSize: '1rem', fontWeight: '600', margin: 0 }}>
-                            STAV SCHVÁLENÍ OBJEDNÁVKY
-                          </Label>
-                          {isFormBasicallyValid() && formData.stav_schvaleni && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                              <span style={{ fontWeight: 'bold' , color: '#374151', fontSize: '0.875rem' }}>
-                                Schvaluje:
-                              </span>
-                              <span style={{
-                                fontWeight: '600',
-                                color: '#059669',
-                                backgroundColor: '#d1fae5',
-                                padding: '0.25rem 0.5rem',
-                                borderRadius: '4px',
-                                fontSize: '0.875rem'
-                              }}>
-                                {getUserNameById(user_id)}
-                              </span>
-                            </div>
-                          )}
+                  {/* 🚫 Infobox - důvod, proč uživatel nemůže schvalovat */}
+                  {cannotApproveReason && (
+                    <>
+                      {/* Šedivá oddělovací linka NAD infoboxem */}
+                      <div style={{
+                        borderTop: '1px solid #d1d5db',
+                        marginBottom: '1.5rem',
+                        marginTop: '1rem'
+                      }} />
+                      
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        padding: '1.25rem',
+                        backgroundColor: '#fef3c7',
+                        border: '2px solid #f59e0b',
+                        borderRadius: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '1rem'
+                      }}>
+                        <span style={{ fontSize: '2rem' }}>ℹ️</span>
+                        <div>
+                          <div style={{ 
+                            fontSize: '1rem', 
+                            fontWeight: '600', 
+                            color: '#92400e',
+                            marginBottom: '0.25rem'
+                          }}>
+                            Nemáte oprávnění ke schválení
+                          </div>
+                          <div style={{ 
+                            fontSize: '0.9375rem', 
+                            color: '#78350f'
+                          }}>
+                            {cannotApproveReason}
+                          </div>
                         </div>
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* ✅ Sekce schválení - zobrazí se pouze oprávněným uživatelům */}
+                  {canViewApprovalSection && (
+                    <>
+                      {/* Šedivá oddělovací linka NAD celou sekcí schválení */}
+                      <div style={{
+                        borderTop: '1px solid #d1d5db',
+                        marginBottom: '1.5rem',
+                        marginTop: '1rem'
+                      }} />
 
-                        {/* 🔴 Varování při hrozícím přečerpání LP nebo stropu smlouvy */}
+                      <div style={{
+                        gridColumn: '1 / -1',
+                        ...((lpWouldExceedInForm || smlouvaWouldExceedInForm) ? {
+                          border: '3px solid #dc2626',
+                          borderRadius: '12px',
+                          padding: '1rem',
+                          backgroundColor: '#fff5f5'
+                        } : {})
+                      }}>
+                        {/* Checkboxy - zobrazit JEN když je objednávka ULOŽENA v DB */}
+                        {!!formData.id && (
+                          <>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                              <Label style={{ fontSize: '1rem', fontWeight: '600', margin: 0 }}>
+                                STAV SCHVÁLENÍ OBJEDNÁVKY
+                              </Label>
+                              {isFormBasicallyValid() && formData.stav_schvaleni && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                  <span style={{ fontWeight: 'bold' , color: '#374151', fontSize: '0.875rem' }}>
+                                    Schvaluje:
+                                  </span>
+                                  <span style={{
+                                    fontWeight: '600',
+                                    color: '#059669',
+                                    backgroundColor: '#d1fae5',
+                                    padding: '0.25rem 0.5rem',
+                                    borderRadius: '4px',
+                                    fontSize: '0.875rem'
+                                  }}>
+                                    {getUserNameById(user_id)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      {/* 🔴 Varování při hrozícím přečerpání LP nebo stropu smlouvy */}
                         {(lpWouldExceedInForm || smlouvaWouldExceedInForm) && (
                           <div style={{
                             marginBottom: '1rem',
@@ -22890,10 +22927,9 @@ function OrderForm25() {
                       </div>
                     </div>
                   )}
-                </div>
                 </>
               )}
-              {!!formData.id &&
+          {!!formData.id &&
                !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') &&
                !canViewApprovalSection &&
                // Zobrazit jen když objednávka JE aktuálně v procesu schválení (Ke schválení / Čeká se).
