@@ -26,6 +26,55 @@ if (file_exists(__DIR__ . '/orderV2Endpoints.php')) {
     require_once __DIR__ . '/orderV2Endpoints.php';
 }
 
+function getUserSpecificPermissions($user_id, $db, $permission_codes) {
+    if (!is_array($permission_codes) || empty($permission_codes)) return array();
+
+    try {
+        $placeholders = implode(',', array_fill(0, count($permission_codes), '?'));
+        $sql = "
+            SELECT DISTINCT p.kod_prava
+            FROM " . TBL_PRAVA . " p
+            WHERE p.kod_prava IN ($placeholders)
+            AND p.id IN (
+                -- Přímá práva (user_id != -1, role_id = -1)
+                SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp
+                WHERE rp.user_id = ? AND rp.role_id = -1
+
+                UNION
+
+                -- Práva z rolí (user_id = -1, role_id = X)
+                SELECT rp.pravo_id
+                FROM " . TBL_UZIVATELE_ROLE . " ur
+                JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                WHERE ur.uzivatel_id = ?
+            )
+        ";
+
+        $stmt = $db->prepare($sql);
+        if (!$stmt) {
+            error_log("Order V3 getUserSpecificPermissions: FAILED to prepare statement!");
+            return array();
+        }
+
+        $params = array_merge($permission_codes, array($user_id, $user_id));
+        $result = $stmt->execute($params);
+        if (!$result) {
+            error_log("Order V3 getUserSpecificPermissions: FAILED to execute! Error: " . print_r($stmt->errorInfo(), true));
+            return array();
+        }
+
+        $permissions = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $permissions[] = $row['kod_prava'];
+        }
+
+        return $permissions;
+    } catch (Exception $e) {
+        error_log("Order V3 getUserSpecificPermissions: Error getting permissions for user $user_id: " . $e->getMessage());
+        return array();
+    }
+}
+
 /**
  * 🔒 HELPER: Aplikuje user permissions na WHERE podmínky
  * Používá STEJNOU logiku jako Order V2 (orderlist25) včetně hierarchie!
@@ -36,12 +85,19 @@ if (file_exists(__DIR__ . '/orderV2Endpoints.php')) {
  * @param array &$where_params - Reference na pole parametrů (bude doplněno)
  * @return bool - TRUE pokud je admin (vidí všechno), FALSE pokud non-admin (filtry aplikovány)
  */
-function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_params) {
+function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_params, $access_context = null) {
     // Načtení user permissions a rolí (Order V2 compatible)
     $user_permissions = function_exists('getUserOrderPermissions') ? 
         getUserOrderPermissions($user_id, $db) : [];
     $user_roles = function_exists('getUserRoles') ? 
         getUserRoles($user_id, $db) : [];
+
+    if ($access_context === 'vzdel') {
+        $extra_permissions = getUserSpecificPermissions($user_id, $db, array('EDUCATION_VIEW_ALL'));
+        if (!empty($extra_permissions)) {
+            $user_permissions = array_values(array_unique(array_merge($user_permissions, $extra_permissions)));
+        }
+    }
         
     error_log("[OrderV3 Permissions] User $user_id - permissions: " . json_encode($user_permissions));
     error_log("[OrderV3 Permissions] User $user_id - roles: " . json_encode($user_roles));
@@ -52,7 +108,9 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
     // Check read all permissions
     $hasOrderReadAll = in_array('ORDER_READ_ALL', $user_permissions);
     $hasOrderViewAll = in_array('ORDER_VIEW_ALL', $user_permissions);
-    $hasReadAllPermissions = $hasOrderReadAll || $hasOrderViewAll;
+    $hasEducationViewAll = in_array('EDUCATION_VIEW_ALL', $user_permissions);
+    $allowEducationViewAll = $access_context === 'vzdel';
+    $hasReadAllPermissions = $hasOrderReadAll || $hasOrderViewAll || ($allowEducationViewAll && $hasEducationViewAll);
     
     // Final admin status
     $is_admin = $isAdminByRole || $hasReadAllPermissions;
@@ -1301,6 +1359,9 @@ function handle_order_v3_list($input, $config, $queries) {
         // 7. Třídění
         $sorting = isset($input['sorting']) ? $input['sorting'] : array();
 
+        // 7.1 Kontext přístupu (např. vzdel)
+        $access_context = isset($input['access_context']) ? $input['access_context'] : null;
+
         // 8. Sestavit WHERE podmínky
         $where_conditions = array();
         $where_params = array();
@@ -1964,7 +2025,7 @@ function handle_order_v3_list($input, $config, $queries) {
         $business_filter_count = count($where_conditions);
         $business_filter_params = $where_params; // Shallow copy parametrů
         
-        $is_admin_v2 = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
+        $is_admin_v2 = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params, $access_context);
 
         // ⚠️ Vyloučit zrušené, zamítnuté a smazané objednávky (vždy, pokud není explicitně požadováno v filtru)
         // Kontrola, jestli uživatel explicitně nežádá tyto stavy přes filtr
@@ -4190,7 +4251,6 @@ function handle_orderV3_smlouva_expand($input, $config) {
             return;
         }
         $cislo_smlouvy = $smlouva['cislo_smlouvy'];
-        $cislo_smlouvy_escaped = str_replace('/', '\\/', $cislo_smlouvy);
 
         $participant_where = '';
         $participant_params = [];
@@ -4214,17 +4274,14 @@ function handle_orderV3_smlouva_expand($input, $config) {
                 CONCAT(u.jmeno, ' ', u.prijmeni) as objednatel_jmeno
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN 25_uzivatele u ON o.uzivatel_id = u.id
-                        WHERE o.aktivni = 1
-                            AND (
-                                o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
-                                OR o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
-                            )
+            WHERE o.aktivni = 1
+              AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
               $participant_where
             ORDER BY o.dt_vytvoreni DESC
         ";
         $stmt = $db->prepare($sql);
-        $stmt->execute(array_merge([$cislo_smlouvy, $cislo_smlouvy_escaped], $participant_params));
+        $stmt->execute(array_merge([$cislo_smlouvy], $participant_params));
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Faktury na objednávkách

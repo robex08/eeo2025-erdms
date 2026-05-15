@@ -2485,354 +2485,54 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                 </div>
               </>
             ) : (
-              /* Smlouva bez finančního stropu */
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', minWidth: '200px' }}>
+              /* Smlouva bez finančního stropu - zobrazit jen tři řádky s částkami */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', minWidth: '200px', padding: '0.5rem 0' }}>
                 {personalBadge}
-                {/* Horní řádek: jen label (bez částky – ta je dole jako u stropové) */}
-                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '2px' }}>
+                {/* Horní řádek: label bez stropu */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'baseline', marginBottom: '0.3rem' }}>
                   <span style={{ fontSize: '0.6rem', fontWeight: 700, color: '#94a3b8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                     {isInfinite ? '∞ bez stropu' : 'bez stropu'}
                   </span>
                 </div>
-                {isInfinite ? (
-                  (() => {
-                    const now = new Date();
-                    const yearStart = new Date(now.getFullYear(), 0, 1);
-                    const yearEnd   = new Date(now.getFullYear(), 11, 31, 23, 59, 59);
-                    const yearPct   = Math.round(((now - yearStart) / (yearEnd - yearStart)) * 100);
-                    const hasCerpani = cerpano > 0;
-                    
-                    // 🆕 Roční čerpání pro spending-based progress
-                    const cerpanoRokAktualni = parseFloat(row.cerpano_rok_aktualni) || 0;
-                    const cerpanoRokMax = parseFloat(row.cerpano_rok_max) || 0;
-                    const planValueRaw = parseFloat(row.hodnota_plneni_s_dph) || 0;
-                    const planValue = planValueRaw >= MIN_CAP_THRESHOLD ? planValueRaw : 0;
-                    const totalCerpani = dokonceno + vProcesu;
-                    const progressBase = planValue > 0
-                      ? planValue
-                      : (cerpanoRokMax > 0 ? cerpanoRokMax : totalCerpani);
-                    const timeBased = planValue <= 0 && cerpanoRokMax <= 0 && totalCerpani > 0;
-                    const calcValidityPct = () => {
-                      const platnostDo = row.platnost_do;
-                      const platnostOd = row.platnost_od || row.dt_vytvoreni;
-                      if (!platnostDo || !platnostOd) return null;
-                      const now = new Date();
-                      const end = new Date(platnostDo);
-                      const start = new Date(platnostOd);
-                      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-                      if (now < start) return 0;
-                      if (now >= end) return 100;
-                      const total = end - start;
-                      if (total <= 0) return 100;
-                      return Math.max(0, Math.min(100, Math.round(((now - start) / total) * 100)));
-                    };
-                    const validityPct = calcValidityPct();
-                    const timeScalePct = validityPct !== null ? validityPct : yearPct;
-                    const totalPct = timeBased
-                      ? Math.min(timeScalePct, 100)
-                      : (progressBase > 0
-                        ? Math.min(Math.round((totalCerpani / progressBase) * 100), 100)
-                        : 0);
-                    const completedPct = timeBased
-                      ? (totalCerpani > 0 ? (totalPct * (dokonceno / totalCerpani)) : 0)
-                      : (progressBase > 0 ? Math.min((dokonceno / progressBase) * 100, 100) : 0);
-                    const inProcessPct = timeBased
-                      ? (totalCerpani > 0 ? (totalPct * (vProcesu / totalCerpani)) : 0)
-                      : (progressBase > 0 ? Math.min((vProcesu / progressBase) * 100, 100) : 0);
-                    const progressBasisLabel = timeBased
-                      ? 'časového poměru'
-                      : (planValue > 0
-                        ? 'plánovaného plnění'
-                        : (cerpanoRokMax > 0 ? 'max. ročního čerpání' : 'aktuálního čerpání'));
-                    
-                    // Fill bar = dokončeno, Planned bar = v procesu, Target line = time progress
-                    const fillPct = hasCerpani ? completedPct : 0;
-                    const plannedPct = hasCerpani ? inProcessPct : 0;
-                    const targetLinePct = yearPct;
-                    
-                    return (
-                      <>
-                        <ProgressBarWithTooltipWrapper
-                          barContent={
-                            <JezBarOuter>
-                              {monthGrid}
-                              <JezBarHatch />
-                              <JezBarFill $pct={fillPct} $color="#64748b" />
-                              {vProcesu > 0 && hasCerpani && (
-                                <JezBarPlanned
-                                  $left={Math.min(fillPct, 100)}
-                                  $percent={plannedPct}
-                                  $color="#94a3b8"
-                                />
-                              )}
-                              <JezBarTargetLine $pct={targetLinePct} />
-                            </JezBarOuter>
-                          }
-                          tooltipContent={
-                            <>
-                              <TooltipTitle style={{ color: barColor }}>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
-                              <TooltipTable>
-                                <tbody>
-                                  <tr>
-                                    <td>Typ smlouvy:</td>
-                                    <td>Bez finančního limitu</td>
-                                  </tr>
-                                  <tr>
-                                    <td>Celkem čerpáno:</td>
-                                    <td>{formatCurrency(cerpano)}</td>
-                                  </tr>
-                                  {hasCerpani ? (
-                                    <>
-                                      {planValue > 0 && (
-                                        <tr>
-                                          <td>Plánované plnění:</td>
-                                          <td>{formatCurrency(planValue)}</td>
-                                        </tr>
-                                      )}
-                                      {dokonceno > 0 && (
-                                        <tr>
-                                          <td>Dokončeno:</td>
-                                          <td style={{ color: '#64748b' }}>{formatCurrency(dokonceno)}</td>
-                                        </tr>
-                                      )}
-                                      {vProcesu > 0 && (
-                                        <tr>
-                                          <td>V procesu:</td>
-                                          <td style={{ color: '#94a3b8' }}>{formatCurrency(vProcesu)}</td>
-                                        </tr>
-                                      )}
-                                      <tr className="divider">
-                                        <td>Čerpání v roce {now.getFullYear()}:</td>
-                                        <td>{formatCurrency(cerpanoRokAktualni)}</td>
-                                      </tr>
-                                      {cerpanoRokMax > 0 && (
-                                        <tr>
-                                          <td>Max. roční čerpání (historie):</td>
-                                          <td>{formatCurrency(cerpanoRokMax)}</td>
-                                        </tr>
-                                      )}
-                                      <tr className="divider">
-                                        <td>Progress baru:</td>
-                                        <td>{totalPct}% {progressBasisLabel}</td>
-                                      </tr>
-                                      <tr>
-                                        <td>Čárka (časový progress):</td>
-                                        <td>{yearPct}% roku {now.getFullYear()} uplynulo</td>
-                                      </tr>
-                                    </>
-                                  ) : (
-                                    <tr className="divider">
-                                      <td>Progress:</td>
-                                      <td>Bez čerpání</td>
-                                    </tr>
-                                  )}
-                                  {row.platnost_od && (
-                                    <tr className="divider">
-                                      <td>Platnost od:</td>
-                                      <td>{new Date(row.platnost_od).toLocaleDateString('cs-CZ')}</td>
-                                    </tr>
-                                  )}
-                                  {row.platnost_do && (
-                                    <tr>
-                                      <td>Platnost do:</td>
-                                      <td>{new Date(row.platnost_do).toLocaleDateString('cs-CZ')}</td>
-                                    </tr>
-                                  )}
-                                </tbody>
-                              </TooltipTable>
-                            </>
-                          }
-                        />
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-                          <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
-                          <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
-                            {hasCerpani ? `2026:\u00a0${formatCurrency(cerpanoRokAktualni)}` : 'bez čerpání'}
-                          </span>
-                        </div>
-                      </>
-                    );
-                  })()
-                ) : timePct !== null ? (
-                  /* Konečná platnost – spending-based progress bar + časová čárka */
-                  <>
-                    {(() => {
-                      const hasCerpani = cerpano > 0;
-                      
-                      // 🆕 Roční čerpání pro spending-based progress
-                      const cerpanoRokAktualni = parseFloat(row.cerpano_rok_aktualni) || 0;
-                      const cerpanoRokMax = parseFloat(row.cerpano_rok_max) || 0;
-                      const planValueRaw = parseFloat(row.hodnota_plneni_s_dph) || 0;
-                      const planValue = planValueRaw >= MIN_CAP_THRESHOLD ? planValueRaw : 0;
-                      const totalCerpani = dokonceno + vProcesu;
-                      const progressBase = planValue > 0
-                        ? planValue
-                        : (cerpanoRokMax > 0 ? cerpanoRokMax : totalCerpani);
-                      const timeBased = planValue <= 0 && cerpanoRokMax <= 0 && totalCerpani > 0;
-                      const totalPct = timeBased
-                        ? Math.min(timePct, 100)
-                        : (progressBase > 0
-                          ? Math.min(Math.round((totalCerpani / progressBase) * 100), 100)
-                          : 0);
-                      const completedPct = timeBased
-                        ? (totalCerpani > 0 ? (totalPct * (dokonceno / totalCerpani)) : 0)
-                        : (progressBase > 0 ? Math.min((dokonceno / progressBase) * 100, 100) : 0);
-                      const inProcessPct = timeBased
-                        ? (totalCerpani > 0 ? (totalPct * (vProcesu / totalCerpani)) : 0)
-                        : (progressBase > 0 ? Math.min((vProcesu / progressBase) * 100, 100) : 0);
-                      const progressBasisLabel = timeBased
-                        ? 'časového poměru'
-                        : (planValue > 0
-                          ? 'plánovaného plnění'
-                          : (cerpanoRokMax > 0 ? 'max. ročního čerpání' : 'aktuálního čerpání'));
-                      
-                      // Fill bar = dokončeno, Planned bar = v procesu, Target line = time progress
-                      const fillPct = hasCerpani ? completedPct : 0;
-                      const plannedPct = hasCerpani ? inProcessPct : 0;
-                      const targetLinePct = timePct;
-                      
-                      return (
-                        <>
-                          <ProgressBarWithTooltipWrapper
-                            barContent={
-                              <JezBarOuter>
-                                {monthGrid}
-                                <JezBarHatch />
-                                <JezBarFill $pct={fillPct} $color="#64748b" />
-                                {vProcesu > 0 && hasCerpani && (
-                                  <JezBarPlanned
-                                    $left={Math.min(fillPct, 100)}
-                                    $percent={plannedPct}
-                                    $color="#94a3b8"
-                                  />
-                                )}
-                                <JezBarTargetLine $pct={targetLinePct} />
-                              </JezBarOuter>
-                            }
-                            tooltipContent={
-                              <>
-                                <TooltipTitle style={{ color: barColor }}>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
-                                <TooltipTable>
-                                  <tbody>
-                                    <tr>
-                                      <td>Typ smlouvy:</td>
-                                      <td>Bez finančního limitu</td>
-                                    </tr>
-                                    <tr>
-                                      <td>Celkem čerpáno:</td>
-                                      <td>{formatCurrency(cerpano)}</td>
-                                    </tr>
-                                    {hasCerpani ? (
-                                      <>
-                                        {planValue > 0 && (
-                                          <tr>
-                                            <td>Plánované plnění:</td>
-                                            <td>{formatCurrency(planValue)}</td>
-                                          </tr>
-                                        )}
-                                        {dokonceno > 0 && (
-                                          <tr>
-                                            <td>Dokončeno:</td>
-                                            <td style={{ color: '#64748b' }}>{formatCurrency(dokonceno)}</td>
-                                          </tr>
-                                        )}
-                                        {vProcesu > 0 && (
-                                          <tr>
-                                            <td>V procesu:</td>
-                                            <td style={{ color: '#94a3b8' }}>{formatCurrency(vProcesu)}</td>
-                                          </tr>
-                                        )}
-                                        <tr className="divider">
-                                          <td>Čerpání v roce 2026:</td>
-                                          <td>{formatCurrency(cerpanoRokAktualni)}</td>
-                                        </tr>
-                                        {cerpanoRokMax > 0 && (
-                                          <tr>
-                                            <td>Max. roční čerpání (historie):</td>
-                                            <td>{formatCurrency(cerpanoRokMax)}</td>
-                                          </tr>
-                                        )}
-                                        <tr className="divider">
-                                          <td>Progress baru:</td>
-                                          <td>{totalPct}% {progressBasisLabel}</td>
-                                        </tr>
-                                        <tr>
-                                          <td>Čárka (časový progress):</td>
-                                          <td>{timePct}% doby platnosti uplynulo</td>
-                                        </tr>
-                                      </>
-                                    ) : (
-                                      <tr className="divider">
-                                        <td>Progress:</td>
-                                        <td>Bez čerpání</td>
-                                      </tr>
-                                    )}
-                                    {row.platnost_od && (
-                                      <tr className="divider">
-                                        <td>Platnost od:</td>
-                                        <td>{new Date(row.platnost_od).toLocaleDateString('cs-CZ')}</td>
-                                      </tr>
-                                    )}
-                                    {row.platnost_do && (
-                                      <tr>
-                                        <td>Platnost do:</td>
-                                        <td>{new Date(row.platnost_do).toLocaleDateString('cs-CZ')}</td>
-                                      </tr>
-                                    )}
-                                  </tbody>
-                                </TooltipTable>
-                              </>
-                            }
-                          />
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-                            <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
-                            <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
-                              {hasCerpani ? `2026:\u00a0${formatCurrency(cerpanoRokAktualni)}` : 'bez čerpání'}
-                            </span>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </>
-                ) : (
-                  /* Neznámá platnost – zobrazit prázdný bar */
-                  <>
-                    <ProgressBarWithTooltipWrapper
-                      barContent={
-                        <JezBarOuter>
-                          {monthGrid}
-                          <JezBarHatch />
-                          <JezBarFill $pct={0} $color="#64748b" />
-                        </JezBarOuter>
-                      }
-                      tooltipContent={
-                        <>
-                          <TooltipTitle style={{ color: barColor }}>Smlouva bez stropu: {row.cislo_smlouvy}</TooltipTitle>
-                          <TooltipTable>
-                            <tbody>
-                              <tr>
-                                <td>Typ smlouvy:</td>
-                                <td>Bez finančního limitu</td>
-                              </tr>
-                              <tr>
-                                <td>Celkem čerpáno:</td>
-                                <td>{formatCurrency(cerpano)}</td>
-                              </tr>
-                              <tr className="divider">
-                                <td>Platnost:</td>
-                                <td>Neuvedena</td>
-                              </tr>
-                            </tbody>
-                          </TooltipTable>
-                        </>
-                      }
-                    />
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
-                      <strong style={{ fontSize: '0.82rem' }}>{formatCurrency(cerpano)}</strong>
-                      <span style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 600 }}>
-                        platnost&nbsp;neuvedena
-                      </span>
-                    </div>
-                  </>
+                {/* Tři řádky s částkami */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', fontSize: '0.8rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.15rem 0' }}>
+                    <span style={{ fontWeight: 600, color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                      Čerpáno:
+                    </span>
+                    <span style={{ fontWeight: 700, color: '#10b981', fontSize: '0.85rem' }}>
+                      {formatCurrency(dokonceno)}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.15rem 0' }}>
+                    <span style={{ fontWeight: 600, color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                      V procesu:
+                    </span>
+                    <span style={{ fontWeight: 700, color: '#f59e0b', fontSize: '0.85rem' }}>
+                      {formatCurrency(vProcesu)}
+                    </span>
+                  </div>
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    padding: '0.25rem 0 0.15rem 0', 
+                    borderTop: '1px solid #e2e8f0',
+                    marginTop: '0.2rem'
+                  }}>
+                    <span style={{ fontWeight: 700, color: '#1e293b', fontSize: '0.8rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
+                      Celkem:
+                    </span>
+                    <span style={{ fontWeight: 800, color: '#1e293b', fontSize: '0.95rem' }}>
+                      {formatCurrency(cerpano)}
+                    </span>
+                  </div>
+                </div>
+                {/* Volitelně: dodatečné info (např. roční čerpání) */}
+                {isInfinite && (
+                  <div style={{ fontSize: '0.65rem', color: '#94a3b8', textAlign: 'right', marginTop: '0.1rem' }}>
+                    Nekonečná platnost
+                  </div>
                 )}
               </div>
             )}

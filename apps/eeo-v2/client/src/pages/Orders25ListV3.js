@@ -2215,42 +2215,11 @@ function Orders25ListV3() {
       return isAllowedState;
     }
     
-    // 🔒 KONTROLA ÚSEKU: Příkazce může schvalovat pouze objednávky ze svého úseku
-    if (!isPrikazce && (isBudgetManagerRole || userDetail?.roles?.some(r => r.kod_role === 'PRIKAZCE'))) {
-      // Uživatel je příkazce, ale NE této konkrétní objednávky
-      // Zkontroluj zda je ze stejného úseku jako příkazce objednávky
-      try {
-        const myUsekId = userDetail?.usek_id || userDetail?.usek;
-        const prikazceUsekId = order?.prikazce_usek_id || order?.prikazce?.usek_id;
-        
-        // Pokud máme usek_id obou, porovnej je
-        if (myUsekId && prikazceUsekId && String(myUsekId) === String(prikazceUsekId)) {
-          return isAllowedState; // Stejný úsek → může schválit
-        }
-        
-        // Fallback: zkrátka zkontroluj usek_zkr pokud není usek_id
-        const myUsekZkr = userDetail?.usek_zkr || [];
-        const prikazceUsekZkr = order?.prikazce_usek_zkr || [];
-        const myUsekyArray = Array.isArray(myUsekZkr) ? myUsekZkr : (typeof myUsekZkr === 'string' ? [myUsekZkr] : []);
-        const prikazceUsekyArray = Array.isArray(prikazceUsekZkr) ? prikazceUsekZkr : (typeof prikazceUsekZkr === 'string' ? [prikazceUsekZkr] : []);
-        
-        if (myUsekyArray.length > 0 && prikazceUsekyArray.length > 0) {
-          const hasSameUsek = myUsekyArray.some(zkr => prikazceUsekyArray.includes(zkr));
-          if (hasSameUsek) {
-            return isAllowedState; // Stejný úsek → může schválit
-          }
-        }
-        
-        // Jiný úsek → NEMŮŽE schválit
-        return false;
-      } catch (e) {
-        console.error('[canApprove] Chyba při kontrole úseku:', e);
-        return false; // Při chybě raději NEPOVOLIT
-      }
-    }
-    
-    // 🎯 Správce rozpočtu a příkazci mohou schvalovat pouze SVOJE objednávky
-    // (pokud nejsou příkazcem, ikona bude vyšedivělá)
+    // 🔒 OPRÁVNĚNÍ KE SCHVALOVÁNÍ (konzistentní s OrdersTableV3 a OrderForm25):
+    // - Pouze přímý příkazce objednávky
+    // - Správce rozpočtu
+    // ❌ ODSTRANENO: Kontrola příkazce ze stejného úseku (nekonzistentní s OrdersTableV3)
+    //    Příkazce může schvalovat POUZE svoje objednávky (kde je přímým příkazcem)
     if (isBudgetManagerRole || isPrikazce) {
       return isPrikazce && isAllowedState;
     }

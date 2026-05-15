@@ -1992,6 +1992,11 @@ export default function InvoiceEvidencePage() {
     if (!Number.isFinite(rate)) return '';
     return (base * (1 + rate / 100)).toFixed(2);
   }, [vatBaseAmount, vatRate, parseAmountValue]);
+
+  const isExpiredSelectedContract = useMemo(() => {
+    if (selectedType !== 'smlouva' || !smlouvaData) return false;
+    return smlouvaData.stav === 'VYPRSELA' || smlouvaData.stav === 'UKONCENA';
+  }, [selectedType, smlouvaData]);
   
   // 📋 Callback pro refresh Spisovka panelu po označení dokumentu
   const [spisovkaRefreshCounter, setSpisovkaRefreshCounter] = useState(0);
@@ -6079,7 +6084,11 @@ export default function InvoiceEvidencePage() {
                     style={{ 
                       width: '100%',
                       paddingLeft: (editingInvoiceId && hadOriginalEntity && (formData.order_id || formData.smlouva_id) && !isEntityUnlocked) ? '2.5rem' : '0.75rem',
-                      paddingRight: searchTerm ? '2.5rem' : '0.75rem'
+                      paddingRight: searchTerm ? '2.5rem' : '0.75rem',
+                      backgroundColor: isExpiredSelectedContract ? '#fef2f2' : undefined,
+                      borderColor: isExpiredSelectedContract ? '#ef4444' : undefined,
+                      boxShadow: isExpiredSelectedContract ? '0 0 0 3px rgba(239, 68, 68, 0.15)' : undefined,
+                      color: isExpiredSelectedContract ? '#991b1b' : undefined
                     }}
                   />
                   {searchTerm && (
@@ -6177,6 +6186,8 @@ export default function InvoiceEvidencePage() {
 
                           // Pro smlouvy
                           if (isSmlouva) {
+                            const isExpiredContract = item.stav === 'VYPRSELA' || item.stav === 'UKONCENA';
+
                             return (
                               <OrderSuggestionItem
                                 key={`smlouva-${item.id}`}
@@ -6192,6 +6203,11 @@ export default function InvoiceEvidencePage() {
                                       SML
                                     </OrderSuggestionBadge>
                                     {item.cislo_smlouvy}
+                                    {isExpiredContract && (
+                                      <OrderSuggestionBadge $color="#fff7ed" $textColor="#c2410c" style={{ marginLeft: '0.5rem', border: '1px solid #f97316' }}>
+                                        ⚠️ UKONČENÁ
+                                      </OrderSuggestionBadge>
+                                    )}
                                     {item.hodnota_s_dph && (
                                       <OrderSuggestionBadge $color="#fef3c7" $textColor="#92400e" style={{ marginLeft: '0.5rem' }}>
                                         {parseFloat(item.hodnota_s_dph).toLocaleString('cs-CZ')} Kč
@@ -6235,21 +6251,24 @@ export default function InvoiceEvidencePage() {
 
               {/* Platnost do / Datum vytvoření */}
               <FieldGroup>
-                <FieldLabel>
-                  {selectedType === 'smlouva' ? 'Platnost do' : 'Datum vytvoření'}
+                <FieldLabel style={{ color: isExpiredSelectedContract ? '#b91c1c' : undefined }}>
+                  {selectedType === 'smlouva'
+                    ? (isExpiredSelectedContract ? 'Platnost byla ukončena' : 'Platnost do')
+                    : 'Datum vytvoření'}
                 </FieldLabel>
                 <div style={{ 
                   height: '48px',
                   padding: '1px 0.875rem', 
                   display: 'flex',
                   alignItems: 'center',
-                  background: (orderData || smlouvaData) ? '#fef3c7' : '#f9fafb', 
-                  border: (orderData || smlouvaData) ? '2px solid #f59e0b' : '2px solid #e5e7eb', 
+                  background: isExpiredSelectedContract ? '#fecaca' : (orderData || smlouvaData) ? '#fef3c7' : '#f9fafb', 
+                  border: isExpiredSelectedContract ? '2px solid #dc2626' : (orderData || smlouvaData) ? '2px solid #f59e0b' : '2px solid #e5e7eb', 
                   borderRadius: '8px',
-                  color: (orderData || smlouvaData) ? '#92400e' : '#9ca3af',
-                  fontWeight: (orderData || smlouvaData) ? '600' : '400',
+                  color: isExpiredSelectedContract ? '#991b1b' : (orderData || smlouvaData) ? '#92400e' : '#9ca3af',
+                  fontWeight: isExpiredSelectedContract ? '700' : (orderData || smlouvaData) ? '600' : '400',
                   fontSize: '0.875rem',
-                  boxSizing: 'border-box'
+                  boxSizing: 'border-box',
+                  boxShadow: isExpiredSelectedContract ? '0 0 0 3px rgba(220, 38, 38, 0.2)' : undefined
                 }}>
                   {(() => {
                     // Pro objednávky zobrazit datum vytvoření
@@ -7773,7 +7792,25 @@ export default function InvoiceEvidencePage() {
                   </span>
                 )}
                 {smlouvaData && selectedType === 'smlouva' && (
-                  <span style={{ fontWeight: 700, color: '#059669', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: isExpiredSelectedContract ? '#b91c1c' : '#059669', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
+                    {isExpiredSelectedContract && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: '22px',
+                        padding: '0 8px',
+                        borderRadius: '999px',
+                        background: '#fee2e2',
+                        color: '#b91c1c',
+                        fontWeight: 800,
+                        fontSize: '0.75rem',
+                        letterSpacing: '0.03em',
+                        border: '1px solid #fca5a5'
+                      }}>
+                        UKONČENÁ
+                      </span>
+                    )}
                     {smlouvaData.cislo_smlouvy || `#${smlouvaData.id}`}
                   </span>
                 )}

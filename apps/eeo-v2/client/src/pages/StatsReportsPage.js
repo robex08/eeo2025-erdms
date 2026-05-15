@@ -2461,7 +2461,7 @@ const getFinancingIcon = (label) => {
 };
 
 export default function StatsReportsPage() {
-  const { token, username, user, user_id, fullName, userDetail, hasPermission, hasAdminRole } = useContext(AuthContext);
+  const { token, username, user, user_id, fullName, userDetail, userPermissions, hasPermission, hasAdminRole } = useContext(AuthContext);
   const progress = useContext(ProgressContext);
   const { showToast } = useContext(ToastContext) || {};
   const navigate = useNavigate();
@@ -2471,18 +2471,27 @@ export default function StatsReportsPage() {
   const isAdminUser = typeof hasAdminRole === 'function' && hasAdminRole();
 
   // Uživatelův úsek
-  const userUsekId = user?.usek_id || userDetail?.usek_id || null;
+  const userUsekId = user?.usek_id
+    || userDetail?.usek_id
+    || userDetail?.usek?.id
+    || userDetail?.usek?.usek_id
+    || userDetail?.usek_id_detail
+    || userDetail?.usek
+    || null;
 
-  // Má uživatel jakékoliv *_MANAGE právo? → může měnit filtr úseků
+  const hasBasePermission = useCallback((code) => {
+    if (!code) return false;
+    const norm = code.toString().trim().toUpperCase();
+    return Array.isArray(userPermissions) && userPermissions.some(p => String(p).toUpperCase() === norm);
+  }, [userPermissions]);
+
+  // Může uživatel měnit filtr úseků? (jen admin nebo globální read-all z BASE práv)
   const canChangeUsekFilter = useMemo(() => {
     if (isAdminUser) return true;
-    if (typeof hasPermission !== 'function') return false;
-    return hasPermission('FIN_CONTROL_MANAGE') || hasPermission('EDUCATION_MANAGE') ||
-      hasPermission('SPENDING_MANAGE') || hasPermission('REPORT_MANAGE') ||
-      hasPermission('STATISTICS_MANAGE') || hasPermission('ATTACHMENTS_MANAGE') ||
-      hasPermission('PIVOT_MANAGE') || hasPermission('ORDER_MANAGE') ||
-      hasPermission('SPENDING_VIEW_ALL') || hasPermission('EDUCATION_VIEW_ALL');
-  }, [isAdminUser, hasPermission]);
+    if (!hasBasePermission) return false;
+    return hasBasePermission('ORDER_READ_ALL') || hasBasePermission('ORDER_VIEW_ALL') ||
+      hasBasePermission('SPENDING_VIEW_ALL');
+  }, [isAdminUser, hasBasePermission]);
   const visibleTabs = useMemo(() => {
     if (isAdminUser) return PAGE_TABS;
     if (typeof hasPermission !== 'function') return [];
@@ -2558,6 +2567,7 @@ export default function StatsReportsPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [fullscreenChart]);
   const [orders, setOrders] = useState([]);
+  const [ordersVzdel, setOrdersVzdel] = useState([]);
   const [invoices, setInvoices] = useState([]);
   const [lpEditModal, setLpEditModal] = useState(null); // { invoice, order, lpCerpani, availableLPCodes, loading, saving }
   const [contracts, setContracts] = useState([]);
@@ -2776,11 +2786,24 @@ export default function StatsReportsPage() {
   // Výjimka: PTN (id=6) → předvybrat PTN + PTN-dílny (id=6,7)
   const PTN_USEK_ID = '6';
   const PTN_DILNY_USEK_ID = '7';
+  const resolvedUserUsekId = useMemo(() => {
+    if (!userUsekId) return null;
+    const raw = String(userUsekId);
+    if (/^\d+$/.test(raw)) return raw;
+    const match = (dictionaryUseky || []).find(u => {
+      const zkr = String(u.usek_zkr || '').toUpperCase();
+      const name = String(u.usek_nazev || '').toUpperCase();
+      const rawUpper = raw.toUpperCase();
+      return (zkr && zkr === rawUpper) || (name && name === rawUpper);
+    });
+    if (match) return String(match.id || match.usek_id || '') || null;
+    return null;
+  }, [userUsekId, dictionaryUseky]);
   const userLockedUsekIds = useMemo(() => {
-    if (!userUsekId) return [];
-    if (String(userUsekId) === PTN_USEK_ID) return [PTN_USEK_ID, PTN_DILNY_USEK_ID];
-    return [String(userUsekId)];
-  }, [userUsekId]);
+    if (!resolvedUserUsekId) return [];
+    if (String(resolvedUserUsekId) === PTN_USEK_ID) return [PTN_USEK_ID, PTN_DILNY_USEK_ID];
+    return [String(resolvedUserUsekId)];
+  }, [resolvedUserUsekId]);
 
   useEffect(() => {
     if (canChangeUsekFilter) return; // admin nebo MANAGE → neomezovat
@@ -3237,7 +3260,8 @@ export default function StatsReportsPage() {
     }
   }, [token, username]);
 
-  const loadOrders = useCallback(async () => {
+  const loadOrders = useCallback(async (options = {}) => {
+    const { accessContext = null } = options;
     const all = [];
     const backendFilters = {};
     if (filters.dateFrom) backendFilters.datum_od = filters.dateFrom;
@@ -3250,7 +3274,8 @@ export default function StatsReportsPage() {
         page,
         per_page: MAX_ORDERS_BATCH,
         period: 'all',
-        filters: backendFilters
+        filters: backendFilters,
+        access_context: accessContext || undefined
       });
 
       const { orders: batch, pagination, status, message } = parseOrdersResponse(response);
@@ -3264,14 +3289,14 @@ export default function StatsReportsPage() {
 
       all.push(...batch);
       if (pagination?.total_pages && page >= pagination.total_pages) {
-        return { data: all, truncated: false };
+        return { data: all, truncated: false, accessContext };
       }
       if (!pagination && batch.length < MAX_ORDERS_BATCH) {
-        return { data: all, truncated: false };
+        return { data: all, truncated: false, accessContext };
       }
     }
 
-    return { data: all, truncated: true };
+    return { data: all, truncated: true, accessContext };
   }, [token, username, filters.dateFrom, filters.dateTo]);
 
   const loadInvoices = useCallback(async () => {
@@ -3631,7 +3656,7 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-    if (!forceReload && orders.length > 0) {
+    if (!forceReload && ordersVzdel.length > 0) {
       setLoadedTabs(prev => new Set([...prev, 'vzdel']));
       return;
     }
@@ -3639,8 +3664,8 @@ export default function StatsReportsPage() {
     if (!silent) setLoading(true);
     setLoadingTabs(prev => new Set([...prev, 'vzdel']));
     try {
-      const ordersResult = await loadOrders();
-      setOrders(ordersResult.data || []);
+      const ordersResult = await loadOrders({ accessContext: 'vzdel' });
+      setOrdersVzdel(ordersResult.data || []);
       setLoadedTabs(prev => new Set([...prev, 'vzdel']));
     } catch (e) {
       console.error('❌ Vzdel tab data load failed:', e);
@@ -3654,7 +3679,7 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, orders.length]);
+  }, [token, username, loadOrders, ordersVzdel.length]);
 
   // Pivot tab - potřebuje jen orders
   const loadPivotTabData = useCallback(async (silent = false, forceReload = false) => {
@@ -4164,7 +4189,8 @@ export default function StatsReportsPage() {
     });
   }, [cbMatchData]);
 
-  const ordersById = useMemo(() => new Map(orders.map(order => [String(order.id), order])), [orders]);
+  const baseOrders = useMemo(() => (activeTab === 'vzdel' ? ordersVzdel : orders), [activeTab, ordersVzdel, orders]);
+  const ordersById = useMemo(() => new Map(baseOrders.map(order => [String(order.id), order])), [baseOrders]);
   const invoicesByOrderId = useMemo(() => {
     return invoices.reduce((acc, invoice) => {
       if (!invoice.objednavka_id) return acc;
@@ -4599,8 +4625,12 @@ export default function StatsReportsPage() {
     }, {});
   }, [dictionaryUseky]);
 
+  const ignoreUsekFilter = activeTab === 'vzdel'
+    && typeof hasPermission === 'function'
+    && hasPermission('EDUCATION_VIEW_ALL');
+
   const filteredOrders = useMemo(() => {
-    return orders.filter(order => {
+    return baseOrders.filter(order => {
       const orderDate = toDate(getOrderDate(order));
       if (filters.dateFrom && orderDate && orderDate < new Date(filters.dateFrom)) return false;
       if (filters.dateTo && orderDate && orderDate > new Date(filters.dateTo)) return false;
@@ -4612,7 +4642,7 @@ export default function StatsReportsPage() {
         const code = String(getOrderTypeCode(order) ?? '');
         if (!filters.orderTypes.includes(code)) return false;
       }
-      if (filters.usekIds.length > 0) {
+      if (filters.usekIds.length > 0 && !ignoreUsekFilter) {
         // Přeložit vybrané numeric ID na zkratky (dropdown ukládá ID, V3 objednávky mají zkratku)
         var selectedZkr = filters.usekIds.map(function(id) { return usekIdToZkrMap[id] || ''; }).filter(Boolean);
         // Inline logika getOrdererUsekCode (definován až níže, nelze použít před inicializací)
@@ -4636,7 +4666,7 @@ export default function StatsReportsPage() {
       }
       return true;
     });
-  }, [orders, filters.dateFrom, filters.dateTo, filters.financingValues, filters.orderTypes, filters.usekIds, filters.orderYear, getOrderFinancingCode, getOrderTypeCode, getOrderDate, usekIdToZkrMap]);
+  }, [baseOrders, filters.dateFrom, filters.dateTo, filters.financingValues, filters.orderTypes, filters.usekIds, filters.orderYear, getOrderFinancingCode, getOrderTypeCode, getOrderDate, usekIdToZkrMap, ignoreUsekFilter]);
 
   const filteredInvoices = useMemo(() => {
     return invoices.filter(invoice => {
@@ -7820,10 +7850,14 @@ export default function StatsReportsPage() {
     const isDokoncena = wfCode.includes('DOKONCENA');
     const isZkontrolovana = wfCode.includes('ZKONTROLOVANA');
 
-    // Oprávnění k dokončení: role ADMINISTRATOR/SUPERADMIN nebo právo ORDER_MANAGE/ORDER_COMPLETE
+    // Oprávnění k dokončení: role ADMINISTRATOR/SUPERADMIN nebo právo ORDER_MANAGE/ORDER_COMPLETE/EDUCATION_COMPLETE
     const isAdminUser = hasAdminRole && hasAdminRole();
     const canCompleteVzdel = isAdminUser
-      || (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_COMPLETE')));
+      || (hasPermission && (
+        hasPermission('ORDER_MANAGE') ||
+        hasPermission('ORDER_COMPLETE') ||
+        hasPermission('EDUCATION_COMPLETE')
+      ));
 
     // Objednávka již dokončena → zobrazit badge (funguje i po bg reloadu)
     if (isDokoncena) {

@@ -5940,15 +5940,15 @@ function handle_orders25_complete_order($input, $config, $queries) {
             return;
         }
         
-        // Oprávnění: pouze role SUPERADMIN/ADMINISTRATOR nebo právo ORDER_MANAGE/ORDER_COMPLETE
+                // Oprávnění: pouze role SUPERADMIN/ADMINISTRATOR nebo právo ORDER_MANAGE/ORDER_COMPLETE/EDUCATION_COMPLETE
         // Běžní uživatelé (tvůrce, garant, příkazce) nemohou dokončit objednávku z přehledu
         $can_complete = false;
 
-        // Kontrola práv ORDER_MANAGE nebo ORDER_COMPLETE (přímé nebo přes roli)
+                // Kontrola práv ORDER_MANAGE nebo ORDER_COMPLETE nebo EDUCATION_COMPLETE (přímé nebo přes roli)
         $perm_stmt = $db->prepare("
             SELECT COUNT(*) as cnt
             FROM 25_prava p
-            WHERE p.kod_prava IN ('ORDER_MANAGE', 'ORDER_COMPLETE')
+                        WHERE p.kod_prava IN ('ORDER_MANAGE', 'ORDER_COMPLETE', 'EDUCATION_COMPLETE')
               AND p.aktivni = 1
               AND (
                 p.id IN (
@@ -5989,7 +5989,7 @@ function handle_orders25_complete_order($input, $config, $queries) {
 
         if (!$can_complete) {
             http_response_code(403);
-            echo json_encode(['err' => 'Nemáte oprávnění dokončit tuto objednávku (vyžaduje roli ADMINISTRATOR nebo právo ORDER_MANAGE / ORDER_COMPLETE)']);
+            echo json_encode(['err' => 'Nemáte oprávnění dokončit tuto objednávku (vyžaduje roli ADMINISTRATOR nebo právo ORDER_MANAGE / ORDER_COMPLETE / EDUCATION_COMPLETE)']);
             return;
         }
         

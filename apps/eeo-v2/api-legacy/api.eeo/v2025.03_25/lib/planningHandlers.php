@@ -667,6 +667,7 @@ function handle_planning_messages_list($input, $config) {
         $filter_text = trim((string)($input['filter_text'] ?? ''));
         $filter_dt_od = trim((string)($input['filter_dt_od'] ?? ''));
         $filter_dt_do = trim((string)($input['filter_dt_do'] ?? ''));
+        $filter_status = trim((string)($input['filter_status'] ?? ''));
 
         $include_inactive = !empty($input['include_inactive']);
         $where = [];
@@ -1315,6 +1316,7 @@ function handle_planning_events_list($input, $config) {
         $filter_text = trim((string)($input['filter_text'] ?? ''));
         $filter_dt_od = trim((string)($input['filter_dt_od'] ?? ''));
         $filter_dt_do = trim((string)($input['filter_dt_do'] ?? ''));
+        $filter_status = trim((string)($input['filter_status'] ?? ''));
 
         $include_inactive = !empty($input['include_inactive']);
         $where = [];
@@ -1322,6 +1324,13 @@ function handle_planning_events_list($input, $config) {
             $where[] = 'u.aktivni = 1';
         }
         $params = [];
+
+        $statusCaseCode = "CASE
+            WHEN u.aktivni = 0 THEN 'CANCELED'
+            WHEN COALESCE(u.dt_do, u.dt_od) < NOW() THEN 'EXPIRED'
+            WHEN COALESCE(nc.notif_count, 0) = 0 THEN 'PLANNED'
+            ELSE 'ACTIVE'
+        END";
 
         if ($search_term !== '') {
             $like = '%' . $search_term . '%';
@@ -1352,12 +1361,24 @@ function handle_planning_events_list($input, $config) {
             $where[] = 'DATE(u.dt_do) = ?';
             $params[] = $filter_dt_do;
         }
+        if ($filter_status !== '') {
+            $where[] = $statusCaseCode . ' = ?';
+            $params[] = $filter_status;
+        }
 
         $whereSql = empty($where) ? '1=1' : implode(' AND ', $where);
 
-        $countSql = "SELECT COUNT(*) FROM " . TBL_PLAN_UDALOSTI . " u 
-                     LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id 
-                     WHERE $whereSql";
+                $countSql = "SELECT COUNT(*) FROM " . TBL_PLAN_UDALOSTI . " u 
+                                         LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id
+                                         LEFT JOIN (
+                                                SELECT objekt_id, COUNT(*) as notif_count
+                                                FROM " . TBL_NOTIFIKACE . "
+                                                WHERE typ = 'PLANNING_EVENT_CREATED'
+                                                    AND objekt_typ = 'planning_event'
+                                                    AND aktivni = 1
+                                                GROUP BY objekt_id
+                                         ) nc ON nc.objekt_id = u.id
+                                         WHERE $whereSql";
         $stmtCount = $db->prepare($countSql);
         $stmtCount->execute($params);
         $total = (int)$stmtCount->fetchColumn();
@@ -1376,24 +1397,51 @@ function handle_planning_events_list($input, $config) {
             'dt_updated' => 'u.dt_updated',
             'dt_aktualizace' => 'u.dt_updated', // alias pro kompatibilitu
             'autor' => 'us.prijmeni', // třídění podle jména organizátora
-            'organizator' => 'us.prijmeni' // alias
+            'organizator' => 'us.prijmeni', // alias
+            'stav' => 'status_sort',
+            'status' => 'status_sort'
         ];
         
         $sort_column = $allowed_sort_fields[$sort_field] ?? 'u.dt_updated';
         $sort_dir = in_array($sort_direction, ['ASC', 'DESC']) ? $sort_direction : 'DESC';
 
-        $sql = "SELECT u.*, 
-                       us.jmeno as autor_jmeno, us.prijmeni as autor_prijmeni,
-                       COUNT(DISTINCT up.id) as pocet_prijemcu,
-                       COUNT(DISTINCT CASE WHEN uo.typ_odpovedi = 'accepted' THEN uo.id END) as accepted_count
-                FROM " . TBL_PLAN_UDALOSTI . " u
-                LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id
-                LEFT JOIN " . TBL_PLAN_UDALOSTI_PRIJEMCI . " up ON up.udalost_id = u.id
-                LEFT JOIN " . TBL_PLAN_UDALOSTI_ODPOVEDI . " uo ON uo.udalost_id = u.id
-                WHERE $whereSql
-                GROUP BY u.id
-                ORDER BY $sort_column $sort_dir
-                LIMIT $per_page OFFSET $offset";
+                $statusCaseLabel = "CASE
+                        WHEN u.aktivni = 0 THEN 'ZRUŠENO'
+                        WHEN COALESCE(u.dt_do, u.dt_od) < NOW() THEN 'UKONČENO'
+                        WHEN COALESCE(nc.notif_count, 0) = 0 THEN 'PLÁNOVÁNO'
+                        ELSE 'AKTIVNÍ'
+                END";
+                $statusCaseSort = "CASE
+                        WHEN u.aktivni = 0 THEN 4
+                        WHEN COALESCE(u.dt_do, u.dt_od) < NOW() THEN 3
+                        WHEN COALESCE(nc.notif_count, 0) = 0 THEN 2
+                        ELSE 1
+                END";
+
+                $sql = "SELECT u.*, 
+                                             us.jmeno as autor_jmeno, us.prijmeni as autor_prijmeni,
+                                             COUNT(DISTINCT up.id) as pocet_prijemcu,
+                                             COUNT(DISTINCT CASE WHEN uo.typ_odpovedi = 'accepted' THEN uo.id END) as accepted_count,
+                                             COALESCE(nc.notif_count, 0) as notif_count,
+                                             $statusCaseCode as status_code,
+                                             $statusCaseLabel as status_label,
+                                             $statusCaseSort as status_sort
+                                FROM " . TBL_PLAN_UDALOSTI . " u
+                                LEFT JOIN " . TBL_UZIVATELE . " us ON us.id = u.autor_id
+                                LEFT JOIN " . TBL_PLAN_UDALOSTI_PRIJEMCI . " up ON up.udalost_id = u.id
+                                LEFT JOIN " . TBL_PLAN_UDALOSTI_ODPOVEDI . " uo ON uo.udalost_id = u.id
+                                LEFT JOIN (
+                                        SELECT objekt_id, COUNT(*) as notif_count
+                                        FROM " . TBL_NOTIFIKACE . "
+                                        WHERE typ = 'PLANNING_EVENT_CREATED'
+                                            AND objekt_typ = 'planning_event'
+                                            AND aktivni = 1
+                                        GROUP BY objekt_id
+                                ) nc ON nc.objekt_id = u.id
+                                WHERE $whereSql
+                                GROUP BY u.id
+                                ORDER BY $sort_column $sort_dir
+                                LIMIT $per_page OFFSET $offset";
 
         $stmt = $db->prepare($sql);
         $stmt->execute($params);
