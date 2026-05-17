@@ -1452,6 +1452,7 @@ function handle_invoices25_list($input, $config, $queries) {
         // 1. Vnořené: filters.objednavka_id (původní návrh)
         // 2. Root level: objednavka_id (FE kompatibilita)
         $filters = isset($input['filters']) && is_array($input['filters']) ? $input['filters'] : array();
+        $access_context = isset($input['access_context']) ? $input['access_context'] : null;
         
         // DEBUG: Log raw input to see what we receive
         error_log("Invoices25 LIST: Raw input keys: " . implode(', ', array_keys($input)));
@@ -1545,10 +1546,14 @@ function handle_invoices25_list($input, $config, $queries) {
         
         // Načíst permissions uživatele z DB (pro kontrolu INVOICE_MANAGE)
         // OPRAVENO 2026-03-06: Přidána podmínka role_id = -1 pro přímo přiřazená práva
+        $permissions_where = "p.kod_prava LIKE 'INVOICE_%'";
+        if ($access_context === 'vzdel') {
+            $permissions_where .= " OR p.kod_prava = 'EDUCATION_VIEW_ALL'";
+        }
         $perms_sql = "
             SELECT DISTINCT p.kod_prava
             FROM " . TBL_PRAVA . " p
-            WHERE p.kod_prava LIKE 'INVOICE_%'
+            WHERE ($permissions_where)
             AND p.id IN (
                 -- Přímá práva (user_id != -1, role_id = -1)
                 SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
@@ -1572,6 +1577,7 @@ function handle_invoices25_list($input, $config, $queries) {
         
         // Kontrola INVOICE_MANAGE práva
         $has_invoice_manage = in_array('INVOICE_MANAGE', $user_permissions);
+        $has_education_view_all = $access_context === 'vzdel' && in_array('EDUCATION_VIEW_ALL', $user_permissions);
         
         // 🔥 ADMIN CHECK: SUPERADMIN, ADMINISTRATOR, UCETNI, KONTROLOR_FAKTUR nebo INVOICE_MANAGE = plný přístup (vidí VŠE)
         // Role UCETNI má automatický přístup ke všem fakturám pro účetní operace
@@ -1582,13 +1588,15 @@ function handle_invoices25_list($input, $config, $queries) {
                     in_array('UCETNI', $user_roles) ||
                     in_array('HLAVNI_UCETNI', $user_roles) ||
                     in_array('KONTROLOR_FAKTUR', $user_roles) ||
-                    $has_invoice_manage;
+                $has_invoice_manage ||
+                $has_education_view_all;
         
         // DEBUG logging
         error_log("Invoices25 LIST: User $user_id roles: " . implode(', ', $user_roles));
         error_log("Invoices25 LIST: User $user_id permissions: " . implode(', ', $user_permissions));
         error_log("Invoices25 LIST: User usek_id: " . ($user_usek_id ?: 'NULL') . ", usek_zkr: " . ($user_usek_zkr ?: 'NULL'));
         error_log("Invoices25 LIST: Has INVOICE_MANAGE: " . ($has_invoice_manage ? 'YES' : 'NO'));
+        error_log("Invoices25 LIST: Has EDUCATION_VIEW_ALL (vzdel context): " . ($has_education_view_all ? 'YES' : 'NO'));
         error_log("Invoices25 LIST: Is admin (SUPERADMIN/ADMINISTRATOR/UCETNI/HLAVNI_UCETNI/KONTROLOR_FAKTUR/INVOICE_MANAGE): " . ($is_admin ? 'YES' : 'NO'));
 
         // USER ISOLATION: non-admin vidí pouze své faktury nebo faktury kde je účastníkem

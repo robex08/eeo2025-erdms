@@ -1697,6 +1697,7 @@ export async function restoreInvoiceV2(invoiceId, token, username) {
  * @param {string} [params.stredisko] - Středisko kód (partial match)
  * @param {number} [params.organizace_id] - ID organizace
  * @param {number} [params.usek_id] - ID úseku (automaticky aplikován pro non-admin)
+ * @param {string} [params.access_context] - Kontext přístupu (např. "vzdel")
  * @returns {Promise<Object>} Response object
  * @returns {Array} return.faktury - Pole faktur (BE vrací již naparsovaná pole!)
  * @returns {Object} return.pagination - { page, per_page, total, total_pages }
@@ -1721,6 +1722,7 @@ export async function listInvoices25({
   stredisko,
   organizace_id,
   usek_id,
+  access_context,
   filter_status,  // Dashboard filter (paid/unpaid/overdue/without_order/my_invoices)
   search_term,    // 🔍 Globální vyhledávání
   cislo_objednavky,  // 📋 Sloupcový filtr - číslo objednávky
@@ -1766,6 +1768,7 @@ export async function listInvoices25({
     if (stredisko !== undefined) payload.stredisko = stredisko;
     if (organizace_id !== undefined) payload.organizace_id = organizace_id;
     if (usek_id !== undefined) payload.usek_id = usek_id;
+    if (access_context !== undefined && access_context !== '') payload.access_context = access_context;
     if (filter_status !== undefined && filter_status !== '') payload.filter_status = filter_status;
     
     // 🔍 Globální vyhledávání
