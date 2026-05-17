@@ -2027,22 +2027,23 @@ function handle_order_v3_list($input, $config, $queries) {
         
         $is_admin_v2 = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params, $access_context);
 
-        // ⚠️ Vyloučit zrušené, zamítnuté a smazané objednávky (vždy, pokud není explicitně požadováno v filtru)
-        // Kontrola, jestli uživatel explicitně nežádá tyto stavy přes filtr
-        $explicit_cancelled_states = false;
-        if (!empty($filters['stav']) && is_array($filters['stav'])) {
-            foreach ($filters['stav'] as $stav_key) {
-                $stav_upper = strtoupper(trim($stav_key));
-                if ($stav_upper === 'ZRUSENA' || $stav_upper === 'ZAMITNUTA' || $stav_upper === 'SMAZANA') {
-                    $explicit_cancelled_states = true;
-                    break;
-                }
-            }
+        // ========================================================================
+        // Volitelne filtrovani zrusenych/zamitnutych objednavek
+        // ========================================================================
+        // Defaultne v Order V3 listu zobrazujeme vse (krome id=1 a aktivni=0).
+        // Pro Stats/Report lze explicitne pozadovat vylouceni techto stavu.
+        // ========================================================================
+        $exclude_cancelled = false;
+        if (isset($input['exclude_cancelled'])) {
+            $exclude_cancelled = filter_var($input['exclude_cancelled'], FILTER_VALIDATE_BOOLEAN);
         }
-        
-        // Pokud uživatel explicitně nepožaduje zrušené stavy, vyl ouč je
-        if (!$explicit_cancelled_states) {
-            $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN (?, ?, ?)";
+        if (isset($filters['exclude_cancelled'])) {
+            $exclude_cancelled = $exclude_cancelled || filter_var($filters['exclude_cancelled'], FILTER_VALIDATE_BOOLEAN);
+        }
+
+        if ($exclude_cancelled) {
+            $where_conditions[] = "(COALESCE(JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))), '') NOT IN (?, ?, ?)"
+                . " AND " . sqlNormalizeExpression('o.stav_objednavky') . " NOT IN ('zrusena', 'zamitnuta', 'smazana', 'storno', 'stornovana'))";
             $where_params[] = 'ZRUSENA';
             $where_params[] = 'ZAMITNUTA';
             $where_params[] = 'SMAZANA';

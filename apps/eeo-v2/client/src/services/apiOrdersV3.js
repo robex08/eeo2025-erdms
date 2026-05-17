@@ -48,6 +48,7 @@ export async function fetchLPList({ token, username }) {
  * @param {string} params.period - Období objednávek (all/current-month/last-month/last-quarter/all-months)
  * @param {Object} params.filters - Filtry (volitelné)
  * @param {Array} params.sorting - Třídění (volitelné)
+ * @param {boolean} params.exclude_cancelled - Vyloučit zrusene/zamitnute (volitelné)
  * @returns {Promise<Object>} Response s orders, pagination, stats
  */
 export async function listOrdersV3({
@@ -59,6 +60,7 @@ export async function listOrdersV3({
   filters = {},
   sorting = [],
   access_context = null,
+  exclude_cancelled = false,
   signal = undefined
 }) {
   const response = await fetch(`${API_BASE_URL}/order-v3/list`, {
@@ -75,7 +77,8 @@ export async function listOrdersV3({
       period,
       filters,
       sorting,
-      access_context
+      access_context,
+      exclude_cancelled
     }),
   });
 
