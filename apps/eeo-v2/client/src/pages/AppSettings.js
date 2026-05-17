@@ -5,7 +5,7 @@ import {
   faCog, faBell, faEnvelope, faSitemap, faTools, 
   faToggleOn, faSave, faUndo, faExclamationTriangle,
   faInfoCircle, faCodeBranch, faRss, faPlus, faTrash,
-  faUserClock, faEye, faShieldAlt, faKey
+  faUserClock, faEye, faShieldAlt, faKey, faUserSecret
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -425,6 +425,10 @@ const AppSettings = () => {
     return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN');
   }, [userDetail]);
   
+  const isSuperAdminOrAdmin = useMemo(() => {
+    return userDetail?.roles?.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR');
+  }, [userDetail]);
+  
   useEffect(() => {
     loadSettings();
     loadHierarchyProfiles();
@@ -466,6 +470,12 @@ const AppSettings = () => {
       
       // Převést boolean hodnoty z API (backend posílá 0/1 string)
       data.post_login_modal_enabled = data.post_login_modal_enabled === '1' || data.post_login_modal_enabled === 1 || data.post_login_modal_enabled === true;
+      
+      // Převést user_impersonation_enabled na boolean
+      if (data.user_impersonation_enabled === undefined) {
+        data.user_impersonation_enabled = false; // Default vypnuto
+      }
+      data.user_impersonation_enabled = data.user_impersonation_enabled === '1' || data.user_impersonation_enabled === 1 || data.user_impersonation_enabled === true;
       
       setSettings(data);
       setOriginalSettings(data);
@@ -967,6 +977,70 @@ const AppSettings = () => {
             )}
           </SettingCard>
           
+          {/* USER IMPERSONATION */}
+          <SettingCard>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faUserSecret} />
+              </CardIcon>
+              <div>
+                <CardTitle>Přepínání uživatelů (Impersonation)</CardTitle>
+                <StatusBadge $active={settings.user_impersonation_enabled}>
+                  {settings.user_impersonation_enabled ? 'Aktivní' : 'Vypnuto'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faToggleOn} />
+                  Povolit impersonation
+                </SettingLabel>
+                <SettingDescription>
+                  Umožní superadmin a administrator účtům dočasně se přepnout na jiného uživatele a získat jeho práva. Po přepnutí vidí pouze menu a funkce daného uživatele.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.user_impersonation_enabled}
+                onClick={() => toggleSetting('user_impersonation_enabled')}
+                disabled={!isSuperAdminOrAdmin}
+              >
+                <ToggleThumb $active={settings.user_impersonation_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {!isSuperAdminOrAdmin && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faShieldAlt} />
+                <div>
+                  <strong>Pouze pro SUPERADMIN nebo ADMINISTRATOR</strong><br />
+                  Toto nastavení mohou měnit pouze uživatelé s rolí SUPERADMIN nebo ADMINISTRATOR z bezpečnostních důvodů.
+                </div>
+              </WarningBox>
+            )}
+            
+            {settings.user_impersonation_enabled && isSuperAdmin && (
+              <WarningBox $type="info">
+                <FontAwesomeIcon icon={faInfoCircle} />
+                <div>
+                  <strong>Impersonation je aktivní</strong><br />
+                  Superadmin a administrator vidí ikonu pro přepnutí v hlavičce aplikace (vedle kalendáře). Po přepnutí na jiného uživatele získají jeho práva a vidí pouze jeho menu. Všechny akce jsou zaznamenány v audit logu.
+                </div>
+              </WarningBox>
+            )}
+            
+            {!settings.user_impersonation_enabled && isSuperAdmin && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <div>
+                  <strong>Impersonation je vypnuto!</strong><br />
+                  Ikona pro přepínání uživatelů se nezobrazuje. Backend API odmítne všechny pokusy o impersonation s HTTP 403.
+                </div>
+              </WarningBox>
+            )}
+          </SettingCard>
+          
           {/* ÚDRŽBA SYSTÉMU */}
           <SettingCard $warning={settings.maintenance_mode}>
             <CardHeader>
@@ -988,13 +1062,13 @@ const AppSettings = () => {
                   Režim údržby
                 </SettingLabel>
                 <SettingDescription>
-                  Aktivuje údržbový režim - přístup pouze pro SUPERADMIN.
+                  Aktivuje údržbový režim - přístup pouze pro SUPERADMIN nebo ADMINISTRATOR.
                 </SettingDescription>
               </SettingInfo>
               <ToggleButton
                 $active={settings.maintenance_mode}
                 onClick={() => toggleSetting('maintenance_mode')}
-                disabled={!isSuperAdmin}
+                disabled={!isSuperAdminOrAdmin}
               >
                 <ToggleThumb $active={settings.maintenance_mode} />
               </ToggleButton>
@@ -1017,7 +1091,7 @@ const AppSettings = () => {
                       maintenance_message: e.target.value
                     }))}
                     placeholder="Zadejte zprávu o údržbě..."
-                    disabled={!isSuperAdmin}
+                    disabled={!isSuperAdminOrAdmin}
                   />
                 </SettingInfo>
               </SettingRow>

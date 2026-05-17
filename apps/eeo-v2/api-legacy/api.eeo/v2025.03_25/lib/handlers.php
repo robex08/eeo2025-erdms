@@ -3455,12 +3455,8 @@ function handle_users_list($input, $config, $queries) {
     if (!$token_data) {
         http_response_code(401);
         echo json_encode(array(
-            'err' => 'Neplatný nebo chybějící token',
-            'debug' => array(
-                'token' => $token,
-                'token_decoded' => $token ? base64_decode($token) : null,
-                'token_parts' => $token ? explode('|', base64_decode($token)) : null
-            )
+            'status' => 'error',
+            'message' => 'Neplatný nebo chybějící token'
         ));
         return;
     }
@@ -3468,7 +3464,10 @@ function handle_users_list($input, $config, $queries) {
     // Ověření, že username z tokenu odpovídá username z požadavku
     if ($token_data['username'] !== $request_username) {
         http_response_code(401);
-        echo json_encode(array('err' => 'Username z tokenu neodpovídá username z požadavku'));
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Username z tokenu neodpovídá username z požadavku'
+        ));
         return;
     }
 
@@ -3625,11 +3624,21 @@ function handle_users_list($input, $config, $queries) {
             $users_with_roles[] = $user;
         }
 
-        echo json_encode($users_with_roles);
+        // ✅ Standardní formát odpovědi podle Order V2
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => $users_with_roles,
+            'message' => 'Seznam uživatelů načten úspěšně',
+            'count' => count($users_with_roles)
+        ));
         exit;
     } catch (Exception $e) {
         http_response_code(500);
-        echo json_encode(array('err' => 'Chyba databáze: ' . $e->getMessage()));
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba databáze: ' . $e->getMessage()
+        ));
         exit;
     }
 }

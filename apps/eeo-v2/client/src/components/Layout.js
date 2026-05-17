@@ -2,8 +2,9 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends, faUserSecret, faSpinner } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
+import ImpersonationDialog from './ImpersonationDialog';
 import { AuthContext } from '../context/AuthContext';
 import { changePasswordApi2 } from '../services/api2auth';
 import CalendarPanel from './panels/CalendarPanel';
@@ -152,14 +153,16 @@ const layoutStyle = css`
   position: relative;
   overflow: hidden;
 `;
-const Header = styled.header(({ theme }) => {
+const Header = styled.header(({ theme, impersonationActive }) => {
   // Detekce dev prostředí z URL
   const isDevEnv = typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/');
   
-  // Dev: tmavě hnědá → tmavě červená, Produkce: modrý gradient
-  const gradient = isDevEnv
-    ? 'linear-gradient(135deg, #654321 0%, #8B4513 40%, #A0522D 70%, #8B0000 100%)'
-    : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryAccent} 70%, ${theme.colors.primaryAccentAlt} 100%)`;
+  // Impersonation: černý gradient, Dev: tmavě hnědá → tmavě červená, Produkce: modrý gradient
+  const gradient = impersonationActive
+    ? 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 40%, #404040 70%, #4a4a4a 100%)'
+    : isDevEnv
+      ? 'linear-gradient(135deg, #654321 0%, #8B4513 40%, #A0522D 70%, #8B0000 100%)'
+      : `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.primaryAccent} 70%, ${theme.colors.primaryAccentAlt} 100%)`;
   
   return `
     position: fixed;
@@ -1118,6 +1121,57 @@ const FooterCenter = styled.div`
     pointer-events: auto;
   }
 `;
+
+// 🔐 USER IMPERSONATION: Loading gate overlay pro přepnutí
+const ImpersonationLoadingGate = styled.div`
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fadeIn 0.2s ease;
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+`;
+
+const LoadingGateContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+  color: #fff;
+  font-size: 1.2rem;
+  font-weight: 500;
+  
+  .spinner {
+    font-size: 2.5rem;
+    color: ${({theme}) => theme.colors.gold};
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+`;
+
 // (RSS logic is defined inside Layout component to respect Hooks rules)
 
 // Paleta barev pro poznámky
@@ -1975,7 +2029,19 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod, impersonationFeatureEnabled, impersonationActive, originalAdminUser, startImpersonationContext, stopImpersonationContext } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus + impersonation
+  
+  // 🔐 DEBUG: Logovat impersonation state
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔐 Layout.js - Impersonation state:', {
+        impersonationActive,
+        hasOriginalAdminUser: !!originalAdminUser,
+        originalAdminUsername: originalAdminUser?.username
+      });
+    }
+  }, [impersonationActive, originalAdminUser]);
+  
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
   // Change password dialog state (menu)
@@ -2810,6 +2876,11 @@ const Layout = ({ children }) => {
   const [notifMounted, setNotifMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const calendarBtnRef = useRef(null);
+  
+  // 🔐 USER IMPERSONATION: Dialog state
+  const [impersonationDialogOpen, setImpersonationDialogOpen] = useState(false);
+  const [impersonationTransitioning, setImpersonationTransitioning] = useState(false);
+  
   useEffect(() => {
     if (notifOpen) setNotifMounted(true);
     else {
@@ -3108,6 +3179,97 @@ const Layout = ({ children }) => {
     await performLogoutCleanup();
     await logout();
     navigate('/login');
+  };
+
+  // 🔐 USER IMPERSONATION: Handler pro zahájení impersonation
+  const handleStartImpersonation = async (targetUserData) => {
+    setImpersonationTransitioning(true);
+    try {
+      const success = await startImpersonationContext(targetUserData.id);
+      if (success) {
+        setImpersonationDialogOpen(false); // ✅ Zavřít dialog po úspěchu
+        
+        // 🔄 Reload user settings pro nového uživatele (helper avatar, tool icons visibility)
+        window.dispatchEvent(new Event('userSettingsChanged'));
+        
+        if (showToast) {
+          // Sestavit kompletní jméno s titulem
+          let fullName = '';
+          if (targetUserData.userDetail) {
+            const ud = targetUserData.userDetail;
+            fullName = [
+              ud.titul_pred,
+              ud.jmeno,
+              ud.prijmeni,
+              ud.titul_za ? `, ${ud.titul_za}` : ''
+            ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+            
+            // Přidat úsek a lokalitu
+            const usek = ud.usek_zkr || '';
+            const lokalita = ud.lokalita_nazev?.nazev || ud.lokalita?.nazev || '';
+            
+            if (usek || lokalita) {
+              fullName += ' | ';
+              if (usek) fullName += usek;
+              if (usek && lokalita) fullName += ' | ';
+              if (lokalita) fullName += lokalita;
+            }
+          } else {
+            fullName = targetUserData.username;
+          }
+          
+          showToast(`Přepnuto na uživatele: ${fullName}`, { type: 'success', timeout: 5000 });
+        }
+      } else if (!success && showToast) {
+        showToast('Nepodařilo se přepnout na uživatele', { type: 'error', timeout: 5000 });
+      }
+    } catch (error) {
+      console.error('❌ Chyba při přepnutí na uživatele:', error);
+      if (showToast) {
+        showToast('Chyba při přepnutí na uživatele', { type: 'error', timeout: 5000 });
+      }
+    } finally {
+      setTimeout(() => setImpersonationTransitioning(false), 300);
+    }
+  };
+
+  // 🔐 USER IMPERSONATION: Handler pro ukončení impersonation
+  const handleStopImpersonation = async () => {
+    setImpersonationTransitioning(true);
+    try {
+      const success = await stopImpersonationContext();
+      if (success) {
+        // 🔄 Reload user settings pro původního admina (helper avatar, tool icons visibility)
+        window.dispatchEvent(new Event('userSettingsChanged'));
+        
+        if (showToast) {
+          // Sestavit kompletní jméno admina
+          let adminName = 'původní účet';
+          if (originalAdminUser?.userDetail) {
+            const ud = originalAdminUser.userDetail;
+            adminName = [
+              ud.titul_pred,
+              ud.jmeno,
+              ud.prijmeni,
+              ud.titul_za ? `, ${ud.titul_za}` : ''
+            ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+          } else if (originalAdminUser?.username) {
+            adminName = originalAdminUser.username;
+          }
+          
+          showToast(`Vráceno na ${adminName}`, { type: 'success', timeout: 5000 });
+        }
+      } else if (!success && showToast) {
+        showToast('Nepodařilo se vrátit na původní účet', { type: 'error', timeout: 5000 });
+      }
+    } catch (error) {
+      console.error('❌ Chyba při návratu na původní účet:', error);
+      if (showToast) {
+        showToast('Chyba při návratu na původní účet', { type: 'error', timeout: 5000 });
+      }
+    } finally {
+      setTimeout(() => setImpersonationTransitioning(false), 300);
+    }
   };
 
   // 🔐 EntraID: Odejít z aplikace na ERDMS Dashboard (BEZ odhlášení z Entra)
@@ -3431,7 +3593,7 @@ const Layout = ({ children }) => {
     font-weight: 700 !important;
   }
       `} />
-  <Header data-auth={isLoggedIn ? '1':'0'}>
+  <Header data-auth={isLoggedIn ? '1':'0'} impersonationActive={impersonationActive}>
         <HeaderLeft>
           <HeaderLogo src={ASSETS.LOGO_ZZS_MAIN} alt="ZZS Středočeského kraje" />
           <div>
@@ -3521,16 +3683,33 @@ const Layout = ({ children }) => {
                       aria-label="DEBUG panel"
                       style={{
                         fontSize: 'var(--app-header-title-size, 1.75rem)',
-                        background: isActive('/debug') 
-                          ? 'linear-gradient(135deg, #ffffff 0%, #dc2626 100%)'
-                          : 'linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(220,38,38,0.8) 100%)',
-                        WebkitBackgroundClip: 'text',
-                        WebkitTextFillColor: 'transparent',
-                        backgroundClip: 'text',
+                        color: isActive('/debug') ? '#16a34a' : undefined, // undefined = použije výchozí zlatou z CalendarBtn
                         marginRight: '0.5rem'
                       }}
                     >
                       <FontAwesomeIcon icon={faBug} />
+                    </CalendarBtn>
+                  )}
+                  {/* USER IMPERSONATION - BEZPEČNÁ podmínka:
+                      1) Admin spouští impersonation (není aktivní + má admin práva)
+                      2) NEBO končí impersonation (aktivní + validní originalAdminUser backup)
+                      NIKDY nesmí běžný uživatel vidět ikonu, i kdyby hackoval localStorage! */}
+                  {impersonationFeatureEnabled && (
+                    (impersonationActive && originalAdminUser) ||
+                    (!impersonationActive && hasPermission && (hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR')))
+                  ) && (
+                    <CalendarBtn 
+                      onClick={() => impersonationActive ? handleStopImpersonation() : setImpersonationDialogOpen(true)}
+                      title={impersonationActive ? "Ukončit impersonation - vrátit se zpět" : "Přepnout na jiného uživatele"}
+                      aria-label="User impersonation"
+                      style={{
+                        fontSize: 'var(--app-header-title-size, 1.75rem)',
+                        color: impersonationActive ? '#16a34a' : undefined, // undefined = použije výchozí zlatou z CalendarBtn
+                        marginRight: '0.5rem',
+                        animation: impersonationActive ? 'pulse 2s infinite' : 'none'
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faUserSecret} />
                     </CalendarBtn>
                   )}
                   {/* Kalendář - ref MUSÍ být přímo na tlačítku! */}
@@ -3628,8 +3807,28 @@ const Layout = ({ children }) => {
                     <MicrosoftIcon size="14px" />
                   </span>
                 )}
-                Přihlášený uživatel: <span style={{ fontWeight: 600 }}>
-                  {`${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim() || 'Neuvedeno'}
+                Uživatel: <span style={{ fontWeight: 600 }}>
+                  {impersonationActive && originalAdminUser ? (
+                    // IMPERSONATION AKTIVNÍ - zobrazit "admin je přihlášen za uživatele: XY"
+                    <>
+                      {originalAdminUser.userDetail ? (
+                        <>
+                          {originalAdminUser.userDetail.titul_pred && `${originalAdminUser.userDetail.titul_pred} `}
+                          {originalAdminUser.userDetail.jmeno} {originalAdminUser.userDetail.prijmeni}
+                          {originalAdminUser.userDetail.titul_za && `, ${originalAdminUser.userDetail.titul_za}`}
+                        </>
+                      ) : (
+                        originalAdminUser.username
+                      )}
+                      {' '}<span style={{ color: '#fbbf24' }}>je přihlášen za uživatele:</span>{' '}
+                      {userDetail.titul_pred && `${userDetail.titul_pred} `}
+                      {userDetail.jmeno} {userDetail.prijmeni}
+                      {userDetail.titul_za && `, ${userDetail.titul_za}`}
+                    </>
+                  ) : (
+                    // NORMÁLNÍ STAV - zobrazit aktuálního uživatele
+                    `${userDetail.titul_pred ? userDetail.titul_pred + ' ' : ''}${userDetail.jmeno || ''} ${userDetail.prijmeni || ''}${userDetail.titul_za ? ', ' + userDetail.titul_za : ''}`.replace(/\s+/g, ' ').trim() || 'Neuvedeno'
+                  )}
                   {(() => {
                     const todayStr = new Date().toISOString().split('T')[0];
                     const activeSubstitutions = (substituting || []).filter(s => s.aktivni && todayStr >= s.dt_od && todayStr <= s.dt_do);
@@ -5498,6 +5697,24 @@ const Layout = ({ children }) => {
           setCalculatorLastExpression(expression);
         }}
       />
+
+      {/* 🔐 USER IMPERSONATION DIALOG */}
+      <ImpersonationDialog
+        isOpen={impersonationDialogOpen}
+        onClose={() => setImpersonationDialogOpen(false)}
+        onSuccess={handleStartImpersonation}
+      />
+
+      {/* 🔐 USER IMPERSONATION: Loading gate při přepínání */}
+      {impersonationTransitioning && ReactDOM.createPortal(
+        <ImpersonationLoadingGate>
+          <LoadingGateContent>
+            <FontAwesomeIcon icon={faSpinner} className="spinner" spin />
+            <div>Přepínání uživatele...</div>
+          </LoadingGateContent>
+        </ImpersonationLoadingGate>,
+        document.body
+      )}
 
     </div>
   );

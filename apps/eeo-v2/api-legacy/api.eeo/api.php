@@ -343,6 +343,9 @@ require_once __DIR__ . '/v2025.03_25/lib/systemAuthHandlers.php';
 // ENTRA AUTH - EntraID OAuth callback and provisioning
 require_once __DIR__ . '/v2025.03_25/lib/entraAuthHandlers.php';
 
+// IMPERSONATION - User impersonation for superadmin/administrator
+require_once __DIR__ . '/v2025.03_25/lib/impersonationHandlers.php';
+
 // === CORS PREFLIGHT HANDLER - Handle OPTIONS requests first ===
 // This allows localhost:3000 development to work properly
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -1759,6 +1762,25 @@ switch ($endpoint) {
         } else {
             http_response_code(405);
             echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+
+    // ============ USER IMPERSONATION ============
+    case 'impersonation/start':
+        if ($request_method === 'POST') {
+            handle_impersonation_start($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'impersonation/stop':
+        if ($request_method === 'POST') {
+            handle_impersonation_stop($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Method not allowed'));
         }
         break;
 

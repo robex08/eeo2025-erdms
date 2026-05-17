@@ -206,6 +206,9 @@ export const performLogoutCleanup = (options = {}) => {
   // 3. 🔒 KRITICKÉ: Explicitní čištění TODO a POZNÁMEK všech uživatelů!
   // Záloha proti úniku dat mezi uživateli - smaže VŠECHNY TODO/NOTES klíče
   if (!dryRun) {
+    // 🔐 IMPERSONATION: Při logout VŽDY smazat impersonation state
+    // Fresh login vyžaduje čistý stav
+    
     const explicitCleanupKeys = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -216,7 +219,9 @@ export const performLogoutCleanup = (options = {}) => {
         key.includes('notes_text_') ||
         key.includes('chat_messages_') ||
         key.includes('chat_data_') ||
-        key.includes('notif_data_')
+        key.includes('notif_data_') ||
+        // 🔐 IMPERSONATION: Vyčistit impersonation state VŽDY při logout
+        key.includes('impersonation_')
       ) && !toDelete.includes(key)) {
         explicitCleanupKeys.push(key);
       }
