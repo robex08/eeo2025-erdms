@@ -81,42 +81,42 @@ WHERE p.kod_prava = 'DASHBOARD_ACTIVE_USERS'
   AND r.kod_role = 'SUPERADMIN';
 
 -- ============================================================================
--- 6. FAKTURY - Věcná správnost sloupce
+-- 6. FAKTURY - Vecna spravnost sloupce
 -- ============================================================================
 SELECT 
-    '6. Faktury - Věcná správnost sloupce' AS test_name,
+        '6. Faktury - Vecna spravnost sloupce' AS test_name,
     CASE 
-        WHEN COUNT(*) >= 5 THEN '✅ OK - všechny sloupce věcné správnosti existují'
-        WHEN COUNT(*) > 0 THEN '⚠️  ČÁSTEČNĚ - některé sloupce chybí'
-        ELSE '❌ CHYBÍ - nutná migrace migration_faktury_vecna_spravnost.sql'
+                WHEN COUNT(*) >= 5 THEN '✅ OK - vsechny sloupce vecne spravnosti existuji'
+                WHEN COUNT(*) > 0 THEN '⚠️  CASTECNE - nektere sloupce chybi'
+                ELSE '❌ CHYBI - zkontroluj strukturu tabulky 25a_objednavky_faktury'
     END AS status,
     COUNT(*) as pocet_sloupcu,
     GROUP_CONCAT(COLUMN_NAME SEPARATOR ', ') as nalezene_sloupce
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = '25a_faktury_objednavek'
+    AND TABLE_NAME = '25a_objednavky_faktury'
   AND COLUMN_NAME IN (
-    'potvrzeni_vecne_spravnosti',
-    'potvrzeno_uzivatel_id',
-    'potvrzeno_datum',
+        'potvrdil_vecnou_spravnost_id',
+        'dt_potvrzeni_vecne_spravnosti',
     'vecna_spravnost_umisteni_majetku',
-    'vecna_spravnost_poznamka'
+        'vecna_spravnost_poznamka',
+        'vecna_spravnost_potvrzeno'
   );
 
 -- ============================================================================
--- 7. FAKTURY - Foreign key na uživatele (věcná správnost)
+-- 7. FAKTURY - Foreign key na uzivatele (vecna spravnost)
 -- ============================================================================
 SELECT 
-    '7. Faktury - FK věcná správnost' AS test_name,
+    '7. Faktury - FK vecna spravnost' AS test_name,
     CASE 
         WHEN COUNT(*) > 0 THEN '✅ OK - foreign key existuje'
-        ELSE '⚠️  CHYBÍ - foreign key na potvrzeno_uzivatel_id (nemusí být kritické)'
+        ELSE '⚠️  CHYBI - foreign key na potvrdil_vecnou_spravnost_id (nemusi byt kriticke)'
     END AS status,
     COUNT(*) as fk_existuje
 FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = '25a_faktury_objednavek'
-  AND COLUMN_NAME = 'potvrzeno_uzivatel_id'
+  AND TABLE_NAME = '25a_objednavky_faktury'
+  AND COLUMN_NAME = 'potvrdil_vecnou_spravnost_id'
   AND REFERENCED_TABLE_NAME IS NOT NULL;
 
 -- ============================================================================
@@ -199,17 +199,17 @@ WHERE TABLE_SCHEMA = DATABASE()
   AND COLUMN_NAME IN ('dt_vytvoreni', 'dt_aktualizace')
 ORDER BY ORDINAL_POSITION;
 
--- Faktury - věcná správnost
+-- Faktury - vecna spravnost
 SELECT 
-    'Faktury - věcná správnost struktura' AS info,
+        'Faktury - vecna spravnost struktura' AS info,
     COLUMN_NAME,
     COLUMN_TYPE,
     IS_NULLABLE,
     COLUMN_DEFAULT
 FROM INFORMATION_SCHEMA.COLUMNS
 WHERE TABLE_SCHEMA = DATABASE()
-  AND TABLE_NAME = '25a_faktury_objednavek'
-  AND COLUMN_NAME LIKE '%vecn%' OR COLUMN_NAME LIKE '%potvrzeno%'
+    AND TABLE_NAME = '25a_objednavky_faktury'
+    AND (COLUMN_NAME LIKE '%vecn%' OR COLUMN_NAME LIKE '%potvrzeno%')
 ORDER BY ORDINAL_POSITION;
 
 -- Uživatelé - Entra

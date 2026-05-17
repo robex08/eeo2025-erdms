@@ -585,6 +585,27 @@ const Panel = styled.div`
   position: sticky;
   top: 4.5rem;
   margin-bottom: 3rem;
+  max-height: calc(100vh - 6.5rem - var(--app-footer-height, 54px));
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: #c7d2fe #f1f5f9;
+
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #c7d2fe;
+    border-radius: 999px;
+    border: 2px solid #f1f5f9;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: #a5b4fc;
+  }
 `;
 const PivotPanel = styled.div`
   margin-bottom: 1.5rem;
@@ -1303,6 +1324,70 @@ const TbodyGroupOrange = styled(TbodyGroup)`
   }
 `;
 
+// Fialová skupina řádků pro objednávky v průběhu dokončování
+const TbodyGroupCompleting = styled(TbodyGroup)`
+  & tr:first-child td:first-child {
+    border-left: 4px solid #8b5cf6;
+    padding-left: 0.6rem;
+  }
+
+  &:nth-of-type(odd) tr {
+    background-color: #f5f3ff;
+  }
+  &:nth-of-type(odd) tr td:first-child {
+    background: #f5f3ff !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+
+  &:nth-of-type(even) tr {
+    background-color: #f5f3ff;
+  }
+  &:nth-of-type(even) tr td:first-child {
+    background: #f5f3ff !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+
+  &:hover tr {
+    background-color: #ddd6fe !important;
+  }
+  &:hover tr td:first-child {
+    background: #ddd6fe !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
+  }
+`;
+
+// Modrá skupina řádků pro čerstvě dokončené objednávky
+const TbodyGroupCompleted = styled(TbodyGroup)`
+  & tr:first-child td:first-child {
+    border-left: 4px solid #0ea5e9;
+    padding-left: 0.6rem;
+  }
+
+  &:nth-of-type(odd) tr {
+    background-color: #e0f2fe;
+  }
+  &:nth-of-type(odd) tr td:first-child { 
+    background: #e0f2fe !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+
+  &:nth-of-type(even) tr {
+    background-color: #e0f2fe;
+  }
+  &:nth-of-type(even) tr td:first-child { 
+    background: #e0f2fe !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+  }
+
+  &:hover tr {
+    background-color: #bae6fd !important;
+  }
+  &:hover tr td:first-child { 
+    background: #bae6fd !important;
+    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
+  }
+`;
+
 const Th = styled.th`
   text-align: left;
   padding: 0.5rem 0.35rem;
@@ -1923,6 +2008,23 @@ const getOrderLimit = (order) => {
   return Number.isNaN(limit) ? 0 : limit;
 };
 
+const getOrderAmountSource = (order, invoices = null) => {
+  const invoiceTotal = Array.isArray(invoices)
+    ? invoices.reduce((sum, inv) => sum + getInvoiceAmount(inv), 0)
+    : parseFloat(order?.faktury_celkova_castka_s_dph || 0);
+  if (!Number.isNaN(invoiceTotal) && invoiceTotal > 0) {
+    return { value: invoiceTotal, source: 'FA' };
+  }
+
+  const itemsTotal = getOrderPlannedAmount(order) || 0;
+  if (!Number.isNaN(itemsTotal) && itemsTotal > 0) {
+    return { value: itemsTotal, source: 'OBJ' };
+  }
+
+  const limit = getOrderLimit(order) || 0;
+  return { value: Number.isNaN(limit) ? 0 : limit, source: 'MAX' };
+};
+
 const getOrderDate = (order) => {
   return order?.datum_vytvoreni || order?.dt_vytvoreni || order?.dt_objednavky || order?.datum_objednavky || null;
 };
@@ -2485,13 +2587,26 @@ export default function StatsReportsPage() {
     return Array.isArray(userPermissions) && userPermissions.some(p => String(p).toUpperCase() === norm);
   }, [userPermissions]);
 
+  const hasEducationViewAll = useMemo(() => {
+    if (typeof hasPermission === 'function' && hasPermission('EDUCATION_VIEW_ALL')) return true;
+    // Pokud userPermissions ještě nejsou načtené, vrátíme null (ne false!)
+    if (!Array.isArray(userPermissions) || userPermissions.length === 0) return null;
+    if (!hasBasePermission) return false;
+    return hasBasePermission('EDUCATION_VIEW_ALL');
+  }, [hasPermission, hasBasePermission, userPermissions]);
+
   // Může uživatel měnit filtr úseků? (jen admin nebo globální read-all z BASE práv)
   const canChangeUsekFilter = useMemo(() => {
     if (isAdminUser) return true;
+    if (typeof hasPermission === 'function') {
+      if (hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') || hasPermission('SPENDING_VIEW_ALL')) return true;
+    }
+    // Pokud userPermissions ještě nejsou načtené, vrátíme null
+    if (!Array.isArray(userPermissions) || userPermissions.length === 0) return null;
     if (!hasBasePermission) return false;
     return hasBasePermission('ORDER_READ_ALL') || hasBasePermission('ORDER_VIEW_ALL') ||
       hasBasePermission('SPENDING_VIEW_ALL');
-  }, [isAdminUser, hasBasePermission]);
+  }, [isAdminUser, hasPermission, hasBasePermission, userPermissions]);
   const visibleTabs = useMemo(() => {
     if (isAdminUser) return PAGE_TABS;
     if (typeof hasPermission !== 'function') return [];
@@ -2540,6 +2655,11 @@ export default function StatsReportsPage() {
       setActiveTab(visibleTabs[0].id);
     }
   }, [visibleTabs, activeTab]);
+
+  const canChangeUsekFilterActiveTab = useMemo(() => {
+    if (canChangeUsekFilter) return true;
+    return activeTab === 'vzdel' && hasEducationViewAll;
+  }, [canChangeUsekFilter, activeTab, hasEducationViewAll]);
   // Ref pro detekci prvního načtení per-user dat (fallback pro async auth)
   const lsLoadedForKey = useRef(null);
   const [loading, setLoading] = useState(false);
@@ -2555,6 +2675,8 @@ export default function StatsReportsPage() {
   const [showCompletionModeDialog, setShowCompletionModeDialog] = useState(false);
   const [showFinancialPreviewModal, setShowFinancialPreviewModal] = useState(false);
   const [completionInProgress, setCompletionInProgress] = useState(false);
+  const [completedOrderIds, setCompletedOrderIds] = useState([]);
+  const [recentlyCompletedIds, setRecentlyCompletedIds] = useState([]);
   // Vzdělávání – zobrazit i dokončené objednávky
   const [showVzdelDokoncene, setShowVzdelDokoncene] = useState(false);
   const [showFkIgnorovano, setShowFkIgnorovano] = useState(false);
@@ -2805,12 +2927,34 @@ export default function StatsReportsPage() {
     return [String(resolvedUserUsekId)];
   }, [resolvedUserUsekId]);
 
+  const allUsekIds = useMemo(() => {
+    return (dictionaryUseky || [])
+      .map(u => String(u.id || u.usek_id || ''))
+      .filter(Boolean);
+  }, [dictionaryUseky]);
+
+  const shouldUnlockVzdelUsek = activeTab === 'vzdel' && hasEducationViewAll && allUsekIds.length > 0;
+
   useEffect(() => {
-    if (canChangeUsekFilter) return; // admin nebo MANAGE → neomezovat
+    const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    if (shouldUnlockVzdelUsek) {
+      setFilters(prev => {
+        const isLocked = arraysEqual(prev.usekIds, userLockedUsekIds) || prev.usekIds.length === 0;
+        if (!isLocked && !arraysEqual(prev.usekIds, allUsekIds)) return prev;
+        if (arraysEqual(prev.usekIds, allUsekIds)) return prev;
+        return { ...prev, usekIds: allUsekIds };
+      });
+      setPendingFilters(prev => {
+        const isLocked = arraysEqual(prev.usekIds, userLockedUsekIds) || prev.usekIds.length === 0;
+        if (!isLocked && !arraysEqual(prev.usekIds, allUsekIds)) return prev;
+        if (arraysEqual(prev.usekIds, allUsekIds)) return prev;
+        return { ...prev, usekIds: allUsekIds };
+      });
+      return;
+    }
+    if (canChangeUsekFilterActiveTab) return; // admin nebo MANAGE → neomezovat
     if (!userUsekId) return; // ještě nemáme info o úseku
     const targetIds = userLockedUsekIds;
-    // Nastavit úseky uživatele do filtru (pokud tam ještě nejsou)
-    const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
     setFilters(prev => {
       if (arraysEqual(prev.usekIds, targetIds)) return prev;
       return { ...prev, usekIds: targetIds };
@@ -2819,7 +2963,7 @@ export default function StatsReportsPage() {
       if (arraysEqual(prev.usekIds, targetIds)) return prev;
       return { ...prev, usekIds: targetIds };
     });
-  }, [canChangeUsekFilter, userUsekId, userLockedUsekIds]);
+  }, [shouldUnlockVzdelUsek, allUsekIds, canChangeUsekFilterActiveTab, userUsekId, userLockedUsekIds]);
 
   const [notes, setNotes] = useState(() => {
     try {
@@ -3157,6 +3301,25 @@ export default function StatsReportsPage() {
     return parts.length > 0 ? <>{parts}</> : text;
   }, [searchQueries, removeDiacritics]);
 
+  const renderAmountWithSource = useCallback((value, source, sectionKey, highlight = false) => {
+    const amountText = fmtCurrency(value);
+    const content = highlight && sectionKey ? highlightText(amountText, sectionKey) : amountText;
+    return (
+      <span style={{ position: 'relative', display: 'inline-block' }}>
+        <sup style={{ position: 'absolute', top: '-0.5em', left: '-1.6em', fontSize: '0.6em', fontWeight: 700, color: '#94a3b8', fontFamily: 'sans-serif', letterSpacing: '0.02em', lineHeight: 1 }}>
+          {source}
+        </sup>
+        {content}
+      </span>
+    );
+  }, [highlightText]);
+
+  const renderOrderAmountWithSource = useCallback((order, sectionKey, options = {}) => {
+    const { invoices = null, highlight = false } = options;
+    const { value, source } = getOrderAmountSource(order, invoices);
+    return renderAmountWithSource(value, source, sectionKey, highlight);
+  }, [renderAmountWithSource]);
+
   const getPagedItems = useCallback((items, key) => {
     // Nejdříve aplikovat search filter
     const query = getSearchQuery(key);
@@ -3300,7 +3463,8 @@ export default function StatsReportsPage() {
     return { data: all, truncated: true, accessContext };
   }, [token, username, filters.dateFrom, filters.dateTo]);
 
-  const loadInvoices = useCallback(async () => {
+  const loadInvoices = useCallback(async (options = {}) => {
+    const { accessContext = null } = options;
     const all = [];
     for (let page = 1; page <= MAX_PAGES; page += 1) {
       const response = await listInvoices25({
@@ -3311,7 +3475,8 @@ export default function StatsReportsPage() {
         year: filters.year || undefined,
         datum_od: filters.dateFrom || undefined,
         datum_do: filters.dateTo || undefined,
-        usek_id: filters.usekIds.length === 1 ? filters.usekIds[0] : undefined
+        usek_id: filters.usekIds.length === 1 ? filters.usekIds[0] : undefined,
+        access_context: accessContext || undefined
       });
       const batch = (response.faktury || []).map(normalizeInvoice);
       all.push(...batch);
@@ -3647,6 +3812,23 @@ export default function StatsReportsPage() {
   // Vzdel tab - potřebuje jen orders
   const loadVzdelTabData = useCallback(async (silent = false, forceReload = false) => {
     if (!token || !username) return;
+
+    const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const permReady = hasEducationViewAll !== null;
+    const needsAllUsek = hasEducationViewAll === true && allUsekIds.length > 0;
+    if (!permReady) return;
+    if (needsAllUsek && !arraysEqual(filters.usekIds, allUsekIds)) {
+      setFilters(prev => {
+        if (arraysEqual(prev.usekIds, allUsekIds)) return prev;
+        return { ...prev, usekIds: allUsekIds };
+      });
+      setPendingFilters(prev => {
+        if (arraysEqual(prev.usekIds, allUsekIds)) return prev;
+        return { ...prev, usekIds: allUsekIds };
+      });
+      return;
+    }
+
     if (loadingTabsRef.current.has('vzdel')) return;
     if (!forceReload && loadedTabsRef.current.has('vzdel')) return;
     if (!forceReload && failedTabsRef.current.has('vzdel')) return;
@@ -3657,7 +3839,7 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-    if (!forceReload && ordersVzdel.length > 0) {
+    if (!forceReload && ordersVzdel.length > 0 && invoices.length > 0) {
       setLoadedTabs(prev => new Set([...prev, 'vzdel']));
       return;
     }
@@ -3665,8 +3847,34 @@ export default function StatsReportsPage() {
     if (!silent) setLoading(true);
     setLoadingTabs(prev => new Set([...prev, 'vzdel']));
     try {
-      const ordersResult = await loadOrders({ accessContext: 'vzdel' });
-      setOrdersVzdel(ordersResult.data || []);
+      const needsOrders = forceReload ? true : ordersVzdel.length === 0;
+      const needsInvoices = forceReload ? true : invoices.length === 0;
+
+      const results = await Promise.all([
+        needsOrders ? loadOrders({ accessContext: 'vzdel' }) : Promise.resolve(null),
+        needsInvoices ? loadInvoices({ accessContext: 'vzdel' }) : Promise.resolve(null)
+      ]);
+
+      const ordersResult = results[0];
+      const invoicesResult = results[1];
+
+      if (ordersResult) {
+        setOrdersVzdel(ordersResult.data || []);
+      }
+      if (invoicesResult) {
+        setInvoices(invoicesResult.data || []);
+      }
+
+      const ordersTruncated = ordersResult?.truncated || false;
+      const invoicesTruncated = invoicesResult?.truncated || false;
+      if (ordersResult || invoicesResult) {
+        setDataMeta(prev => ({
+          ...prev,
+          loadedAt: new Date().toISOString(),
+          truncated: prev.truncated || ordersTruncated || invoicesTruncated
+        }));
+      }
+
       setLoadedTabs(prev => new Set([...prev, 'vzdel']));
     } catch (e) {
       console.error('❌ Vzdel tab data load failed:', e);
@@ -3680,7 +3888,7 @@ export default function StatsReportsPage() {
         return next;
       });
     }
-  }, [token, username, loadOrders, ordersVzdel.length]);
+  }, [token, username, loadOrders, loadInvoices, ordersVzdel.length, invoices.length, hasEducationViewAll, allUsekIds, filters.usekIds]);
 
   // Pivot tab - potřebuje jen orders
   const loadPivotTabData = useCallback(async (silent = false, forceReload = false) => {
@@ -3792,6 +4000,13 @@ export default function StatsReportsPage() {
   useEffect(() => {
     if (!token || !username || !initialLoadRef.current) return;
     if (loading) return;
+
+    const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
+    const vzdelNeedsAllUsek = activeTab === 'vzdel' && hasEducationViewAll === true && allUsekIds.length > 0;
+    const vzdelUsekReady = !vzdelNeedsAllUsek || arraysEqual(filters.usekIds, allUsekIds);
+    const vzdelPermReady = activeTab !== 'vzdel' || hasEducationViewAll !== null;
+
+    if (activeTab === 'vzdel' && (!vzdelPermReady || !vzdelUsekReady)) return;
     
     // ✅ Voláme přes refs - useEffect se nespustí znovu kvůli změně ref funkcí
     if (activeTab === 'control' && !loadedTabsRef.current.has('control') && !loadingTabsRef.current.has('control') && !failedTabsRef.current.has('control')) {
@@ -3807,9 +4022,8 @@ export default function StatsReportsPage() {
     } else if (activeTab === 'pivot' && !loadedTabsRef.current.has('pivot') && !loadingTabsRef.current.has('pivot') && !failedTabsRef.current.has('pivot')) {
       loadPivotTabDataRef.current();
     }
-  }, [activeTab, token, username, loading]);
+  }, [activeTab, token, username, loading, hasEducationViewAll, allUsekIds, filters.usekIds]);
 
-  // 🚀 BACKGROUND LAZY LOADING: Po načtení prvního tabu načíst ostatní na pozadí (po 2s)
   const backgroundLoadRef = useRef(false);
   const lastStableUserKeyRef = useRef(null);
 
@@ -4297,6 +4511,18 @@ export default function StatsReportsPage() {
     return orderStatesMap[code] || code || '';
   }, [getOrderStatusCode, orderStatesMap]);
 
+  const isOrderCompletedLocal = useCallback((order) => {
+    if (!order) return false;
+    const id = order.id != null ? String(order.id) : null;
+    if (id && completedOrderIds.includes(id)) return true;
+    const wfCode = String(order.stav_workflow_kod || '').toUpperCase();
+    if (wfCode.includes('DOKONC')) return true;
+    const statusRaw = `${order.stav_objednavky || ''} ${order.stav || ''} ${order.stav_workflow_nazev || ''}`.toUpperCase();
+    if (statusRaw.includes('DOKON') || statusRaw.includes('UZAVR')) return true;
+    if (order.dt_dokonceni) return true;
+    return false;
+  }, [completedOrderIds]);
+
   // ─── Třídění vlastních (flat) tabulek ─────────────────────────────────────────
   const getTableSort = useCallback((key) => tableSorts[key] || { field: null, dir: 'asc' }, [tableSorts]);
 
@@ -4626,9 +4852,7 @@ export default function StatsReportsPage() {
     }, {});
   }, [dictionaryUseky]);
 
-  const ignoreUsekFilter = activeTab === 'vzdel'
-    && typeof hasPermission === 'function'
-    && hasPermission('EDUCATION_VIEW_ALL');
+  const ignoreUsekFilter = activeTab === 'vzdel' && hasEducationViewAll;
 
   const filteredOrders = useMemo(() => {
     return baseOrders.filter(order => {
@@ -4963,7 +5187,7 @@ export default function StatsReportsPage() {
     // Standardně skrýt dokončené objednávky; zobrazit je jen při zaškrtnutém checkboxu (pouze lékařský blok)
     const vzdelBaseLek = showVzdelDokoncene
       ? activeOrders
-      : activeOrders.filter(o => !String(o.stav_workflow_kod || '').toUpperCase().includes('DOKONCENA'));
+      : activeOrders.filter(o => !isOrderCompletedLocal(o));
     // Nelékařský zobrazuje vždy vše (bez filtru dokončených)
     const lekarsky = vzdelBaseLek.filter(o => matchDruhKw(getOrderTypeLabel(o), VZDEL_LEKARSKY_KW));
     const nelekarsky = activeOrders.filter(o => matchDruhKw(getOrderTypeLabel(o), VZDEL_NELEKARSKY_KW));
@@ -5002,7 +5226,7 @@ export default function StatsReportsPage() {
       });
     });
     return { lekarsky, nelekarsky, byStredisko };
-  }, [filteredOrders, showVzdelDokoncene, getOrderTypeLabel, getOrdererUsekCode, getUsekLabel, strediskaMap, getOrderStatusCode, getOrderStatusLabel]);
+  }, [filteredOrders, showVzdelDokoncene, getOrderTypeLabel, getOrdererUsekCode, getUsekLabel, strediskaMap, getOrderStatusCode, getOrderStatusLabel, isOrderCompletedLocal]);
 
   // Helper: Výpočet priority pro defaultní třídění vzdělávání (čím nižší, tím vyšší priorita)
   const getVzdelOrderPriority = useCallback((order) => {
@@ -7611,7 +7835,8 @@ export default function StatsReportsPage() {
 
   const handleResetFilters = useCallback(() => {
     // Pro non-manage uživatele zachovat zamknuté úseky (PTN → PTN + PTN-dílny)
-    const lockedUsek = (!canChangeUsekFilter && userUsekId) ? userLockedUsekIds : [];
+    let lockedUsek = (!canChangeUsekFilterActiveTab && userUsekId) ? userLockedUsekIds : [];
+    if (shouldUnlockVzdelUsek) lockedUsek = allUsekIds;
     const cur = { ...FILTER_DEFAULTS, usekIds: lockedUsek };
     setPendingFilters(cur);
     setFilters(cur);
@@ -7624,7 +7849,7 @@ export default function StatsReportsPage() {
       }
     } catch (e) {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userKey, filterLsKey, canChangeUsekFilter, userUsekId, userLockedUsekIds]);
+  }, [userKey, filterLsKey, canChangeUsekFilterActiveTab, shouldUnlockVzdelUsek, allUsekIds, userUsekId, userLockedUsekIds]);
 
   const handleTabChange = useCallback((tabId) => {
     setActiveTab(tabId);
@@ -7701,6 +7926,67 @@ export default function StatsReportsPage() {
 
   // ---------- Dokončení objednávky – handlers ----------
 
+  const markOrderAsCompletedLocal = useCallback((orderId) => {
+    if (!orderId) return;
+    const id = String(orderId);
+    setCompletedOrderIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return Array.from(next);
+    });
+    const normalizeWorkflow = (wf) => {
+      if (Array.isArray(wf)) {
+        return wf.includes('DOKONCENA') ? wf : [...wf, 'DOKONCENA'];
+      }
+      if (typeof wf === 'string') {
+        const trimmed = wf.trim();
+        if (trimmed.startsWith('[')) {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (Array.isArray(parsed)) {
+              return JSON.stringify(parsed.includes('DOKONCENA') ? parsed : [...parsed, 'DOKONCENA']);
+            }
+          } catch (e) {}
+        }
+        if (wf.toUpperCase().includes('DOKONCENA')) return wf;
+        return wf ? `${wf}+DOKONCENA` : 'DOKONCENA';
+      }
+      return 'DOKONCENA';
+    };
+
+    setOrdersVzdel(prev => prev.map(order => {
+      if (String(order.id) !== id) return order;
+      return {
+        ...order,
+        stav_workflow_kod: normalizeWorkflow(order.stav_workflow_kod),
+        stav_objednavky: order.stav_objednavky || 'DOKONCENA',
+        dt_dokonceni: order.dt_dokonceni || new Date().toISOString()
+      };
+    }));
+    setOrders(prev => prev.map(order => {
+      if (String(order.id) !== id) return order;
+      return {
+        ...order,
+        stav_workflow_kod: normalizeWorkflow(order.stav_workflow_kod),
+        stav_objednavky: order.stav_objednavky || 'DOKONCENA',
+        dt_dokonceni: order.dt_dokonceni || new Date().toISOString()
+      };
+    }));
+  }, []);
+
+  const markRecentlyCompleted = useCallback((orderId) => {
+    if (!orderId) return;
+    const id = String(orderId);
+    setRecentlyCompletedIds(prev => {
+      const next = new Set(prev);
+      next.add(id);
+      return Array.from(next);
+    });
+    window.setTimeout(() => {
+      setRecentlyCompletedIds(prev => prev.filter(item => item !== id));
+    }, 15000);
+  }, []);
+
   /**
    * Tiché přenačtení objednávek + příloh na pozadí po dokončení.
    * Zobrazí toast okamžitě, data se aktualizují bez loading spinneru.
@@ -7709,17 +7995,26 @@ export default function StatsReportsPage() {
    */
   const _reloadAfterCompletion = useCallback(async () => {
     try {
-      const [ordersResult, attachmentsResult] = await Promise.all([
-        loadOrders().catch(e => { console.warn('Reload orders failed:', e); return null; }),
+      const isVzdelContext = activeTab === 'vzdel';
+      const [ordersResult, invoicesResult, attachmentsResult] = await Promise.all([
+        (isVzdelContext ? loadOrders({ accessContext: 'vzdel' }) : loadOrders()).catch(e => { console.warn('Reload orders failed:', e); return null; }),
+        (isVzdelContext ? loadInvoices({ accessContext: 'vzdel' }) : Promise.resolve(null)).catch(e => { console.warn('Reload invoices failed:', e); return null; }),
         listAllOrderAttachments(username, token, 10000, 0).catch(e => { console.warn('Reload attachments failed:', e); return null; })
       ]);
-      if (ordersResult) setOrders(ordersResult.data || []);
+      if (ordersResult) {
+        if (isVzdelContext) {
+          setOrdersVzdel(ordersResult.data || []);
+        } else {
+          setOrders(ordersResult.data || []);
+        }
+      }
+      if (invoicesResult) setInvoices(invoicesResult.data || []);
       if (attachmentsResult) setOrderAttachments(attachmentsResult.data || []);
     } catch (e) {
       console.warn('Background reload after completion failed:', e);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadOrders, token, username]);
+  }, [activeTab, loadOrders, loadInvoices, token, username]);
 
   const handleOrderCompletionClick = useCallback(async (order) => {
     if (completionInProgress) return;
@@ -7808,9 +8103,12 @@ export default function StatsReportsPage() {
 
       // 6. Dokončení objednávky – workflow → DOKONCENA (backend)
       await completeOrder25({ token, username, orderId: order.id });
+      markOrderAsCompletedLocal(order.id);
+      markRecentlyCompleted(order.id);
 
       // 7. Okamžitý toast + tiché přenačtení dat na pozadí
-      showToast && showToast('✅ Objednávka dokončena a finanční kontrola uložena', { type: 'success' });
+      const orderLabel = order.ev_cislo || order.cislo_objednavky || `#${order.id}`;
+      showToast && showToast(`✅ Objednávka č. ${orderLabel} dokončena a finanční kontrola uložena`, { type: 'success' });
       _reloadAfterCompletion();
     } catch (err) {
       showToast && showToast(`Chyba: ${err.message || err}`, { type: 'error' });
@@ -7819,7 +8117,7 @@ export default function StatsReportsPage() {
       setCompletionTarget(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completionTarget, token, username, _enrichFaktury, _buildGeneratedBy, _reloadAfterCompletion]);
+  }, [completionTarget, token, username, _enrichFaktury, _buildGeneratedBy, _reloadAfterCompletion, markOrderAsCompletedLocal, markRecentlyCompleted]);
 
   const handleConfirmWithPreview = useCallback(async (pdfFile) => {
     setShowFinancialPreviewModal(false);
@@ -7832,9 +8130,12 @@ export default function StatsReportsPage() {
 
       // Workflow → DOKONCENA (backend)
       await completeOrder25({ token, username, orderId: order.id });
+      markOrderAsCompletedLocal(order.id);
+      markRecentlyCompleted(order.id);
 
       // Okamžitý toast + tiché přenačtení dat na pozadí
-      showToast && showToast('✅ Objednávka dokončena a finanční kontrola uložena', { type: 'success' });
+      const orderLabel = order.ev_cislo || order.cislo_objednavky || `#${order.id}`;
+      showToast && showToast(`✅ Objednávka č. ${orderLabel} dokončena a finanční kontrola uložena`, { type: 'success' });
       _reloadAfterCompletion();
     } catch (err) {
       showToast && showToast(`Chyba: ${err.message || err}`, { type: 'error' });
@@ -7843,12 +8144,12 @@ export default function StatsReportsPage() {
       setCompletionTarget(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [completionTarget, token, username, _reloadAfterCompletion]);
+  }, [completionTarget, token, username, _reloadAfterCompletion, markOrderAsCompletedLocal, markRecentlyCompleted]);
 
   // ---------- Akce - dokončení objednávky ----------
   const renderActionButton = (order, isHighlighted) => {
+    const isDokoncena = isOrderCompletedLocal(order);
     const wfCode = String(order.stav_workflow_kod || '').toUpperCase();
-    const isDokoncena = wfCode.includes('DOKONCENA');
     const isZkontrolovana = wfCode.includes('ZKONTROLOVANA');
 
     // Oprávnění k dokončení: role ADMINISTRATOR/SUPERADMIN nebo právo ORDER_MANAGE/ORDER_COMPLETE/EDUCATION_COMPLETE
@@ -7881,7 +8182,7 @@ export default function StatsReportsPage() {
 
     // Podmínka: musí mít ZKONTROLOVANA v workflow (= má fakturu + věcnou správnost potvrzenou)
     // + isHighlighted (ZALOHOVA + VYUCTOVACI pár) + zelené přílohy + dostatečné oprávnění
-    const isEnabled = canCompleteVzdel && isZkontrolovana && isHighlighted && order.attachment_color === '#16a34a';
+    const isEnabled = !isDokoncena && canCompleteVzdel && isZkontrolovana && isHighlighted && order.attachment_color === '#16a34a';
     const isThisInProgress = completionInProgress && completionTarget?.id === order.id;
 
     const handleClick = () => {
@@ -7927,7 +8228,7 @@ export default function StatsReportsPage() {
             cursor: isEnabled && !completionInProgress ? 'pointer' : 'not-allowed',
             opacity: isEnabled ? 1 : 0.3,
             fontSize: '1.25rem',
-            color: isThisInProgress ? '#f59e0b' : (isEnabled ? '#16a34a' : '#94a3b8'),
+            color: isThisInProgress ? '#8b5cf6' : (isEnabled ? '#16a34a' : '#94a3b8'),
           }}
         >
           <FontAwesomeIcon icon={isThisInProgress ? faSpinner : faCheckCircle} spin={isThisInProgress} />
@@ -7961,7 +8262,11 @@ export default function StatsReportsPage() {
     
     // ✅ Zelené zvýraznění když jsou splněny VŠECHNY podmínky
     // 🟠 Oranžové zvýraznění když chybí jen přílohy (certifikát)
-    const GroupComponent = isEnabled ? TbodyGroupHighlighted : (isNearComplete ? TbodyGroupOrange : TbodyGroup);
+    const isThisInProgress = completionInProgress && completionTarget?.id === order.id;
+    const isRecentlyCompleted = recentlyCompletedIds.includes(String(order.id));
+    const GroupComponent = isThisInProgress
+      ? TbodyGroupCompleting
+      : (isRecentlyCompleted ? TbodyGroupCompleted : (isEnabled ? TbodyGroupHighlighted : (isNearComplete ? TbodyGroupOrange : TbodyGroup)));
     
     // Počet příloh kombinovaně (objednávka + všechny faktury)
     const orderAttachCount = order.pocet_priloh ?? order.prilohy_count ?? order.prilohy?.length ?? 0;
@@ -7977,21 +8282,7 @@ export default function StatsReportsPage() {
           {showUsek && <Td rowSpan={rowSpan} style={{ ...orderTdStyleOther, width: '100px', maxWidth: '100px', minWidth: '100px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{highlightText(getOrdererUsekCode(order) || '—', sectionKey)}</Td>}
           <TdNarrow rowSpan={rowSpan} style={{ ...orderTdStyleOther, width: '65px', maxWidth: '65px', minWidth: '65px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{renderFinancingRefCell(order, sectionKey)}</TdNarrow>
           <TdR rowSpan={rowSpan} style={{ verticalAlign: 'middle', fontFamily: 'monospace', fontWeight: 600, fontSize: '0.85rem', position: 'relative', zIndex: 1 }}>
-            {(() => {
-              const faSum = invoices.reduce((s, inv) => s + getInvoiceAmount(inv), 0);
-              const polozkySum = getOrderPlannedAmount(order) || 0;
-              const maxDph = getOrderLimit(order) || 0;
-              let val, src;
-              if (faSum > 0) { val = faSum; src = 'FA'; }
-              else if (polozkySum > 0) { val = polozkySum; src = 'POL'; }
-              else { val = maxDph; src = 'MAX'; }
-              return (
-                <span style={{ position: 'relative', display: 'inline-block' }}>
-                  <sup style={{ position: 'absolute', top: '-0.5em', left: '-1.6em', fontSize: '0.6em', fontWeight: 700, color: '#94a3b8', fontFamily: 'sans-serif', letterSpacing: '0.02em', lineHeight: 1 }}>{src}</sup>
-                  {fmtCurrency(val)}
-                </span>
-              );
-            })()}
+            {renderOrderAmountWithSource(order, sectionKey, { invoices })}
           </TdR>
           <Td rowSpan={rowSpan} style={orderTdStyleLast}>{highlightText(getOrderStatusLabel(order), sectionKey)}</Td>
           <TdC rowSpan={rowSpan} style={orderTdStyleOther}>
@@ -8880,13 +9171,13 @@ export default function StatsReportsPage() {
                 />
               </FilterRow>
               <FilterRow>
-                <FieldLabel>Úsek{!canChangeUsekFilter && ' (váš úsek)'}</FieldLabel>
+                <FieldLabel>Úsek{!canChangeUsekFilterActiveTab && ' (váš úsek)'}</FieldLabel>
                 <FilterMultiSelect
                   options={usekOptions}
                   values={pendingFilters.usekIds}
                   onChange={v => handleFilterChange('usekIds', v)}
                   placeholder="Všechny úseky"
-                  disabled={!canChangeUsekFilter}
+                  disabled={!canChangeUsekFilterActiveTab}
                 />
               </FilterRow>
               <FilterRow>
@@ -10394,7 +10685,7 @@ export default function StatsReportsPage() {
                                                           <TdNarrow>{renderFinancingRefCell(order, 'spendByFinancingUsek')}</TdNarrow>
                                                           <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsek')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                           <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsek')}</TdNarrow>
-                                                          <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByFinancingUsek')}</TdR>
+                                                          <TdR>{renderOrderAmountWithSource(order, 'spendByFinancingUsek', { highlight: true })}</TdR>
                                                         </Tr>
                                                       ))}
                                                     </tbody>
@@ -10700,7 +10991,7 @@ export default function StatsReportsPage() {
                                                               <TdNarrow>{renderFinancingRefCell(order, 'spendByUsekFinancing')}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByUsekFinancing')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByUsekFinancing')}</TdNarrow>
-                                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByUsekFinancing')}</TdR>
+                                                              <TdR>{renderOrderAmountWithSource(order, 'spendByUsekFinancing', { highlight: true })}</TdR>
                                                             </Tr>
                                                           ))}
                                                         </tbody>
@@ -10880,7 +11171,7 @@ export default function StatsReportsPage() {
                                                               <TdNarrow>{renderFinancingRefCell(order, 'spendByDruhFinancing')}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByDruhFinancing')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                               <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByDruhFinancing')}</TdNarrow>
-                                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByDruhFinancing')}</TdR>
+                                                              <TdR>{renderOrderAmountWithSource(order, 'spendByDruhFinancing', { highlight: true })}</TdR>
                                                             </Tr>
                                                           ))}
                                                         </tbody>
@@ -11101,7 +11392,7 @@ export default function StatsReportsPage() {
                                                                                 <TdNarrow>{renderFinancingRefCell(order, 'spendByFinancingUsekDruh')}</TdNarrow>
                                                                                 <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByFinancingUsekDruh')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                                                 <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByFinancingUsekDruh')}</TdNarrow>
-                                                                                <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByFinancingUsekDruh')}</TdR>
+                                                                                <TdR>{renderOrderAmountWithSource(order, 'spendByFinancingUsekDruh', { highlight: true })}</TdR>
                                                                               </Tr>
                                                                             ))}
                                                                           </tbody>
@@ -11277,7 +11568,7 @@ export default function StatsReportsPage() {
                                               <TdNarrow style={{ fontWeight: 600, color: '#92400e' }}>{highlightText(group.code !== '__no_lp__' ? group.code : '-', 'spendByLpKod')}</TdNarrow>
                                               <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendByLpKod')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                               <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendByLpKod')}</TdNarrow>
-                                              <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendByLpKod')}</TdR>
+                                              <TdR>{renderOrderAmountWithSource(order, 'spendByLpKod', { highlight: true })}</TdR>
                                             </Tr>
                                           ))}
                                         </tbody>
@@ -11561,7 +11852,7 @@ export default function StatsReportsPage() {
                                                   <TdNarrow style={{ fontWeight: 600, color: '#1e293b' }}>{renderFinancingRefCell(order, 'spendBySmlouvy')}</TdNarrow>
                                                   <TdNarrow>{highlightText(getOrderTypeLabel(order), 'spendBySmlouvy')}{isOrderMajetek(order) && <sup style={{ fontSize: '0.6em', fontWeight: 700, color: '#16a34a', marginLeft: '0.25rem' }}>MAJ</sup>}</TdNarrow>
                                                   <TdNarrow>{highlightText(getOrderStatusLabel(order), 'spendBySmlouvy')}</TdNarrow>
-                                                  <TdR>{highlightText(fmtCurrency(getOrderAmount(order)), 'spendBySmlouvy')}</TdR>
+                                                  <TdR>{renderOrderAmountWithSource(order, 'spendBySmlouvy', { highlight: true })}</TdR>
                                                 </Tr>
                                               ))}
                                             </tbody>
