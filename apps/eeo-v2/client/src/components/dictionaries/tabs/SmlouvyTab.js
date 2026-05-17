@@ -13,7 +13,7 @@
  * @date 2025-11-23
  */
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useContext } from 'react';
 import ReactDOM from 'react-dom';
 import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
@@ -54,7 +54,6 @@ import {
 import { getUsekyList } from '../../../services/apiv2Dictionaries';
 
 // Context
-import { useContext } from 'react';
 import AuthContext from '../../../context/AuthContext';
 import { ToastContext } from '../../../context/ToastContext';
 
@@ -140,6 +139,7 @@ const formatInvoiceReference = (invoice) => {
 // =============================================================================
 
 // Stats Dashboard Components
+
 const StatsGrid = styled.div`
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -156,43 +156,53 @@ const StatCard = styled.div`
   gap: 1rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s ease;
-  
+
   &:hover {
     transform: translateY(-2px);
   }
 `;
 
 const StatIcon = styled.div`
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  background: ${props => props.$bg || 'white'};
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: ${props => props.$color || '#3b82f6'};
-  box-shadow: 0 4px 12px ${props => props.$shadow || 'rgba(59, 130, 246, 0.2)'};
+  background: ${props => props.$bg || '#ffffff'};
+  color: ${props => props.$color || '#1e293b'};
+  box-shadow: 0 6px 14px ${props => props.$shadow || 'rgba(0, 0, 0, 0.15)'};
+  flex-shrink: 0;
 `;
 
 const StatContent = styled.div`
-  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
 `;
 
 const StatLabel = styled.div`
-  font-size: 0.875rem;
-  color: ${props => props.$light ? 'rgba(255, 255, 255, 0.9)' : '#6b7280'};
-  margin-bottom: 0.25rem;
-  font-weight: 500;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: ${props => props.$light ? 'rgba(255, 255, 255, 0.85)' : '#64748b'};
 `;
 
 const StatValue = styled.div`
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: ${props => props.$light ? 'white' : '#111827'};
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: ${props => props.$light ? '#ffffff' : '#0f172a'};
 `;
 
 const Container = styled.div`
   padding: 1rem;
+`;
+
+const FiltersContainer = styled.div`
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 3px solid #e5e7eb;
 `;
 
 const ToolbarContainer = styled.div`
@@ -201,9 +211,6 @@ const ToolbarContainer = styled.div`
   align-items: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 3px solid #e5e7eb;
 `;
 
 const ButtonGroup = styled.div`
@@ -261,7 +268,7 @@ const FilterSection = styled.div`
   background: #f8fafc;
   padding: 1rem;
   border-radius: 8px;
-  margin-bottom: 1rem;
+  margin-bottom: 0;
   display: ${props => props.$visible ? 'block' : 'none'};
 `;
 
@@ -327,14 +334,17 @@ const FilterSelectWithIcon = styled.div`
 const FilterSelect = styled.select`
   width: 100%;
   box-sizing: border-box;
-  padding: ${props => props.hasIcon ? '0.75rem 1.75rem 0.75rem 2.5rem' : '0.75rem 1.75rem 0.75rem 0.75rem'};
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  background: white;
+  height: 38px;
+  padding: ${props => props.hasIcon ? '0 2.25rem 0 2rem' : '0 2.25rem 0 0.75rem'};
+  border: 1.5px solid #e2e8f0;
+  border-radius: 9px;
+  font-size: 0.85rem;
+  font-family: 'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: #ffffff;
   cursor: pointer;
-  color: #1f2937;
-  font-weight: 500;
+  color: ${props => props.$isEmpty ? '#9ca3af' : '#1f2937'};
+  font-weight: ${props => props.$isEmpty ? '400' : '500'};
+  line-height: 1.2;
   transition: all 0.2s ease;
   appearance: none;
   -moz-appearance: none;
@@ -342,12 +352,12 @@ const FilterSelect = styled.select`
 
   &:focus {
     outline: none;
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #2563eb;
+    box-shadow: none;
   }
 
   &:hover {
-    border-color: #3b82f6;
+    border-color: #94a3b8;
   }
 
   /* Custom dropdown arrow */
@@ -364,7 +374,7 @@ const FilterSelect = styled.select`
 
   option {
     color: #1f2937;
-    font-weight: 500;
+    font-weight: 400;
     padding: 0.5rem;
   }
 `;
@@ -382,56 +392,6 @@ const FilterInput = styled.input`
 `;
 
 
-
-const ToggleSwitch = styled.label`
-  position: relative;
-  display: inline-block;
-  width: 56px;
-  height: 28px;
-  cursor: pointer;
-  flex-shrink: 0;
-
-  input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-
-  span {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: #cbd5e1;
-    border-radius: 28px;
-    transition: all 0.3s ease;
-
-    &::before {
-      content: '';
-      position: absolute;
-      height: 20px;
-      width: 20px;
-      left: 4px;
-      bottom: 4px;
-      background-color: white;
-      border-radius: 50%;
-      transition: all 0.3s ease;
-    }
-  }
-
-  input:checked + span {
-    background-color: #3b82f6;
-  }
-
-  input:checked + span::before {
-    transform: translateX(28px);
-  }
-
-  input:focus + span {
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-  }
-`;
 
 const SearchBox = styled.div`
   position: relative;
@@ -1315,6 +1275,10 @@ const SKUPINA_FILTER_STORAGE_KEY = 'smlouvy_skupinaFilter';
 
 // Práh pro rozlišení smluv "bez stropu" - částky menší než toto se považují za symbolické (bez reálného limitu)
 const MIN_CAP_THRESHOLD = 100; // Kč - smlouvy s limitem < 100 Kč (např. 1 Kč) = bez stropu
+const DEFAULT_STAV_FILTER = 'AKTIVNI_NEARCHIVNI';
+const ARCHIVE_STAV_FILTER = 'ARCHIVNI';
+const DEFAULT_STAV_OPTION = { value: DEFAULT_STAV_FILTER, label: 'Aktivní a ukončené (nearchivní)' };
+const ARCHIVE_STAV_OPTION = { value: ARCHIVE_STAV_FILTER, label: 'Archivní' };
 
 // Helper funkce pro načtení filtrů z localStorage
 const loadFiltersFromStorage = () => {
@@ -1404,14 +1368,14 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   const [filters, setFilters] = useState(() => {
     const savedFilters = loadFiltersFromStorage();
     const base = savedFilters || {};
+    const hasSavedStav = Object.prototype.hasOwnProperty.call(base, 'stav');
     return {
       search: base.search || '',
       usek_id: Array.isArray(base.usek_id) ? base.usek_id : [],
       druh_smlouvy: Array.isArray(base.druh_smlouvy) ? base.druh_smlouvy : [],
-      stav: base.stav || '',
+      stav: hasSavedStav ? base.stav : DEFAULT_STAV_FILTER,
       platnost_od: base.platnost_od || '',
-      platnost_do: base.platnost_do || '',
-      show_inactive: base.show_inactive || false
+      platnost_do: base.platnost_do || ''
     };
   });
 
@@ -1597,15 +1561,16 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
 
       // ⚠️ usek_id a druh_smlouvy jsou multi-select (pole) → filtrují se client-side
       // Do API posílat POUZE skalární hodnoty (string/bool), nikdy pole!
-      // show_inactive=true pokud user filtruje na NEAKTIVNI stav
+      // Stav filtrujeme client-side, aby se nezmensila nabidka stavu v selectu.
+      // show_inactive=true kdyz je zvoleno "Vsechny stavy" nebo stav NEAKTIVNI
       const apiFilters = {
         token: token,
         username: user.username,
         search: filters.search || '',
-        stav: filters.stav || '',
+        stav: '',
         platnost_od: filters.platnost_od || '',
         platnost_do: filters.platnost_do || '',
-        show_inactive: filters.show_inactive || filters.stav === 'NEAKTIVNI',
+        show_inactive: !filters.stav || filters.stav === 'NEAKTIVNI',
         restrict_view: isRestrictedCerpaniUser,
         include_stats: true  // ⚡ SmlouvyTab potřebuje statistiky pro zobrazení v tabulce
       };
@@ -1654,7 +1619,38 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   // LOCAL FILTERING
   // =============================================================================
 
-  // Základ pro options: smlouvy po aplikaci restriction a show_inactive (bez druh/stav/search filtrů)
+  const archiveCutoff = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+
+  const isArchivedByDate = useCallback((smlouva) => {
+    if (!smlouva?.platnost_do) return false;
+    const d = new Date(smlouva.platnost_do);
+    if (Number.isNaN(d.getTime())) return false;
+    return d < archiveCutoff;
+  }, [archiveCutoff]);
+
+  const includeInactive = useMemo(() => !filters.stav || filters.stav === 'NEAKTIVNI', [filters.stav]);
+  const isDefaultActiveFilter = filters.stav === DEFAULT_STAV_FILTER;
+  const isAllStavFilter = !filters.stav;
+  const isArchiveOnlyFilter = filters.stav === ARCHIVE_STAV_FILTER;
+  const isInactiveOnlyFilter = filters.stav === 'NEAKTIVNI';
+
+  const passesArchiveVisibility = useCallback((smlouva) => {
+    const isInactive = !(smlouva?.aktivni === 1 || smlouva?.aktivni === true);
+    const isArchived = !isInactive && isArchivedByDate(smlouva);
+    if (isAllStavFilter) return true;
+    if (isArchiveOnlyFilter) return isArchived;
+    if (isInactiveOnlyFilter) return isInactive;
+    if (isInactive) return false;
+    if (isArchived) return false;
+    return true;
+  }, [isAllStavFilter, isArchiveOnlyFilter, isInactiveOnlyFilter, isArchivedByDate]);
+
+  // Základ pro options: smlouvy po aplikaci restriction + archiv viditelnosti (bez druh/stav/search filtrů)
   // Tím zajistíme, že options nabízí pouze hodnoty které uživatel skutečně může vidět
   const baseSmlouvy = useMemo(() => {
     return smlouvy.filter(smlouva => {
@@ -1666,16 +1662,19 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           : Number(smlouva.pocet_faktur_uzivatel || 0) > 0;
         if (!jeMujUsek && !cerpalUzivatel) return false;
       }
-      if (!filters.show_inactive && smlouva.aktivni !== 1) return false;
+      if (!passesArchiveVisibility(smlouva)) return false;
       return true;
     });
-  }, [smlouvy, isRestrictedCerpaniUser, filters.show_inactive, isRowInUserUsek]);
+  }, [smlouvy, isRestrictedCerpaniUser, passesArchiveVisibility, isRowInUserUsek]);
 
-  // Dynamické options - pouze hodnoty které uživatel skutečně vidí
+  // Stav filter ma vzdy nabizet vsechny stavy, aby se po volbe NEAKTIVNI neskrivaly
   const availableStavOptions = useMemo(() => {
-    const stavSet = new Set(baseSmlouvy.map(s => s.stav).filter(Boolean));
-    return STAV_SMLOUVY_OPTIONS.filter(opt => stavSet.has(opt.value));
-  }, [baseSmlouvy]);
+    const opts = [DEFAULT_STAV_OPTION, ARCHIVE_STAV_OPTION, ...STAV_SMLOUVY_OPTIONS];
+    if (!opts.some(opt => opt.value === 'NEAKTIVNI')) {
+      opts.push({ value: 'NEAKTIVNI', label: 'Neaktivní' });
+    }
+    return opts;
+  }, []);
 
   const availableDruhOptions = useMemo(() => {
     const druhSet = new Set(baseSmlouvy.map(s => s.druh_smlouvy).filter(Boolean));
@@ -1703,10 +1702,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       }
 
       // Aktivní/neaktivní
-      // Výjimka: pokud filtrujeme přímo na stav NEAKTIVNI, zobrazit i smlouvy s aktivni=0
-      if (!filters.show_inactive && filters.stav !== 'NEAKTIVNI' && smlouva.aktivni !== 1) {
-        return false;
-      }
+      if (!passesArchiveVisibility(smlouva)) return false;
 
       // Fulltext search
       if (filters.search) {
@@ -1731,7 +1727,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       }
 
       // Stav
-      if (filters.stav && smlouva.stav !== filters.stav) {
+      if (filters.stav === 'NEAKTIVNI') {
+        if (smlouva.aktivni === 1 || smlouva.aktivni === true) return false;
+      } else if (filters.stav && !isDefaultActiveFilter && !isArchiveOnlyFilter && smlouva.stav !== filters.stav) {
         return false;
       }
 
@@ -1805,7 +1803,114 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         sensitivity: 'base'
       });
     });
-  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, isRowInUserUsek]);
+  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, isRowInUserUsek, passesArchiveVisibility]);
+
+  const filteredSmlouvyBaseAll = useMemo(() => {
+    const result = smlouvy.filter(smlouva => {
+      if (isRestrictedCerpaniUser) {
+        const jeMujUsek = isRowInUserUsek(smlouva);
+        const pouzitVObjFormu = Number(smlouva.pouzit_v_obj_formu || 0);
+        const cerpalUzivatel = pouzitVObjFormu === 1
+          ? Number(smlouva.pocet_objednavek_uzivatel || 0) > 0
+          : Number(smlouva.pocet_faktur_uzivatel || 0) > 0;
+        if (!jeMujUsek && !cerpalUzivatel) {
+          return false;
+        }
+      }
+
+      const isInactive = !(smlouva.aktivni === 1 || smlouva.aktivni === true);
+      if (isInactive && !includeInactive && filters.stav !== 'NEAKTIVNI') {
+        return false;
+      }
+
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        const matches = (
+          (smlouva.cislo_smlouvy || '').toLowerCase().includes(searchLower) ||
+          (smlouva.nazev_smlouvy || '').toLowerCase().includes(searchLower) ||
+          (smlouva.nazev_firmy || '').toLowerCase().includes(searchLower) ||
+          (smlouva.popis_smlouvy || '').toLowerCase().includes(searchLower)
+        );
+        if (!matches) return false;
+      }
+
+      if (filters.usek_id.length > 0 && !filters.usek_id.map(String).includes(String(smlouva.usek_id))) {
+        return false;
+      }
+
+      if (filters.druh_smlouvy.length > 0 && !filters.druh_smlouvy.includes(smlouva.druh_smlouvy)) {
+        return false;
+      }
+
+      if (filters.stav === 'NEAKTIVNI') {
+        if (!isInactive) return false;
+      } else if (filters.stav && !isDefaultActiveFilter && !isArchiveOnlyFilter && smlouva.stav !== filters.stav) {
+        return false;
+      }
+
+      if (filters.platnost_od) {
+        const filterOd = new Date(filters.platnost_od);
+        const smlouvaOd = new Date(smlouva.platnost_od);
+        const smlouvaDo = new Date(smlouva.platnost_do);
+        if (filterOd < smlouvaOd || filterOd > smlouvaDo) {
+          return false;
+        }
+      }
+
+      if (filters.platnost_do) {
+        const filterDo = new Date(filters.platnost_do);
+        const smlouvaOd = new Date(smlouva.platnost_od);
+        const smlouvaDo = new Date(smlouva.platnost_do);
+        if (filterDo < smlouvaOd || filterDo > smlouvaDo) {
+          return false;
+        }
+      }
+
+      if (columnFilters.cislo_smlouvy && !(smlouva.cislo_smlouvy || '').toLowerCase().includes(columnFilters.cislo_smlouvy.toLowerCase())) {
+        return false;
+      }
+      if (columnFilters.nazev_firmy && !(smlouva.nazev_firmy || '').toLowerCase().includes(columnFilters.nazev_firmy.toLowerCase())) {
+        return false;
+      }
+      if (columnFilters.ico && !(smlouva.ico || '').toLowerCase().includes(columnFilters.ico.toLowerCase())) {
+        return false;
+      }
+      if (columnFilters.nazev_smlouvy && !(smlouva.nazev_smlouvy || '').toLowerCase().includes(columnFilters.nazev_smlouvy.toLowerCase())) {
+        return false;
+      }
+      if (columnFilters.usek_zkr && !(smlouva.usek_zkr || '').toLowerCase().includes(columnFilters.usek_zkr.toLowerCase())) {
+        return false;
+      }
+      if (columnFilters.druh_smlouvy && smlouva.druh_smlouvy !== columnFilters.druh_smlouvy) {
+        return false;
+      }
+      if (columnFilters.stav && smlouva.stav !== columnFilters.stav) {
+        return false;
+      }
+      if (columnFilters.pouzit_v_obj_formu !== '' && smlouva.pouzit_v_obj_formu !== parseInt(columnFilters.pouzit_v_obj_formu)) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (!isRestrictedCerpaniUser) {
+      return result;
+    }
+
+    return [...result].sort((a, b) => {
+      const getPriority = (smlouva) => {
+        return isRowInUserUsek(smlouva) ? 1 : 2;
+      };
+      const pa = getPriority(a);
+      const pb = getPriority(b);
+      if (pa !== pb) return pa - pb;
+      return String(a.cislo_smlouvy || '').localeCompare(String(b.cislo_smlouvy || ''), 'cs', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    });
+  }, [smlouvy, filters, columnFilters, includeInactive, isRestrictedCerpaniUser, isRowInUserUsek]);
 
   const filteredSmlouvy = useMemo(() => {
     if (!skupinaFilter) {
@@ -1848,7 +1953,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
 
   const statistics = useMemo(() => {
     // ✅ AKTIVNÍ = kde aktivni != 0 (nebo aktivni === true / aktivni === 1)
-    const aktivniSmlouvy = filteredSmlouvyBase.filter(s => s.aktivni == 1 || s.aktivni === true);
+    const aktivniSmlouvy = filteredSmlouvyBaseAll.filter(s => s.aktivni == 1 || s.aktivni === true);
     
     // ✅ PLATNÉ = aktivní a platnost_do >= dnes (nebo platnost_do IS NULL)
     const today = new Date();
@@ -1860,9 +1965,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     });
     const vyprselychSmluv = aktivniSmlouvy.length - platneSmlouvy.length;
     
-    // ✅ PRAVIDLO: Pokud je show_inactive=false, vyloučit smlouvy kde aktivni==0
-    const smlouvyProStatistiku = filters.show_inactive 
-      ? filteredSmlouvyBase      // Zobrazují se i neaktivní → sečíst všechny zobrazené
+    // ✅ PRAVIDLO: Kdyz se neukazuji neaktivni, pocitat jen aktivni smlouvy
+    const smlouvyProStatistiku = includeInactive
+      ? filteredSmlouvyBaseAll      // Zobrazují se i neaktivní → sečíst všechny zobrazené
       : aktivniSmlouvy;       // Nezobrazují se neaktivní → sečíst jen kde aktivni!=0
     
     // ✅ CELKEM ČERPÁNO: Podle pravidla výše
@@ -1894,7 +1999,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       : null;
 
     return {
-      pocet_celkem: filteredSmlouvyBase.length,
+      pocet_celkem: filteredSmlouvyBaseAll.length,
       pocet_aktivnich: aktivniSmlouvy.length,
       pocet_platnych: platneSmlouvy.length,
       pocet_vyprsenych: vyprselychSmluv,
@@ -1922,7 +2027,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         return { pocet: arr.length, cerpano };
       })(),
     };
-  }, [filteredSmlouvyBase, filters.show_inactive, resolveCerpani]);
+  }, [filteredSmlouvyBaseAll, includeInactive, resolveCerpani]);
 
   // =============================================================================
   // HANDLERS
@@ -2161,6 +2266,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         }
         
         const isExpanded = expandedContracts[row.id];
+        const isInactive = !(row?.aktivni === 1 || row?.aktivni === true);
+        const isArchived = !isInactive && isArchivedByDate(row);
         
         const filterByUser = isRestrictedCerpaniUser && !isMujUsek;
 
@@ -2215,6 +2322,25 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           <span style={{ display: 'flex', alignItems: 'center' }}>
             {expandBtn}
             <strong>{info.getValue()}</strong>
+            {isArchived && (
+              <span style={{
+                fontSize: '0.55rem',
+                fontWeight: 800,
+                color: '#92400e',
+                marginLeft: '0.4rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.06em',
+                background: '#fef3c7',
+                border: '1px solid #fcd34d',
+                padding: '1px 6px',
+                borderRadius: '999px',
+                transform: 'translateY(-0.4rem)',
+                display: 'inline-block',
+                lineHeight: 1
+              }}>
+                Archiv
+              </span>
+            )}
           </span>
         );
       },
@@ -2682,7 +2808,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         </ActionCell>
       )
     })
-  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, forceUnrestrictedReadOnly, expandedContracts, toggleContractExpand, isAdminUser, isRestrictedCerpaniUser, isRowInUserUsek, resolveCerpani]);
+  ], [handleView, handleEdit, handleToggleStatus, handleDelete, readOnly, forceUnrestrictedReadOnly, expandedContracts, toggleContractExpand, isAdminUser, isRestrictedCerpaniUser, isRowInUserUsek, resolveCerpani, isArchivedByDate]);
 
   const table = useReactTable({
     data: filteredSmlouvy,
@@ -2722,10 +2848,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       search: '',
       usek_id: [],
       druh_smlouvy: [],
-      stav: '',
+      stav: DEFAULT_STAV_FILTER,
       platnost_od: '',
-      platnost_do: '',
-      show_inactive: false
+      platnost_do: ''
     });
     setColumnFilters({
       cislo_smlouvy: '',
@@ -2797,50 +2922,144 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       </LoadingOverlay>
 
       <Container>
-      {/* Toolbar */}
-      <ToolbarContainer>
-        <SearchBox>
-          <FontAwesomeIcon icon={faSearch} className="search-icon" />
-          <input
-            type="text"
-            placeholder="Hledat podle čísla, názvu, firmy..."
-            value={filters.search}
-            onChange={(e) => handleFilterChange('search', e.target.value)}
-          />
-          {filters.search && (
-            <ClearButton onClick={() => handleFilterChange('search', '')} title="Vymazat">
-              <FontAwesomeIcon icon={faTimes} />
-            </ClearButton>
+      <FiltersContainer>
+        {/* Toolbar */}
+        <ToolbarContainer>
+          <SearchBox>
+            <FontAwesomeIcon icon={faSearch} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Hledat podle čísla, názvu, firmy..."
+              value={filters.search}
+              onChange={(e) => handleFilterChange('search', e.target.value)}
+            />
+            {filters.search && (
+              <ClearButton onClick={() => handleFilterChange('search', '')} title="Vymazat">
+                <FontAwesomeIcon icon={faTimes} />
+              </ClearButton>
+            )}
+          </SearchBox>
+
+          <ActionButton onClick={() => setShowFilters(!showFilters)}>
+            <FontAwesomeIcon icon={showFilters ? faChevronUp : faChevronDown} />
+            {showFilters ? 'Skrýt filtry' : 'Rozšířený filtr'}
+          </ActionButton>
+
+          <ActionButton $variant="danger" onClick={handleResetFilters}>
+            <FontAwesomeIcon icon={faTimes} />
+            Vymazat filtry
+          </ActionButton>
+
+          {!readOnly && (
+            <>
+              <ActionButton $variant="primary" onClick={handleCreate}>
+                <FontAwesomeIcon icon={faPlus} />
+                Přidat smlouvu
+              </ActionButton>
+              <ActionButton $variant="success" onClick={() => setImportModalOpen(true)}>
+                <FontAwesomeIcon icon={faFileImport} />
+                Import z Excel
+              </ActionButton>
+              <ActionButton $variant="warning" onClick={handlePrepocetCerpani}>
+                <FontAwesomeIcon icon={faSyncAlt} />
+                Přepočítat čerpání
+              </ActionButton>
+            </>
           )}
-        </SearchBox>
+        </ToolbarContainer>
 
-        <ActionButton onClick={() => setShowFilters(!showFilters)}>
-          <FontAwesomeIcon icon={showFilters ? faChevronUp : faChevronDown} />
-          {showFilters ? 'Skrýt filtry' : 'Rozšířený filtr'}
-        </ActionButton>
+        {/* Filters */}
+        <FilterSection $visible={showFilters}>
+          <FilterGrid>
+            <FilterField>
+              <FilterLabel>
+                <span>Úsek</span>
+                {filters.usek_id.length > 0 && (
+                  <FilterLabelClear onClick={() => handleFilterChange('usek_id', [])} title="Zrušit filtr úseku">
+                    <FontAwesomeIcon icon={faTimes} size="xs" />
+                  </FilterLabelClear>
+                )}
+              </FilterLabel>
+              <CustomSelect
+                value={filters.usek_id}
+                onChange={(val) => handleFilterChange('usek_id', val)}
+                options={useky.map(u => ({ id: String(u.id), value: String(u.id), label: `${u.usek_zkr} - ${u.usek_nazev}` }))}
+                placeholder="Všechny úseky"
+                field="filter_usek_id"
+                multiple={true}
+                isClearable={false}
+                enableSearch={true}
+                selectStates={selectStates}
+                setSelectStates={setSelectStates}
+                searchStates={searchStates}
+                setSearchStates={setSearchStates}
+                toggleSelect={toggleSelect}
+                getOptionLabel={(opt) => opt?.label || String(opt?.id || opt?.value || opt)}
+              />
+            </FilterField>
 
-        <ActionButton $variant="danger" onClick={handleResetFilters}>
-          <FontAwesomeIcon icon={faTimes} />
-          Vymazat filtry
-        </ActionButton>
+            <FilterField>
+              <FilterLabel>
+                <span>Druh smlouvy</span>
+                {filters.druh_smlouvy.length > 0 && (
+                  <FilterLabelClear onClick={() => handleFilterChange('druh_smlouvy', [])} title="Zrušit filtr druhu">
+                    <FontAwesomeIcon icon={faTimes} size="xs" />
+                  </FilterLabelClear>
+                )}
+              </FilterLabel>
+              <CustomSelect
+                value={filters.druh_smlouvy}
+                onChange={(val) => handleFilterChange('druh_smlouvy', val)}
+                options={availableDruhOptions.map(o => ({ id: o.value, value: o.value, label: o.label }))}
+                placeholder="Všechny druhy"
+                field="filter_druh_smlouvy"
+                multiple={true}
+                isClearable={false}
+                enableSearch={false}
+                selectStates={selectStates}
+                setSelectStates={setSelectStates}
+                searchStates={searchStates}
+                setSearchStates={setSearchStates}
+                toggleSelect={toggleSelect}
+                getOptionLabel={(opt) => opt?.label || String(opt?.id || opt?.value || opt)}
+              />
+            </FilterField>
 
-        {!readOnly && (
-          <>
-            <ActionButton $variant="primary" onClick={handleCreate}>
-              <FontAwesomeIcon icon={faPlus} />
-              Přidat smlouvu
-            </ActionButton>
-            <ActionButton $variant="success" onClick={() => setImportModalOpen(true)}>
-              <FontAwesomeIcon icon={faFileImport} />
-              Import z Excel
-            </ActionButton>
-            <ActionButton $variant="warning" onClick={handlePrepocetCerpani}>
-              <FontAwesomeIcon icon={faSyncAlt} />
-              Přepočítat čerpání
-            </ActionButton>
-          </>
-        )}
-      </ToolbarContainer>
+            <FilterField>
+              <FilterLabel>Stav</FilterLabel>
+              <FilterSelect
+                value={filters.stav}
+                onChange={(e) => handleFilterChange('stav', e.target.value)}
+                $isEmpty={!filters.stav}
+              >
+                <option value="">Všechny stavy</option>
+                {availableStavOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </FilterSelect>
+            </FilterField>
+
+            <FilterField>
+              <FilterLabel>Platnost od</FilterLabel>
+              <DatePicker
+                value={filters.platnost_od}
+                onChange={(value) => handleFilterChange('platnost_od', value)}
+                placeholder="Vyberte datum od"
+              />
+            </FilterField>
+
+            <FilterField>
+              <FilterLabel>Platnost do</FilterLabel>
+              <DatePicker
+                value={filters.platnost_do}
+                onChange={(value) => handleFilterChange('platnost_do', value)}
+                placeholder="Vyberte datum do"
+              />
+            </FilterField>
+
+          </FilterGrid>
+        </FilterSection>
+      </FiltersContainer>
 
       {/* Statistické dlaždice */}
       <StatsGrid>
@@ -2884,117 +3103,6 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           </StatContent>
         </StatCard>
       </StatsGrid>
-
-      {/* Filters */}
-      <FilterSection $visible={showFilters}>
-        <FilterGrid>
-          <FilterField>
-            <FilterLabel>
-              <span>Úsek</span>
-              {filters.usek_id.length > 0 && (
-                <FilterLabelClear onClick={() => handleFilterChange('usek_id', [])} title="Zrušit filtr úseku">
-                  <FontAwesomeIcon icon={faTimes} size="xs" />
-                </FilterLabelClear>
-              )}
-            </FilterLabel>
-            <CustomSelect
-              value={filters.usek_id}
-              onChange={(val) => handleFilterChange('usek_id', val)}
-              options={useky.map(u => ({ id: String(u.id), value: String(u.id), label: `${u.usek_zkr} - ${u.usek_nazev}` }))}
-              placeholder="Všechny úseky"
-              field="filter_usek_id"
-              multiple={true}
-              isClearable={false}
-              enableSearch={true}
-              selectStates={selectStates}
-              setSelectStates={setSelectStates}
-              searchStates={searchStates}
-              setSearchStates={setSearchStates}
-              toggleSelect={toggleSelect}
-              getOptionLabel={(opt) => opt?.label || String(opt?.id || opt?.value || opt)}
-            />
-          </FilterField>
-
-          <FilterField>
-            <FilterLabel>
-              <span>Druh smlouvy</span>
-              {filters.druh_smlouvy.length > 0 && (
-                <FilterLabelClear onClick={() => handleFilterChange('druh_smlouvy', [])} title="Zrušit filtr druhu">
-                  <FontAwesomeIcon icon={faTimes} size="xs" />
-                </FilterLabelClear>
-              )}
-            </FilterLabel>
-            <CustomSelect
-              value={filters.druh_smlouvy}
-              onChange={(val) => handleFilterChange('druh_smlouvy', val)}
-              options={availableDruhOptions.map(o => ({ id: o.value, value: o.value, label: o.label }))}
-              placeholder="Všechny druhy"
-              field="filter_druh_smlouvy"
-              multiple={true}
-              isClearable={false}
-              enableSearch={false}
-              selectStates={selectStates}
-              setSelectStates={setSelectStates}
-              searchStates={searchStates}
-              setSearchStates={setSearchStates}
-              toggleSelect={toggleSelect}
-              getOptionLabel={(opt) => opt?.label || String(opt?.id || opt?.value || opt)}
-            />
-          </FilterField>
-
-          <FilterField>
-            <FilterLabel>Stav</FilterLabel>
-            <FilterSelect
-              value={filters.stav}
-              onChange={(e) => handleFilterChange('stav', e.target.value)}
-            >
-              <option value="">Všechny stavy</option>
-              {availableStavOptions.map(opt => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </FilterSelect>
-          </FilterField>
-
-          <FilterField>
-            <FilterLabel>Platnost od</FilterLabel>
-            <DatePicker
-              value={filters.platnost_od}
-              onChange={(value) => handleFilterChange('platnost_od', value)}
-              placeholder="Vyberte datum od"
-            />
-          </FilterField>
-
-          <FilterField>
-            <FilterLabel>Platnost do</FilterLabel>
-            <DatePicker
-              value={filters.platnost_do}
-              onChange={(value) => handleFilterChange('platnost_do', value)}
-              placeholder="Vyberte datum do"
-            />
-          </FilterField>
-
-          <FilterField>
-            <FilterLabel style={{ marginBottom: '0.3rem' }}>&nbsp;</FilterLabel>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
-              gap: '0.75rem',
-              height: '46px'
-            }}>
-              <ToggleSwitch>
-                <input
-                  type="checkbox"
-                  checked={filters.show_inactive}
-                  onChange={(e) => handleFilterChange('show_inactive', e.target.checked)}
-                />
-                <span />
-              </ToggleSwitch>
-              <span style={{ fontSize: '0.875rem', fontWeight: '500', color: '#475569' }}>Zobrazit neaktivní</span>
-            </div>
-          </FilterField>
-
-        </FilterGrid>
-      </FilterSection>
 
       {/* Přehled smluv: CELKEM / Se stropem / Bez stropu */}
       {(statistics.skupina_se_stropem.pocet > 0 || statistics.skupina_bez_stropu.pocet > 0) && (

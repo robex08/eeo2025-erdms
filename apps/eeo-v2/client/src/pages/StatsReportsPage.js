@@ -3275,7 +3275,8 @@ export default function StatsReportsPage() {
         per_page: MAX_ORDERS_BATCH,
         period: 'all',
         filters: backendFilters,
-        access_context: accessContext || undefined
+        access_context: accessContext || undefined,
+        exclude_cancelled: true
       });
 
       const { orders: batch, pagination, status, message } = parseOrdersResponse(response);
