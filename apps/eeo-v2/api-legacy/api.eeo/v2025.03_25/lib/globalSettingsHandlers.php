@@ -151,6 +151,7 @@ function handle_get_settings($db, $forDisplay = false) {
             'hierarchy_profile_id' => isset($settings['hierarchy_profile_id']) && $settings['hierarchy_profile_id'] !== 'NULL' && $settings['hierarchy_profile_id'] !== null ? (int)$settings['hierarchy_profile_id'] : null,
             'hierarchy_logic' => $settings['hierarchy_logic'] ?? 'OR',
             'substitution_enabled' => ($settings['substitution_enabled'] ?? '0') === '1',
+            'user_impersonation_enabled' => ($settings['user_impersonation_enabled'] ?? '0') === '1',
             'maintenance_mode' => ($settings['maintenance_mode'] ?? '0') === '1',
             'maintenance_message' => $settings['maintenance_message'] ?? 'Systém je momentálně v údržbě.',
             
@@ -467,6 +468,7 @@ function handle_global_settings_save($db, $token_user_id, $data) {
             'hierarchy_profile_id' => 'integer',
             'hierarchy_logic' => 'string',
             'substitution_enabled' => 'boolean',
+            'user_impersonation_enabled' => 'boolean',
             'maintenance_mode' => 'boolean',
             'maintenance_message' => 'string'
         ];

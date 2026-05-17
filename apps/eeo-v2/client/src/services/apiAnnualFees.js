@@ -576,12 +576,21 @@ export const getAllAnnualFeeAttachments = async ({ token, username, rok, date_fr
 
     if (!response.ok) {
       const errorData = await response.json();
+      
+      // ⚠️ Nelogovat chyby oprávnění - to je normální stav
+      if (response.status === 403 || response.status === 401) {
+        return { success: false, data: [], count: 0 };
+      }
+      
       throw new Error(errorData.error || 'Chyba při načítání příloh ročních poplatků');
     }
 
     return await response.json();
   } catch (error) {
-    console.error('getAllAnnualFeeAttachments error:', error);
+    // Pouze logovat pokud to není chyba oprávnění
+    if (!error.message?.includes('oprávnění')) {
+      console.error('getAllAnnualFeeAttachments error:', error);
+    }
     throw error;
   }
 };

@@ -61,9 +61,54 @@ export const AuthProvider = ({ children }) => {
   
   // 🔐 HIERARCHIE PERMISSIONS: Rozšířená práva s hierarchií
   const [expandedPermissions, setExpandedPermissions] = useState([]);
+  
+  // 🔐 USER IMPERSONATION: Feature flag zda je impersonation povolen
+  const [impersonationFeatureEnabled, setImpersonationFeatureEnabled] = useState(false);
+  
+  // 🔐 USER IMPERSONATION STATE: Aktivní stav impersonation
+  // Načíst initial state SYNCHRONNĚ z localStorage (aby byl k dispozici při prvním renderu)
+  const [impersonationActive, setImpersonationActive] = useState(() => {
+    try {
+      return localStorage.getItem('impersonation_active') === 'true';
+    } catch {
+      return false;
+    }
+  });
+  
+  const [originalAdminUser, setOriginalAdminUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('impersonation_original_user');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔐 AuthContext initial state: Načten originalAdminUser z localStorage:', parsed.username);
+        }
+        return parsed;
+      }
+    } catch (err) {
+      console.warn('⚠️ Chyba při načítání original admin user:', err);
+    }
+    return null;
+  }); // {id, username, token, userDetail, permissions}
 
   const login = async (username, password) => {
     try {
+      // 🔐 IMPERSONATION: Vyčistit impersonation state při novém přihlášení
+      // Fresh login = NOVÁ session, starý impersonation state musí být smazán
+      try {
+        localStorage.removeItem('impersonation_active');
+        localStorage.removeItem('impersonation_original_user');
+        localStorage.removeItem('impersonation_target_user_id');
+        localStorage.removeItem('impersonation_started_at');
+        setImpersonationActive(false);
+        setOriginalAdminUser(null);
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🧹 Login: Vyčištěn starý impersonation state');
+        }
+      } catch (error) {
+        console.warn('⚠️ Chyba při čištění impersonation state při login:', error);
+      }
+      
       // Přihlášení přes nové API2
       const loginData = await loginApi2(username, password);
 
@@ -204,6 +249,21 @@ export const AuthProvider = ({ children }) => {
         // Získej aktuální userPermissions
         const currentPerms = extractPermissionCodes(userDetail || {});
         setExpandedPermissions(currentPerms);
+      }
+      
+      // 🔐 USER IMPERSONATION: Načíst feature flag z Global Settings
+      try {
+        const { getGlobalSettings } = await import('../services/globalSettingsApi');
+        const settings = await getGlobalSettings(loginData.token, loginData.username);
+        const impersonationEnabled = settings?.user_impersonation_enabled === true || settings?.user_impersonation_enabled === '1' || settings?.user_impersonation_enabled === 1;
+        setImpersonationFeatureEnabled(impersonationEnabled);
+        
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔐 Impersonation feature:', impersonationEnabled ? 'ENABLED' : 'DISABLED');
+        }
+      } catch (error) {
+        console.warn('⚠️ Chyba při načítání impersonation feature flag (použije se výchozí false):', error);
+        setImpersonationFeatureEnabled(false);
       }
 
       // ✅ BROADCAST: Oznámit ostatním záložkám, že došlo k přihlášení
@@ -348,6 +408,182 @@ export const AuthProvider = ({ children }) => {
     }
   }, [user, token]);
 
+  /**
+   * 🔐 USER IMPERSONATION: Začít impersonation - přepnout se na cílového uživatele
+   * @param {number} targetUserId - ID uživatele, na kterého se chceme přepnout
+   * @returns {Promise<boolean>} - true pokud úspěšné, false pokud chyba
+   */
+  const startImpersonationContext = useCallback(async (targetUserId) => {
+    try {
+      if (!token || !user?.username) {
+        console.error('❌ Chybí token nebo username pro impersonation');
+        return false;
+      }
+
+      // Zavolat service pro impersonation
+      const impersonationService = await import('../services/impersonationService');
+      const result = await impersonationService.startImpersonation(targetUserId, token, user.username);
+
+      if (!result.success || !result.data) {
+        console.error('❌ Impersonation selhal:', result.message);
+        return false;
+      }
+
+      const { data } = result;
+
+      // Uložit původní admin data PŘED přepnutím
+      const adminBackup = {
+        id: user_id,
+        username: user.username,
+        token: token,
+        userDetail: userDetail,
+        permissions: userPermissions // ✅ Uložit i permissions pro warning banner
+      };
+      setOriginalAdminUser(adminBackup);
+      
+      // ✅ Aktualizovat localStorage s kompletním adminBackup (včetně userDetail a permissions)
+      // ImpersonationService ukládá pouze {id, username, token}, ale potřebujeme i detail pro banner
+      try {
+        localStorage.setItem('impersonation_original_user', JSON.stringify(adminBackup));
+        if (process.env.NODE_ENV === 'development') {
+          console.log('🔐 Uložen kompletní adminBackup do localStorage:', adminBackup.username);
+        }
+      } catch (error) {
+        console.warn('⚠️ Chyba při ukládání adminBackup do localStorage:', error);
+      }
+
+      // Přepnout context na cílového uživatele
+      setUser({ id: data.id, username: data.username });
+      setToken(data.token);
+      setUserId(data.id);
+      setUserDetail(data.userDetail);
+      setFullName(`${data.userDetail.jmeno || ''} ${data.userDetail.prijmeni || ''}`.trim());
+      setAuthMethod(data.userDetail.auth_method || null);
+
+      // ✅ Uložit data cílového uživatele do localStorage (pro page reload)
+      await saveAuthData.user({ id: data.id, username: data.username });
+      await saveAuthData.token(data.token);
+      await saveAuthData.userDetail(data.userDetail);
+
+      // Extrahovat práva cílového uživatele
+      const targetPerms = extractPermissionCodes(data.userDetail || {});
+      setUserPermissions(targetPerms);
+      setExpandedPermissions(targetPerms); // Bez hierarchie pro impersonation
+      await saveAuthData.userPermissions(targetPerms);
+
+      // Nastavit hierarchyStatus na výchozí (impersonation nemá hierarchii)
+      setHierarchyStatus({
+        hierarchyEnabled: false,
+        isImmune: false,
+        profileId: null,
+        profileName: null,
+        logic: 'OR',
+        logicDescription: ''
+      });
+
+      // Aktivovat impersonation
+      setImpersonationActive(true);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔐 Impersonation aktivováno:', {
+          from: user.username,
+          to: data.username,
+          targetId: data.id
+        });
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('❌ Chyba při startu impersonation v context:', error);
+      return false;
+    }
+  }, [user, token, user_id, userDetail]);
+
+  /**
+   * 🔙 USER IMPERSONATION: Ukončit impersonation - vrátit se zpět na admina
+   * @returns {Promise<boolean>} - true pokud úspěšné, false pokud chyba
+   */
+  const stopImpersonationContext = useCallback(async () => {
+    try {
+      if (!originalAdminUser || !originalAdminUser.token || !originalAdminUser.username) {
+        console.error('❌ Chybí původní admin data pro návrat');
+        return false;
+      }
+
+      // Zavolat service pro stop impersonation
+      const impersonationService = await import('../services/impersonationService');
+      const result = await impersonationService.stopImpersonation(
+        originalAdminUser.token,
+        originalAdminUser.username
+      );
+
+      if (!result.success || !result.data) {
+        console.error('❌ Stop impersonation selhal:', result.message);
+        return false;
+      }
+
+      const { data } = result;
+
+      // Obnovit admin context
+      setUser({ id: data.id, username: data.username });
+      setToken(data.token);
+      setUserId(data.id);
+      setUserDetail(data.userDetail);
+      setFullName(`${data.userDetail.jmeno || ''} ${data.userDetail.prijmeni || ''}`.trim());
+      setAuthMethod(data.userDetail.auth_method || null);
+
+      // ✅ Uložit data admina zpět do localStorage (pro page reload)
+      await saveAuthData.user({ id: data.id, username: data.username });
+      await saveAuthData.token(data.token);
+      await saveAuthData.userDetail(data.userDetail);
+
+      // Obnovit práva admina
+      const adminPerms = extractPermissionCodes(data.userDetail || {});
+      setUserPermissions(adminPerms);
+      await saveAuthData.userPermissions(adminPerms);
+
+      // Načíst hierarchii pro admina
+      try {
+        const { getHierarchyConfig } = await import('../services/hierarchyService');
+        const { expandPermissionsWithHierarchy } = await import('../services/permissionHierarchyService');
+        const config = await getHierarchyConfig(data.token, data.username);
+
+        const hasImmunity = adminPerms.includes('HIERARCHY_IMMUNE');
+
+        setHierarchyStatus({
+          hierarchyEnabled: config.enabled,
+          isImmune: hasImmunity,
+          profileId: config.profileId,
+          profileName: config.profileName,
+          logic: config.logic,
+          logicDescription: config.logicDescription
+        });
+
+        const hierarchyEnabled = Boolean(config.enabled && config.profileId);
+        const expanded = expandPermissionsWithHierarchy(adminPerms, hierarchyEnabled, true, true);
+        setExpandedPermissions(expanded);
+      } catch (hierError) {
+        console.warn('⚠️ Chyba při načítání hierarchie po návratu:', hierError);
+        setExpandedPermissions(adminPerms);
+      }
+
+      // Deaktivovat impersonation
+      setImpersonationActive(false);
+      setOriginalAdminUser(null);
+
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔙 Impersonation ukončeno, vráceno na:', data.username);
+      }
+
+      return true;
+
+    } catch (error) {
+      console.error('❌ Chyba při stop impersonation v context:', error);
+      return false;
+    }
+  }, [originalAdminUser]);
+
   const logout = useCallback((reason = 'manual', skipBroadcast = false) => {
     // � TOKEN REFRESH: Zastavit refresh timer
     try {
@@ -418,6 +654,22 @@ export const AuthProvider = ({ children }) => {
     setExpandedPermissions([]); // 🔐 Vyčistit i rozšířená práva
     setAuthMethod(null); // 🔐 EntraID: Reset authentication method
     setNeedsPasswordChange(false); // 🔑 Reset vynucené změny hesla
+    setImpersonationActive(false); // 🔐 IMPERSONATION: Reset impersonation state
+    setOriginalAdminUser(null); // 🔐 IMPERSONATION: Vyčistit backup admin data
+    
+    // 🔐 IMPERSONATION: Vyčistit localStorage impersonation state
+    try {
+      localStorage.removeItem('impersonation_active');
+      localStorage.removeItem('impersonation_original_user');
+      localStorage.removeItem('impersonation_target_user_id');
+      localStorage.removeItem('impersonation_started_at');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🧹 Logout: Vyčištěn impersonation state z localStorage');
+      }
+    } catch (error) {
+      console.warn('⚠️ Chyba při mazání impersonation state:', error);
+    }
+    
     setHierarchyStatus({
       hierarchyEnabled: false,
       isImmune: false,
@@ -490,6 +742,9 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
+      // 🔐 USER IMPERSONATION: State je už načtený v initial useState (pomocí lazy init)
+      // Není potřeba načítat znovu tady
+
       // ❌ ZAKÁZÁNO: Migrace starých dat z localStorage do sessionStorage
       // Tato funkce je ZASTARALÁ a používá sessionStorage místo localStorage!
       // Způsobuje ztrátu session mezi záložkami a po F5 refresh
@@ -524,6 +779,15 @@ export const AuthProvider = ({ children }) => {
       // Ověř platnost tokenu (např. jednoduchý request na backend)
       // Pokud je token platný, použij userDetail z localStorage, jinak proveď logout
       const checkToken = async () => {
+        // 🔐 USER IMPERSONATION: Zkontroluj impersonation state na začátku funkce
+        let impState = null;
+        try {
+          const impersonationService = await import('../services/impersonationService');
+          impState = impersonationService.getImpersonationState();
+        } catch (impError) {
+          console.warn('⚠️ Chyba při načítání impersonation state:', impError);
+        }
+        
         try {
           // Načti cached userDetail PŘED voláním API
           const storedDetail = await loadAuthData.userDetail();
@@ -533,14 +797,42 @@ export const AuthProvider = ({ children }) => {
           // Zabraň zbytečným API callům pokud token už expiroval lokálně
           try {
             const tokenData = await loadAuthData.token();
-            if (!tokenData) {
-              // Token není v localStorage -> logout
-              if (process.env.NODE_ENV === 'development') {
-                console.warn('🔐 Token chybí v localStorage při page load → logout');
+            
+            // 🔐 VALIDACE: Zkontroluj konzistenci impersonation state
+            // Pokud je impersonation aktivní, ale current user je stejný jako originalAdminUser,
+            // jedná se o nekonzistentní stav (admin se znovu přihlásil) → vyčistit state
+            if (impState && impState.active && impState.originalUser) {
+              const currentUsername = storedUser?.username;
+              const originalUsername = impState.originalUser.username;
+              
+              if (currentUsername === originalUsername) {
+                // Nekonzistentní stav: jsme přihlášeni jako admin, ale impersonation stav říká že máme být přepnutí
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('⚠️ Nekonzistentní impersonation state - current user je stejný jako original admin → čištění');
+                }
+                const impersonationService = await import('../services/impersonationService');
+                impersonationService.clearImpersonationState();
+                setImpersonationActive(false);
+                setOriginalAdminUser(null);
               }
-              logout('token_missing');
-              setLoading(false);
-              return;
+            }
+            
+            if (!tokenData) {
+              // 🔐 USER IMPERSONATION: Pokud je impersonation aktivní, NESMÍME volat logout
+              if (impState && impState.active) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('⚠️ Token chybí při impersonation reload - neukončuji session');
+                }
+                // Pokračovat bez logout - impersonation se obnoví z localStorage
+              } else {
+                // Token není v localStorage a není impersonation -> logout
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('🔐 Token chybí v localStorage při page load → logout');
+                }
+                logout('token_missing');
+                setLoading(false);
+                return;
+              }
             }
             // Token je validní lokálně, pokračuj s API validací
             if (process.env.NODE_ENV === 'development') {
@@ -613,6 +905,17 @@ export const AuthProvider = ({ children }) => {
               setExpandedPermissions(expanded);
             } catch (hierError) {
               console.warn('⚠️ Chyba při načítání hierarchie při page reload:', hierError);
+            }
+            
+            // 🔐 USER IMPERSONATION: Načíst feature flag i při page reload
+            try {
+              const { getGlobalSettings } = await import('../services/globalSettingsApi');
+              const settings = await getGlobalSettings(storedToken, storedUser.username);
+              const impersonationEnabled = settings?.user_impersonation_enabled === true || settings?.user_impersonation_enabled === '1' || settings?.user_impersonation_enabled === 1;
+              setImpersonationFeatureEnabled(impersonationEnabled);
+            } catch (impError) {
+              console.warn('⚠️ Chyba při načítání impersonation feature flag při page reload:', impError);
+              setImpersonationFeatureEnabled(false);
             }
           } else {
             // fallback: načti detail
@@ -694,9 +997,19 @@ export const AuthProvider = ({ children }) => {
                 console.log('⚠️ API vrátilo 401 při page load, ale používám cached data → ZŮSTÁVÁM přihlášen');
               }
             } else {
-              // Žádná cached data + 401 = skutečný auth error
-              logout('token_invalid');
-              setLoading(false);
+              // 🔐 USER IMPERSONATION: Pokud je impersonation aktivní, NESMÍME volat logout
+              if (impState && impState.active) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('⚠️ API vrátilo 401 při impersonation reload - neukončuji session');
+                }
+                // Použít minimální data pro obnovení
+                setIsLoggedIn(true);
+                setLoading(false);
+              } else {
+                // Žádná cached data + 401 + není impersonation = skutečný auth error
+                logout('token_invalid');
+                setLoading(false);
+              }
             }
           } else if (isNetworkError || isCorsOrServerError) {
             // Network/server error - použij cached data, NEODHLAŠUJ
@@ -725,9 +1038,19 @@ export const AuthProvider = ({ children }) => {
               setIsLoggedIn(true);
               setLoading(false);
             } else {
-              // Žádná cached data - odhlásit
-              logout('unknown_error');
-              setLoading(false);
+              // 🔐 USER IMPERSONATION: Pokud je impersonation aktivní, NESMÍME volat logout
+              if (impState && impState.active) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn('⚠️ Chyba při reload během impersonation - neukončuji session');
+                }
+                // Použít minimální data pro obnovení
+                setIsLoggedIn(true);
+                setLoading(false);
+              } else {
+                // Žádná cached data + není impersonation - odhlásit
+                logout('unknown_error');
+                setLoading(false);
+              }
             }
           }
         }
@@ -1100,6 +1423,11 @@ export const AuthProvider = ({ children }) => {
       refreshUserDetail,
       hierarchyStatus, // 🌲 HIERARCHIE WORKFLOW
       setHierarchyStatus, // 🌲 HIERARCHIE: Setter pro hierarchyStatus
+      impersonationFeatureEnabled, // 🔐 USER IMPERSONATION: Feature flag
+      impersonationActive, // 🔐 USER IMPERSONATION: Je aktivní impersonation?
+      originalAdminUser, // 🔐 USER IMPERSONATION: Původní admin uživatel (backup)
+      startImpersonationContext, // 🔐 USER IMPERSONATION: Začít impersonation
+      stopImpersonationContext, // 🔐 USER IMPERSONATION: Ukončit impersonation
       needsPasswordChange, // 🔑 Flag pro vynucenou změnu hesla
       changeForcePassword, // 🔑 Funkce pro změnu hesla
       isRefreshingToken, // 🔄 Flag pro sledování token refreshu
