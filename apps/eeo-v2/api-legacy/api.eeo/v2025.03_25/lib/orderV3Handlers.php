@@ -605,6 +605,71 @@ function getCerpanoVProceseBatch($db, $cisla_smluv) {
 }
 
 /**
+ * BATCH: Načte LP rozklad pro všechny faktury najednou
+ * @param PDO $db
+ * @param array $faktura_ids - Pole ID faktur
+ * @return array - Mapa [faktura_id => [lp_rozklad_pole]]
+ */
+function loadFakturyLpCerpaniBatch($db, $faktura_ids) {
+    if (empty($faktura_ids)) return array();
+    
+    $faktura_ids = array_unique(array_map('intval', array_filter($faktura_ids)));
+    if (empty($faktura_ids)) return array();
+    
+    $faktura_ids = array_values($faktura_ids);
+    
+    try {
+        $placeholders = implode(',', array_fill(0, count($faktura_ids), '?'));
+        
+        $sql = "
+            SELECT 
+                lpc.faktura_id,
+                lpc.lp_id,
+                lpc.lp_cislo,
+                lpc.castka_cerpani as castka,
+                lp.cislo_lp,
+                lp.nazev_uctu,
+                lp.vyuziti
+            FROM 25a_faktury_lp_cerpani lpc
+            LEFT JOIN 25_limitovane_prisliby lp ON lpc.lp_id = lp.id
+            WHERE lpc.faktura_id IN ($placeholders)
+            ORDER BY lpc.faktura_id, lpc.id
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($faktura_ids);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Seskupit podle faktura_id
+        $map = array();
+        foreach ($rows as $row) {
+            $fid = (int)$row['faktura_id'];
+            if (!isset($map[$fid])) {
+                $map[$fid] = array();
+            }
+            $cislo_lp = $row['cislo_lp'];
+            if (!$cislo_lp && !empty($row['lp_cislo'])) {
+                $cislo_lp = $row['lp_cislo'];
+            }
+            $map[$fid][] = array(
+                'lp_id' => (int)$row['lp_id'],
+                'cislo_lp' => $cislo_lp,
+                'lp_cislo' => $row['lp_cislo'],
+                'castka' => (float)$row['castka'],
+                'nazev_uctu' => $row['nazev_uctu'],
+                'vyuziti' => $row['vyuziti']
+            );
+        }
+        
+        return $map;
+        
+    } catch (PDOException $e) {
+        error_log("loadFakturyLpCerpaniBatch error: " . $e->getMessage());
+        return array();
+    }
+}
+
+/**
  * BATCH: Načte faktury pro všechny objednávky najednou
  * @param PDO $db
  * @param array $order_ids - Pole ID objednávek
@@ -641,6 +706,19 @@ function loadOrderInvoicesBatch($db, $order_ids) {
         $stmt = $db->prepare($sql);
         $stmt->execute($order_ids);
         $all_invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // ✨ NOVÉ: Načíst LP rozklad pro všechny faktury najednou
+        if (!empty($all_invoices)) {
+            $faktura_ids = array_column($all_invoices, 'id');
+            $lp_rozklad_map = loadFakturyLpCerpaniBatch($db, $faktura_ids);
+            
+            // Připojit LP rozklad k fakturám
+            foreach ($all_invoices as &$invoice) {
+                $fid = (int)$invoice['id'];
+                $invoice['lp_rozklad'] = isset($lp_rozklad_map[$fid]) ? $lp_rozklad_map[$fid] : array();
+            }
+            unset($invoice); // Uvolnit referenci
+        }
         
         // Seskupit podle objednavka_id
         $map = array();
@@ -4012,6 +4090,7 @@ function handle_orderV3_lp_expand($input, $config) {
         $stmt_ids = $db->prepare("SELECT id FROM " . TBL_LP_MASTER . " WHERE cislo_lp = ?");
         $stmt_ids->execute([$cislo_lp]);
         $master_ids = $stmt_ids->fetchAll(PDO::FETCH_COLUMN);
+        $master_ids_int = array_map('intval', $master_ids);
 
         // 🔍 DEBUG: Log nalezených master IDs
         if ($cislo_lp === 'LPN3') {
@@ -4041,6 +4120,7 @@ function handle_orderV3_lp_expand($input, $config) {
                 o.stav_objednavky,
                 o.dodavatel_nazev,
                 o.max_cena_s_dph,
+                o.financovani,
                 o.dt_vytvoreni,
                 o.uzivatel_id,
                 CONCAT(u.jmeno, ' ', u.prijmeni) as objednatel_jmeno
@@ -4061,9 +4141,6 @@ function handle_orderV3_lp_expand($input, $config) {
         if (in_array(128, $master_ids)) {
             error_log("🔍 LP-EXPAND SQL RESULT: master_ids=" . json_encode($master_ids) . ", requesting_user_id=$requesting_user_id, počet_z_DB=" . count($orders));
         }
-
-        // Pro expand tlačítko potřebujeme první master_id pro LP rozpis z faktur
-        $first_lp_master_id = (int)$master_ids[0];
 
         // Pro každou objednávku načteme faktury + LP rozpis
         $order_ids = array_column($orders, 'id');
@@ -4106,30 +4183,32 @@ function handle_orderV3_lp_expand($input, $config) {
             // LP rozpis z faktur (25a_faktury_lp_cerpani)
             if (!empty($faktura_ids)) {
                 $fa_placeholders = implode(',', array_fill(0, count($faktura_ids), '?'));
+                $lp_placeholders = implode(',', array_fill(0, count($master_ids_int), '?'));
                 $sql_lp_rozpis = "
                     SELECT flp.faktura_id, SUM(flp.castka) as lp_castka
                     FROM 25a_faktury_lp_cerpani flp
                     WHERE flp.faktura_id IN ($fa_placeholders)
-                      AND flp.lp_id = ?
+                      AND flp.lp_id IN ($lp_placeholders)
                     GROUP BY flp.faktura_id
                 ";
                 $stmt_lp = $db->prepare($sql_lp_rozpis);
-                $stmt_lp->execute(array_merge($faktura_ids, [$first_lp_master_id]));
+                $stmt_lp->execute(array_merge($faktura_ids, $master_ids_int));
                 foreach ($stmt_lp->fetchAll(PDO::FETCH_ASSOC) as $lp_row) {
                     $lp_rozpis_map[(int)$lp_row['faktura_id']] = (float)$lp_row['lp_castka'];
                 }
             }
             
             // Položky objednávek s tímto LP (plánované čerpání)
+            $lp_placeholders = implode(',', array_fill(0, count($master_ids_int), '?'));
             $sql_pol = "
                 SELECT p.objednavka_id, SUM(p.cena_s_dph) as planovana_castka
                 FROM " . TBL_OBJEDNAVKY_POLOZKY . " p
                 WHERE p.objednavka_id IN ($placeholders)
-                  AND p.lp_id = ?
+                  AND p.lp_id IN ($lp_placeholders)
                 GROUP BY p.objednavka_id
             ";
             $stmt_pol = $db->prepare($sql_pol);
-            $stmt_pol->execute(array_merge($order_ids, [$first_lp_master_id]));
+            $stmt_pol->execute(array_merge($order_ids, $master_ids_int));
             foreach ($stmt_pol->fetchAll(PDO::FETCH_ASSOC) as $pol) {
                 $polozky_map[(int)$pol['objednavka_id']] = (float)$pol['planovana_castka'];
             }
@@ -4158,6 +4237,16 @@ function handle_orderV3_lp_expand($input, $config) {
             
             $planovana_castka_polozky = $polozky_map[$oid] ?? 0.0;
             $suma_faktur_total = array_sum(array_column($faktury, 'fa_castka'));
+
+            $pocet_lp = 1;
+            if (!empty($ord['financovani'])) {
+                $financovani = json_decode($ord['financovani'], true);
+                if ($financovani && isset($financovani['typ']) && $financovani['typ'] === 'LP') {
+                    if (!empty($financovani['lp_kody']) && is_array($financovani['lp_kody'])) {
+                        $pocet_lp = max(1, count($financovani['lp_kody']));
+                    }
+                }
+            }
             
             // Určit plánovanou částku LP
             $planovana_castka_lp = 0.0;
@@ -4168,8 +4257,9 @@ function handle_orderV3_lp_expand($input, $config) {
                 // Priorita 2: Položky s LP
                 $planovana_castka_lp = $planovana_castka_polozky;
             } else {
-                // Priorita 3: max_cena_s_dph (fallback)
-                $planovana_castka_lp = (float)$ord['max_cena_s_dph'];
+                // Priorita 3: fallback - rozdělit dle počtu LP v objednávce
+                $fallback_base = $suma_faktur_total > 0 ? $suma_faktur_total : (float)$ord['max_cena_s_dph'];
+                $planovana_castka_lp = $pocet_lp > 0 ? ($fallback_base / $pocet_lp) : 0.0;
             }
             
             $result[] = [

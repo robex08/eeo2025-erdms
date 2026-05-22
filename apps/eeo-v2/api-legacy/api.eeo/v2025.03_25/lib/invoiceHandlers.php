@@ -173,6 +173,54 @@ function handle_invoices25_by_order($input, $config, $queries) {
         $stmt->execute([$objednavka_id]);
         $faktury = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // =====================================================================
+        // 💰 NAČÍST LP ČERPÁNÍ PRO VŠECHNY FAKTURY NAJEDNOU
+        // =====================================================================
+        if (!empty($faktury)) {
+            $faktura_ids = array_map(function($f) { return (int)$f['id']; }, $faktury);
+            $lp_cerpani_map = array();
+            $lp_ids_placeholder = implode(',', array_fill(0, count($faktura_ids), '?'));
+            
+            $lp_sql = "SELECT 
+                id, faktura_id, lp_cislo, lp_id, castka, poznamka,
+                datum_pridani, pridal_user_id, datum_upravy, upravil_user_id
+            FROM `" . TBL_FAKTURY_LP_CERPANI . "` 
+            WHERE faktura_id IN ($lp_ids_placeholder)
+            ORDER BY faktura_id, id";
+            
+            $lp_stmt = $db->prepare($lp_sql);
+            $lp_stmt->execute($faktura_ids);
+            $all_lp_cerpani = $lp_stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Seskupit LP čerpání podle faktura_id
+            foreach ($all_lp_cerpani as $lp) {
+                $fid = (int)$lp['faktura_id'];
+                if (!isset($lp_cerpani_map[$fid])) {
+                    $lp_cerpani_map[$fid] = array();
+                }
+                
+                $lp_cerpani_map[$fid][] = array(
+                    'id' => (int)$lp['id'],
+                    'faktura_id' => (int)$lp['faktura_id'],
+                    'lp_cislo' => $lp['lp_cislo'],
+                    'lp_id' => !empty($lp['lp_id']) ? (int)$lp['lp_id'] : null,
+                    'castka' => $lp['castka'],
+                    'poznamka' => $lp['poznamka'],
+                    'datum_pridani' => $lp['datum_pridani'],
+                    'pridal_user_id' => !empty($lp['pridal_user_id']) ? (int)$lp['pridal_user_id'] : null,
+                    'datum_upravy' => $lp['datum_upravy'],
+                    'upravil_user_id' => !empty($lp['upravil_user_id']) ? (int)$lp['upravil_user_id'] : null
+                );
+            }
+            
+            // Přidat LP čerpání k fakturám
+            foreach ($faktury as &$faktura) {
+                $fid = (int)$faktura['id'];
+                $faktura['lp_cerpani'] = isset($lp_cerpani_map[$fid]) ? $lp_cerpani_map[$fid] : array();
+            }
+            unset($faktura);
+        }
+
         // Úspěšná odpověď
         http_response_code(200);
         echo json_encode([
@@ -2719,6 +2767,58 @@ function handle_invoices25_list($input, $config, $queries) {
             $faktura['prilohy'] = isset($prilohy_map[$fid]) ? $prilohy_map[$fid] : array();
         }
         unset($faktura); // ⚠️ KRITICKÉ: Unset reference aby se nepřepsala později
+
+        // =====================================================================
+        // 💰 NAČÍST LP ČERPÁNÍ PRO VŠECHNY FAKTURY NAJEDNOU (S KATEGORIEMI LP)
+        // =====================================================================
+        if (!empty($faktura_ids)) {
+            $lp_cerpani_map = array();
+            $lp_ids_placeholder = implode(',', array_fill(0, count($faktura_ids), '?'));
+            
+            // ✅ JOIN s 25_limitovane_prisliby pro získání kategorie LP (LPIT1, LPIT5, ...)
+            $lp_sql = "SELECT 
+                fc.id, fc.faktura_id, fc.lp_cislo, fc.lp_id, fc.castka, fc.poznamka,
+                fc.datum_pridani, fc.pridal_user_id, fc.datum_upravy, fc.upravil_user_id,
+                lp.cislo_lp AS lp_kod
+            FROM `" . TBL_FAKTURY_LP_CERPANI . "` fc
+            LEFT JOIN `" . TBL_LIMITOVANE_PRISLIBY . "` lp ON lp.id = fc.lp_id
+            WHERE fc.faktura_id IN ($lp_ids_placeholder)
+            ORDER BY fc.faktura_id, fc.id";
+            
+            $lp_stmt = $db->prepare($lp_sql);
+            $lp_stmt->execute($faktura_ids);
+            $all_lp_cerpani = $lp_stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Seskupit LP čerpání podle faktura_id
+            foreach ($all_lp_cerpani as $lp) {
+                $fid = (int)$lp['faktura_id'];
+                if (!isset($lp_cerpani_map[$fid])) {
+                    $lp_cerpani_map[$fid] = array();
+                }
+                
+                // Formátovat LP čerpání pro FE (včetně lp_kod kategorie)
+                $lp_cerpani_map[$fid][] = array(
+                    'id' => (int)$lp['id'],
+                    'faktura_id' => (int)$lp['faktura_id'],
+                    'lp_cislo' => $lp['lp_cislo'],
+                    'lp_id' => !empty($lp['lp_id']) ? (int)$lp['lp_id'] : null,
+                    'lp_kod' => $lp['lp_kod'], // ✅ Kategorie LP (LPIT1, LPIT5, ...)
+                    'castka' => $lp['castka'], // decimal as string
+                    'poznamka' => $lp['poznamka'],
+                    'datum_pridani' => $lp['datum_pridani'],
+                    'pridal_user_id' => !empty($lp['pridal_user_id']) ? (int)$lp['pridal_user_id'] : null,
+                    'datum_upravy' => $lp['datum_upravy'],
+                    'upravil_user_id' => !empty($lp['upravil_user_id']) ? (int)$lp['upravil_user_id'] : null
+                );
+            }
+            
+            // Přidat LP čerpání k fakturám
+            foreach ($faktury as &$faktura) {
+                $fid = $faktura['id'];
+                $faktura['lp_cerpani'] = isset($lp_cerpani_map[$fid]) ? $lp_cerpani_map[$fid] : array();
+            }
+            unset($faktura); // ⚠️ KRITICKÉ: Unset reference
+        }
 
         // Vypočítat pagination metadata
         $total_pages = $use_pagination ? (int)ceil($total_count / $per_page) : 1;
