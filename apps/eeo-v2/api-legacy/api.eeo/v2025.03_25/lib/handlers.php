@@ -1907,13 +1907,26 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         // Unified query builder - always include usek info via LEFT JOIN
         // Vrátit LP kódy, které jsou platné kdykoliv v aktuálním roce
         // (tzn. platne_od <= konec roku AND platne_do >= začátek roku)
+        // PLUS čerpání z tabulky 25_limitovane_prisliby_cerpani
         $currentYear = date('Y');
         $yearStart = $currentYear . '-01-01';
         $yearEnd = $currentYear . '-12-31';
         
-        $sql = "SELECT lp.id, lp.user_id, lp.usek_id, lp.kategorie, lp.cislo_lp, lp.cislo_uctu, lp.nazev_uctu, lp.vyse_financniho_kryti, lp.platne_od, lp.platne_do, u.usek_zkr, u.usek_nazev 
+        $sql = "SELECT 
+                lp.id, lp.user_id, lp.usek_id, lp.kategorie, lp.cislo_lp, 
+                lp.cislo_uctu, lp.nazev_uctu, lp.vyuziti, lp.vyse_financniho_kryti, 
+                lp.platne_od, lp.platne_do, 
+                u.usek_zkr, u.usek_nazev,
+                uz.jmeno as prikazce_jmeno, uz.prijmeni as prikazce_prijmeni, uz.titul_pred as prikazce_titul,
+                COALESCE(c.rezervovano, 0) as rezervovano,
+                COALESCE(c.predpokladane_cerpani, 0) as predpoklad,
+                COALESCE(c.skutecne_cerpano, 0) as fakturovano,
+                COALESCE(c.cerpano_pokladna, 0) as pokladna,
+                (COALESCE(c.rezervovano, 0) + COALESCE(c.predpokladane_cerpani, 0) + COALESCE(c.skutecne_cerpano, 0) + COALESCE(c.cerpano_pokladna, 0)) as cerpano
                 FROM " . TBL_LP_MASTER . " lp 
                 LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id 
+                LEFT JOIN " . TBL_UZIVATELE . " uz ON lp.user_id = uz.id
+                LEFT JOIN " . TBL_LP_CERPANI . " c ON c.cislo_lp = lp.cislo_lp AND c.rok = :current_year
                 WHERE lp.cislo_lp IS NOT NULL 
                 AND lp.platne_od <= :year_end 
                 AND lp.platne_do >= :year_start";
@@ -1921,6 +1934,7 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         // Přidat parametry pro rok
         $params[':year_start'] = $yearStart;
         $params[':year_end'] = $yearEnd;
+        $params[':current_year'] = (int)$currentYear;
 
         // Add filters dynamically
         if ($usekZkr !== null && $usekZkr !== '') {

@@ -1066,7 +1066,7 @@ function LPCerpaniEditor({
               hasTriedToSubmit={false}
               toggleSelect={toggleSelect}
               filterOptions={filterOptions}
-              getOptionLabel={(option) => option?.label || `${option?.cislo_lp || option?.kod || option?.id} - ${option?.nazev_uctu || option?.nazev || 'Bez názvu'}`}
+              getOptionLabel={(option) => option?.label || `${option?.cislo_lp || option?.kod || option?.id} - ${option?.vyuziti || option?.nazev_uctu || option?.nazev || 'Bez názvu'}`}
             />
           </FormGroup>
 

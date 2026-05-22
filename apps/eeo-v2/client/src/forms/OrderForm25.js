@@ -71,6 +71,7 @@ import { notificationService, NOTIFICATION_TYPES } from '../services/notificatio
 import { triggerNotification } from '../services/notificationsApi'; // 🆕 Org-hierarchy-aware notifications
 import { loadOrderComments, addOrderComment, deleteOrderComment } from '../services/apiOrdersV3'; // 💬 Komentáře
 import { WORKFLOW_STATES, getWorkflowPhase, canTransitionTo } from '../constants/workflow25';
+import { TooltipWrapper } from '../styles/GlobalTooltip';
 import {
   validateWorkflowData,
   getSectionVisibility,
@@ -6147,10 +6148,13 @@ function OrderForm25() {
           const lpOptions = loadedData.financovani.lp_nazvy
             .map(lp => {
               const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+              const lpNazev = lp.vyuziti || lp.nazev || 'Bez názvu';
               return {
                 id: lp.id,
                 kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-                nazev: lp.nazev || 'Bez názvu',
+                nazev: lpNazev,
+                nazev_uctu: lp.nazev_uctu || null,
+                vyuziti: lp.vyuziti || null,
                 kategorie: lp.kategorie,
                 limit: lp.limit || lp.celkovy_limit,
                 cerpano: lp.cerpano || lp.skutecne_cerpano,
@@ -6158,7 +6162,7 @@ function OrderForm25() {
                 rok: lp.rok,
                 platne_od: lp.platne_od,
                 platne_do: lp.platne_do,
-                label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+                label: `${lpKodWithYear} - ${lpNazev}`
               };
             })
             .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
@@ -6216,10 +6220,13 @@ function OrderForm25() {
                     return null;
                   }
                   const lpKodWithYear = formatLpWithYear(lpDetail.cislo_lp || lpDetail.kod, lpDetail.platne_do);
+                  const lpNazev = lpDetail.vyuziti || lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu';
                   return {
                     id: lpDetail.id,
                     kod: lpDetail.cislo_lp || lpDetail.kod || `LP${lpDetail.id}`,
-                    nazev: lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu',
+                    nazev: lpNazev,
+                    nazev_uctu: lpDetail.nazev_uctu || null,
+                    vyuziti: lpDetail.vyuziti || null,
                     kategorie: lpDetail.kategorie,
                     limit: lpDetail.celkovy_limit || 0,
                     cerpano: lpDetail.skutecne_cerpano || 0,
@@ -6227,7 +6234,7 @@ function OrderForm25() {
                     rok: lpDetail.rok,
                     platne_od: lpDetail.platne_od,
                     platne_do: lpDetail.platne_do,
-                    label: `${lpKodWithYear} - ${lpDetail.nazev_uctu || lpDetail.nazev || 'Bez názvu'}`
+                    label: `${lpKodWithYear} - ${lpNazev}`
                   };
                 } catch (err) {
                   console.error(`❌ Chyba načítání LP ${lpKod} (ID: ${originalValue}):`, err);
@@ -11812,10 +11819,13 @@ function OrderForm25() {
           const lpOptions = result.financovani.lp_nazvy
             .map(lp => {
               const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+              const lpNazev = lp.vyuziti || lp.nazev || lp.nazev_uctu || 'Bez názvu';
               return {
                 id: lp.id,
                 kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-                nazev: lp.nazev || 'Bez názvu',
+                nazev: lpNazev,
+                nazev_uctu: lp.nazev_uctu || null,
+                vyuziti: lp.vyuziti || null,
                 kategorie: lp.kategorie,
                 limit: lp.limit || lp.celkovy_limit,
                 cerpano: lp.cerpano || lp.skutecne_cerpano,
@@ -11823,7 +11833,7 @@ function OrderForm25() {
                 rok: lp.rok,
                 platne_od: lp.platne_od,
                 platne_do: lp.platne_do,
-                label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+                label: `${lpKodWithYear} - ${lpNazev}`
               };
             })
             .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
@@ -11844,10 +11854,13 @@ function OrderForm25() {
                 const lpOptions = freshOrderData.financovani.lp_nazvy
                   .map(lp => {
                     const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+                    const lpNazev = lp.vyuziti || lp.nazev || lp.nazev_uctu || 'Bez názvu';
                     return {
                       id: lp.id,
                       kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-                      nazev: lp.nazev || lp.nazev_uctu || 'Bez názvu',
+                      nazev: lpNazev,
+                      nazev_uctu: lp.nazev_uctu || null,
+                      vyuziti: lp.vyuziti || null,
                       kategorie: lp.kategorie,
                       limit: lp.limit || lp.celkovy_limit,
                       cerpano: lp.cerpano || lp.skutecne_cerpano,
@@ -11855,7 +11868,7 @@ function OrderForm25() {
                       rok: lp.rok,
                       platne_od: lp.platne_od,
                       platne_do: lp.platne_do,
-                      label: `${lpKodWithYear} - ${(lp.nazev || lp.nazev_uctu || 'Bez názvu')}`
+                      label: `${lpKodWithYear} - ${lpNazev}`
                     };
                   })
                   .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
@@ -12725,10 +12738,13 @@ function OrderForm25() {
             const lpOptions = freshOrderData.financovani.lp_nazvy
               .map(lp => {
                 const lpKodWithYear = formatLpWithYear(lp.cislo_lp || lp.kod, lp.platne_do);
+                const lpNazev = lp.vyuziti || lp.nazev || lp.nazev_uctu || 'Bez názvu';
                 return {
                   id: lp.id,
                   kod: lp.cislo_lp || lp.kod || `LP${lp.id}`,
-                  nazev: lp.nazev || 'Bez názvu',
+                  nazev: lpNazev,
+                  nazev_uctu: lp.nazev_uctu || null,
+                  vyuziti: lp.vyuziti || null,
                   kategorie: lp.kategorie,
                   limit: lp.limit || lp.celkovy_limit,
                   cerpano: lp.cerpano || lp.skutecne_cerpano,
@@ -12736,7 +12752,7 @@ function OrderForm25() {
                   rok: lp.rok,
                   platne_od: lp.platne_od,
                   platne_do: lp.platne_do,
-                  label: `${lpKodWithYear} - ${lp.nazev || 'Bez názvu'}`
+                  label: `${lpKodWithYear} - ${lpNazev}`
                 };
               })
               .sort((a, b) => a.nazev.localeCompare(b.nazev, 'cs'));
@@ -14260,11 +14276,13 @@ function OrderForm25() {
           const src = lpKodyOptions.find(opt => parseInt(String(opt?.id ?? opt?.kod), 10) === id);
           if (!src) return null;
           const kod = src.cislo_lp || src.kod || `LP${id}`;
-          const nazev = src.nazev_uctu || src.nazev || 'Bez názvu';
+          const nazev = src.vyuziti || src.nazev_uctu || src.nazev || 'Bez názvu';
           return {
             id: src.id ?? id,
             kod,
             nazev,
+            nazev_uctu: src.nazev_uctu || null,
+            vyuziti: src.vyuziti || null,
             kategorie: src.kategorie,
             platne_od: src.platne_od,
             platne_do: src.platne_do,
@@ -19787,12 +19805,13 @@ function OrderForm25() {
         // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek
         return option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
       case 'lp_kod':
-        // 🆕 OPRAVA: Použít cislo_lp a nazev_uctu místo kod a nazev + rok
+        // Zobrazit vyuziti, pokud je dostupne, pro lepsi popis LP kodu (jen v dropdownu)
         if (option.cislo_lp) {
           const lpKodWithYear = formatLpWithYear(option.cislo_lp, option.platne_do);
-          return `${lpKodWithYear} - ${option.nazev_uctu || 'Bez názvu'}`;
+          const lpNazev = option.vyuziti || option.nazev_uctu || option.nazev || 'Bez názvu';
+          return `${lpKodWithYear} - ${lpNazev}`;
         }
-        return `${option.id || option} - ${option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
+        return `${option.id || option} - ${option.vyuziti || option.nazev_uctu || option.nazev || option.label || 'Bez názvu'}`;
       case 'druh_objednavky_kod':
         // ⚠️ OPRAVA: Používat nazev_stavu stejně jako u středisek + indikátor majetku
         const druhLabel = option.nazev_stavu || option.nazev || option.label || (typeof option === 'string' ? option : 'Neznámý');
@@ -19819,8 +19838,11 @@ function OrderForm25() {
       default:
         // 🎯 FALLBACK: Pokud field začíná na "polozka_" a končí na "_lp", je to LP položky
         if (field && typeof field === 'string' && field.startsWith('polozka_') && field.endsWith('_lp')) {
-          // LP pro položky - použij label nebo vytvořit z kod a nazev
-          return option.label || (option.kod && option.nazev ? `${option.kod} - ${option.nazev}` : String(option));
+          // LP pro položky - zobrazit JEN krátký kód (bez dlouhého popisu)
+          if (option.kod || option.cislo_lp) {
+            return formatLpWithYear(option.kod || option.cislo_lp, option.platne_do);
+          }
+          return option.kod || option.cislo_lp || String(option.id || option);
         }
         // Obecný fallback - pokud má option.label, použij ho
         return option.label || (typeof option === 'string' ? option : String(option));
@@ -29979,7 +30001,7 @@ const StableCustomSelect = React.memo(({
         if (field === 'strediska' || field === 'strediska_kod') {
           label = option.label || option.name || option.nazev_stavu || String(option);
         } else if (field === 'lp_kod') {
-          label = option.cislo_lp ? `${option.cislo_lp} - ${option.nazev_uctu || ''}` : option.label || String(option);
+          label = option.cislo_lp ? `${option.cislo_lp} - ${option.vyuziti || option.nazev_uctu || ''}` : option.label || String(option);
         } else {
           label = option.label || option.nazev || option.name || String(option);
         }
@@ -30004,6 +30026,12 @@ const StableCustomSelect = React.memo(({
         });
 
         if (option) {
+          const isLpField = field === 'lp_kod' || (typeof field === 'string' && field.startsWith('polozka_') && field.endsWith('_lp'));
+          if (isLpField && (option.kod || option.cislo_lp)) {
+            const lpKod = formatLpWithYear(option.kod || option.cislo_lp, option.platne_do);
+            const shortNazev = option.nazev_uctu || option.nazev_short || option.short_name || '';
+            return shortNazev ? `${lpKod} - ${shortNazev}` : lpKod;
+          }
           // Použij externí getOptionLabel funkci nebo fallback
           if (getOptionLabel) {
             return getOptionLabel(option, field);
@@ -30014,7 +30042,7 @@ const StableCustomSelect = React.memo(({
           }
           if (field === 'lp_kod') {
             // OPRAVA: Použij label, který už je správně naformátovaný při načítání LP kódů
-            return option.label || (option.cislo_lp ? `${option.cislo_lp} - ${option.nazev_uctu || ''}` : String(option));
+            return option.label || (option.cislo_lp ? `${option.cislo_lp} - ${option.vyuziti || option.nazev_uctu || ''}` : String(option));
           }
           return option.label || option.nazev || option.name || String(option);
         }
@@ -30031,6 +30059,12 @@ const StableCustomSelect = React.memo(({
         return optVal == normalizedValue; // Používáme == místo === pro type coercion
       });
       if (option) {
+        const isLpField = field === 'lp_kod' || (typeof field === 'string' && field.startsWith('polozka_') && field.endsWith('_lp'));
+        if (isLpField && (option.kod || option.cislo_lp)) {
+          const lpKod = formatLpWithYear(option.kod || option.cislo_lp, option.platne_do);
+          const shortNazev = option.nazev_uctu || option.nazev_short || option.short_name || '';
+          return shortNazev ? `${lpKod} - ${shortNazev}` : lpKod;
+        }
         if (getOptionLabel) {
           return getOptionLabel(option, field);
         }
@@ -30043,6 +30077,49 @@ const StableCustomSelect = React.memo(({
       return String(normalizedValue);
     }
   }, [normalizedValue, options, placeholder, multiple, getOptionLabel, getOptionValue, field]);
+
+  const isLpField = field === 'lp_kod' || (typeof field === 'string' && field.startsWith('polozka_') && field.endsWith('_lp'));
+
+  const lpSelectedOptions = useMemo(() => {
+    if (!isLpField) return [];
+    const values = multiple ? (Array.isArray(normalizedValue) ? normalizedValue : []) : [normalizedValue];
+    if (!values || values.length === 0) return [];
+    return values.map(val => {
+      return options.find(opt => {
+        const optVal = getOptionValue ? getOptionValue(opt, field) : (opt.id || opt.value || opt.kod_stavu || opt.kod || opt);
+        return optVal == val;
+      });
+    }).filter(Boolean);
+  }, [isLpField, multiple, normalizedValue, options, getOptionValue, field]);
+
+  const lpTooltipContent = useMemo(() => {
+    if (!isLpField || lpSelectedOptions.length === 0) return null;
+    const withVyuziti = lpSelectedOptions.filter(opt => opt && opt.vyuziti);
+    if (withVyuziti.length === 0) return null;
+
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', maxWidth: '360px' }}>
+        {withVyuziti.map((opt, idx) => {
+          const lpKod = formatLpWithYear(opt.kod || opt.cislo_lp, opt.platne_do);
+          const shortNazev = opt.nazev_uctu || opt.nazev_short || opt.short_name || opt.nazev || '';
+          return (
+            <div
+              key={opt.id || `${lpKod}-${idx}`}
+              style={{
+                paddingBottom: idx < withVyuziti.length - 1 ? '0.5rem' : 0,
+                borderBottom: idx < withVyuziti.length - 1 ? '1px solid rgba(255,255,255,0.2)' : 'none'
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>
+                {shortNazev ? `${lpKod} - ${shortNazev}` : lpKod}
+              </div>
+              <div style={{ fontWeight: 500, opacity: 0.95 }}>{opt.vyuziti}</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }, [isLpField, lpSelectedOptions]);
 
   // Zavření při kliknutí mimo
   useEffect(() => {
@@ -30253,38 +30330,56 @@ const StableCustomSelect = React.memo(({
             {React.cloneElement(icon, { size: 16 })}
           </span>
         )}
-        <StableSelectValue title={displayValue} $hasValue={hasValue} $disabled={disabled}>
-          {(() => {
-            // 🏷️ Check if selected option is majetek for druh_objednavky_kod
-            if (field === 'druh_objednavky_kod' && normalizedValue) {
-              const selectedOption = options.find(opt => {
-                const optVal = getOptionValue ? getOptionValue(opt, field) : (opt.id || opt.value || opt.kod_stavu || opt.kod || opt);
-                return optVal == normalizedValue;
-              });
-              if (selectedOption && (selectedOption.atribut_objektu === 1 || selectedOption.atribut_objektu === '1')) {
-                const cleanLabel = displayValue.replace('   (majetek)', '');
-                return (
-                  <>
-                    <span>{cleanLabel}</span>
-                    <span style={{
-                      marginLeft: '8px',
-                      fontSize: '0.75rem',
-                      color: disabled ? '#6b7280' : '#dc2626',
-                      fontWeight: disabled ? '400' : '500',
-                      padding: '2px 6px',
-                      backgroundColor: disabled ? '#f3f4f6' : '#fee2e2',
-                      borderRadius: '4px',
-                      border: disabled ? '1px solid #e5e7eb' : '1px solid #fca5a5'
-                    }}>
-                      (majetek)
-                    </span>
-                  </>
-                );
-              }
-            }
-            return displayValue;
-          })()}
-        </StableSelectValue>
+        {(() => {
+          const valueNode = (
+            <StableSelectValue
+              title={lpTooltipContent ? undefined : displayValue}
+              $hasValue={hasValue}
+              $disabled={disabled}
+            >
+              {(() => {
+                // 🏷️ Check if selected option is majetek for druh_objednavky_kod
+                if (field === 'druh_objednavky_kod' && normalizedValue) {
+                  const selectedOption = options.find(opt => {
+                    const optVal = getOptionValue ? getOptionValue(opt, field) : (opt.id || opt.value || opt.kod_stavu || opt.kod || opt);
+                    return optVal == normalizedValue;
+                  });
+                  if (selectedOption && (selectedOption.atribut_objektu === 1 || selectedOption.atribut_objektu === '1')) {
+                    const cleanLabel = displayValue.replace('   (majetek)', '');
+                    return (
+                      <>
+                        <span>{cleanLabel}</span>
+                        <span style={{
+                          marginLeft: '8px',
+                          fontSize: '0.75rem',
+                          color: disabled ? '#6b7280' : '#dc2626',
+                          fontWeight: disabled ? '400' : '500',
+                          padding: '2px 6px',
+                          backgroundColor: disabled ? '#f3f4f6' : '#fee2e2',
+                          borderRadius: '4px',
+                          border: disabled ? '1px solid #e5e7eb' : '1px solid #fca5a5'
+                        }}>
+                          (majetek)
+                        </span>
+                      </>
+                    );
+                  }
+                }
+                return displayValue;
+              })()}
+            </StableSelectValue>
+          );
+
+          if (lpTooltipContent) {
+            return (
+              <TooltipWrapper content={lpTooltipContent} position="top">
+                {valueNode}
+              </TooltipWrapper>
+            );
+          }
+
+          return valueNode;
+        })()}
         {isClearable && !disabled && hasValue && (
           <span
             role="button"
@@ -30416,7 +30511,7 @@ const StableCustomSelect = React.memo(({
                 if (field === 'strediska' || field === 'strediska_kod') {
                   optionLabel = option.label || option.name || option.nazev_stavu || String(option);
                 } else if (field === 'lp_kod') {
-                  optionLabel = option.cislo_lp ? `${option.cislo_lp} - ${option.nazev_uctu || ''}` : option.label || String(option);
+                  optionLabel = option.cislo_lp ? `${option.cislo_lp} - ${option.vyuziti || option.nazev_uctu || ''}` : option.label || String(option);
                 } else {
                   optionLabel = option.label || option.nazev || option.name || String(option);
                 }

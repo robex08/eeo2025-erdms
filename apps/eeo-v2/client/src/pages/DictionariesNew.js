@@ -14,7 +14,7 @@ import React, { useState, useContext } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBook, faSyncAlt } from '@fortawesome/free-solid-svg-icons';
-import { Building, Briefcase, Network, Building2, Circle, Shield, Key, FileText, Calculator, FileSignature } from 'lucide-react';
+import { Building, Briefcase, Network, Building2, Circle, Shield, Key, FileText, Calculator, FileSignature, Coins } from 'lucide-react';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import { AuthContext } from '../context/AuthContext';
 
@@ -29,6 +29,7 @@ import PravaTab from '../components/dictionaries/tabs/PravaTab';
 import DocxSablonyTab from '../components/dictionaries/tabs/DocxSablonyTab';
 import CashbookTab from '../components/dictionaries/tabs/CashbookTab';
 import SmlouvyTab from '../components/dictionaries/tabs/SmlouvyTab';
+import LimitovanePrislibTab from '../components/dictionaries/tabs/LimitovanePrislibTab';
 
 // =============================================================================
 // STYLED COMPONENTS
@@ -195,6 +196,7 @@ const DictionariesNew = () => {
     { key: 'docx', prefix: 'DOCX_TEMPLATES', name: 'DOCX Šablony' },
     { key: 'cashbook', prefix: 'CASH_BOOKS', name: 'Pokladní knihy' },
     { key: 'smlouvy', prefix: 'CONTRACT', name: 'Smlouvy' },
+    { key: 'lp', prefix: 'LP', name: 'LP kódy' },
     { key: 'lokality', prefix: 'LOCATIONS', name: 'Lokality' },
     { key: 'pozice', prefix: 'POSITIONS', name: 'Pozice' },
     { key: 'prava', prefix: 'PERMISSIONS', name: 'Práva' },
@@ -251,7 +253,8 @@ const DictionariesNew = () => {
          key.includes('prava_') ||
          key.includes('docx_') ||
          key.includes('cashbook_') ||
-         key.includes('smlouvy_')) &&
+         key.includes('smlouvy_') ||
+         key.includes('lp_')) &&
         key !== 'dictionaries_activeTab'
       ) {
         try {
@@ -278,7 +281,8 @@ const DictionariesNew = () => {
       'prava': 'Práva',
       'docx': 'DOCX Šablony',
       'cashbook': 'Pokladní knihy',
-      'smlouvy': 'Smlouvy'
+      'smlouvy': 'Smlouvy',
+      'lp': 'LP kódy'
     };
     return tabNames[tabKey] || 'Číselníky';
   };
@@ -319,6 +323,12 @@ const DictionariesNew = () => {
             <Tab $active={activeTab === 'smlouvy'} onClick={() => handleTabChange('smlouvy')}>
               <FileSignature size={18} />
               Smlouvy
+            </Tab>
+          )}
+          {canViewTab('LP') && (
+            <Tab $active={activeTab === 'lp'} onClick={() => handleTabChange('lp')}>
+              <Coins size={18} />
+              LP kódy
             </Tab>
           )}
           {canViewTab('LOCATIONS') && (
@@ -381,6 +391,7 @@ const DictionariesNew = () => {
         {hasAnyTab && activeTab === 'docx' && canViewTab('DOCX_TEMPLATES') && <DocxSablonyTab key={`docx-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'cashbook' && canViewTab('CASH_BOOKS') && <CashbookTab key={`cashbook-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'smlouvy' && canViewTab('CONTRACT') && <SmlouvyTab key={`smlouvy-${refreshKey}`} />}
+        {hasAnyTab && activeTab === 'lp' && canViewTab('LP') && <LimitovanePrislibTab key={`lp-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'lokality' && canViewTab('LOCATIONS') && <LokalityTab key={`lokality-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'pozice' && canViewTab('POSITIONS') && <PoziceTab key={`pozice-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'prava' && canViewTab('PERMISSIONS') && <PravaTab key={`prava-${refreshKey}`} />}

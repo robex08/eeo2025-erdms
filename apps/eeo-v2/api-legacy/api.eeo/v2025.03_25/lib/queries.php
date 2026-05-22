@@ -172,8 +172,8 @@ $queries['objednavky_prilohy_select_all'] = "SELECT * FROM ".TBL_OBJEDNAVKY_PRIL
 $queries['objednavky_prilohy_select_by_id'] = "SELECT * FROM ".TBL_OBJEDNAVKY_PRILOHY." WHERE id = :id";
 // Limitovane prisliby
 $queries['limitovane_prisliby_select_all'] = "SELECT * FROM ".TBL_LP_MASTER;
-$queries['limitovane_prisliby_select_by_filters'] = "SELECT id, user_id, usek_id, kategorie, cislo_lp, cislo_uctu, nazev_uctu, vyse_financniho_kryti, platne_od, platne_do FROM ".TBL_LP_MASTER." WHERE 1=1";
-$queries['limitovane_prisliby_select_basic_info'] = "SELECT id, cislo_lp, nazev_uctu, vyse_financniho_kryti FROM ".TBL_LP_MASTER;
+$queries['limitovane_prisliby_select_by_filters'] = "SELECT id, user_id, usek_id, kategorie, cislo_lp, cislo_uctu, nazev_uctu, vyuziti, vyse_financniho_kryti, platne_od, platne_do FROM ".TBL_LP_MASTER." WHERE 1=1";
+$queries['limitovane_prisliby_select_basic_info'] = "SELECT id, cislo_lp, nazev_uctu, vyuziti, vyse_financniho_kryti FROM ".TBL_LP_MASTER;
 $queries['limitovane_prisliby_select_by_id'] = "SELECT * FROM ".TBL_LP_MASTER." WHERE id = :id";
 
 // Templates for orders (legacy/new)
