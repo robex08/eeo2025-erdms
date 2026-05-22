@@ -3325,3 +3325,268 @@ function handle_ciselniky_annual_fees_stavy_list($input, $config, $queries) {
         echo json_encode(array('err' => 'Chyba při načítání stavů: ' . $e->getMessage()));
     }
 }
+
+// =============================================================================
+// 10. LIMITOVANÉ PŘÍSLIBOVÉ KÓDY (LP KÓDY) - TBL_LP_MASTER (25_limitovane_prisliby)
+// =============================================================================
+
+/**
+ * Vytvoření nového LP kódu
+ * POST /ciselniky/limitovane-prisliby/insert
+ */
+function handle_ciselniky_lp_insert($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu'));
+        return;
+    }
+
+    // Validace povinných polí
+    if (!isset($input['cislo_lp']) || empty(trim($input['cislo_lp']))) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí nebo je prázdné číslo LP kódu'));
+        return;
+    }
+
+    if (!isset($input['usek_id']) || empty($input['usek_id'])) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí ID úseku'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Kontrola zda LP kód již neexistuje
+        $sql_check = "SELECT COUNT(*) as count FROM " . TBL_LP_MASTER . " WHERE cislo_lp = :cislo_lp";
+        $stmt_check = $db->prepare($sql_check);
+        $stmt_check->bindParam(':cislo_lp', $input['cislo_lp']);
+        $stmt_check->execute();
+        $row = $stmt_check->fetch(PDO::FETCH_ASSOC);
+        
+        if ((int)$row['count'] > 0) {
+            http_response_code(400);
+            echo json_encode(array('err' => 'LP kód s tímto číslem již existuje'));
+            return;
+        }
+        
+        $sql = "INSERT INTO " . TBL_LP_MASTER . " (
+            user_id, usek_id, kategorie, cislo_lp, cislo_uctu, nazev_uctu, 
+            vyuziti, vyse_financniho_kryti, platne_od, platne_do
+        ) VALUES (
+            :user_id, :usek_id, :kategorie, :cislo_lp, :cislo_uctu, :nazev_uctu,
+            :vyuziti, :vyse_financniho_kryti, :platne_od, :platne_do
+        )";
+        
+        $stmt = $db->prepare($sql);
+        
+        $params = array(
+            ':user_id' => isset($input['user_id']) ? (int)$input['user_id'] : null,
+            ':usek_id' => (int)$input['usek_id'],
+            ':kategorie' => isset($input['kategorie']) ? trim($input['kategorie']) : null,
+            ':cislo_lp' => trim($input['cislo_lp']),
+            ':cislo_uctu' => isset($input['cislo_uctu']) ? trim($input['cislo_uctu']) : null,
+            ':nazev_uctu' => isset($input['nazev_uctu']) ? trim($input['nazev_uctu']) : null,
+            ':vyuziti' => isset($input['vyuziti']) ? trim($input['vyuziti']) : null,
+            ':vyse_financniho_kryti' => isset($input['vyse_financniho_kryti']) ? (float)$input['vyse_financniho_kryti'] : null,
+            ':platne_od' => isset($input['platne_od']) && !empty($input['platne_od']) ? $input['platne_od'] : null,
+            ':platne_do' => isset($input['platne_do']) && !empty($input['platne_do']) ? $input['platne_do'] : null
+        );
+        
+        $stmt->execute($params);
+        $new_id = $db->lastInsertId();
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'LP kód byl vytvořen',
+            'data' => array('id' => (int)$new_id)
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při vytváření LP kódu: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * Aktualizace LP kódu
+ * POST /ciselniky/limitovane-prisliby/update
+ */
+function handle_ciselniky_lp_update($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu'));
+        return;
+    }
+
+    if (!isset($input['id'])) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí ID LP kódu'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Zkontrolovat zda LP kód existuje
+        $sql_check = "SELECT id FROM " . TBL_LP_MASTER . " WHERE id = :id";
+        $stmt_check = $db->prepare($sql_check);
+        $stmt_check->bindParam(':id', $input['id'], PDO::PARAM_INT);
+        $stmt_check->execute();
+        
+        if (!$stmt_check->fetch()) {
+            http_response_code(404);
+            echo json_encode(array('err' => 'LP kód nenalezen'));
+            return;
+        }
+        
+        // Dynamické sestavení UPDATE dotazu podle poskytnutých polí
+        $update_fields = array();
+        $params = array(':id' => (int)$input['id']);
+        
+        if (isset($input['user_id'])) {
+            $update_fields[] = 'user_id = :user_id';
+            $params[':user_id'] = !empty($input['user_id']) ? (int)$input['user_id'] : null;
+        }
+        
+        if (isset($input['usek_id'])) {
+            $update_fields[] = 'usek_id = :usek_id';
+            $params[':usek_id'] = (int)$input['usek_id'];
+        }
+        
+        if (isset($input['kategorie'])) {
+            $update_fields[] = 'kategorie = :kategorie';
+            $params[':kategorie'] = trim($input['kategorie']);
+        }
+        
+        if (isset($input['cislo_uctu'])) {
+            $update_fields[] = 'cislo_uctu = :cislo_uctu';
+            $params[':cislo_uctu'] = trim($input['cislo_uctu']);
+        }
+        
+        if (isset($input['nazev_uctu'])) {
+            $update_fields[] = 'nazev_uctu = :nazev_uctu';
+            $params[':nazev_uctu'] = trim($input['nazev_uctu']);
+        }
+        
+        if (isset($input['vyuziti'])) {
+            $update_fields[] = 'vyuziti = :vyuziti';
+            $params[':vyuziti'] = trim($input['vyuziti']);
+        }
+        
+        if (isset($input['vyse_financniho_kryti'])) {
+            $update_fields[] = 'vyse_financniho_kryti = :vyse_financniho_kryti';
+            $params[':vyse_financniho_kryti'] = (float)$input['vyse_financniho_kryti'];
+        }
+        
+        if (isset($input['platne_od'])) {
+            $update_fields[] = 'platne_od = :platne_od';
+            $params[':platne_od'] = !empty($input['platne_od']) ? $input['platne_od'] : null;
+        }
+        
+        if (isset($input['platne_do'])) {
+            $update_fields[] = 'platne_do = :platne_do';
+            $params[':platne_do'] = !empty($input['platne_do']) ? $input['platne_do'] : null;
+        }
+        
+        if (empty($update_fields)) {
+            http_response_code(400);
+            echo json_encode(array('err' => 'Žádná pole k aktualizaci'));
+            return;
+        }
+        
+        $sql = "UPDATE " . TBL_LP_MASTER . " SET " . implode(', ', $update_fields) . " WHERE id = :id";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'LP kód byl aktualizován',
+            'data' => array('id' => (int)$input['id'])
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při aktualizaci LP kódu: ' . $e->getMessage()));
+    }
+}
+
+/**
+ * Smazání LP kódu
+ * POST /ciselniky/limitovane-prisliby/delete
+ */
+function handle_ciselniky_lp_delete($input, $config, $queries) {
+    $token = isset($input['token']) ? $input['token'] : '';
+    $request_username = isset($input['username']) ? $input['username'] : '';
+
+    $token_data = verify_token($token);
+    if (!$token_data) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Neplatný nebo chybějící token'));
+        return;
+    }
+
+    if ($token_data['username'] !== $request_username) {
+        http_response_code(401);
+        echo json_encode(array('err' => 'Uživatelské jméno z tokenu neodpovídá zadanému uživatelskému jménu'));
+        return;
+    }
+
+    if (!isset($input['id'])) {
+        http_response_code(400);
+        echo json_encode(array('err' => 'Chybí ID LP kódu'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        
+        // Zkontrolovat zda LP kód existuje
+        $sql_check = "SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = :id";
+        $stmt_check = $db->prepare($sql_check);
+        $stmt_check->bindParam(':id', $input['id'], PDO::PARAM_INT);
+        $stmt_check->execute();
+        $lp = $stmt_check->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$lp) {
+            http_response_code(404);
+            echo json_encode(array('err' => 'LP kód nenalezen'));
+            return;
+        }
+        
+        // Smazat LP kód (HARD DELETE)
+        $sql = "DELETE FROM " . TBL_LP_MASTER . " WHERE id = :id";
+        $stmt = $db->prepare($sql);
+        $stmt->bindParam(':id', $input['id'], PDO::PARAM_INT);
+        $stmt->execute();
+
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'LP kód byl smazán'
+        ));
+        
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('err' => 'Chyba při mazání LP kódu: ' . $e->getMessage()));
+    }
+}

@@ -1268,6 +1268,7 @@ function handle_hierarchy_users_list($data, $pdo) {
         $sql = "
             SELECT 
                 u.id,
+                u.titul_pred,
                 u.jmeno,
                 u.prijmeni,
                 u.email,
@@ -1309,6 +1310,7 @@ function handle_hierarchy_users_list($data, $pdo) {
             
             $users[] = array(
                 'id' => (string)$row['id'],
+                'titul_pred' => $row['titul_pred'] ?: '',
                 'jmeno' => $row['jmeno'] ?: '',
                 'prijmeni' => $row['prijmeni'] ?: '',
                 'name' => trim($row['jmeno'] . ' ' . $row['prijmeni']),

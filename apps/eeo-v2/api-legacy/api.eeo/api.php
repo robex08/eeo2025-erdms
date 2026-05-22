@@ -3721,6 +3721,34 @@ switch ($endpoint) {
         }
         break;
         
+    // === LIMITOVANÉ PŘÍSLIBOVÉ KÓDY (LP KÓDY) ===
+    case 'ciselniky/limitovane-prisliby/insert':
+        if ($request_method === 'POST') {
+            handle_ciselniky_lp_insert($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'ciselniky/limitovane-prisliby/update':
+        if ($request_method === 'POST') {
+            handle_ciselniky_lp_update($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
+    case 'ciselniky/limitovane-prisliby/delete':
+        if ($request_method === 'POST') {
+            handle_ciselniky_lp_delete($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('err' => 'Method not allowed'));
+        }
+        break;
+        
     case 'ciselniky/prava/by-id':
         if ($request_method === 'POST') {
             handle_ciselniky_prava_by_id($input, $config, $queries);

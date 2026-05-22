@@ -1727,7 +1727,7 @@ const StableCustomSelect = React.memo(({
         if (field === 'strediska' || field === 'strediska_kod') {
           label = option.label || option.name || option.nazev_stavu || String(option);
         } else if (field === 'lp_kod') {
-          label = option.cislo_lp ? `${option.cislo_lp} - ${option.nazev_uctu || ''}` : option.label || String(option);
+          label = option.cislo_lp ? `${option.cislo_lp} - ${option.vyuziti || option.nazev_uctu || ''}` : option.label || String(option);
         } else {
           label = option.label || option.nazev || option.name || String(option);
         }
@@ -1755,7 +1755,7 @@ const StableCustomSelect = React.memo(({
             return option.label || option.name || option.nazev_stavu || String(option);
           }
           if (field === 'lp_kod') {
-            return option.cislo_lp ? `${option.cislo_lp} - ${option.nazev_uctu || ''}` : option.label || String(option);
+            return option.cislo_lp ? `${option.cislo_lp} - ${option.vyuziti || option.nazev_uctu || ''}` : option.label || String(option);
           }
           return option.label || option.nazev || option.name || String(option);
         }
@@ -1909,7 +1909,7 @@ const StableCustomSelect = React.memo(({
                 if (field === 'strediska' || field === 'strediska_kod') {
                   optionLabel = option.label || option.name || option.nazev_stavu || String(option);
                 } else if (field === 'lp_kod') {
-                  optionLabel = option.cislo_lp ? `${option.cislo_lp} - ${option.nazev_uctu || ''}` : option.label || String(option);
+                  optionLabel = option.cislo_lp ? `${option.cislo_lp} - ${option.vyuziti || option.nazev_uctu || ''}` : option.label || String(option);
                 } else {
                   optionLabel = option.label || option.nazev || option.name || String(option);
                 }

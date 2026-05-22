@@ -1471,3 +1471,200 @@ export async function getStavyRocnichPoplatku({ token, username, show_inactive =
     throw error;
   }
 }
+
+// =============================================================================
+// 11. LIMITOVANÉ PŘÍSLIBOVÉ KÓDY (LP KÓDY)
+// =============================================================================
+
+/**
+ * Načtení seznamu všech LP kódů
+ * Endpoint: POST /limitovane_prisliby
+ * 
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} [params.usek_id] - Filtr podle úseku (optional)
+ * @param {string} [params.usek_zkr] - Filtr podle zkratky úseku (optional)
+ * @param {string} [params.kategorie] - Filtr podle kategorie (optional)
+ * @returns {Promise<Array>} Pole LP kódů
+ */
+export async function getLimitovanePrislibList({ token, username, usek_id = null, usek_zkr = null, kategorie = null }) {
+  try {
+    const payload = {
+      username,
+      token
+    };
+
+    // Přidat volitelné filtry
+    if (usek_id) payload.usek_id = parseInt(usek_id, 10);
+    if (usek_zkr) payload.usek_zkr = usek_zkr;
+    if (kategorie) payload.kategorie = kategorie;
+
+    const response = await api.post('limitovane_prisliby', payload);
+    
+    // API vrací přímo data nebo { data: [...] }
+    if (response.data && Array.isArray(response.data.data)) {
+      return response.data.data;
+    } else if (response.data && Array.isArray(response.data)) {
+      return response.data;
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('🔴 getLimitovanePrislibList ERROR:', error);
+    // Pokud je 403, vrátíme prázdné pole (uživatel nemá oprávnění)
+    if (error.response?.status === 403) {
+      return [];
+    }
+    handleApiError(error, 'Chyba při načítání LP kódů');
+    throw error;
+  }
+}
+
+/**
+ * Vytvoření nového LP kódu
+ * Endpoint: POST /ciselniky/limitovane-prisliby/insert
+ * 
+ * @param {Object} params - Parametry LP kódu
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {string} params.cislo_lp - Číslo LP kódu (povinné)
+ * @param {number} params.usek_id - ID úseku (povinné)
+ * @param {string} [params.cislo_uctu] - Číslo účtu
+ * @param {string} [params.nazev_uctu] - Název účtu
+ * @param {string} [params.vyuziti] - Popis využití
+ * @param {string} [params.kategorie] - Kategorie
+ * @param {number} [params.vyse_financniho_kryti] - Výše finančního krytí v Kč
+ * @param {string} [params.platne_od] - Datum platnosti od (YYYY-MM-DD)
+ * @param {string} [params.platne_do] - Datum platnosti do (YYYY-MM-DD)
+ * @param {number} [params.user_id] - ID uživatele (pro auditní účely)
+ * @returns {Promise<Object>} Vytvořený LP kód
+ */
+export async function createLimitovanePrislib({
+  token,
+  username,
+  cislo_lp,
+  usek_id,
+  cislo_uctu = null,
+  nazev_uctu = null,
+  vyuziti = null,
+  kategorie = null,
+  vyse_financniho_kryti = null,
+  platne_od = null,
+  platne_do = null,
+  user_id = null
+}) {
+  try {
+    const payload = {
+      username,
+      token,
+      cislo_lp: cislo_lp.toString(),
+      usek_id: parseInt(usek_id, 10),
+      cislo_uctu,
+      nazev_uctu,
+      vyuziti,
+      kategorie,
+      vyse_financniho_kryti: vyse_financniho_kryti ? parseFloat(vyse_financniho_kryti) : null,
+      platne_od,
+      platne_do,
+      user_id: user_id ? parseInt(user_id, 10) : null
+    };
+
+    const response = await api.post('ciselniky/limitovane-prisliby/insert', payload);
+    
+    return checkResponse(response, 'LP kód byl vytvořen');
+  } catch (error) {
+    console.error('🔴 createLimitovanePrislib ERROR:', error);
+    handleApiError(error, 'Chyba při vytváření LP kódu');
+    throw error;
+  }
+}
+
+/**
+ * Aktualizace existujícího LP kódu
+ * Endpoint: POST /ciselniky/limitovane-prisliby/update
+ * 
+ * @param {Object} params - Parametry LP kódu
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.id - ID LP kódu (povinné)
+ * @param {string} [params.cislo_lp] - Číslo LP kódu
+ * @param {number} [params.usek_id] - ID úseku
+ * @param {string} [params.cislo_uctu] - Číslo účtu
+ * @param {string} [params.nazev_uctu] - Název účtu
+ * @param {string} [params.vyuziti] - Popis využití
+ * @param {string} [params.kategorie] - Kategorie
+ * @param {number} [params.vyse_financniho_kryti] - Výše finančního krytí v Kč
+ * @param {string} [params.platne_od] - Datum platnosti od (YYYY-MM-DD)
+ * @param {string} [params.platne_do] - Datum platnosti do (YYYY-MM-DD)
+ * @returns {Promise<Object>} Aktualizovaný LP kód
+ */
+export async function updateLimitovanePrislib({
+  token,
+  username,
+  id,
+  cislo_lp = null,
+  usek_id = null,
+  cislo_uctu = null,
+  nazev_uctu = null,
+  vyuziti = null,
+  kategorie = null,
+  vyse_financniho_kryti = null,
+  platne_od = null,
+  platne_do = null,
+  user_id = null
+}) {
+  try {
+    const payload = {
+      username,
+      token,
+      id: parseInt(id, 10)
+    };
+
+    // Přidat pouze definované hodnoty
+    if (cislo_lp !== null) payload.cislo_lp = cislo_lp.toString();
+    if (usek_id !== null) payload.usek_id = parseInt(usek_id, 10);
+    if (cislo_uctu !== null) payload.cislo_uctu = cislo_uctu;
+    if (nazev_uctu !== null) payload.nazev_uctu = nazev_uctu;
+    if (vyuziti !== null) payload.vyuziti = vyuziti;
+    if (kategorie !== null) payload.kategorie = kategorie;
+    if (vyse_financniho_kryti !== null) payload.vyse_financniho_kryti = parseFloat(vyse_financniho_kryti);
+    if (platne_od !== null) payload.platne_od = platne_od;
+    if (platne_do !== null) payload.platne_do = platne_do;
+    if (user_id !== null) payload.user_id = parseInt(user_id, 10);
+
+    const response = await api.post('ciselniky/limitovane-prisliby/update', payload);
+    
+    return checkResponse(response, 'LP kód byl aktualizován');
+  } catch (error) {
+    console.error('🔴 updateLimitovanePrislib ERROR:', error);
+    handleApiError(error, 'Chyba při aktualizaci LP kódu');
+    throw error;
+  }
+}
+
+/**
+ * Smazání LP kódu
+ * Endpoint: POST /ciselniky/limitovane-prisliby/delete
+ * 
+ * @param {Object} params
+ * @param {string} params.token - Auth token
+ * @param {string} params.username - Username
+ * @param {number} params.id - ID LP kódu k smazání
+ * @returns {Promise<Object>} Response potvrzující smazání
+ */
+export async function deleteLimitovanePrislib({ token, username, id }) {
+  try {
+    const response = await api.post('ciselniky/limitovane-prisliby/delete', {
+      username,
+      token,
+      id: parseInt(id, 10)
+    });
+
+    return checkResponse(response, 'LP kód byl smazán');
+  } catch (error) {
+    console.error('🔴 deleteLimitovanePrislib ERROR:', error);
+    handleApiError(error, 'Chyba při mazání LP kódu');
+    throw error;
+  }
+}

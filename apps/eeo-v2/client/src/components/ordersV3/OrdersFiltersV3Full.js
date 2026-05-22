@@ -897,7 +897,7 @@ const OrdersFiltersV3Full = ({
       return {
         ...lp,
         id: String(lp.id),
-        label: `${lp.cislo_lp} - ${lp.nazev_uctu || ''}`,
+        label: `${lp.cislo_lp} - ${lp.vyuziti || lp.nazev_uctu || ''}`,
         cerpanoLabel: `${formatCerpano} Kč / ${formatLimit} Kč`,
         procentoLabel: `${formatProcento}%`,
         cerpanoValue: cerpano,

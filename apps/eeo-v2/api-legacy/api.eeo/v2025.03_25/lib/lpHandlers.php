@@ -80,6 +80,7 @@ function handle_lp_list($input, $config) {
                 lp.id,
                 lp.cislo_lp,
                 lp.nazev_uctu,
+                lp.vyuziti,
                 lp.vyse_financniho_kryti as limit_celkem,
                 COALESCE(c.rezervovano, 0) as rezervovano,
                 COALESCE(c.predpokladane_cerpani, 0) as predpoklad,
