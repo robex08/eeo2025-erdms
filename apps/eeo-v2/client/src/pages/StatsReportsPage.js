@@ -2280,6 +2280,45 @@ const getLpAmount = (order, lpCode, invoicesOverride = null, lpCerpaniByInvoiceI
 };
 
 /**
+ * Určí prefix částky podle zdroje dat (MAX/FA/OBJ)
+ * @param {Object} order - Objekt objednávky
+ * @param {string} lpCode - LP kód (např. "LPIT1")
+ * @param {Array} invoicesOverride - Override invoices array
+ * @param {Object} lpCerpaniByInvoiceId - LP čerpání state
+ * @returns {string} - Prefix: "MAX" | "FA" | "OBJ"
+ */
+const getLpAmountPrefix = (order, lpCode, invoicesOverride = null, lpCerpaniByInvoiceId = {}) => {
+  if (!order || !lpCode) return 'OBJ';
+  
+  var lpKey = String(lpCode).trim();
+  let faktury = Array.isArray(invoicesOverride) ? invoicesOverride : [];
+  if (!faktury.length) faktury = Array.isArray(order?.faktury) ? order.faktury : [];
+  if (!faktury.length && Array.isArray(order?.invoices)) faktury = order.invoices;
+  
+  const fin = parseFinancing(order?.financovani);
+  const lpNazvy = Array.isArray(fin?.lp_nazvy) ? fin.lp_nazvy : [];
+  const codes = lpNazvy
+    .map(lp => String(lp?.cislo_lp || lp?.lp_cislo || lp?.kod || lp?.cislo || '').trim())
+    .filter(Boolean);
+  const uniqueCodes = Array.from(new Set(codes));
+  const hasMultipleLp = uniqueCodes.length > 1;
+  
+  // Pokud má faktury → FA
+  if (faktury.length > 0) {
+    return 'FA';
+  }
+  
+  // Nemá faktury - zkontrolovat max_cena_s_dph
+  const maxCena = parseFloat(order?.max_cena_s_dph || 0);
+  if (hasMultipleLp && maxCena > 0) {
+    return 'MAX';
+  }
+  
+  // Jinak OBJ
+  return 'OBJ';
+};
+
+/**
  * Zkontroluje, zda objednávka má LP rozklad
  * @param {Object} order - Objekt objednávky
  * @param {Array} invoicesOverride - Override invoices array
@@ -3460,9 +3499,17 @@ export default function StatsReportsPage() {
   const renderAmountWithSource = useCallback((value, source, sectionKey, highlight = false) => {
     const amountText = fmtCurrency(value);
     const content = highlight && sectionKey ? highlightText(amountText, sectionKey) : amountText;
+    
+    // Barvy prefixu podle zdroje
+    const prefixColors = {
+      'MAX': '#f59e0b', // oranžová - z max_cena_s_dph
+      'FA': '#10b981',  // zelená - z faktur
+      'OBJ': '#6b7280'  // šedá - z objednávky
+    };
+    
     return (
-      <span style={{ position: 'relative', display: 'inline-block' }}>
-        <sup style={{ position: 'absolute', top: '-0.5em', left: '-1.6em', fontSize: '0.6em', fontWeight: 700, color: '#94a3b8', fontFamily: 'sans-serif', letterSpacing: '0.02em', lineHeight: 1 }}>
+      <span>
+        <sup style={{ fontSize: '0.6rem', color: prefixColors[source] || '#6b7280', fontWeight: 600, marginRight: '0.2rem' }}>
           {source}
         </sup>
         {content}
@@ -4597,30 +4644,58 @@ export default function StatsReportsPage() {
 
   /**
    * Render částky pro konkrétní LP kód
-   * Zobrazí: hlavní částku LP (větší) + pod ní celkovou částku FA (menší)
+   * Zobrazí: barevný superscript PREFIX před částkou (MAX/FA/OBJ) + pod ní celkovou částku FA
    */
   const renderAmountByLP = useCallback((order, lpCode, sectionKey, highlight = false) => {
     const invoicesForOrder = invoicesByOrderId[String(order?.id)] || [];
     const lpAmount = getLpAmount(order, lpCode, invoicesForOrder, lpCerpaniByInvoiceId);
     const totalAmount = getTotalInvoiceAmount(order, invoicesForOrder);
     const showBreakdown = hasLpBreakdown(order, invoicesForOrder, lpCerpaniByInvoiceId) && totalAmount > 0 && lpAmount !== totalAmount;
+    const prefix = getLpAmountPrefix(order, lpCode, invoicesForOrder, lpCerpaniByInvoiceId);
     
     const lpAmountText = fmtCurrency(lpAmount);
     const lpContent = highlight && sectionKey ? highlightText(lpAmountText, sectionKey) : lpAmountText;
     
+    // Barvy prefixu podle zdroje
+    const prefixColors = {
+      'MAX': '#f59e0b', // oranžová - z max_cena_s_dph
+      'FA': '#10b981',  // zelená - z faktur
+      'OBJ': '#6b7280'  // šedá - z objednávky
+    };
+    
     if (!showBreakdown) {
-      // Pokud není rozklad, zobrazit jen částku bez poznámky
-      return <span>{lpContent}</span>;
+      // Pokud není rozklad, zobrazit barevný superscript prefix PŘED částkou
+      return (
+        <span>
+          <sup style={{ 
+            fontSize: '0.6rem', 
+            color: prefixColors[prefix] || '#6b7280', 
+            fontWeight: 600,
+            marginRight: '0.2rem'
+          }}>
+            {prefix}
+          </sup>
+          {lpContent}
+        </span>
+      );
     }
     
-    // Zobrazit LP částku + pod ní celkovou FA
+    // Zobrazit LP částku s prefixem PŘED + pod ní celkovou FA (zeleně)
     return (
       <NameStack style={{ alignItems: 'flex-end', gap: '0.15rem' }}>
         <NameLine style={{ fontWeight: 600, fontSize: '0.875rem', color: '#1e293b' }}>
+          <sup style={{ 
+            fontSize: '0.6rem', 
+            color: prefixColors[prefix] || '#6b7280', 
+            fontWeight: 600,
+            marginRight: '0.2rem'
+          }}>
+            {prefix}
+          </sup>
           {lpContent}
         </NameLine>
         <NameLine>
-          <NameDate style={{ fontSize: '0.7rem', color: '#94a3b8' }}>
+          <NameDate style={{ fontSize: '0.7rem', color: '#10b981' }}>
             z celkem {fmtCurrency(totalAmount)}
           </NameDate>
         </NameLine>
@@ -10499,11 +10574,12 @@ export default function StatsReportsPage() {
                                                                     const maxDph = getOrderLimit(order) || 0;
                                                                     let val, src;
                                                                     if (faSum > 0) { val = faSum; src = 'FA'; }
-                                                                    else if (polozkySum > 0) { val = polozkySum; src = 'POL'; }
+                                                                    else if (polozkySum > 0) { val = polozkySum; src = 'OBJ'; }
                                                                     else { val = maxDph; src = 'MAX'; }
+                                                                    const prefixColors = { 'MAX': '#f59e0b', 'FA': '#10b981', 'OBJ': '#6b7280' };
                                                                     return (
-                                                                      <span style={{ position: 'relative', display: 'inline-block' }}>
-                                                                        <sup style={{ position: 'absolute', top: '-0.5em', left: '-1.6em', fontSize: '0.6em', fontWeight: 700, color: '#94a3b8', fontFamily: 'sans-serif', letterSpacing: '0.02em', lineHeight: 1 }}>{src}</sup>
+                                                                      <span>
+                                                                        <sup style={{ fontSize: '0.6rem', color: prefixColors[src] || '#6b7280', fontWeight: 600, marginRight: '0.2rem' }}>{src}</sup>
                                                                         {highlightText(fmtCurrency(val), 'vzdelNelekarsky')}
                                                                       </span>
                                                                     );
@@ -10712,11 +10788,12 @@ export default function StatsReportsPage() {
                                                                         const maxDph = getOrderLimit(order) || 0;
                                                                         let val, src;
                                                                         if (faSum > 0) { val = faSum; src = 'FA'; }
-                                                                        else if (polozkySum > 0) { val = polozkySum; src = 'POL'; }
+                                                                        else if (polozkySum > 0) { val = polozkySum; src = 'OBJ'; }
                                                                         else { val = maxDph; src = 'MAX'; }
+                                                                        const prefixColors = { 'MAX': '#f59e0b', 'FA': '#10b981', 'OBJ': '#6b7280' };
                                                                         return (
-                                                                          <span style={{ position: 'relative', display: 'inline-block' }}>
-                                                                            <sup style={{ position: 'absolute', top: '-0.5em', left: '-1.6em', fontSize: '0.6em', fontWeight: 700, color: '#94a3b8', fontFamily: 'sans-serif', letterSpacing: '0.02em', lineHeight: 1 }}>{src}</sup>
+                                                                          <span>
+                                                                            <sup style={{ fontSize: '0.6rem', color: prefixColors[src] || '#6b7280', fontWeight: 600, marginRight: '0.2rem' }}>{src}</sup>
                                                                             {highlightText(fmtCurrency(val), detailKey)}
                                                                           </span>
                                                                         );
