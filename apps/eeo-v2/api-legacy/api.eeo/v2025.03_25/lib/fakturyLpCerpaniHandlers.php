@@ -321,13 +321,15 @@ function handle_get_faktura_lp_cerpani($input, $config, $queries) {
             return;
         }
         
-        // 2. Načíst LP čerpání
+        // 2. Načíst LP čerpání + JOIN na 25_limitovane_prisliby pro získání cislo_lp (kategorie LPIT1, LPIT5, atd.)
         $sql_cerpani = "SELECT 
-            id, faktura_id, lp_cislo, lp_id, castka, poznamka,
-            datum_pridani, pridal_user_id, datum_upravy, upravil_user_id
-        FROM " . TBL_FAKTURY_LP_CERPANI . " 
-        WHERE faktura_id = ? 
-        ORDER BY id";
+            fc.id, fc.faktura_id, fc.lp_cislo, fc.lp_id, fc.castka, fc.poznamka,
+            fc.datum_pridani, fc.pridal_user_id, fc.datum_upravy, fc.upravil_user_id,
+            lp.cislo_lp AS lp_kod
+        FROM " . TBL_FAKTURY_LP_CERPANI . " fc
+        LEFT JOIN " . TBL_LIMITOVANE_PRISLIBY . " lp ON lp.id = fc.lp_id
+        WHERE fc.faktura_id = ? 
+        ORDER BY fc.id";
         
         $stmt_cerpani = $db->prepare($sql_cerpani);
         $stmt_cerpani->execute(array($faktura_id));
