@@ -3203,21 +3203,77 @@ function _dashboard_build_order_v3_where($user_id, $is_admin, $permissions = [],
     }
     $in_clause = implode(', ', $placeholders);
     
-    // ✨ ZMĚNA: Místo = použít IN - rozšíření viditelnosti o zastupované
-    $where = " AND (
-        o.uzivatel_id IN ($in_clause)
-        OR o.objednatel_id IN ($in_clause)
-        OR o.garant_uzivatel_id IN ($in_clause)
-        OR o.schvalovatel_id IN ($in_clause)
-        OR o.prikazce_id IN ($in_clause)
-        OR o.uzivatel_akt_id IN ($in_clause)
-        OR o.odesilatel_id IN ($in_clause)
-        OR o.dodavatel_potvrdil_id IN ($in_clause)
-        OR o.zverejnil_id IN ($in_clause)
-        OR o.fakturant_id IN ($in_clause)
-        OR o.dokoncil_id IN ($in_clause)
-        OR o.potvrdil_vecnou_spravnost_id IN ($in_clause)
-    )";
+    // ✨ Základní viditelnost: Objednávky kde jsem účastníkem (12 rolí)
+    $where_parts = [
+        "(
+            o.uzivatel_id IN ($in_clause)
+            OR o.objednatel_id IN ($in_clause)
+            OR o.garant_uzivatel_id IN ($in_clause)
+            OR o.schvalovatel_id IN ($in_clause)
+            OR o.prikazce_id IN ($in_clause)
+            OR o.uzivatel_akt_id IN ($in_clause)
+            OR o.odesilatel_id IN ($in_clause)
+            OR o.dodavatel_potvrdil_id IN ($in_clause)
+            OR o.zverejnil_id IN ($in_clause)
+            OR o.fakturant_id IN ($in_clause)
+            OR o.dokoncil_id IN ($in_clause)
+            OR o.potvrdil_vecnou_spravnost_id IN ($in_clause)
+        )"
+    ];
+    
+    // ✨ DASHBOARD DEPARTMENT FILTER: Pokud má ORDER_READ_SUBORDINATE nebo ORDER_EDIT_SUBORDINATE,
+    // vidí i objednávky kolegů z úseku (ale POUZE pokud je tam alespoň 1 NON-ADMIN kolega)
+    $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $permissions);
+    $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $permissions);
+    
+    if (($hasOrderReadSubordinate || $hasOrderEditSubordinate) && $pdo !== null) {
+        error_log("🔍 Dashboard: User has ORDER_READ_SUBORDINATE or ORDER_EDIT_SUBORDINATE - applying department filter with admin exclusion");
+        
+        // Získej kolegy z úseku
+        $departmentColleagueIds = getUserDepartmentColleagueIds($user_id, $pdo);
+        
+        if (!empty($departmentColleagueIds)) {
+            error_log("🔍 Dashboard: Department colleagues count: " . count($departmentColleagueIds));
+            
+            // Připrav placeholders pro department colleagues
+            $dept_placeholders = [];
+            foreach ($departmentColleagueIds as $idx => $colleague_id) {
+                $key = ':v3_dept_' . $idx;
+                $dept_placeholders[] = $key;
+                $params[$key] = (int)$colleague_id;
+            }
+            $dept_in_clause = implode(', ', $dept_placeholders);
+            
+            // Subquery: Identifikuj adminy (SUPERADMIN a ADMINISTRATOR)
+            $adminSubquery = "
+                SELECT DISTINCT ur.uzivatel_id 
+                FROM " . TBL_UZIVATELE_ROLE . " ur
+                JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+                WHERE r.kod_role IN ('ADMINISTRATOR', 'SUPERADMIN')
+            ";
+            
+            // Přidej OR podmínky: Každá role musí být NON-ADMIN z našeho úseku
+            $where_parts[] = "(
+                (o.uzivatel_id IN ($dept_in_clause) AND o.uzivatel_id NOT IN ($adminSubquery))
+                OR (o.objednatel_id IN ($dept_in_clause) AND o.objednatel_id NOT IN ($adminSubquery))
+                OR (o.garant_uzivatel_id IN ($dept_in_clause) AND o.garant_uzivatel_id NOT IN ($adminSubquery))
+                OR (o.schvalovatel_id IN ($dept_in_clause) AND o.schvalovatel_id NOT IN ($adminSubquery))
+                OR (o.prikazce_id IN ($dept_in_clause) AND o.prikazce_id NOT IN ($adminSubquery))
+                OR (o.uzivatel_akt_id IN ($dept_in_clause) AND o.uzivatel_akt_id NOT IN ($adminSubquery))
+                OR (o.odesilatel_id IN ($dept_in_clause) AND o.odesilatel_id NOT IN ($adminSubquery))
+                OR (o.dodavatel_potvrdil_id IN ($dept_in_clause) AND o.dodavatel_potvrdil_id NOT IN ($adminSubquery))
+                OR (o.zverejnil_id IN ($dept_in_clause) AND o.zverejnil_id NOT IN ($adminSubquery))
+                OR (o.fakturant_id IN ($dept_in_clause) AND o.fakturant_id NOT IN ($adminSubquery))
+                OR (o.dokoncil_id IN ($dept_in_clause) AND o.dokoncil_id NOT IN ($adminSubquery))
+                OR (o.potvrdil_vecnou_spravnost_id IN ($dept_in_clause) AND o.potvrdil_vecnou_spravnost_id NOT IN ($adminSubquery))
+            )";
+            
+            error_log("🔍 Dashboard: Department filter with admin exclusion added");
+        }
+    }
+    
+    // Spojit všechny where části pomocí OR
+    $where = " AND (" . implode(" OR ", $where_parts) . ")";
     
     return [
         'where' => $where,
