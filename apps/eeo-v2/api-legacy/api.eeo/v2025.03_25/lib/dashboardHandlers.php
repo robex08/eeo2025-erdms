@@ -846,8 +846,9 @@ function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
                   OR " . sqlNormalizeExpression('o.stav_objednavky') . " = 'uverejnena v registru smluv'
               )
               AND DATEDIFF(CURDATE(), COALESCE(o.dt_aktualizace, o.dt_vytvoreni)) > 2
+              {$v3_filter['where']}
         ");
-        $stmt_reg->execute();
+        $stmt_reg->execute($v3_filter['params']);
         $row_reg = $stmt_reg->fetch(PDO::FETCH_ASSOC);
         if ($row_reg['count'] > 0) {
             $alerts[] = [
