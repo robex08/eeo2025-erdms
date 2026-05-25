@@ -226,6 +226,7 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'hierarchy_profile_id' => 'hierarchy_profile_id',
             'hierarchy_logic' => 'hierarchy_logic',
             'substitution_enabled' => 'substitution_enabled',
+            'user_impersonation_enabled' => 'user_impersonation_enabled',
             'maintenance_mode' => 'maintenance_mode',
             'maintenance_message' => 'maintenance_message',
             // Post-login modal

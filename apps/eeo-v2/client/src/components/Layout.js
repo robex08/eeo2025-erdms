@@ -2030,18 +2030,7 @@ const Layout = ({ children }) => {
   }, [selectedDbSource]);
 
   const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod, impersonationFeatureEnabled, impersonationActive, originalAdminUser, startImpersonationContext, stopImpersonationContext } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus + impersonation
-  
-  // 🔐 DEBUG: Logovat impersonation state
-  useEffect(() => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔐 Layout.js - Impersonation state:', {
-        impersonationActive,
-        hasOriginalAdminUser: !!originalAdminUser,
-        originalAdminUsername: originalAdminUser?.username
-      });
-    }
-  }, [impersonationActive, originalAdminUser]);
-  
+
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
   // Change password dialog state (menu)
