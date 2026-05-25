@@ -1,6 +1,6 @@
 // CSS migrováno do GlobalStyles (emotion)
 import { css } from '@emotion/react';
-import React, { useContext, lazy, Suspense, useEffect, useRef, useCallback, useState } from 'react';
+import React, { useContext, lazy, Suspense, useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext'; // Ensure correct import
 import { ToastProvider, ToastContext } from './context/ToastContext';
@@ -113,7 +113,47 @@ function LogoutRedirectListener({ isLoggedIn }) {
 // 🔄 Redirect na /login se zachováním query parametrů (zejména ?sso=auto)
 function NavigateToLoginWithQuery() {
   const location = useLocation();
+  // Preserve deep-link so we can restore it after login.
+  useEffect(() => {
+    try {
+      const fullPath = `${location.pathname}${location.search || ''}${location.hash || ''}`;
+      if (location.pathname !== '/login' && location.pathname !== '/' && fullPath !== '/login') {
+        sessionStorage.setItem('post_login_redirect', fullPath);
+      }
+    } catch (error) {
+      console.warn('⚠️ Chyba při ukládání post-login redirect:', error);
+    }
+  }, [location.pathname, location.search, location.hash]);
+
   return <Navigate to={`/login${location.search}`} replace />;
+}
+
+function NavigateAfterLogin() {
+  const location = useLocation();
+  const targetPath = useMemo(() => {
+    try {
+      const stored = sessionStorage.getItem('post_login_redirect');
+      if (!stored) return null;
+      if (!stored.startsWith('/') || stored.startsWith('//') || stored.startsWith('/login')) {
+        return null;
+      }
+      return stored;
+    } catch (error) {
+      console.warn('⚠️ Chyba při čtení post-login redirect:', error);
+      return null;
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!targetPath) return;
+    try {
+      sessionStorage.removeItem('post_login_redirect');
+    } catch (error) {
+      console.warn('⚠️ Chyba při mazání post-login redirect:', error);
+    }
+  }, [targetPath]);
+
+  return <Navigate to={targetPath || '/'} replace />;
 }
 
 // 🛠️ Maintenance mode wrapper - zobrazí MaintenancePage PŘED layoutem
@@ -990,7 +1030,7 @@ function App() {
   // and preserves current location (so refresh on /orders-new doesn't lose the form).
   // 🎯 OPTIMALIZACE: Žádný splash screen při reload - pouze při cold start (viz index.js)
   if (loading) {
-    return null; // Tichá kontrola tokenu na pozadí
+    return <RouteLoadingFallback />; // Zobrazit lightweight loader místo bílé stránky
   }
 
   // 📱 MOBILE VERSION: Pokud je zařízení mobilní, zobrazí se mobilní verze
@@ -1024,7 +1064,7 @@ function App() {
                   {!isLoggedIn && <Route path="*" element={<NavigateToLoginWithQuery />} />}
                   <Route
                     path="/login"
-                    element={isLoggedIn ? <Navigate to="/" replace /> : <Login />}
+                    element={isLoggedIn ? <NavigateAfterLogin /> : <Login />}
                   />
                   {/* Root route "/" is handled by RestoreLastRoute component */}
                   {isLoggedIn && <Route path="/" element={<div style={{display:'none'}} />} />}

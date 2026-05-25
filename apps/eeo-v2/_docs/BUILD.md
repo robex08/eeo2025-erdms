@@ -12,6 +12,55 @@ cd /var/www/erdms-dev/docs/scripts-shell
 ./build-eeo-v2.sh --dev --frontend --no-deploy
 ```
 
+## ⚠️ TESTOVÁNÍ DB_NAME V BUILDECH - DŮLEŽITÉ POZNÁMKY!
+
+### 🚫 JAK **NE**TESTOVAT databázový název:
+
+**❌ ŠPATNÝ ZPŮSOB (nepoužívat!):**
+```bash
+# Hledání DB_NAME v compiled JS bundlu
+grep -o 'EEO-OSTRA-DEV|eeo2025' build/static/js/main.*.js
+# ☝️ TOTO NENAJDE SPRÁVNOU HODNOTU! DB_NAME NENÍ HARDCODED!
+```
+
+**✅ SPRÁVNÝ ZPŮSOB:**
+
+1. **Název databáze se načítá DYNAMICKY z API**, ne z `REACT_APP_DB_NAME`!
+2. **Backend endpoint:** `SystemInfoService.getSystemInfo()` vrací `database.display_name`
+3. **Frontend zobrazení:** `Layout.js` řádek ~5130 zobrazuje `systemInfo?.database?.display_name`
+
+```javascript
+// Layout.js - patička aplikace
+<span>{systemInfo?.database?.display_name || 'NAČÍTÁ...'}</span>
+```
+
+**🔍 Jak správně ověřit DB_NAME v buildu:**
+```bash
+# 1. Zkontroluj že API endpoint je správný
+grep "REACT_APP_API2_BASE_URL" build/static/js/main.*.js
+# Očekávaný výsledek DEV: /dev/api.eeo/
+# Očekávaný výsledek PROD: /api.eeo/
+
+# 2. Test buildu v prohlížeči - zkontroluj patičku aplikace
+# Patička musí zobrazovat: "EEO-OSTRA-DEV" (pro DEV) nebo "eeo2025" (pro PROD)
+
+# 3. Test API endpointu:
+curl http://localhost/dev/api.eeo/system-info
+# Očekávaná response: {"database": {"display_name": "EEO-OSTRA-DEV", ...}}
+```
+
+**💡 PROČ TO FUNGUJE TAKTO:**
+- Frontend **nikdy** nezná DB jméno staticky
+- DB jméno se zjišťuje až za běhu aplikace z backendu
+- Backend vrací DB jméno podle skutečné připojené databáze
+- Proto můžeme stejný build FE použít s různými backend API (dev/prod)
+
+**KLÍČOVÝ POZNATEK:**
+> `REACT_APP_DB_NAME` v .env **NENÍ POUŽIT** v patičce aplikace!
+> Patička zobrazuje dynamickou hodnotu z API, ne z build-time proměnné!
+
+---
+
 ## 🔴 KRITICKÁ PRAVIDLA PRO DATABÁZOVÉ ZMĚNY
 
 ### ⚠️ VŽDY OVĚŘUJ STRUKTURU V DEV PŘED SQL ZMĚNAMI!
@@ -64,7 +113,47 @@ cd /var/www/erdms-dev/apps/eeo-v2/client
 npm ci
 npm run build:dev:explicit
 ```
+## ⚠️ DŮLEŽITÉ: NODE_ENV a Environment Variables v Build Scriptech
 
+### Proč je NODE_ENV kritický pro build:
+
+**React build proces** používá `NODE_ENV` k rozhodnutí, kterou `.env.*` použít:
+- `NODE_ENV=development` → načte `.env.development`
+- `NODE_ENV=production` → načte `.env.production`
+- **Bez NODE_ENV** → defaultuje na `production` ⚠️
+
+### Správná konfigurace build:dev:explicit scriptu:
+
+```json
+// package.json - řádek ~56
+"build:dev:explicit": "NODE_ENV=development CI=false REACT_APP_DB_NAME=EEO-OSTRA-DEV REACT_APP_API_BASE_URL=/api REACT_APP_API2_BASE_URL=/dev/api.eeo/ ... react-app-rewired build"
+```
+
+**KRITICKÁ PRAVIDLA:**
+
+1. **✅ VŽDY nastav `NODE_ENV=development` na začátku DEV build scriptu!**
+   - Bez toho se použije `.env.production` místo `.env.development`
+
+2. **✅ Když máš v build scriptu explicitní `REACT_APP_*` overrides, musíš nastavit i `REACT_APP_DB_NAME`!**
+   - Proč? Explicitní proměnné přepíší hodnoty z `.env` souboru
+   - Pokud nastavíš `REACT_APP_API2_BASE_URL` ale ne `REACT_APP_DB_NAME`, bude chybět
+
+3. **❌ NIKDY nepoužívej jen `REACT_APP_DB_NAME` bez `NODE_ENV`!**
+   - Build může načíst `.env.production` a tvoje override bude ignorován
+
+**ROZDÍL MEZI npm start A npm run build:**
+
+| Metoda | Načtení .env | Hot reload | DB_NAME zdroj |
+|--------|-------------|-----------|---------------|
+| `npm start` | ✅ Automaticky podle NODE_ENV | ✅ Ano | API (dynamicky) |
+| `npm run build:dev:explicit` | ⚠️ Jen pokud NODE_ENV=development | ❌ Ne | API (dynamicky) |
+| `npm run build:prod` | ✅ production je default | ❌ Ne | API (dynamicky) |
+
+**LESSON LEARNED:**
+> Když build script má explicitní `REACT_APP_*` proměnné, stane se to **NAHRAZENÍM** hodnot z `.env`.
+> Proto musíš nastavit **VŠECHNY** důležité proměnné včetně `NODE_ENV`!
+
+---
 ### Workaround: falešná ESLint „Parsing error“ při buildu
 
 Pokud build spadne na hlášce typu:

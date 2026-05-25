@@ -112,6 +112,11 @@ function handle_dashboard_data($input, $config, $queries) {
         $has_spending = $has_cap('DASHBOARD_SPENDING_CONTRACTS') || $has_cap('DASHBOARD_SPENDING_LP');
         $has_registry = $has_cap('DASHBOARD_ORDERS_REGISTRY') || $has_cap('DASHBOARD_ORDERS_PUBLISHED');
         $has_order_read = in_array('ORDER_READ_ALL', $perm_codes) || in_array('ORDER_VIEW_ALL', $perm_codes) || in_array('ORDER_MANAGE', $perm_codes) || $is_admin;
+        $has_invoice_module_access = $is_admin
+            || in_array('INVOICE_MANAGE', $perm_codes)
+            || in_array('INVOICE_VIEW', $perm_codes)
+            || in_array('INVOICE_READ_ALL', $perm_codes)
+            || in_array('INVOICE_VIEW_ALL', $perm_codes);
 
         $date_from = date('Y-m-d', strtotime("-{$days} days"));
         $date_to = date('Y-m-d');
@@ -238,8 +243,8 @@ function handle_dashboard_data($input, $config, $queries) {
         $result['order_comments_recent'] = _dashboard_get_order_comments_recent($db, $user_id, $days, $is_admin, $perm_codes);
 
         // === STATISTIKY FAKTUR ===
-        if ($has_cap('DASHBOARD_INVOICES_STATS')) {
-            // Uživatel s právem na celou statistiku - vrátit vše
+        if ($has_cap('DASHBOARD_INVOICES_STATS') || $has_invoice_module_access) {
+            // Uživatel s právem na celou statistiku nebo module access - vrátit vše
             $result['invoices_stats'] = _dashboard_get_invoice_stats($db, $user_id, $is_invoice_admin, $is_invoice_admin, $usek_id, $perm_codes);
         } elseif ($has_cap('DASHBOARD_INVOICES_CONFIRM')) {
             // Uživatel s právem na widget "Faktury k potvrzení" - vrátit jen osobní data pro QuickTile ikonu
@@ -480,7 +485,7 @@ function _dashboard_get_my_orders_pending($db, $user_id, $days, $has_order_appro
  *              faktury k smlouvám úseku uživatele (pokud $usek_id)
  * Vrací ['where' => '...', 'params' => [...]] – where je buď '' nebo "AND (...)".
  */
-function _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id = null) {
+function _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id = null, $permissions = []) {
     if ($is_admin) {
         return ['where' => '', 'params' => []];
     }
@@ -488,21 +493,43 @@ function _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id
     $conditions = [];
     $params = [];
 
+    // ✨ Zjistit všechna user_id (vlastní + zastupovaní s oprávněním 'view')
+    $scope_info = null;
+    $user_ids = [$user_id];
+    if (function_exists('get_user_ids_with_substitution')) {
+        $user_ids = get_user_ids_with_substitution($db, $user_id, ['view'], $scope_info);
+    }
+
+    // INHERIT scope: pokud zastupovaný je admin → zástupce vidí VŠE
+    if ($scope_info && !empty($scope_info['has_inherit_full_access'])) {
+        return ['where' => '', 'params' => []];
+    }
+
+    // INHERIT subordinate IDs
+    if ($scope_info && !empty($scope_info['inherit_subordinate_ids'])) {
+        $user_ids = array_unique(array_merge($user_ids, $scope_info['inherit_subordinate_ids']));
+    }
+
+    if (empty($user_ids)) {
+        return ['where' => 'AND 1=0', 'params' => []];
+    }
+
+    $user_ids_placeholders = implode(',', array_map('intval', $user_ids));
+
     // 1️⃣ Faktury k objednávkám kde je uživatel účastníkem (7 rolí)
-    $stmt_orders = $db->prepare("
+    $stmt_orders = $db->query("
         SELECT DISTINCT o.id
         FROM `" . TBL_OBJEDNAVKY . "` o
         WHERE (
-            o.uzivatel_id = ?
-            OR o.garant_uzivatel_id = ?
-            OR o.objednatel_id = ?
-            OR o.schvalovatel_id = ?
-            OR o.prikazce_id = ?
-            OR o.potvrdil_vecnou_spravnost_id = ?
-            OR o.fakturant_id = ?
+            o.uzivatel_id IN ($user_ids_placeholders)
+            OR o.garant_uzivatel_id IN ($user_ids_placeholders)
+            OR o.objednatel_id IN ($user_ids_placeholders)
+            OR o.schvalovatel_id IN ($user_ids_placeholders)
+            OR o.prikazce_id IN ($user_ids_placeholders)
+            OR o.potvrdil_vecnou_spravnost_id IN ($user_ids_placeholders)
+            OR o.fakturant_id IN ($user_ids_placeholders)
         )
     ");
-    $stmt_orders->execute(array_fill(0, 7, $user_id));
     $order_ids = $stmt_orders->fetchAll(PDO::FETCH_COLUMN);
 
     if (!empty($order_ids)) {
@@ -511,16 +538,13 @@ function _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id
     }
 
     // 2️⃣ Předáno k věcné kontrole
-    $conditions[] = 'f.fa_predana_zam_id = ?';
-    $params[] = $user_id;
+    $conditions[] = "f.fa_predana_zam_id IN ($user_ids_placeholders)";
 
     // 3️⃣ Potvrdil věcnou správnost
-    $conditions[] = 'f.potvrdil_vecnou_spravnost_id = ?';
-    $params[] = $user_id;
+    $conditions[] = "f.potvrdil_vecnou_spravnost_id IN ($user_ids_placeholders)";
 
     // 4️⃣ Sám vytvořil fakturu
-    $conditions[] = 'f.vytvoril_uzivatel_id = ?';
-    $params[] = $user_id;
+    $conditions[] = "f.vytvoril_uzivatel_id IN ($user_ids_placeholders)";
 
     // 5️⃣ Faktury k smlouvám úseku uživatele
     if ($usek_id) {
@@ -540,7 +564,7 @@ function _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id
  * Faktury čekající na věcnou kontrolu
  */
 function _dashboard_get_invoices_pending_check($db, $user_id, $is_admin, $days, $usek_id = null, $permissions = []) {
-    $filter = _dashboard_build_invoice_v3_where($db, $user_id, $is_admin, $permissions, $usek_id);
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id, $permissions);
     $where_user = $filter['where'];
     $params = $filter['params'];
 
@@ -620,7 +644,7 @@ function _dashboard_get_orders_for_approval($db, $user_id, $is_admin, $days, $us
  * Faktury po splatnosti
  */
 function _dashboard_get_invoices_overdue($db, $user_id, $is_admin, $usek_id = null, $permissions = []) {
-    $filter = _dashboard_build_invoice_v3_where($db, $user_id, $is_admin, $permissions, $usek_id);
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id, $permissions);
     $where_user = $filter['where'];
     $params = $filter['params'];
 
@@ -652,9 +676,9 @@ function _dashboard_get_invoices_overdue($db, $user_id, $is_admin, $usek_id = nu
  * Faktury blížící se ke splatnosti
  */
 function _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days, $usek_id = null, $permissions = []) {
-    $filter = _dashboard_build_invoice_v3_where($db, $user_id, $is_admin, $permissions, $usek_id);
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $is_admin, $usek_id, $permissions);
     $where_user = $filter['where'];
-    $params = array_merge($filter['params'], [':days_interval' => $days]);
+    $params = array_merge($filter['params'], [(int)$days]);
 
     $stmt = $db->prepare("
         SELECT f.id, f.fa_cislo_vema as fa_cislo, f.fa_castka, f.fa_datum_splatnosti, f.stav,
@@ -672,7 +696,7 @@ function _dashboard_get_invoices_due_soon($db, $user_id, $is_admin, $days, $usek
         WHERE f.aktivni = 1
           AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO')
           AND f.fa_datum_splatnosti >= CURDATE()
-          AND f.fa_datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL :days_interval DAY)
+          AND f.fa_datum_splatnosti <= DATE_ADD(CURDATE(), INTERVAL ? DAY)
           {$where_user}
         ORDER BY f.fa_datum_splatnosti ASC
         LIMIT 15
@@ -2016,15 +2040,15 @@ function _dashboard_get_order_comments_recent($db, $user_id, $days = 7, $is_admi
 function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_manage, $usek_id = null, $permissions = []) {
     // Rok filtr – shodný s modulem faktur (řádek 1672 invoiceHandlers.php)
     $current_year = (int)date('Y');
-    $year_filter = "AND (YEAR(f.fa_datum_vystaveni) = :stats_year1 OR YEAR(f.fa_datum_doruceni) = :stats_year2 OR YEAR(f.fa_datum_splatnosti) = :stats_year3)";
+    $year_filter = "AND (YEAR(f.fa_datum_vystaveni) = ? OR YEAR(f.fa_datum_doruceni) = ? OR YEAR(f.fa_datum_splatnosti) = ?)";
 
     // Oprávnění: admin nebo INVOICE_MANAGE vidí vše, ostatní přes rozšířenou logiku (shodnou s invoiceHandlers)
     $effective_admin = $is_admin || $has_invoice_manage;
-    $filter = _dashboard_build_invoice_v3_where($db, $user_id, $effective_admin, $permissions, $usek_id);
+    $filter = _dashboard_build_invoice_user_filter($db, $user_id, $effective_admin, $usek_id, $permissions);
     $where_user = $filter['where'];
     // Rok parametry nejdříve (odpovídají pořadí placeholderů v $year_filter), pak user-filter params
     $params = array_merge(
-        [':stats_year1' => $current_year, ':stats_year2' => $current_year, ':stats_year3' => $current_year],
+        [$current_year, $current_year, $current_year],
         $filter['params']
     );
 
