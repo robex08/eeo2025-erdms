@@ -2667,8 +2667,22 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
             }
         }
 
-        // Permissions pro objednávky
-        applyOrderV3UserPermissions($user_id, $db, $where_orders, $params_orders);
+        // 🔐 ASSET SPECIFIC PERMISSIONS CHECK
+        // ASSET_MANAGE → vidí všechny majetkové objednávky (jako admin)
+        // ASSET_VIEW/ASSET_EDIT → vidí jen své + kolegy z úseku (pokud má subordinate)
+        $asset_permissions = getUserSpecificPermissions($user_id, $db, array('ASSET_MANAGE', 'ASSET_VIEW', 'ASSET_EDIT', 'ASSET_EXPORT'));
+        $has_asset_manage = in_array('ASSET_MANAGE', $asset_permissions);
+        
+        error_log("[OrderV3 MAJETEK] User $user_id - asset_permissions: " . json_encode($asset_permissions));
+        error_log("[OrderV3 MAJETEK] Has ASSET_MANAGE: " . ($has_asset_manage ? 'YES (vidí vše)' : 'NO (jen své + kolegy)'));
+        
+        // Permissions pro objednávky - pokud NEMÁ ASSET_MANAGE → aplikovat běžný filtr
+        if (!$has_asset_manage) {
+            applyOrderV3UserPermissions($user_id, $db, $where_orders, $params_orders);
+            error_log("[OrderV3 MAJETEK] Applied standard user permissions (personal + department subordinate)");
+        } else {
+            error_log("[OrderV3 MAJETEK] ASSET_MANAGE detected - showing ALL asset orders (no filter)");
+        }
 
         // Vyloučit zrušené, zamítnuté a smazané objednávky (vždy, bez ohledu na user filtr)
         $where_orders[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('\$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN (?, ?, ?)";
@@ -2678,7 +2692,7 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
 
         $where_orders_sql = implode(' AND ', $where_orders);
 
-        // Podmínky pro FAKTURY s umístěním
+        // 🔐 Podmínky pro FAKTURY s umístěním
         $where_faktury = array();
         $params_faktury = array();
         $where_faktury[] = "f.aktivni = 1";
@@ -2689,6 +2703,53 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
             $where_faktury[] = "f.fa_datum_vystaveni BETWEEN ? AND ?";
             $params_faktury[] = $period_range['date_from'];
             $params_faktury[] = $period_range['date_to'];
+        }
+        
+        // 🔐 ASSET PERMISSIONS: Faktury vidí jen pokud má právo nebo je účastníkem
+        if (!$has_asset_manage) {
+            error_log("[OrderV3 MAJETEK] Applying invoice filter for user $user_id (no ASSET_MANAGE)");
+            
+            // Faktury kde:
+            // 1. Je přiřazena k objednávce kde je user účastníkem (bude v UNION části s objednávkami)
+            // 2. Není přiřazena k objednávce, ALE:
+            //    - user fakturu vytvořil, NEBO
+            //    - user je zodpovědný za věcnou správnost, NEBO
+            //    - user má subordinate práva a faktura patří kolegovi z úseku
+            
+            $user_permissions = getUserOrderPermissions($user_id, $db);
+            $hasOrderReadSubordinate = in_array('ORDER_READ_SUBORDINATE', $user_permissions);
+            $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
+            
+            $invoice_conditions = array();
+            
+            // Základní: faktury kde je user přímo zapojen
+            $invoice_conditions[] = "(f.vytvoril_uzivatel_id = {$user_id})";
+            $invoice_conditions[] = "(f.potvrdil_vecnou_spravnost_id = {$user_id})";
+            $invoice_conditions[] = "(f.fa_predana_zam_id = {$user_id})";
+            
+            // Pokud má subordinate práva → vidí faktury kolegů z úseku
+            if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
+                if (function_exists('getUserDepartmentColleagueIds')) {
+                    $departmentColleagueIds = getUserDepartmentColleagueIds($user_id, $db);
+                    if (!empty($departmentColleagueIds)) {
+                        $dept_ids_str = implode(',', array_map('intval', $departmentColleagueIds));
+                        $invoice_conditions[] = "(f.vytvoril_uzivatel_id IN ({$dept_ids_str}))";
+                        $invoice_conditions[] = "(f.potvrdil_vecnou_spravnost_id IN ({$dept_ids_str}))";
+                        $invoice_conditions[] = "(f.fa_predana_zam_id IN ({$dept_ids_str}))";
+                        error_log("[OrderV3 MAJETEK] Added department invoice filter for " . count($departmentColleagueIds) . " colleagues");
+                    }
+                }
+            }
+            
+            if (!empty($invoice_conditions)) {
+                $where_faktury[] = '(' . implode(' OR ', $invoice_conditions) . ')';
+            } else {
+                // Uživatel nemá přístup k žádným fakturám bez objednávky
+                $where_faktury[] = '1=0';
+                error_log("[OrderV3 MAJETEK] User $user_id has NO access to invoices without orders");
+            }
+        } else {
+            error_log("[OrderV3 MAJETEK] ASSET_MANAGE - showing ALL invoices (no filter)");
         }
 
         $where_faktury_sql = implode(' AND ', $where_faktury);
