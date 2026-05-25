@@ -323,7 +323,10 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
     $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     // Rok filtr - stejný jako OrderV3 (dt_objednavky = datum objednávky)
-    $where_sql = "o.aktivni = 1 AND o.id != 1 AND YEAR(o.dt_objednavky) = YEAR(CURDATE()) {$v3_filter['where']}";
+    // + vyloučit zrušené/zamítnuté/smazané (stejná logika jako getOrderStatsWithPeriod)
+    $where_sql = "o.aktivni = 1 AND o.id != 1 AND YEAR(o.dt_objednavky) = YEAR(CURDATE())"
+        . " AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN ('ZRUSENA', 'ZAMITNUTA', 'SMAZANA')"
+        . " {$v3_filter['where']}";
     $params = $v3_filter['params'];
     $sql = "
         SELECT 
