@@ -257,12 +257,7 @@ export const AuthProvider = ({ children }) => {
         const settings = await getGlobalSettings(loginData.token, loginData.username);
         const impersonationEnabled = settings?.user_impersonation_enabled === true || settings?.user_impersonation_enabled === '1' || settings?.user_impersonation_enabled === 1;
         setImpersonationFeatureEnabled(impersonationEnabled);
-        
-        if (process.env.NODE_ENV === 'development') {
-          console.log('🔐 Impersonation feature:', impersonationEnabled ? 'ENABLED' : 'DISABLED');
-        }
       } catch (error) {
-        console.warn('⚠️ Chyba při načítání impersonation feature flag (použije se výchozí false):', error);
         setImpersonationFeatureEnabled(false);
       }
 
@@ -583,6 +578,25 @@ export const AuthProvider = ({ children }) => {
       return false;
     }
   }, [originalAdminUser]);
+
+  // 🔐 USER IMPERSONATION: Refresh feature flag z Global Settings
+  const refreshImpersonationFeatureFlag = useCallback(async () => {
+    if (!token || !user?.username) {
+      return;
+    }
+
+    try {
+      const { getGlobalSettings } = await import('../services/globalSettingsApi');
+      const settings = await getGlobalSettings(token, user.username);
+      const impersonationEnabled = settings?.user_impersonation_enabled === true || 
+                                     settings?.user_impersonation_enabled === '1' || 
+                                     settings?.user_impersonation_enabled === 1;
+      
+      setImpersonationFeatureEnabled(impersonationEnabled);
+    } catch (error) {
+      // Ignorovat chyby při refresh
+    }
+  }, [token, user]);
 
   const logout = useCallback((reason = 'manual', skipBroadcast = false) => {
     // � TOKEN REFRESH: Zastavit refresh timer
@@ -1428,6 +1442,7 @@ export const AuthProvider = ({ children }) => {
       originalAdminUser, // 🔐 USER IMPERSONATION: Původní admin uživatel (backup)
       startImpersonationContext, // 🔐 USER IMPERSONATION: Začít impersonation
       stopImpersonationContext, // 🔐 USER IMPERSONATION: Ukončit impersonation
+      refreshImpersonationFeatureFlag, // 🔐 USER IMPERSONATION: Refresh feature flag
       needsPasswordChange, // 🔑 Flag pro vynucenou změnu hesla
       changeForcePassword, // 🔑 Funkce pro změnu hesla
       isRefreshingToken, // 🔄 Flag pro sledování token refreshu

@@ -372,7 +372,7 @@ const RadioLabel = styled.div`
 
 const AppSettings = () => {
   const { showToast } = useContext(ToastContext);
-  const { userDetail, token, username } = useContext(AuthContext);
+  const { userDetail, token, username, refreshImpersonationFeatureFlag } = useContext(AuthContext);
   
   const [settings, setSettings] = useState({
     notifications_enabled: true,
@@ -600,6 +600,11 @@ const AppSettings = () => {
       setOriginalSettings({...settings});
       setHasChanges(false);
       showToast('Globální nastavení bylo úspěšně uloženo', { type: 'success' });
+      
+      // 🔐 Refresh impersonation feature flag v AuthContext
+      if (refreshImpersonationFeatureFlag) {
+        await refreshImpersonationFeatureFlag();
+      }
     } catch (error) {
       console.error('❌ Chyba při ukládání nastavení:', error);
       showToast('Chyba při ukládání globálního nastavení', { type: 'error' });
