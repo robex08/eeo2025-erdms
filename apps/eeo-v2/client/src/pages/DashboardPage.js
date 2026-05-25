@@ -46,6 +46,7 @@ import DashboardPermissionsModal from '../components/dashboard/DashboardPermissi
 import SendQuickMessageModal from '../components/dashboard/SendQuickMessageModal';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
 import PlanningEventDetailPanel from '../components/PlanningEventPanel';
+import { getAvailableSections } from '../utils/availableSections';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler);
 
@@ -8869,25 +8870,26 @@ export default function DashboardPage() {
   // 🎯 MODULE SHORTCUT TILES — ikony odkazů na moduly (dle oprávnění)
   const getModuleShortcuts = useMemo(() => {
     if (!data) return [];
-    const caps = data.dashboard_capabilities || [];
-    const hasCap = (c) => caps.includes(c);
-    const isAdmin = hasAdminRole();
+    const sections = getAvailableSections(hasPermission, userDetail);
+    const hasSection = (value) => sections.some(s => s.value === value);
+    const canOrdersV3 = hasSection('orders25-list-v3');
+    const canOrders = canOrdersV3 || hasSection('orders25-list');
     const shortcuts = [];
 
     // 1. Objednávky V3
-    if (isAdmin || hasCap('DASHBOARD_ORDERS_STATS') || hasCap('DASHBOARD_MY_ORDERS')) {
+    if (canOrders) {
       shortcuts.push({
-        label: 'Objednávky V3',
+        label: canOrdersV3 ? 'Objednávky V3' : 'Objednávky',
         icon: faClipboardList,
         bg: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
-        route: '/orders25-list-v3',
+        route: canOrdersV3 ? '/orders25-list-v3' : '/orders25-list',
         count: data.orders_stats?.total || 0,
         badgeColor: '#1e40af',
       });
     }
 
     // 2. Faktury
-    if (isAdmin || hasCap('DASHBOARD_INVOICES_STATS') || hasCap('DASHBOARD_INVOICES_CONFIRM')) {
+    if (hasSection('invoices25-list')) {
       shortcuts.push({
         label: 'Faktury',
         icon: faFileInvoiceDollar,
@@ -8899,7 +8901,7 @@ export default function DashboardPage() {
     }
 
     // 3. Roční poplatky
-    if (isAdmin || hasCap('DASHBOARD_ANNUAL_FEES')) {
+    if (hasSection('annual-fees')) {
       shortcuts.push({
         label: 'Roční poplatky',
         icon: faReceipt,
@@ -8911,7 +8913,7 @@ export default function DashboardPage() {
     }
 
     // 4. Majetek
-    if (isAdmin || hasCap('DASHBOARD_CHART_MAJETEK')) {
+    if (hasSection('majetek-overview')) {
       const majetekTotal = (data.chart_majetek_by_druh || []).reduce((sum, d) => sum + (parseInt(d.pocet) || 0), 0);
       shortcuts.push({
         label: 'Majetek',
@@ -8924,17 +8926,19 @@ export default function DashboardPage() {
     }
 
     // 5. Objednávky před 2026
-    shortcuts.push({
-      label: 'Objednávky (< 2026)',
-      icon: faHistory,
-      bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-      route: '/orders',
-      count: '∞',
-      badgeColor: '#b45309',
-    });
+    if (hasSection('orders-old')) {
+      shortcuts.push({
+        label: 'Objednávky (< 2026)',
+        icon: faHistory,
+        bg: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
+        route: '/orders',
+        count: '∞',
+        badgeColor: '#b45309',
+      });
+    }
 
     return shortcuts;
-  }, [data, hasAdminRole]);
+  }, [data, hasPermission, userDetail]);
 
   // Render individual widget
   const renderWidget = (tileId, index) => {

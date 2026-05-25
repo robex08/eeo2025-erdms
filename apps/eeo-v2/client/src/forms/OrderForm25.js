@@ -8501,7 +8501,7 @@ function OrderForm25() {
   const clearDebugLogs = () => {}; // No-op
 
   // Funkce pro získání jména uživatele podle ID
-  const getUserNameById = (userId) => {
+  function getUserNameById(userId) {
     if (!userId) return '';
 
     // Nejdříve hledej mezi všemi uživateli
@@ -8567,7 +8567,7 @@ function OrderForm25() {
 
     // Mezitím zobraz placeholder
     return 'Načítám...';
-  };
+  }
 
   // 🆕 Helper funkce pro validaci ev. čísla (ŘEŠENÍ PROBLÉMU #3)
   const isValidEvCislo = (ev_cislo) => {
