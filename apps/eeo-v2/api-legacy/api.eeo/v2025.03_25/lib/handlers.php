@@ -42,6 +42,17 @@ function api_error($httpCode, $message, $code = null, $extra = array()) {
     exit;
 }
 
+/**
+ * SQL helper: match financovani.cislo_smlouvy with escaped slashes (\/) in JSON.
+ *
+ * @param string $financovaniExpr SQL expression for financovani column
+ * @param string $cisloSmlouvyExpr SQL expression or placeholder
+ * @return string
+ */
+function sqlFinancovaniCisloSmlouvyLike($financovaniExpr, $cisloSmlouvyExpr) {
+    return "REPLACE($financovaniExpr, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', $cisloSmlouvyExpr, '\"%')";
+}
+
 // Funkce pro ověření tokenu - optimalizováno pro reuse DB spojení
 function verify_token($token, $db = null) {
     if (!$token) {

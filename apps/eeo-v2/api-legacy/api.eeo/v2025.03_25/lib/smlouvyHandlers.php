@@ -323,6 +323,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
     
     try {
         $db = get_db($config);
+        $financovani_smlouva_like = sqlFinancovaniCisloSmlouvyLike('o.financovani', 's.cislo_smlouvy');
         
         // Build WHERE clause
         $where = array();
@@ -345,7 +346,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                 s.pouzit_v_obj_formu = 1 AND EXISTS (
                     SELECT 1
                     FROM " . TBL_OBJEDNAVKY . " o
-                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                    WHERE " . sqlFinancovaniCisloSmlouvyLike('o.financovani', 's.cislo_smlouvy') . "
                       AND o.aktivni = 1
                       AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                       AND (
@@ -367,7 +368,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                         (f.smlouva_id = s.id AND f.objednavka_id IS NULL
                             AND (f.vytvoril_uzivatel_id = :restrict_user_id
                                  OR f.potvrdil_vecnou_spravnost_id = :restrict_user_id))
-                        OR (o.id IS NOT NULL AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                        OR (o.id IS NOT NULL AND " . sqlFinancovaniCisloSmlouvyLike('o.financovani', 's.cislo_smlouvy') . "
                             AND (
                                 o.objednatel_id = :restrict_user_id
                                 OR o.uzivatel_id = :restrict_user_id
@@ -508,7 +509,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                 (
                     SELECT COUNT(*)
                     FROM " . TBL_OBJEDNAVKY . " o
-                    WHERE o.financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                        WHERE $financovani_smlouva_like
                       AND o.aktivni = 1
                       AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                 ) AS pocet_objednavek
@@ -516,7 +517,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                 (
                                         SELECT COUNT(*)
                                         FROM " . TBL_OBJEDNAVKY . " o
-                                        WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                        WHERE $financovani_smlouva_like
                                             AND o.aktivni = 1
                                             AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                                             AND (
@@ -533,7 +534,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                         LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
                                         WHERE (
                                             (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
-                                            OR (o.id IS NOT NULL AND REPLACE(o.financovani, '\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                            OR (o.id IS NOT NULL AND $financovani_smlouva_like)
                                         )
                                             AND f.aktivni = 1
                                             AND f.stav != 'STORNO'
@@ -546,7 +547,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                                 (f.smlouva_id = s.id AND f.objednavka_id IS NULL
                                                     AND (f.vytvoril_uzivatel_id = :current_user_id
                                                          OR f.potvrdil_vecnou_spravnost_id = :current_user_id))
-                                                OR (o.id IS NOT NULL AND REPLACE(o.financovani, '\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                                OR (o.id IS NOT NULL AND $financovani_smlouva_like
                                                     AND (
                                                         o.objednatel_id = :current_user_id
                                                         OR o.uzivatel_id = :current_user_id
@@ -566,7 +567,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                     WHERE (
                                         (f.objednavka_id IS NOT NULL AND o.aktivni = 1
                                             AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                            AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                            AND $financovani_smlouva_like)
                                         OR
                                         (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
                                     )
@@ -582,7 +583,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                     WHERE (
                                         (f.objednavka_id IS NOT NULL AND o.aktivni = 1
                                             AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                            AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                            AND $financovani_smlouva_like)
                                         OR
                                         (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
                                     )
@@ -608,7 +609,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                     SELECT COALESCE(SUM(f.fa_castka), 0)
                                     FROM " . TBL_FAKTURY . " f
                                     INNER JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-                                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                    WHERE $financovani_smlouva_like
                                         AND o.aktivni = 1
                                         AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                                         AND f.aktivni = 1
@@ -633,7 +634,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                         )
                                     ), 0)
                                     FROM " . TBL_OBJEDNAVKY . " o
-                                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                    WHERE $financovani_smlouva_like
                                         AND o.aktivni = 1
                                         AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena', 'Dokončená', 'Archivovaná', 'Smazaná')
                                         AND NOT EXISTS (
@@ -647,7 +648,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                     SELECT COALESCE(SUM(f.fa_castka), 0)
                                     FROM " . TBL_FAKTURY . " f
                                     INNER JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-                                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                    WHERE $financovani_smlouva_like
                                         AND o.aktivni = 1
                                         AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
                                         AND f.aktivni = 1
@@ -683,7 +684,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                         )
                                     ), 0)
                                     FROM " . TBL_OBJEDNAVKY . " o
-                                    WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%')
+                                    WHERE $financovani_smlouva_like
                                         AND o.aktivni = 1
                                         AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena', 'Dokončená', 'Archivovaná', 'Smazaná')
                                         AND NOT EXISTS (
@@ -705,7 +706,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                     WHERE (
                                         (f.objednavka_id IS NOT NULL AND o.aktivni = 1
                                             AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                            AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                            AND $financovani_smlouva_like)
                                         OR
                                         (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
                                     )
@@ -722,7 +723,7 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
                                     WHERE (
                                         (f.objednavka_id IS NOT NULL AND o.aktivni = 1
                                             AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                            AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', s.cislo_smlouvy, '\"%'))
+                                            AND $financovani_smlouva_like)
                                         OR
                                         (f.smlouva_id = s.id AND f.objednavka_id IS NULL)
                                     )
@@ -866,7 +867,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
             WHERE (
                 (f.objednavka_id IS NOT NULL AND o.aktivni = 1
                  AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                 AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy_dok, '\"%'))
+                 AND " . sqlFinancovaniCisloSmlouvyLike('o.financovani', ':cislo_smlouvy_dok') . ")
                 OR (f.smlouva_id = :smlouva_id_dok AND f.objednavka_id IS NULL)
             )
             AND f.aktivni = 1 AND f.stav IN ('ZAPLACENO', 'DOKONCENA') AND f.vecna_spravnost_potvrzeno = 1";
@@ -881,7 +882,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
             SELECT f.fa_castka AS castka
             FROM " . TBL_FAKTURY . " f
             INNER JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-            WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy_vp1, '\"%')
+                        WHERE " . sqlFinancovaniCisloSmlouvyLike('o.financovani', ':cislo_smlouvy_vp1') . "
               AND o.aktivni = 1 AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
               AND f.aktivni = 1 AND f.stav NOT IN ('STORNO')
               AND NOT (f.vecna_spravnost_potvrzeno = 1 AND f.stav IN ('ZAPLACENO', 'DOKONCENA'))
@@ -897,7 +898,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
                 o.max_cena_s_dph
             ) AS castka
             FROM " . TBL_OBJEDNAVKY . " o
-            WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy_vp2, '\"%')
+                        WHERE " . sqlFinancovaniCisloSmlouvyLike('o.financovani', ':cislo_smlouvy_vp2') . "
               AND o.aktivni = 1
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena', 'Dokončená', 'Archivovaná', 'Smazaná')
               AND NOT EXISTS (
@@ -924,7 +925,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
                 o.max_cena_s_dph AS castka_s_dph,
                 o.dt_vytvoreni AS dt_prirazeni
             FROM " . TBL_OBJEDNAVKY . " o
-            WHERE REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy, '\"%')
+                        WHERE " . sqlFinancovaniCisloSmlouvyLike('o.financovani', ':cislo_smlouvy') . "
               AND o.aktivni = 1
             ORDER BY o.dt_vytvoreni DESC
         ";
@@ -949,7 +950,7 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
                 COALESCE(MAX(max_cena_s_dph), 0) as nejvetsi_objednavka,
                 COALESCE(MIN(max_cena_s_dph), 0) as nejmensi_objednavka
             FROM " . TBL_OBJEDNAVKY . "
-            WHERE financovani LIKE CONCAT('%\"cislo_smlouvy\":\"', :cislo_smlouvy, '\"%')
+                        WHERE " . sqlFinancovaniCisloSmlouvyLike('financovani', ':cislo_smlouvy') . "
               AND aktivni = 1
               AND stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
         ";

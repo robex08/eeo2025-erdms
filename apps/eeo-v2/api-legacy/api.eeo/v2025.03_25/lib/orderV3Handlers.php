@@ -4369,7 +4369,7 @@ function handle_orderV3_smlouva_expand($input, $config) {
             FROM " . TBL_OBJEDNAVKY . " o
             LEFT JOIN 25_uzivatele u ON o.uzivatel_id = u.id
             WHERE o.aktivni = 1
-              AND REPLACE(o.financovani, '\\\\/', '/') LIKE CONCAT('%\"cislo_smlouvy\":\"', ?, '\"%')
+                            AND " . sqlFinancovaniCisloSmlouvyLike('o.financovani', '?') . "
               AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
               $participant_where
             ORDER BY o.dt_vytvoreni DESC
