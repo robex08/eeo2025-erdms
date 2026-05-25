@@ -186,23 +186,36 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
             if (!empty($departmentColleagueIds)) {
                 $departmentColleagueIdsStr = implode(',', array_map('intval', $departmentColleagueIds));
                 
+                // 🔒 BEZPEČNOSTNÍ FIX: Rozlišení adminů od normálních uživatelů
+                // Subquery pro identifikaci adminů (ADMINISTRATOR, SUPERADMIN role)
+                $adminSubquery = "
+                    SELECT DISTINCT ur.uzivatel_id 
+                    FROM " . TBL_UZIVATELE_ROLE . " ur
+                    JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+                    WHERE r.kod_role IN ('ADMINISTRATOR', 'SUPERADMIN')
+                ";
+                
+                // Objednávka je viditelná pokud:
+                // 1. Alespoň jeden NON-ADMIN kolega je účastníkem (kterákoliv z 12 rolí)
+                // Tím eliminujeme objednávky, kde z daného úseku jsou POUZE admini
                 $departmentCondition = "(
-                    o.uzivatel_id IN ($departmentColleagueIdsStr)
-                    OR o.objednatel_id IN ($departmentColleagueIdsStr)
-                    OR o.garant_uzivatel_id IN ($departmentColleagueIdsStr)
-                    OR o.schvalovatel_id IN ($departmentColleagueIdsStr)
-                    OR o.prikazce_id IN ($departmentColleagueIdsStr)
-                    OR o.uzivatel_akt_id IN ($departmentColleagueIdsStr)
-                    OR o.odesilatel_id IN ($departmentColleagueIdsStr)
-                    OR o.dodavatel_potvrdil_id IN ($departmentColleagueIdsStr)
-                    OR o.zverejnil_id IN ($departmentColleagueIdsStr)
-                    OR o.fakturant_id IN ($departmentColleagueIdsStr)
-                    OR o.dokoncil_id IN ($departmentColleagueIdsStr)
-                    OR o.potvrdil_vecnou_spravnost_id IN ($departmentColleagueIdsStr)
+                    -- Alespoň jeden NON-ADMIN kolega v kterékoliv z 12 rolí
+                    (o.uzivatel_id IN ($departmentColleagueIdsStr) AND o.uzivatel_id NOT IN ($adminSubquery))
+                    OR (o.objednatel_id IN ($departmentColleagueIdsStr) AND o.objednatel_id NOT IN ($adminSubquery))
+                    OR (o.garant_uzivatel_id IN ($departmentColleagueIdsStr) AND o.garant_uzivatel_id NOT IN ($adminSubquery))
+                    OR (o.schvalovatel_id IN ($departmentColleagueIdsStr) AND o.schvalovatel_id NOT IN ($adminSubquery))
+                    OR (o.prikazce_id IN ($departmentColleagueIdsStr) AND o.prikazce_id NOT IN ($adminSubquery))
+                    OR (o.uzivatel_akt_id IN ($departmentColleagueIdsStr) AND o.uzivatel_akt_id NOT IN ($adminSubquery))
+                    OR (o.odesilatel_id IN ($departmentColleagueIdsStr) AND o.odesilatel_id NOT IN ($adminSubquery))
+                    OR (o.dodavatel_potvrdil_id IN ($departmentColleagueIdsStr) AND o.dodavatel_potvrdil_id NOT IN ($adminSubquery))
+                    OR (o.zverejnil_id IN ($departmentColleagueIdsStr) AND o.zverejnil_id NOT IN ($adminSubquery))
+                    OR (o.fakturant_id IN ($departmentColleagueIdsStr) AND o.fakturant_id NOT IN ($adminSubquery))
+                    OR (o.dokoncil_id IN ($departmentColleagueIdsStr) AND o.dokoncil_id NOT IN ($adminSubquery))
+                    OR (o.potvrdil_vecnou_spravnost_id IN ($departmentColleagueIdsStr) AND o.potvrdil_vecnou_spravnost_id NOT IN ($adminSubquery))
                 )";
                 
                 $visibilityConditions[] = $departmentCondition;
-                error_log("[OrderV3 Permissions] Department filter ADDED for " . count($departmentColleagueIds) . " colleagues");
+                error_log("[OrderV3 Permissions] STRICT Department filter ADDED: shows orders with at least one NON-ADMIN colleague from " . count($departmentColleagueIds) . " colleagues");
             }
         }
     }

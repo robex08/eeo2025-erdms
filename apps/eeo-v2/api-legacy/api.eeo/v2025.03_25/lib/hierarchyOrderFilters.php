@@ -474,22 +474,68 @@ function applyHierarchyFilterToOrders($userId, $db) {
     
     if (!empty($visibleUskyIds)) {
         $uskyIdsList = implode(',', array_map('intval', $visibleUskyIds));
-        // Objednávky přes uživatele z daných úseků
+        
+        // 🔒 BEZPEČNOSTNÍ FIX: Rozlišení adminů od normálních uživatelů
+        // Subquery pro identifikaci adminů (ADMINISTRATOR, SUPERADMIN role)
+        $adminSubquery = "
+            SELECT DISTINCT ur.uzivatel_id 
+            FROM " . TBL_UZIVATELE_ROLE . " ur
+            JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+            WHERE r.nazev IN ('ADMINISTRATOR', 'SUPERADMIN') OR r.kod IN ('ADMINISTRATOR', 'SUPERADMIN')
+        ";
+        
+        // Objednávka je viditelná pokud:
+        // Alespoň jeden NON-ADMIN uživatel z daných úseků je účastníkem (kterákoliv z 12 rolí)
+        // Tím eliminujeme objednávky, kde z daných úseků jsou POUZE admini
         $conditions[] = "(
-            o.uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList))
-            OR o.objednatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList))
-            OR o.garant_uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList))
+            -- Alespoň jeden NON-ADMIN uživatel z daných úseků v kterékoliv z 12 rolí
+            (o.uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.uzivatel_id NOT IN ($adminSubquery))
+            OR (o.objednatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.objednatel_id NOT IN ($adminSubquery))
+            OR (o.garant_uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.garant_uzivatel_id NOT IN ($adminSubquery))
+            OR (o.schvalovatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.schvalovatel_id NOT IN ($adminSubquery))
+            OR (o.prikazce_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.prikazce_id NOT IN ($adminSubquery))
+            OR (o.uzivatel_akt_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.uzivatel_akt_id NOT IN ($adminSubquery))
+            OR (o.odesilatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.odesilatel_id NOT IN ($adminSubquery))
+            OR (o.dodavatel_potvrdil_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.dodavatel_potvrdil_id NOT IN ($adminSubquery))
+            OR (o.zverejnil_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.zverejnil_id NOT IN ($adminSubquery))
+            OR (o.fakturant_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.fakturant_id NOT IN ($adminSubquery))
+            OR (o.dokoncil_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.dokoncil_id NOT IN ($adminSubquery))
+            OR (o.potvrdil_vecnou_spravnost_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE usek_id IN ($uskyIdsList)) AND o.potvrdil_vecnou_spravnost_id NOT IN ($adminSubquery))
         )";
+        error_log("✅ Added STRICT hierarchy useky condition: at least one NON-ADMIN user from useky required");
     }
     
     if (!empty($visibleLokality)) {
         $lokalityList = implode(',', array_map('intval', $visibleLokality));
-        // Objednávky přes uživatele z daných lokalit
+        
+        // 🔒 BEZPEČNOSTNÍ FIX: Rozlišení adminů od normálních uživatelů
+        // Subquery pro identifikaci adminů (ADMINISTRATOR, SUPERADMIN role)
+        $adminSubquery = "
+            SELECT DISTINCT ur.uzivatel_id 
+            FROM " . TBL_UZIVATELE_ROLE . " ur
+            JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+            WHERE r.kod_role IN ('ADMINISTRATOR', 'SUPERADMIN')
+        ";
+        
+        // Objednávka je viditelná pokud:
+        // Alespoň jeden NON-ADMIN uživatel z daných lokalit je účastníkem (kterákoliv z 12 rolí)
+        // Tím eliminujeme objednávky, kde z daných lokalit jsou POUZE admini
         $conditions[] = "(
-            o.uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList))
-            OR o.objednatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList))
-            OR o.garant_uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList))
+            -- Alespoň jeden NON-ADMIN uživatel z daných lokalit v kterékoliv z 12 rolí
+            (o.uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.uzivatel_id NOT IN ($adminSubquery))
+            OR (o.objednatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.objednatel_id NOT IN ($adminSubquery))
+            OR (o.garant_uzivatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.garant_uzivatel_id NOT IN ($adminSubquery))
+            OR (o.schvalovatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.schvalovatel_id NOT IN ($adminSubquery))
+            OR (o.prikazce_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.prikazce_id NOT IN ($adminSubquery))
+            OR (o.uzivatel_akt_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.uzivatel_akt_id NOT IN ($adminSubquery))
+            OR (o.odesilatel_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.odesilatel_id NOT IN ($adminSubquery))
+            OR (o.dodavatel_potvrdil_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.dodavatel_potvrdil_id NOT IN ($adminSubquery))
+            OR (o.zverejnil_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.zverejnil_id NOT IN ($adminSubquery))
+            OR (o.fakturant_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.fakturant_id NOT IN ($adminSubquery))
+            OR (o.dokoncil_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.dokoncil_id NOT IN ($adminSubquery))
+            OR (o.potvrdil_vecnou_spravnost_id IN (SELECT id FROM " . TBL_UZIVATELE . " WHERE lokalita_id IN ($lokalityList)) AND o.potvrdil_vecnou_spravnost_id NOT IN ($adminSubquery))
         )";
+        error_log("✅ Added STRICT hierarchy lokality condition: at least one NON-ADMIN user from lokality required");
     }
     
     if (empty($conditions)) {
