@@ -257,6 +257,8 @@ define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
 // DATABASE TABLE NAMES - LIMITOVANÉ PŘÍSLIBY
 define('TBL_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
 define('TBL_LIMITOVANE_PRISLIBY_CERPANI', '25_limitovane_prisliby_cerpani');
+define('TBL_OBJEDNAVKY_LP_KODY', '25a_objednavky_lp_kody');
+define('TBL_ODBORY_LP_PRIRAZENI', '25a_odbory_lp_prirazeni');
 
 // DATABASE TABLE NAMES - SPISOVKA
 define('TBL_SPISOVKA_ZPRACOVANI_LOG', '25_spisovka_zpracovani_log');

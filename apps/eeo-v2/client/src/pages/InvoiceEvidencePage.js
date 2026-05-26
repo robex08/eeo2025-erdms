@@ -6497,6 +6497,9 @@ export default function InvoiceEvidencePage() {
                             };
                             const cerpaniColors = getCerpaniColor();
                             
+                            // Celkový počet faktur = faktury na objednávkách + standalone faktury (odbory)
+                            const pocetFaktur = (parseInt(item.pocet_faktur_objednavky, 10) || 0) + (parseInt(item.pocet_faktur_odbory, 10) || 0);
+                            
                             return (
                               <OrderSuggestionItem
                                 key={`lp-${item.id}`}
@@ -6519,14 +6522,14 @@ export default function InvoiceEvidencePage() {
                                       {limitNum.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                                     </OrderSuggestionBadge>
                                   </OrderSuggestionTitle>
-                                  {/* Počet faktur - pro odbory LP vždy 0 (faktury jsou standalone) */}
+                                  {/* Počet faktur - objednávkové + odbory standalone */}
                                   <OrderSuggestionBadge 
-                                    $color="#f1f5f9" 
-                                    $textColor="#64748b"
+                                    $color={pocetFaktur > 0 ? '#e0f2fe' : '#f1f5f9'} 
+                                    $textColor={pocetFaktur > 0 ? '#0369a1' : '#64748b'}
                                     style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                                   >
                                     <FontAwesomeIcon icon={faFileInvoice} style={{ fontSize: '0.7rem' }} />
-                                    0
+                                    {pocetFaktur}
                                   </OrderSuggestionBadge>
                                 </div>
                                 <OrderSuggestionDetail>
