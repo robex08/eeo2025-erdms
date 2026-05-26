@@ -283,6 +283,7 @@ require_once __DIR__ . '/v2025.03_25/lib/hierarchyHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/hierarchyTriggers.php';
 require_once __DIR__ . '/v2025.03_25/lib/planningHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/lpHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/odboryLpHandlers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
@@ -2566,6 +2567,38 @@ switch ($endpoint) {
     case 'lp/list':
         if ($request_method === 'POST') {
             handle_lp_list($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    // === ODBOROVÉ LP PŘIŘAZENÍ ===
+    
+    // POST /api.eeo/odbory-lp/save - Uložit odborové LP přiřazení
+    case 'odbory-lp/save':
+        if ($request_method === 'POST') {
+            handle_odbory_lp_save($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/odbory-lp/get - Získat odborové LP přiřazení
+    case 'odbory-lp/get':
+        if ($request_method === 'POST') {
+            handle_odbory_lp_get($input, $config);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    // POST /api.eeo/odbory-lp/delete - Smazat odborové LP přiřazení
+    case 'odbory-lp/delete':
+        if ($request_method === 'POST') {
+            handle_odbory_lp_delete($input, $config);
         } else {
             http_response_code(405);
             echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
