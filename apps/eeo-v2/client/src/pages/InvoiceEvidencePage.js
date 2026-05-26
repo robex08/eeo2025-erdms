@@ -78,6 +78,8 @@ import { markSpisovkaDocumentProcessed } from '../services/apiSpisovkaZpracovani
 import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
 import { useDictionaries } from '../forms/OrderForm25/hooks/useDictionaries';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
+import { fetchLPList, saveOdboryLP, getOdboryLP, deleteOdboryLP } from '../services/apiLP';
+import LPBadge from '../components/LPBadge';
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {
@@ -1990,9 +1992,13 @@ export default function InvoiceEvidencePage() {
   const [orderLoading, setOrderLoading] = useState(false);
   const [orderData, setOrderData] = useState(null);
   const [smlouvaData, setSmlouvaData] = useState(null);
-  const [selectedType, setSelectedType] = useState('order'); // 'order' nebo 'smlouva'
+  const [selectedType, setSelectedType] = useState('order'); // 'order', 'smlouva', nebo 'lp'
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
+  
+  // 🆕 LP state (limitované příslíby pro odbory - faktury bez objednávky)
+  const [selectedLP, setSelectedLP] = useState(null); // Vybraný LP pro fakturu
+  const [lpLoading, setLpLoading] = useState(false); // Loading při ukládání LP
 
   // Autocomplete state - univerzální pro objednávky i smlouvy
   const [searchTerm, setSearchTerm] = useState('');
