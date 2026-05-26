@@ -390,11 +390,13 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         $procento_skutecne = $celkovy_limit > 0 ? min(999.99, round(($celkove_skutecne / $celkovy_limit) * 100, 2)) : 0.00;
         
         // KROK 7: UPSERT do čerpání tabulky
+        // ✅ OPRAVA 26.5.2026: Přidány sloupce cerpano_odbory_faktury a cerpano_odbory_pokladna
         $sql_upsert = "
             INSERT INTO " . TBL_LP_CERPANI . " (
                 cislo_lp, kategorie, usek_id, user_id, rok,
                 celkovy_limit, 
                 rezervovano, predpokladane_cerpani, skutecne_cerpano, cerpano_pokladna,
+                cerpano_odbory_faktury, cerpano_odbory_pokladna,
                 zbyva_rezervace, zbyva_predpoklad, zbyva_skutecne,
                 procento_rezervace, procento_predpoklad, procento_skutecne,
                 pocet_zaznamu, ma_navyseni, posledni_prepocet
@@ -402,6 +404,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 :cislo_lp, :kategorie, :usek_id, :user_id, :rok,
                 :celkovy_limit,
                 :rezervovano, :predpokladane_cerpani, :skutecne_cerpano, :cerpano_pokladna,
+                :cerpano_odbory_faktury, :cerpano_odbory_pokladna,
                 :zbyva_rezervace, :zbyva_predpoklad, :zbyva_skutecne,
                 :procento_rezervace, :procento_predpoklad, :procento_skutecne,
                 :pocet_zaznamu, :ma_navyseni, NOW()
@@ -412,6 +415,8 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 predpokladane_cerpani = VALUES(predpokladane_cerpani),
                 skutecne_cerpano = VALUES(skutecne_cerpano),
                 cerpano_pokladna = VALUES(cerpano_pokladna),
+                cerpano_odbory_faktury = VALUES(cerpano_odbory_faktury),
+                cerpano_odbory_pokladna = VALUES(cerpano_odbory_pokladna),
                 zbyva_rezervace = VALUES(zbyva_rezervace),
                 zbyva_predpoklad = VALUES(zbyva_predpoklad),
                 zbyva_skutecne = VALUES(zbyva_skutecne),
@@ -435,6 +440,8 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             'predpokladane_cerpani' => $predpokladane_cerpani,
             'skutecne_cerpano' => $skutecne_cerpano,
             'cerpano_pokladna' => $cerpano_pokladna,
+            'cerpano_odbory_faktury' => $cerpano_odbory_faktury,
+            'cerpano_odbory_pokladna' => $cerpano_odbory_pokladna,
             'zbyva_rezervace' => $zbyva_rezervace,
             'zbyva_predpoklad' => $zbyva_predpoklad,
             'zbyva_skutecne' => $zbyva_skutecne,
@@ -461,6 +468,8 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 'predpokladane_cerpani' => (float)$predpokladane_cerpani,
                 'skutecne_cerpano' => (float)$skutecne_cerpano,
                 'cerpano_pokladna' => (float)$cerpano_pokladna,
+                'cerpano_odbory_faktury' => (float)$cerpano_odbory_faktury,
+                'cerpano_odbory_pokladna' => (float)$cerpano_odbory_pokladna,
                 
                 'zbyva_rezervace' => (float)$zbyva_rezervace,
                 'zbyva_predpoklad' => (float)$zbyva_predpoklad,
