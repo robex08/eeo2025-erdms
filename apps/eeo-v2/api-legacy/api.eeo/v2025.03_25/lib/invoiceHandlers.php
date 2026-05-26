@@ -704,7 +704,60 @@ function handle_invoices25_update($input, $config, $queries) {
         $stmt->execute($values);
 
         // ==========================================
-        // 🔔 NOTIFICATION TRIGGERS - Nové události
+        // � LP PŘEPOČET po změně věcné správnosti
+        // Faktura s LP rozpisem / odborovým přiřazením musí přepočítat
+        // čerpání → mezi "v procesu" (predpoklad) a "skutečně"
+        // ==========================================
+        $vecnaChanged = isset($input['vecna_spravnost_potvrzeno']) &&
+                        (int)$input['vecna_spravnost_potvrzeno'] !== (int)($oldInvoiceData['vecna_spravnost_potvrzeno'] ?? 0);
+        $potvrdilChanged = isset($input['potvrdil_vecnou_spravnost_id']);
+
+        if ($vecnaChanged || $potvrdilChanged) {
+            try {
+                require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+                $lp_ids_to_recalc = [];
+
+                // 1) Odborové přiřazení (25a_odbory_lp_prirazeni)
+                $stmt_olp = $db->prepare("SELECT lp_id FROM `" . TBL_ODBORY_LP_PRIRAZENI . "` WHERE faktura_id = ?");
+                $stmt_olp->execute([$faktura_id]);
+                foreach ($stmt_olp->fetchAll(PDO::FETCH_COLUMN) as $olp_lp_id) {
+                    if ((int)$olp_lp_id > 0) $lp_ids_to_recalc[(int)$olp_lp_id] = true;
+                }
+
+                // 2) LP rozpis na faktuře (25a_faktury_lp_cerpani)
+                $stmt_flp = $db->prepare("SELECT DISTINCT lp_id FROM `" . TBL_FAKTURY_LP_CERPANI . "` WHERE faktura_id = ? AND lp_id IS NOT NULL");
+                $stmt_flp->execute([$faktura_id]);
+                foreach ($stmt_flp->fetchAll(PDO::FETCH_COLUMN) as $flp_lp_id) {
+                    if ((int)$flp_lp_id > 0) $lp_ids_to_recalc[(int)$flp_lp_id] = true;
+                }
+
+                // 3) LP z financování objednávky (lp_kody)
+                $objednavky_tbl = get_orders_table_name();
+                $stmt_fin = $db->prepare("SELECT o.financovani FROM `$objednavky_tbl` o INNER JOIN `$faktury_table` f ON f.objednavka_id = o.id WHERE f.id = ?");
+                $stmt_fin->execute([$faktura_id]);
+                $fin_row = $stmt_fin->fetch(PDO::FETCH_ASSOC);
+                if ($fin_row && !empty($fin_row['financovani'])) {
+                    $fin = json_decode($fin_row['financovani'], true);
+                    if (is_array($fin) && isset($fin['lp_kody']) && is_array($fin['lp_kody'])) {
+                        foreach ($fin['lp_kody'] as $lpid) {
+                            if ((int)$lpid > 0) $lp_ids_to_recalc[(int)$lpid] = true;
+                        }
+                    }
+                }
+
+                foreach (array_keys($lp_ids_to_recalc) as $rec_lp_id) {
+                    if (function_exists('prepocetCerpaniPodleIdLP_PDO')) {
+                        $res = prepocetCerpaniPodleIdLP_PDO($db, $rec_lp_id);
+                        error_log("🔄 LP recalc (věcná spr. faktury $faktura_id): LP#$rec_lp_id - " . json_encode($res));
+                    }
+                }
+            } catch (Exception $e) {
+                error_log("⚠️ LP přepočet po věcné správnosti selhal (faktura $faktura_id): " . $e->getMessage());
+            }
+        }
+
+        // ==========================================
+        // �🔔 NOTIFICATION TRIGGERS - Nové události
         // ==========================================
         
         // Načti aktuální user_id z tokenu
@@ -1076,13 +1129,24 @@ function handle_invoices25_by_id($input, $config, $queries) {
                 u_predana.prijmeni as fa_predana_zam_prijmeni,
                 u_predana.titul_pred as fa_predana_zam_titul_pred,
                 u_predana.titul_za as fa_predana_zam_titul_za,
-                u_predana.email as fa_predana_zam_email
+                u_predana.email as fa_predana_zam_email,
+                olp.id as odbory_lp_id,
+                olp.lp_id as odbory_lp_lp_id,
+                olp.poznamka as odbory_lp_poznamka,
+                lp.cislo_lp as odbory_lp_cislo,
+                lp.nazev_uctu as odbory_lp_nazev,
+                lp.modul as odbory_lp_modul,
+                lp.platne_od as odbory_lp_platne_od,
+                lp.platne_do as odbory_lp_platne_do,
+                lp.vyse_financniho_kryti as odbory_lp_limit
             FROM `$faktury_table` f
             LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
             LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
             LEFT JOIN `$states_table` s ON s.typ_objektu = 'FAKTURA' AND s.kod_stavu = f.fa_typ
             LEFT JOIN `$users_table` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
             LEFT JOIN `$users_table` u_predana ON f.fa_predana_zam_id = u_predana.id
+            LEFT JOIN `" . TBL_ODBORY_LP_PRIRAZENI . "` olp ON f.id = olp.faktura_id
+            LEFT JOIN `" . TBL_LIMITOVANE_PRISLIBY . "` lp ON olp.lp_id = lp.id
             WHERE f.id = ? AND f.aktivni = 1
         ");
         $stmt->execute([$faktura_id]);
@@ -1912,10 +1976,12 @@ function handle_invoices25_list($input, $config, $queries) {
         }
         
         // Filtr: cislo_objednavky (částečná shoda - LIKE)
-        // ⚠️ UNIVERSAL: Hledá v čísle objednávky, čísle smlouvy, názvu dodavatele i IČO!
+        // ⚠️ UNIVERSAL: Hledá v čísle objednávky, čísle smlouvy, názvu dodavatele, IČO a LP (odborové)
         if (isset($filters['cislo_objednavky']) && trim($filters['cislo_objednavky']) !== '') {
             $search_obj_sml = strtolower(trim($filters['cislo_objednavky']));
-            $where_conditions[] = '(LOWER(o.cislo_objednavky) LIKE ? OR LOWER(sm.cislo_smlouvy) LIKE ? OR LOWER(o.dodavatel_nazev) LIKE ? OR LOWER(sm.nazev_firmy) LIKE ? OR o.dodavatel_ico LIKE ? OR sm.ico LIKE ?)';
+            $where_conditions[] = '(LOWER(o.cislo_objednavky) LIKE ? OR LOWER(sm.cislo_smlouvy) LIKE ? OR LOWER(o.dodavatel_nazev) LIKE ? OR LOWER(sm.nazev_firmy) LIKE ? OR o.dodavatel_ico LIKE ? OR sm.ico LIKE ? OR LOWER(lp_odbory.cislo_lp) LIKE ? OR LOWER(lp_odbory.nazev_uctu) LIKE ?)';
+            $params[] = '%' . $search_obj_sml . '%';
+            $params[] = '%' . $search_obj_sml . '%';
             $params[] = '%' . $search_obj_sml . '%';
             $params[] = '%' . $search_obj_sml . '%';
             $params[] = '%' . $search_obj_sml . '%';
@@ -2153,6 +2219,11 @@ function handle_invoices25_list($input, $config, $queries) {
                     // Přiřazené ke smlouvě
                     $where_conditions[] = 'f.smlouva_id IS NOT NULL AND f.smlouva_id > 0';
                     break;
+
+                case 'with_lp':
+                    // Přiřazené k LP (odborové LP)
+                    $where_conditions[] = 'olp.lp_id IS NOT NULL';
+                    break;
                     
                 case 'with_order':
                     // Přiřazené k objednávce
@@ -2207,6 +2278,8 @@ function handle_invoices25_list($input, $config, $queries) {
                 'LOWER(CONCAT_WS(" ", u_predana.titul_pred, u_predana.jmeno, u_predana.prijmeni, u_predana.titul_za)) LIKE ?',  // Předáno zaměstnanci ✅ PŘIDÁNO
                 'LOWER(f.fa_poznamka) LIKE ?',                // Poznámka
                 'LOWER(f.fa_strediska_kod) LIKE ?',           // Střediska (JSON jako text)
+                'LOWER(lp_odbory.cislo_lp) LIKE ?',            // LP kód (odborové)
+                'LOWER(lp_odbory.nazev_uctu) LIKE ?',          // LP název (odborové)
                 'LOWER(f.fa_typ) LIKE ?',                     // Typ faktury ✅ PŘIDÁNO
                 'LOWER(f.stav) LIKE ?'                        // Workflow stav ✅ PŘIDÁNO
             );
@@ -2219,7 +2292,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Spojení všech search podmínek jako OR a přidání jako AND do hlavních podmínek
             $where_conditions[] = '(' . implode(' OR ', $search_conditions) . ')';
             
-            error_log("Invoices25 LIST: Applying global search_term = " . $search_term . " (13 fields)");
+            error_log("Invoices25 LIST: Applying global search_term = " . $search_term . " (15 fields)");
         }
 
         // Sestavení WHERE klauzule
@@ -2251,6 +2324,7 @@ function handle_invoices25_list($input, $config, $queries) {
             COALESCE(SUM(CASE WHEN f.fa_predana_zam_id = $user_id AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_nezkontrolovane,
             COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
             COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
+            COUNT(CASE WHEN olp.lp_id IS NOT NULL THEN 1 END) as pocet_s_lp,
             COUNT(CASE WHEN f.objednavka_id IS NULL AND f.smlouva_id IS NULL THEN 1 END) as pocet_bez_prirazeni,
             COUNT(CASE WHEN szl.id IS NOT NULL THEN 1 END) as pocet_ze_spisovky,
             COUNT(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(f.rozsirujici_data, '$.kontrola_radku.kontrolovano')) = 'true' THEN 1 END) as pocet_zkontrolovano,
@@ -2265,6 +2339,8 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN (SELECT DISTINCT faktura_id, MIN(id) as id FROM `25_spisovka_zpracovani_log` GROUP BY faktura_id) szl ON f.id = szl.faktura_id
+        LEFT JOIN `" . TBL_ODBORY_LP_PRIRAZENI . "` olp ON f.id = olp.faktura_id
+        LEFT JOIN `" . TBL_LIMITOVANE_PRISLIBY . "` lp_odbory ON olp.lp_id = lp_odbory.id
         WHERE $where_sql";
         
         $stats_stmt = $db->prepare($stats_sql);
@@ -2293,6 +2369,7 @@ function handle_invoices25_list($input, $config, $queries) {
             'celkem_moje_nezkontrolovane' => (float)$stats['celkem_moje_nezkontrolovane'],
             'pocet_s_smlouvou' => (int)$stats['pocet_s_smlouvou'],
             'pocet_s_objednavkou' => (int)$stats['pocet_s_objednavkou'],
+            'pocet_s_lp' => (int)$stats['pocet_s_lp'],
             'pocet_bez_prirazeni' => (int)$stats['pocet_bez_prirazeni'],
             'pocet_ze_spisovky' => (int)$stats['pocet_ze_spisovky'],
             'pocet_zkontrolovano' => (int)$stats['pocet_zkontrolovano'],
@@ -2346,7 +2423,16 @@ function handle_invoices25_list($input, $config, $queries) {
             szl.id AS spisovka_tracking_id,
             szl.dokument_id AS spisovka_dokument_id,
             szl.spisovka_priloha_id AS spisovka_priloha_id,
-            (SELECT COUNT(*) FROM `" . TBL_FAKTURY_LP_CERPANI . "` lpc WHERE lpc.faktura_id = f.id) AS lp_cerpani_count
+            (SELECT COUNT(*) FROM `" . TBL_FAKTURY_LP_CERPANI . "` lpc WHERE lpc.faktura_id = f.id) AS lp_cerpani_count,
+            olp.id AS odbory_lp_id,
+            olp.lp_id AS odbory_lp_lp_id,
+            olp.poznamka AS odbory_lp_poznamka,
+            lp_odbory.cislo_lp AS odbory_lp_cislo,
+            lp_odbory.nazev_uctu AS odbory_lp_nazev,
+            lp_odbory.modul AS odbory_lp_modul,
+            lp_odbory.platne_od AS odbory_lp_platne_od,
+            lp_odbory.platne_do AS odbory_lp_platne_do,
+            lp_odbory.vyse_financniho_kryti AS odbory_lp_limit
         FROM `$faktury_table` f
         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `25_smlouvy` sm ON f.smlouva_id = sm.id
@@ -2360,6 +2446,8 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN `25_uzivatele` u_aktualizoval ON f.aktualizoval_uzivatel_id = u_aktualizoval.id
         LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
+        LEFT JOIN `" . TBL_ODBORY_LP_PRIRAZENI . "` olp ON f.id = olp.faktura_id
+        LEFT JOIN `" . TBL_LIMITOVANE_PRISLIBY . "` lp_odbory ON olp.lp_id = lp_odbory.id
         WHERE $where_sql
         GROUP BY f.id";
         
