@@ -3302,10 +3302,16 @@ export default function InvoiceEvidencePage() {
         const lpResponse = await fetchLPList({ token, username, context: 'invoices' });
         const lps = lpResponse?.data || []; // ✅ lpResponse.data je array
         
-        // Filtrovat LP podle search query
+        // Filtrovat LP podle search query (cislo_lp, nazev_uctu, usek, prikazce)
+        const searchLower = search.toLowerCase();
         filteredLPs = lps.filter(lp => 
-          lp.cislo_lp?.toLowerCase().includes(search.toLowerCase()) ||
-          lp.nazev_uctu?.toLowerCase().includes(search.toLowerCase())
+          lp.cislo_lp?.toLowerCase().includes(searchLower) ||
+          lp.nazev_uctu?.toLowerCase().includes(searchLower) ||
+          lp.usek_nazev?.toLowerCase().includes(searchLower) ||
+          lp.usek_zkr?.toLowerCase().includes(searchLower) ||
+          lp.prikazce_cele_jmeno?.toLowerCase().includes(searchLower) ||
+          lp.prikazce_jmeno?.toLowerCase().includes(searchLower) ||
+          lp.prikazce_prijmeni?.toLowerCase().includes(searchLower)
         );
       } catch (lpErr) {
         console.error('⚠️ Chyba při načítání LP:', lpErr);
@@ -6490,26 +6496,20 @@ export default function InvoiceEvidencePage() {
                                       LP
                                     </OrderSuggestionBadge>
                                     {item.cislo_lp}
-                                    {item.modul && (
-                                      <OrderSuggestionBadge 
-                                        $color={
-                                          item.modul === 'fop' ? '#fb923c' : 
-                                          item.modul === 'fp' ? '#a855f7' :
-                                          item.modul === 'f' ? '#ec4899' :
-                                          item.modul === 'op' ? '#22c55e' :
-                                          item.modul === 'p' ? '#eab308' :
-                                          item.modul === 'o' ? '#3b82f6' : '#6b7280'
-                                        } 
-                                        $textColor="white" 
-                                        style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}
-                                      >
-                                        {item.modul.toUpperCase()}
-                                      </OrderSuggestionBadge>
-                                    )}
                                   </OrderSuggestionTitle>
                                 </div>
                                 <OrderSuggestionDetail>
                                   {item.nazev_uctu && <span><strong>Účet:</strong> {item.nazev_uctu}</span>}
+                                  {item.usek_nazev && (
+                                    <span>
+                                      <strong>Úsek:</strong> {item.usek_zkr || item.usek_nazev}
+                                    </span>
+                                  )}
+                                  {item.prikazce_cele_jmeno && (
+                                    <span>
+                                      <strong>Příkazce:</strong> {item.prikazce_cele_jmeno}
+                                    </span>
+                                  )}
                                 </OrderSuggestionDetail>
                               </OrderSuggestionItem>
                             );
