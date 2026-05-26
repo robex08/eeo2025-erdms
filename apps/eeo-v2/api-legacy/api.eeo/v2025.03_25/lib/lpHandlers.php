@@ -108,10 +108,15 @@ function handle_lp_list($input, $config) {
                 COALESCE(c.cerpano_pokladna, 0) as pokladna,
                 (COALESCE(c.rezervovano, 0) + COALESCE(c.predpokladane_cerpani, 0) + COALESCE(c.skutecne_cerpano, 0) + COALESCE(c.cerpano_pokladna, 0)) as cerpano_celkem,
                 u.usek_zkr,
-                u.usek_nazev
+                u.usek_nazev,
+                prikazce.id as prikazce_id,
+                prikazce.jmeno as prikazce_jmeno,
+                prikazce.prijmeni as prikazce_prijmeni,
+                CONCAT(prikazce.jmeno, ' ', prikazce.prijmeni) as prikazce_cele_jmeno
             FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
             LEFT JOIN " . TBL_LP_CERPANI . " c ON c.cislo_lp = lp.cislo_lp AND c.rok = :current_year
             LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id
+            LEFT JOIN " . TBL_UZIVATELE . " prikazce ON lp.user_id = prikazce.id
             WHERE lp.platne_od <= :year_end 
             AND lp.platne_do >= :year_start";
         
