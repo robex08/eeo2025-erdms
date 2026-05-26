@@ -4355,9 +4355,106 @@ function handle_orderV3_lp_expand($input, $config) {
             ];
         }
 
+        // ============================================================
+        // ROZŠÍŘENÍ: Odborové faktury (25a_odbory_lp_prirazeni) bez napojené LP-objednávky
+        // - faktury přímo přiřazené k LP přes odbory_lp_prirazeni
+        // - které NEJSOU součástí žádné z již vrácených objednávek
+        // - vrátí se jako "virtuální objednávka" s id=null a cislo_objednavky='—'
+        // ============================================================
+        $lp_placeholders_odb = implode(',', array_fill(0, count($master_ids_int), '?'));
+        $excluded_order_ids = !empty($order_ids) ? $order_ids : [];
+        $excluded_placeholder = '';
+        if (!empty($excluded_order_ids)) {
+            $excluded_placeholder = ' AND (f.objednavka_id IS NULL OR f.objednavka_id NOT IN (' .
+                implode(',', array_fill(0, count($excluded_order_ids), '?')) . '))';
+        }
+
+        $sql_odb = "
+            SELECT 
+                f.id as faktura_id,
+                f.objednavka_id,
+                f.fa_cislo_vema, f.fa_vema_kod, f.fa_castka, f.stav,
+                f.fa_datum_vystaveni, f.fa_datum_splatnosti, f.fa_zaplacena, f.fa_poznamka,
+                f.vecna_spravnost_potvrzeno,
+                olp.lp_id,
+                COALESCE(flp_sum.lp_castka, 0) as lp_castka_z_rozpisu
+            FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp
+            INNER JOIN " . TBL_FAKTURY . " f ON f.id = olp.faktura_id
+            LEFT JOIN (
+                SELECT faktura_id, SUM(castka) as lp_castka
+                FROM " . TBL_FAKTURY_LP_CERPANI . "
+                WHERE lp_id IN ($lp_placeholders_odb)
+                GROUP BY faktura_id
+            ) flp_sum ON flp_sum.faktura_id = f.id
+            WHERE olp.lp_id IN ($lp_placeholders_odb)
+              AND f.aktivni = 1
+              AND f.stav != 'STORNO'
+              $excluded_placeholder
+            ORDER BY f.fa_datum_vystaveni DESC
+        ";
+        $params_odb = array_merge($master_ids_int, $master_ids_int); // 2x pro IN klauzule (subquery + WHERE)
+        if (!empty($excluded_order_ids)) {
+            $params_odb = array_merge($params_odb, $excluded_order_ids);
+        }
+        $stmt_odb = $db->prepare($sql_odb);
+        $stmt_odb->execute($params_odb);
+        $odborove_faktury = $stmt_odb->fetchAll(PDO::FETCH_ASSOC);
+
+        // Agregace odborových faktur po faktuře
+        $odb_by_faktura = [];
+        foreach ($odborove_faktury as $row) {
+            $fid = (int)$row['faktura_id'];
+            if (!isset($odb_by_faktura[$fid])) {
+                // Částka LP: primárně z rozpisu, fallback fa_castka
+                $lp_castka = (float)$row['lp_castka_z_rozpisu'] > 0 ? (float)$row['lp_castka_z_rozpisu'] : (float)$row['fa_castka'];
+                
+                $odb_by_faktura[$fid] = [
+                    'faktura' => [
+                        'id' => $fid,
+                        'fa_cislo_vema' => $row['fa_cislo_vema'],
+                        'fa_vema_kod' => $row['fa_vema_kod'],
+                        'fa_castka' => (float)$row['fa_castka'],
+                        'stav' => $row['stav'],
+                        'fa_datum_vystaveni' => $row['fa_datum_vystaveni'],
+                        'fa_datum_splatnosti' => $row['fa_datum_splatnosti'],
+                        'fa_zaplacena' => (bool)$row['fa_zaplacena'],
+                        'fa_poznamka' => $row['fa_poznamka'],
+                        'vecna_spravnost_potvrzeno' => (bool)$row['vecna_spravnost_potvrzeno'],
+                        'lp_castka' => $lp_castka
+                    ],
+                    'objednavka_id' => $row['objednavka_id'] !== null ? (int)$row['objednavka_id'] : null
+                ];
+            }
+        }
+
+        // Přidat každou odborovou fakturu jako "virtuální objednávku"
+        // Použijeme negativní id na základě faktura_id, aby FE nekonfliktoval s reálnými objednávkami
+        foreach ($odb_by_faktura as $fid => $rec) {
+            $fa = $rec['faktura'];
+            $lp_castka = $fa['lp_castka'];
+            $result[] = [
+                'id' => -$fid, // negativní = virtuální záznam (odborová faktura)
+                'cislo_objednavky' => '— odborová faktura',
+                'predmet' => 'Odborové čerpání LP – faktura bez objednávky',
+                'stav' => 'ODBORY',
+                'dodavatel_nazev' => null,
+                'max_cena_s_dph' => (float)$fa['fa_castka'],
+                'planovana_castka_lp' => $lp_castka,
+                'planovana_castka_polozky' => 0.0,
+                'suma_lp_z_faktur' => $lp_castka,
+                'dt_vytvoreni' => $fa['fa_datum_vystaveni'],
+                'objednatel_jmeno' => '—',
+                'faktury' => [$fa],
+                'pocet_faktur' => 1,
+                'suma_faktur' => (float)$fa['fa_castka'],
+                'rozdil_planovano_skutecne' => 0.0,
+                'je_odborova_faktura' => true
+            ];
+        }
+
         // 🔍 DEBUG: Log počtu objednávek pro konkrétní LP
         if (!empty($master_ids) && in_array(128, $master_ids)) {
-            error_log("🔍 LP-EXPAND DEBUG: LPN3 (master_id=128), requesting_user_id=$requesting_user_id, počet_objednávek=" . count($result));
+            error_log("🔍 LP-EXPAND DEBUG: LPN3 (master_id=128), requesting_user_id=$requesting_user_id, počet_objednávek=" . count($result) . ", odborových_faktur=" . count($odb_by_faktura));
         }
 
         echo json_encode([

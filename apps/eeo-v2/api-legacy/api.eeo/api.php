@@ -257,7 +257,6 @@ define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
 // DATABASE TABLE NAMES - LIMITOVANÉ PŘÍSLIBY
 define('TBL_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
 define('TBL_LIMITOVANE_PRISLIBY_CERPANI', '25_limitovane_prisliby_cerpani');
-define('TBL_OBJEDNAVKY_LP_KODY', '25a_objednavky_lp_kody');
 define('TBL_ODBORY_LP_PRIRAZENI', '25a_odbory_lp_prirazeni');
 
 // DATABASE TABLE NAMES - SPISOVKA
@@ -6085,16 +6084,27 @@ switch ($endpoint) {
                                 c.procento_predpoklad,
                                 c.procento_skutecne,
                                 c.pocet_zaznamu,
-                                (                                    SELECT COUNT(DISTINCT o_lp.id)
-                                    FROM 25a_objednavky o_lp
-                                    WHERE o_lp.aktivni = 1
-                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                    AND EXISTS (
-                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
-                                        WHERE lpm2.cislo_lp = c.cislo_lp
-                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                (
+                                        SELECT COUNT(DISTINCT o_lp.id)
+                                        FROM 25a_objednavky o_lp
+                                        WHERE o_lp.aktivni = 1
+                                        AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                            WHERE lpm2.cislo_lp = c.cislo_lp
+                                            AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                        )
                                     )
-                                ) as pocet_objednavek,
+                                    + (
+                                        SELECT COUNT(DISTINCT olp_n.faktura_id)
+                                        FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp_n
+                                        INNER JOIN " . TBL_FAKTURY . " fn ON fn.id = olp_n.faktura_id
+                                        WHERE fn.aktivni = 1 AND fn.stav != 'STORNO'
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm3
+                                            WHERE lpm3.cislo_lp = c.cislo_lp AND lpm3.id = olp_n.lp_id
+                                        )
+                                    ) as pocet_objednavek,
                                 c.ma_navyseni,
                                 c.posledni_prepocet,
                                 u.prijmeni,
@@ -6224,16 +6234,27 @@ switch ($endpoint) {
                                 c.procento_predpoklad,
                                 c.procento_skutecne,
                                 c.pocet_zaznamu,
-                                (                                    SELECT COUNT(DISTINCT o_lp.id)
-                                    FROM 25a_objednavky o_lp
-                                    WHERE o_lp.aktivni = 1
-                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                    AND EXISTS (
-                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
-                                        WHERE lpm2.cislo_lp = c.cislo_lp
-                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                (
+                                        SELECT COUNT(DISTINCT o_lp.id)
+                                        FROM 25a_objednavky o_lp
+                                        WHERE o_lp.aktivni = 1
+                                        AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                            WHERE lpm2.cislo_lp = c.cislo_lp
+                                            AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                        )
                                     )
-                                ) as pocet_objednavek,
+                                    + (
+                                        SELECT COUNT(DISTINCT olp_n.faktura_id)
+                                        FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp_n
+                                        INNER JOIN " . TBL_FAKTURY . " fn ON fn.id = olp_n.faktura_id
+                                        WHERE fn.aktivni = 1 AND fn.stav != 'STORNO'
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm3
+                                            WHERE lpm3.cislo_lp = c.cislo_lp AND lpm3.id = olp_n.lp_id
+                                        )
+                                    ) as pocet_objednavek,
                                 c.ma_navyseni,
                                 c.posledni_prepocet,
                                 u.prijmeni,
@@ -6349,16 +6370,27 @@ switch ($endpoint) {
                                 c.procento_rezervace,
                                 c.procento_predpoklad,
                                 c.pocet_zaznamu,
-                                (                                    SELECT COUNT(DISTINCT o_lp.id)
-                                    FROM 25a_objednavky o_lp
-                                    WHERE o_lp.aktivni = 1
-                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                    AND EXISTS (
-                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
-                                        WHERE lpm2.cislo_lp = c.cislo_lp
-                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                (
+                                        SELECT COUNT(DISTINCT o_lp.id)
+                                        FROM 25a_objednavky o_lp
+                                        WHERE o_lp.aktivni = 1
+                                        AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                            WHERE lpm2.cislo_lp = c.cislo_lp
+                                            AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                        )
                                     )
-                                ) as pocet_objednavek,
+                                    + (
+                                        SELECT COUNT(DISTINCT olp_n.faktura_id)
+                                        FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp_n
+                                        INNER JOIN " . TBL_FAKTURY . " fn ON fn.id = olp_n.faktura_id
+                                        WHERE fn.aktivni = 1 AND fn.stav != 'STORNO'
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm3
+                                            WHERE lpm3.cislo_lp = c.cislo_lp AND lpm3.id = olp_n.lp_id
+                                        )
+                                    ) as pocet_objednavek,
                                 c.ma_navyseni,
                                 us.usek_nazev
                             FROM " . TBL_LP_CERPANI . " c
@@ -6443,16 +6475,27 @@ switch ($endpoint) {
                                     c.procento_rezervace,
                                     c.procento_predpoklad,
                                     c.pocet_zaznamu,
-                                    (                                    SELECT COUNT(DISTINCT o_lp.id)
-                                    FROM 25a_objednavky o_lp
-                                    WHERE o_lp.aktivni = 1
-                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                    AND EXISTS (
-                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
-                                        WHERE lpm2.cislo_lp = c.cislo_lp
-                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                    (
+                                        SELECT COUNT(DISTINCT o_lp.id)
+                                        FROM 25a_objednavky o_lp
+                                        WHERE o_lp.aktivni = 1
+                                        AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                            WHERE lpm2.cislo_lp = c.cislo_lp
+                                            AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                        )
                                     )
-                                ) as pocet_objednavek,
+                                    + (
+                                        SELECT COUNT(DISTINCT olp_n.faktura_id)
+                                        FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp_n
+                                        INNER JOIN " . TBL_FAKTURY . " fn ON fn.id = olp_n.faktura_id
+                                        WHERE fn.aktivni = 1 AND fn.stav != 'STORNO'
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm3
+                                            WHERE lpm3.cislo_lp = c.cislo_lp AND lpm3.id = olp_n.lp_id
+                                        )
+                                    ) as pocet_objednavek,
                                     c.ma_navyseni,
                                     u.prijmeni,
                                     u.jmeno,
@@ -6508,16 +6551,27 @@ switch ($endpoint) {
                                     c.procento_rezervace,
                                     c.procento_predpoklad,
                                     c.pocet_zaznamu,
-                                    (                                    SELECT COUNT(DISTINCT o_lp.id)
-                                    FROM 25a_objednavky o_lp
-                                    WHERE o_lp.aktivni = 1
-                                    AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                                    AND EXISTS (
-                                        SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
-                                        WHERE lpm2.cislo_lp = c.cislo_lp
-                                        AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                    (
+                                        SELECT COUNT(DISTINCT o_lp.id)
+                                        FROM 25a_objednavky o_lp
+                                        WHERE o_lp.aktivni = 1
+                                        AND o_lp.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
+                                            WHERE lpm2.cislo_lp = c.cislo_lp
+                                            AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                        )
                                     )
-                                ) as pocet_objednavek,
+                                    + (
+                                        SELECT COUNT(DISTINCT olp_n.faktura_id)
+                                        FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp_n
+                                        INNER JOIN " . TBL_FAKTURY . " fn ON fn.id = olp_n.faktura_id
+                                        WHERE fn.aktivni = 1 AND fn.stav != 'STORNO'
+                                        AND EXISTS (
+                                            SELECT 1 FROM " . TBL_LP_MASTER . " lpm3
+                                            WHERE lpm3.cislo_lp = c.cislo_lp AND lpm3.id = olp_n.lp_id
+                                        )
+                                    ) as pocet_objednavek,
                                     c.ma_navyseni,
                                     u.prijmeni,
                                     u.jmeno,
@@ -6997,6 +7051,114 @@ switch ($endpoint) {
                                 $lp_cerpani[$cislo_lp]['moje_skutecne']);
                         }
                     }
+                }
+                
+                // KROK 2B: Načíst odborové faktury (25a_odbory_lp_prirazeni) - faktury přiřazené k LP bez objednávky nebo s objednávkou kde je user účastník
+                // ✅ NOVÉ: Zahrnout odborové faktury do "Moje využití LP"
+                try {
+                    $sql_odbory = "
+                        SELECT 
+                            f.id as faktura_id,
+                            f.fa_cislo_vema,
+                            f.fa_castka,
+                            f.stav,
+                            f.vecna_spravnost_potvrzeno,
+                            f.potvrdil_vecnou_spravnost_id,
+                            f.dt_vytvoreni,
+                            f.objednavka_id,
+                            olp.lp_id,
+                            COALESCE(flp_sum.lp_castka, f.fa_castka) as lp_castka
+                        FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp
+                        INNER JOIN " . TBL_FAKTURY . " f ON f.id = olp.faktura_id
+                        LEFT JOIN (
+                            SELECT faktura_id, SUM(castka) as lp_castka
+                            FROM " . TBL_FAKTURY_LP_CERPANI . "
+                            GROUP BY faktura_id
+                        ) flp_sum ON flp_sum.faktura_id = f.id
+                        WHERE f.aktivni = 1
+                          AND f.stav != 'STORNO'
+                          AND YEAR(f.dt_vytvoreni) = :rok
+                          AND olp.vytvoril_uzivatel_id = :user_id
+                    ";
+                    $stmt_odb = $db->prepare($sql_odbory);
+                    $stmt_odb->execute(['rok' => $rok, 'user_id' => $vytvoril_user_id]);
+                    $odborove_faktury = $stmt_odb->fetchAll(PDO::FETCH_ASSOC);
+                    
+                    foreach ($odborove_faktury as $fa_odb) {
+                        $lp_id_odb = (int)$fa_odb['lp_id'];
+                        
+                        // Načíst cislo_lp z master tabulky
+                        try {
+                            $stmt_lp_odb = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = :lp_id LIMIT 1");
+                            $stmt_lp_odb->execute(['lp_id' => $lp_id_odb]);
+                            $cislo_lp_odb = $stmt_lp_odb->fetchColumn();
+                        } catch (Exception $e) {
+                            continue;
+                        }
+                        
+                        if (!$cislo_lp_odb) continue;
+                        
+                        // Inicializovat LP pokud ještě není
+                        if (!isset($lp_cerpani[$cislo_lp_odb])) {
+                            if (isset($lp_metadata[$cislo_lp_odb])) {
+                                $lp_meta = $lp_metadata[$cislo_lp_odb];
+                                $lp_usek_id = isset($lp_meta['usek_id']) ? (int)$lp_meta['usek_id'] : null;
+                                $je_z_meho_useku = ($user_usek_id && $lp_usek_id && $user_usek_id === $lp_usek_id);
+                                
+                                $lp_cerpani[$cislo_lp_odb] = array(
+                                    'cislo_lp' => $cislo_lp_odb,
+                                    'lp_master_id' => $lp_id_odb,
+                                    'kategorie' => $lp_meta['kategorie'],
+                                    'celkovy_limit' => (float)$lp_meta['celkovy_limit'],
+                                    'cislo_uctu' => $lp_meta['cislo_uctu'],
+                                    'nazev_uctu' => $lp_meta['nazev_uctu'],
+                                    'usek_nazev' => $lp_meta['usek_nazev'],
+                                    'usek_id' => $lp_usek_id,
+                                    'spravce' => trim(($lp_meta['spravce_jmeno'] ?? '') . ' ' . ($lp_meta['spravce_prijmeni'] ?? '')),
+                                    'je_z_meho_useku' => $je_z_meho_useku,
+                                    'moje_rezervovano' => 0,
+                                    'moje_predpoklad' => 0,
+                                    'moje_skutecne' => 0,
+                                    'moje_pokladna' => 0,
+                                    'pocet_objednavek' => 0,
+                                    'objednavky_detail' => array()
+                                );
+                            } else {
+                                continue; // LP metadata nenalezena
+                            }
+                        }
+                        
+                        $lp_castka = (float)$fa_odb['lp_castka'];
+                        
+                        // Logika: pokud věcná správnost NENÍ potvrzená → předpoklad (v procesu)
+                        //         pokud JE potvrzená → skutečné čerpání
+                        $je_vecna_potvrzena = ($fa_odb['potvrdil_vecnou_spravnost_id'] !== null);
+                        
+                        if ($je_vecna_potvrzena) {
+                            // Faktura s potvrzenou věcnou → skutečné čerpání
+                            $lp_cerpani[$cislo_lp_odb]['moje_skutecne'] += $lp_castka;
+                        } else {
+                            // Faktura BEZ potvrzené věcné → předpokládané (v procesu)
+                            $lp_cerpani[$cislo_lp_odb]['moje_predpoklad'] += $lp_castka;
+                        }
+                        
+                        $lp_cerpani[$cislo_lp_odb]['pocet_objednavek']++;
+                        
+                        // Detail pro tooltip
+                        $lp_cerpani[$cislo_lp_odb]['objednavky_detail'][] = array(
+                            'objednavka_id' => null, // odborová faktura bez obj
+                            'cislo_objednavky' => '— odbory FA ' . $fa_odb['fa_cislo_vema'],
+                            'skutecne_podil' => $je_vecna_potvrzena ? round($lp_castka, 2) : 0,
+                            'rezervace_podil' => 0,
+                            'predpoklad_podil' => !$je_vecna_potvrzena ? round($lp_castka, 2) : 0,
+                            'pocet_lp' => 1,
+                            'suma_faktur' => (float)$fa_odb['fa_castka'],
+                            'je_odborova_faktura' => true
+                        );
+                    }
+                } catch (Exception $e) {
+                    error_log("LP /moje-cerpani: Chyba při načítání odborových faktur: " . $e->getMessage());
+                    // Non-fatal, pokračuj
                 }
                 
                 // KROK 3: Detekovat čerpání z pokladny (pokud uživatel pokladnu má)

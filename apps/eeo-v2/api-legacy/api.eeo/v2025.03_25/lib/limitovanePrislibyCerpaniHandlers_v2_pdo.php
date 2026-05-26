@@ -151,15 +151,37 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         // ✅ Započítávají se objednávky:
         //    a) bez faktury (fakt.id IS NULL)
         //    b) s fakturou BEZ potvrzené věcné správnosti (fakt.potvrdil_vecnou_spravnost_id IS NULL)
-        // ✅ Pokud má obj. POLOŽKY s lp_id → sečti je
-        // ✅ Pokud NEMÁ položky → použij max_cena_s_dph / pocet_lp
+        // ✅ PRIORITA:
+        //    1. Pokud faktura (bez věcné) má LP rozpis v 25a_faktury_lp_cerpani → použij rozpis
+        //    2. Jinak pokud má obj. POLOŽKY s lp_id → sečti je
+        //    3. Jinak použij max_cena_s_dph / pocet_lp
         $sql_predpoklad = "
             SELECT 
                 obj.id,
                 obj.financovani,
                 obj.max_cena_s_dph,
                 SUM(CASE WHEN pol.lp_id = :lp_id_predpoklad THEN pol.cena_s_dph ELSE 0 END) as suma_lp_polozky,
-                SUM(pol.cena_s_dph) as suma_cena_vse
+                SUM(pol.cena_s_dph) as suma_cena_vse,
+                COALESCE((
+                    SELECT SUM(flp.castka)
+                    FROM 25a_faktury_lp_cerpani flp
+                    INNER JOIN 25a_objednavky_faktury fakt2 ON fakt2.id = flp.faktura_id
+                    WHERE flp.lp_id = :lp_id_predpoklad_rozpis
+                    AND fakt2.objednavka_id = obj.id
+                    AND fakt2.aktivni = 1
+                    AND fakt2.stav != 'STORNO'
+                    AND fakt2.potvrdil_vecnou_spravnost_id IS NULL
+                ), 0) as suma_lp_rozpis_v_procesu,
+                COALESCE((
+                    SELECT 1
+                    FROM 25a_faktury_lp_cerpani flp_any
+                    INNER JOIN 25a_objednavky_faktury fakt3 ON fakt3.id = flp_any.faktura_id
+                    WHERE fakt3.objednavka_id = obj.id
+                    AND fakt3.aktivni = 1
+                    AND fakt3.stav != 'STORNO'
+                    AND fakt3.potvrdil_vecnou_spravnost_id IS NULL
+                    LIMIT 1
+                ), 0) as ma_lp_rozpis_v_procesu
             FROM " . TBL_OBJEDNAVKY . " obj
             LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
             LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1 AND fakt.stav != 'STORNO'
@@ -175,6 +197,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         $stmt_pred = $pdo->prepare($sql_predpoklad);
         $stmt_pred->execute([
             'lp_id_predpoklad' => $lp_id,
+            'lp_id_predpoklad_rozpis' => $lp_id,
             'datum_od' => $meta['nejstarsi_platnost'],
             'datum_do' => $meta['nejnovejsi_platnost']
         ]);
@@ -206,11 +229,17 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             }
             
             if ($lp_match) {
-                // ✅ LOGIKA PLÁNOVÁNO:
-                // 1. Pokud má obj. POLOŽKY s tímto LP → použij je (suma_lp_polozky)
-                // 2. Pokud NEMÁ položky → použij max_cena_s_dph / pocet_lp
+                // ✅ LOGIKA PLÁNOVÁNO (priority):
+                // 1. Faktura bez věcné má LP rozpis → použij rozpis (in-progress čerpání)
+                // 2. Pokud má obj. POLOŽKY s tímto LP → použij je (suma_lp_polozky)
+                // 3. Pokud NEMÁ položky → použij max_cena_s_dph / pocet_lp
+                $ma_rozpis_proc = ((int)$row['ma_lp_rozpis_v_procesu']) === 1;
+                $suma_rozpis_proc = (float)$row['suma_lp_rozpis_v_procesu'];
                 $suma_lp = (float)$row['suma_lp_polozky'];
-                if ($suma_lp > 0) {
+                if ($ma_rozpis_proc) {
+                    // Faktura má LP rozpis – respektuj ho (i 0 Kč pro toto LP, pokud bylo rozděleno jinam)
+                    $predpokladane_cerpani += $suma_rozpis_proc;
+                } elseif ($suma_lp > 0) {
                     $predpokladane_cerpani += $suma_lp;
                 } else {
                     // Fallback: objednávka nemá položky nebo položky nemají lp_id
@@ -221,7 +250,43 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 }
             }
         }
-        
+
+        // KROK 3B: PŘEDPOKLAD - Odborové faktury BEZ potvrzené věcné správnosti
+        // ✅ Priorita LP rozpis (25a_faktury_lp_cerpani), fallback fa_castka
+        $sql_odbory_predpoklad = "
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN flp_any.has_rows = 1 THEN COALESCE(flp_sum.lp_castka, 0)
+                    ELSE fakt.fa_castka
+                END
+            ), 0) as predpoklad_odbory_fakt
+            FROM 25a_odbory_lp_prirazeni olp
+            INNER JOIN 25a_objednavky_faktury fakt ON fakt.id = olp.faktura_id
+            LEFT JOIN (
+                SELECT faktura_id, SUM(castka) as lp_castka
+                FROM 25a_faktury_lp_cerpani
+                WHERE lp_id = :lp_id_odbory_pred
+                GROUP BY faktura_id
+            ) flp_sum ON flp_sum.faktura_id = fakt.id
+            LEFT JOIN (
+                SELECT DISTINCT faktura_id, 1 as has_rows
+                FROM 25a_faktury_lp_cerpani
+            ) flp_any ON flp_any.faktura_id = fakt.id
+            WHERE olp.lp_id = :lp_id_odbory_pred
+            AND fakt.aktivni = 1
+            AND fakt.stav != 'STORNO'
+            AND fakt.potvrdil_vecnou_spravnost_id IS NULL
+            AND DATE(fakt.dt_vytvoreni) BETWEEN :datum_od_odbory_pred AND :datum_do_odbory_pred
+        ";
+        $stmt_odbory_pred = $pdo->prepare($sql_odbory_predpoklad);
+        $stmt_odbory_pred->execute([
+            'lp_id_odbory_pred' => $lp_id,
+            'datum_od_odbory_pred' => $meta['nejstarsi_platnost'],
+            'datum_do_odbory_pred' => $meta['nejnovejsi_platnost']
+        ]);
+        $row_odbory_pred = $stmt_odbory_pred->fetch(PDO::FETCH_ASSOC);
+        $predpokladane_cerpani += (float)($row_odbory_pred['predpoklad_odbory_fakt'] ?? 0);
+
         // KROK 4: SKUTEČNĚ - suma faktur s POTVRZENOU VĚCNOU SPRÁVNOSTÍ
         // ✅ Započítávají se POUZE faktury s potvrdil_vecnou_spravnost_id IS NOT NULL
         // ✅ PRIMÁRNĚ bere LP rozpis z 25a_faktury_lp_cerpani, fallback na poměr
@@ -296,19 +361,21 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         
         // KROK 5: Čerpání z pokladny (OLD formát - přímý lp_kod)
         // ⚠️ LIVE stav: Počítá se okamžitě po uložení, bez ohledu na uzavření knihy
+        // ✅ Filtrace podle platnosti LP (ne podle roku knihy)
         $sql_pokladna = "
             SELECT COALESCE(SUM(pp.castka_vydaj), 0) as cerpano_pokl
             FROM " . TBL_POKLADNI_KNIHY . " pk
             JOIN " . TBL_POKLADNI_POLOZKY . " pp ON pp.pokladni_kniha_id = pk.id
             WHERE pp.lp_kod = :cislo_lp
             AND pp.smazano = 0
-            AND pk.rok = :rok
+            AND DATE(pp.datum_zapisu) BETWEEN :datum_od_pokladna AND :datum_do_pokladna
         ";
         
         $stmt_pokl = $pdo->prepare($sql_pokladna);
         $stmt_pokl->execute([
             'cislo_lp' => $meta['cislo_lp'],
-            'rok' => $meta['rok']
+            'datum_od_pokladna' => $meta['nejstarsi_platnost'],
+            'datum_do_pokladna' => $meta['nejnovejsi_platnost']
         ]);
         
         $row_pokl = $stmt_pokl->fetch(PDO::FETCH_ASSOC);
@@ -317,21 +384,38 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         // KROK 5A: Odborové faktury - samostatné faktury přiřazené přímo přes 25a_odbory_lp_prirazeni
         // ✅ Započítávají se POUZE faktury s potvrzenou věcnou správností
         // ✅ Tyto faktury NEMAJÍ objednávku (standalone faktury)
+        // ✅ Filtrace podle platnosti LP (ne podle roku faktury)
         $sql_odbory_faktury = "
-            SELECT COALESCE(SUM(fakt.fa_castka), 0) as cerpano_odbory_fakt
+            SELECT COALESCE(SUM(
+                CASE
+                    WHEN flp_any.has_rows = 1 THEN COALESCE(flp_sum.lp_castka, 0)
+                    ELSE fakt.fa_castka
+                END
+            ), 0) as cerpano_odbory_fakt
             FROM 25a_odbory_lp_prirazeni olp
             INNER JOIN 25a_objednavky_faktury fakt ON fakt.id = olp.faktura_id
+            LEFT JOIN (
+                SELECT faktura_id, SUM(castka) as lp_castka
+                FROM 25a_faktury_lp_cerpani
+                WHERE lp_id = :lp_id_odbory_fakt
+                GROUP BY faktura_id
+            ) flp_sum ON flp_sum.faktura_id = fakt.id
+            LEFT JOIN (
+                SELECT DISTINCT faktura_id, 1 as has_rows
+                FROM 25a_faktury_lp_cerpani
+            ) flp_any ON flp_any.faktura_id = fakt.id
             WHERE olp.lp_id = :lp_id_odbory_fakt
             AND fakt.aktivni = 1
             AND fakt.stav != 'STORNO'
             AND fakt.potvrdil_vecnou_spravnost_id IS NOT NULL
-            AND YEAR(fakt.dt_vytvoreni) = :rok_odbory_fakt
+            AND DATE(fakt.dt_vytvoreni) BETWEEN :datum_od_odbory_fakt AND :datum_do_odbory_fakt
         ";
         
         $stmt_odbory_fakt = $pdo->prepare($sql_odbory_faktury);
         $stmt_odbory_fakt->execute([
             'lp_id_odbory_fakt' => $lp_id,
-            'rok_odbory_fakt' => $meta['rok']
+            'datum_od_odbory_fakt' => $meta['nejstarsi_platnost'],
+            'datum_do_odbory_fakt' => $meta['nejnovejsi_platnost']
         ]);
         
         $row_odbory_fakt = $stmt_odbory_fakt->fetch(PDO::FETCH_ASSOC);
@@ -339,6 +423,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         
         // KROK 5B: Odborové pokladna - samostatné pokladní položky přiřazené přímo přes 25a_odbory_lp_prirazeni
         // ✅ Započítávají se okamžitě po uložení
+        // ✅ Filtrace podle platnosti LP (ne podle roku knihy)
         $sql_odbory_pokladna = "
             SELECT COALESCE(SUM(pp.castka_vydaj), 0) as cerpano_odbory_pokl
             FROM 25a_odbory_lp_prirazeni olp
@@ -346,13 +431,14 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             INNER JOIN " . TBL_POKLADNI_KNIHY . " pk ON pk.id = pp.pokladni_kniha_id
             WHERE olp.lp_id = :lp_id_odbory_pokl
             AND pp.smazano = 0
-            AND pk.rok = :rok_odbory_pokl
+            AND DATE(pp.datum_zapisu) BETWEEN :datum_od_odbory_pokl AND :datum_do_odbory_pokl
         ";
         
         $stmt_odbory_pokl = $pdo->prepare($sql_odbory_pokladna);
         $stmt_odbory_pokl->execute([
             'lp_id_odbory_pokl' => $lp_id,
-            'rok_odbory_pokl' => $meta['rok']
+            'datum_od_odbory_pokl' => $meta['nejstarsi_platnost'],
+            'datum_do_odbory_pokl' => $meta['nejnovejsi_platnost']
         ]);
         
         $row_odbory_pokl = $stmt_odbory_pokl->fetch(PDO::FETCH_ASSOC);

@@ -2854,7 +2854,7 @@ export async function deleteNotesData({ token, username, user_id, id }) {
  * @param {string} username - Uživatelské jméno
  * @returns {Promise<Array>} - Seznam limitovaných příslibů
  */
-export async function fetchLimitovanePrisliby({ token, username }) {
+export async function fetchLimitovanePrisliby({ token, username, context = null }) {
   if (!token || !username) {
     throw new Error('Token a username jsou povinné pro načtení limitovaných příslibů');
   }
@@ -2862,10 +2862,9 @@ export async function fetchLimitovanePrisliby({ token, username }) {
   try {
     // Načítám limitované příslibové kódy
 
-    const response = await api2.post('/limitovane_prisliby', {
-      token,
-      username
-    });
+    const payload = { token, username };
+    if (context) payload.context = context; // ✅ Volitelný filtr dle modulu ('orders'/'invoices'/'cashbook')
+    const response = await api2.post('/limitovane_prisliby', payload);
 
     // Zpracování odpovědi
 

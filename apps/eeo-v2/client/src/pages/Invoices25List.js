@@ -1914,7 +1914,8 @@ const Invoices25List = () => {
     myInvoices: 0,      // Moje faktury (jen pro admin/invoice_manage)
     myUncheckedInvoices: 0, // Moje nezkontrolované faktury (předané na mě, bez věcné kontroly)
     kontrolovano: 0,    // Zkontrolované faktury (kontrola_radku)
-    withNote: 0         // Faktury s poznámkou
+    withNote: 0,        // Faktury s poznámkou
+    withLP: 0           // Faktury s LP (limitovanými přísliby)
   });
   
   // 🔍 Sidebar search pro objednávky bez faktury
@@ -2706,6 +2707,17 @@ const Invoices25List = () => {
         // Smlouva (univerzální přiřazení OBJ nebo SML)
         smlouva_id: typeof invoice.smlouva_id === 'string' ? parseInt(invoice.smlouva_id) : invoice.smlouva_id,
         cislo_smlouvy: invoice.cislo_smlouvy || '',
+
+        // LP (limitovaný příslib)
+        odbory_lp_id: typeof invoice.odbory_lp_id === 'string' ? parseInt(invoice.odbory_lp_id) : invoice.odbory_lp_id,
+        odbory_lp_lp_id: typeof invoice.odbory_lp_lp_id === 'string' ? parseInt(invoice.odbory_lp_lp_id) : invoice.odbory_lp_lp_id,
+        odbory_lp_cislo: invoice.odbory_lp_cislo || '',
+        odbory_lp_nazev: invoice.odbory_lp_nazev || '',
+        odbory_lp_modul: invoice.odbory_lp_modul || '',
+        odbory_lp_platne_od: invoice.odbory_lp_platne_od || null,
+        odbory_lp_platne_do: invoice.odbory_lp_platne_do || null,
+        odbory_lp_limit: invoice.odbory_lp_limit || null,
+        odbory_lp_poznamka: invoice.odbory_lp_poznamka || '',
         
         // ✅ TŘÍFÁZOVÝ SYSTÉM KONTROLY - check_status z BE
         check_status: invoice.check_status || 'unchecked',
@@ -2833,6 +2845,7 @@ const Invoices25List = () => {
           // ✅ Nové statistiky z BE
           withOrder: response.statistiky.pocet_s_objednavkou || 0,
           withContract: response.statistiky.pocet_s_smlouvou || 0,
+          withLP: response.statistiky.pocet_s_lp || 0,
           withoutOrder: response.statistiky.pocet_bez_prirazeni || 0,
           fromSpisovka: response.statistiky.pocet_ze_spisovky || 0,
           kontrolovano: response.statistiky.pocet_zkontrolovano || 0,
@@ -2871,6 +2884,11 @@ const Invoices25List = () => {
             acc.withContract++;
           }
           
+          // S LP
+          if (inv.odbory_lp_id) {
+            acc.withLP++;
+          }
+          
           // Ze Spisovky
           if (inv.from_spisovka) {
             acc.fromSpisovka++;
@@ -2892,7 +2910,7 @@ const Invoices25List = () => {
           }
           
           return acc;
-        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, myUncheckedInvoices: 0, withOrder: 0, withContract: 0, fromSpisovka: 0, withNote: 0 });
+        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, myUncheckedInvoices: 0, withOrder: 0, withContract: 0, withLP: 0, fromSpisovka: 0, withNote: 0 });
         
         localStats.total = response.pagination?.total || transformedInvoices.length;
         setStats(localStats);
@@ -3967,10 +3985,10 @@ const Invoices25List = () => {
             <input
               type="text"
               className="filter-input"
-              placeholder="Obj./Sml./Dodavatel..."
+              placeholder="Obj./Sml./Dodavatel/LP..."
               value={columnFilters.cislo_objednavky || ''}
               onChange={(e) => setColumnFilters({...columnFilters, cislo_objednavky: e.target.value})}
-              title="Hledá v číslech objednávek, smluv, názvu dodavatele i IČO"
+              title="Hledá v číslech objednávek, smluv, názvu dodavatele, IČO i LP"
             />
             {columnFilters.cislo_objednavky && (
               <button
@@ -4502,6 +4520,22 @@ const Invoices25List = () => {
               <StatLabel>Se smlouvou</StatLabel>
             </DashboardCard>
 
+            {/* Přiřazené k LP */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('with_lp')}
+              $isActive={activeFilterStatus === 'with_lp'}
+              $color="#10b981"
+            >
+              <StatHeader>
+                <StatLabel>Přiřazené LP</StatLabel>
+                <StatIcon $color="#10b981">
+                  <FontAwesomeIcon icon={faMoneyBillWave} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.withLP}</StatValue>
+              <StatLabel>S limitovaným příslibem</StatLabel>
+            </DashboardCard>
+
             {/* Ze Spisovky */}
             <DashboardCard 
               onClick={() => handleDashboardCardClick('from_spisovka')}
@@ -4952,9 +4986,9 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell>
                       <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
-                        {invoice.cislo_smlouvy || invoice.cislo_objednavky ? (
+                        {invoice.cislo_smlouvy || invoice.cislo_objednavky || invoice.odbory_lp_cislo ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem' }}>
-                            {/* První řádek - číslo smlouvy/objednávky s ikonami */}
+                            {/* První řádek - číslo smlouvy/objednávky/LP s ikonami */}
                             {invoice.cislo_smlouvy ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 <span style={{ color: '#3b82f6' }}>
@@ -4981,7 +5015,7 @@ const Invoices25List = () => {
                                   title="Editovat přidruženou fakturu ke smlouvě"
                                 />
                               </div>
-                            ) : (
+                            ) : invoice.cislo_objednavky ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                                 {/* Číslo objednávky - KLIKATELNÉ pro editaci */}
                                 <span
@@ -5024,6 +5058,16 @@ const Invoices25List = () => {
                                   onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
                                   title="Editovat přidruženou fakturu k objednávce"
                                 />
+                              </div>
+                            ) : (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                {/* LP - Limitovaný příslib */}
+                                <span style={{ color: '#10b981' }}>
+                                  <FontAwesomeIcon icon={faMoneyBillWave} style={{ marginRight: '0.5rem' }} />
+                                  {invoice.odbory_lp_cislo}
+                                  {invoice.odbory_lp_nazev ? ` -- ${invoice.odbory_lp_nazev}` : ''}
+                                  <NumberTypeTag $variant="lp">LP</NumberTypeTag>
+                                </span>
                               </div>
                             )}
                             
@@ -5414,7 +5458,7 @@ const Invoices25List = () => {
                           const isInvoiceCompleted = invoice.stav === 'DOKONCENA';
                           const isOrderCompleted = invoice.objednavka_je_dokoncena === true || invoice.objednavka_je_dokoncena === 1;
                           
-                          const isLinked = !!(invoice.objednavka_id || invoice.smlouva_id);
+                          const isLinked = !!(invoice.objednavka_id || invoice.smlouva_id || invoice.odbory_lp_id);
                           const canUnlink = isLinked && !isInvoiceCompleted && !isOrderCompleted;
                           
                           let tooltipText = "Faktura není napojená na objednávku ani smlouvu";

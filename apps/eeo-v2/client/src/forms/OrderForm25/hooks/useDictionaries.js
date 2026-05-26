@@ -156,12 +156,12 @@ export const useDictionaries = ({ token, username, enabled = true }) => {
           }
         })(),
 
-        // 6. LP Kódy (limitované příslíby)
+        // 6. LP Kódy (limitované příslíby) - ✅ Backend filtruje dle modulu (context='orders')
         (async () => {
           if (signal.aborted) return { key: 'lpKody', success: false, cancelled: true };
           try {
             dispatch({ type: DICTIONARIES_ACTIONS.START_LOADING, payload: { key: 'lpKody' } });
-            const lpKody = await fetchLimitovanePrisliby({ token, username }); // ⚠️ TODO: API nepodporuje signal zatím
+            const lpKody = await fetchLimitovanePrisliby({ token, username, context: 'orders' });
             if (signal.aborted) return { key: 'lpKody', success: false, cancelled: true };
             dispatch({ type: DICTIONARIES_ACTIONS.SET_LP_KODY, payload: lpKody || [] });
             return { key: 'lpKody', success: true };

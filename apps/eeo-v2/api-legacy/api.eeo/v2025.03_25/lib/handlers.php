@@ -1914,6 +1914,12 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         $usekId = isset($input['usek_id']) ? intval($input['usek_id']) : null;
         $usekZkr = isset($input['usek_zkr']) ? trim($input['usek_zkr']) : null;
         $kategorie = isset($input['kategorie']) ? trim($input['kategorie']) : null;
+        // ✅ Context filtrování (orders/invoices/cashbook) - dle sloupce modul
+        $context = isset($input['context']) ? strtolower(trim($input['context'])) : null;
+        $contextLetter = null;
+        if ($context === 'orders') $contextLetter = 'o';
+        elseif ($context === 'invoices') $contextLetter = 'f';
+        elseif ($context === 'cashbook') $contextLetter = 'p';
 
         // Unified query builder - always include usek info via LEFT JOIN
         // Vrátit LP kódy, které jsou platné kdykoliv v aktuálním roce
@@ -1926,7 +1932,7 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         $sql = "SELECT 
                 lp.id, lp.user_id, lp.usek_id, lp.kategorie, lp.cislo_lp, 
                 lp.cislo_uctu, lp.nazev_uctu, lp.vyuziti, lp.vyse_financniho_kryti, 
-                lp.platne_od, lp.platne_do, 
+                lp.platne_od, lp.platne_do, lp.modul,
                 u.usek_zkr, u.usek_nazev,
                 uz.jmeno as prikazce_jmeno, uz.prijmeni as prikazce_prijmeni, uz.titul_pred as prikazce_titul,
                 COALESCE(c.rezervovano, 0) as rezervovano,
@@ -1946,6 +1952,12 @@ function handle_limitovane_prisliby($input, $config, $queries) {
         $params[':year_start'] = $yearStart;
         $params[':year_end'] = $yearEnd;
         $params[':current_year'] = (int)$currentYear;
+
+        // ✅ Context filtrování - LP musí mít v modulu daný znak NEBO modul je NULL (univerzální)
+        if ($contextLetter) {
+            $sql .= " AND (lp.modul LIKE :modul_filter OR lp.modul IS NULL)";
+            $params[':modul_filter'] = '%' . $contextLetter . '%';
+        }
 
         // Add filters dynamically
         if ($usekZkr !== null && $usekZkr !== '') {

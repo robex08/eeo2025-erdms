@@ -174,6 +174,20 @@ function handle_odbory_lp_save($input, $config) {
         $stmt_get->execute(array(':id' => $inserted_id));
         $result = $stmt_get->fetch(PDO::FETCH_ASSOC);
 
+        // ✅ PŘEPOČET ČERPÁNÍ LP po uložení přiřazení
+        try {
+            require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
+            $prepocet_result = prepocetCerpaniPodleIdLP_PDO($db, $lp_id, date('Y'));
+            if ($prepocet_result['status'] === 'success') {
+                error_log("✅ LP přepočet čerpání po uložení odbory LP: LP#{$lp_id} - " . $prepocet_result['message']);
+            } else {
+                error_log("⚠️ LP přepočet čerpání selhal: " . $prepocet_result['message']);
+            }
+        } catch (Exception $prepocet_err) {
+            error_log("⚠️ LP přepočet čerpání chyba: " . $prepocet_err->getMessage());
+            // Nepřerušujeme proces - přepočet je bonusová akce
+        }
+
         http_response_code(200);
         echo json_encode(array(
             'status' => 'success',

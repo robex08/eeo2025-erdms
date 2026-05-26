@@ -101,30 +101,73 @@ function handle_lp_list($input, $config) {
                 lp.nazev_uctu,
                 lp.vyuziti,
                 lp.modul,
+                lp.platne_od,
+                lp.platne_do,
+                lp.vyse_financniho_kryti,
                 lp.vyse_financniho_kryti as limit_celkem,
+                -- ✅ ŽIVÉ čerpání z reálných zdrojů (agregační tabulka 25_limitovane_prisliby_cerpani může být zastaralá)
+                -- 1) Pokladna: SUM výdaj - příjem z 25a_pokladni_polozky
+                (SELECT COALESCE(SUM(COALESCE(pp.castka_vydaj,0) - COALESCE(pp.castka_prijem,0)), 0)
+                 FROM " . TBL_POKLADNI_POLOZKY . " pp
+                 WHERE pp.lp_kod = lp.cislo_lp AND pp.smazano = 0) as pokladna,
+                -- 2) Standalone faktury (odbory): SUM fa_castka z přiřazených faktur
+                (SELECT COALESCE(SUM(f.fa_castka), 0)
+                 FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp
+                 INNER JOIN " . TBL_FAKTURY . " f ON f.id = olp.faktura_id
+                 WHERE olp.lp_id = lp.id AND olp.faktura_id IS NOT NULL) as fakturovano_odbory,
+                -- 3) Faktury z objednávek s tímto LP v JSON financovani
+                (SELECT COALESCE(SUM(f.fa_castka), 0)
+                 FROM " . TBL_OBJEDNAVKY . " o
+                 INNER JOIN " . TBL_FAKTURY . " f ON f.objednavka_id = o.id
+                 WHERE o.financovani IS NOT NULL
+                 AND (
+                   JSON_CONTAINS(o.financovani, CONCAT('', lp.id), '$.lp_kody')
+                   OR JSON_SEARCH(o.financovani, 'one', CONCAT('', lp.id), NULL, '$.doplnujici_data.lp_kod[*]') IS NOT NULL
+                 )) as fakturovano_objednavky,
+                -- ✅ Celkové skutečné čerpání = živý součet všech tří zdrojů
+                (
+                  (SELECT COALESCE(SUM(COALESCE(pp.castka_vydaj,0) - COALESCE(pp.castka_prijem,0)), 0)
+                   FROM " . TBL_POKLADNI_POLOZKY . " pp WHERE pp.lp_kod = lp.cislo_lp AND pp.smazano = 0)
+                  +
+                  (SELECT COALESCE(SUM(f.fa_castka), 0)
+                   FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp
+                   INNER JOIN " . TBL_FAKTURY . " f ON f.id = olp.faktura_id
+                   WHERE olp.lp_id = lp.id AND olp.faktura_id IS NOT NULL)
+                  +
+                  (SELECT COALESCE(SUM(f.fa_castka), 0)
+                   FROM " . TBL_OBJEDNAVKY . " o
+                   INNER JOIN " . TBL_FAKTURY . " f ON f.objednavka_id = o.id
+                   WHERE o.financovani IS NOT NULL
+                   AND (
+                     JSON_CONTAINS(o.financovani, CONCAT('', lp.id), '$.lp_kody')
+                     OR JSON_SEARCH(o.financovani, 'one', CONCAT('', lp.id), NULL, '$.doplnujici_data.lp_kod[*]') IS NOT NULL
+                   ))
+                ) as cerpano_celkem,
                 COALESCE(c.rezervovano, 0) as rezervovano,
                 COALESCE(c.predpokladane_cerpani, 0) as predpoklad,
-                COALESCE(c.skutecne_cerpano, 0) as fakturovano,
-                COALESCE(c.cerpano_pokladna, 0) as pokladna,
-                (COALESCE(c.rezervovano, 0) + COALESCE(c.predpokladane_cerpani, 0) + COALESCE(c.skutecne_cerpano, 0) + COALESCE(c.cerpano_pokladna, 0)) as cerpano_celkem,
                 u.usek_zkr,
                 u.usek_nazev,
                 prikazce.id as prikazce_id,
                 prikazce.jmeno as prikazce_jmeno,
                 prikazce.prijmeni as prikazce_prijmeni,
                 CONCAT(prikazce.jmeno, ' ', prikazce.prijmeni) as prikazce_cele_jmeno,
-                -- Počet faktur na objednávkách
-                (SELECT COUNT(DISTINCT f.id) 
-                 FROM " . TBL_FAKTURY . " f
-                 INNER JOIN " . TBL_OBJEDNAVKY_LP_KODY . " lp_kod ON lp_kod.objednavka_id = f.objednavka_id
-                 WHERE lp_kod.lp_id = lp.id
-                 AND f.objednavka_id IS NOT NULL) as pocet_faktur_objednavky,
-                -- Počet standalone faktur (odbory LP)
+                -- Počet pokladních položek (lp_kod = cislo_lp jako string)
                 (SELECT COUNT(*) 
-                 FROM " . TBL_FAKTURY . " f
-                 INNER JOIN " . TBL_ODBORY_LP_PRIRAZENI . " olp ON olp.faktura_id = f.id
-                 WHERE olp.lp_id = lp.id
-                 AND f.objednavka_id IS NULL) as pocet_faktur_odbory
+                 FROM " . TBL_POKLADNI_POLOZKY . " pp 
+                 WHERE pp.lp_kod = lp.cislo_lp) as pocet_pokladnich_polozek,
+                -- Počet standalone faktur (odbory LP přes prirazeni tabulku)
+                (SELECT COUNT(*) 
+                 FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp 
+                 WHERE olp.lp_id = lp.id) as pocet_faktur_odbory,
+                -- Počet faktur na objednávkách s LP v JSON financovani (nový formát: lp_kody pole čísel, starý formát: lp_kod pole stringů)
+                (SELECT COUNT(DISTINCT f.id) 
+                 FROM " . TBL_OBJEDNAVKY . " o
+                 INNER JOIN " . TBL_FAKTURY . " f ON f.objednavka_id = o.id
+                 WHERE o.financovani IS NOT NULL
+                 AND (
+                   JSON_CONTAINS(o.financovani, CONCAT('', lp.id), '$.lp_kody')
+                   OR JSON_SEARCH(o.financovani, 'one', CONCAT('', lp.id), NULL, '$.doplnujici_data.lp_kod[*]') IS NOT NULL
+                 )) as pocet_faktur_objednavky
             FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
             LEFT JOIN " . TBL_LP_CERPANI . " c ON c.cislo_lp = lp.cislo_lp AND c.rok = :current_year
             LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id
