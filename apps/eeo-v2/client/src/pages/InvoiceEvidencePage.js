@@ -3300,7 +3300,7 @@ export default function InvoiceEvidencePage() {
       let filteredLPs = [];
       try {
         const lpResponse = await fetchLPList({ token, username, context: 'invoices' });
-        const lps = lpResponse || [];
+        const lps = lpResponse?.data || []; // ✅ lpResponse.data je array
         
         // Filtrovat LP podle search query
         filteredLPs = lps.filter(lp => 
