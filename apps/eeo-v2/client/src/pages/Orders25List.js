@@ -10491,7 +10491,7 @@ const Orders25List = () => {
         const eventTypeMap = {
           approve: 'ORDER_APPROVED',
           reject: 'ORDER_REJECTED', 
-          postpone: 'ORDER_PENDING_APPROVAL'
+          postpone: 'ORDER_AWAITING_CHANGES'  // ✅ OPRAVA: odložit/čeká se = vráceno k doplnění, NE ke schválení!
         };
         
         const eventType = eventTypeMap[action];
