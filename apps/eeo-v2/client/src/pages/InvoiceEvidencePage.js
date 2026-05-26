@@ -3296,10 +3296,27 @@ export default function InvoiceEvidencePage() {
       // Filtruj smlouvy - pouze aktivní
       const activeContracts = contracts.filter(contract => contract.aktivni === 1);
 
+      // 🆕 Načíst LP s context="invoices" (modul obsahuje 'f')
+      let filteredLPs = [];
+      try {
+        const lpResponse = await fetchLPList({ token, username, context: 'invoices' });
+        const lps = lpResponse || [];
+        
+        // Filtrovat LP podle search query
+        filteredLPs = lps.filter(lp => 
+          lp.cislo_lp?.toLowerCase().includes(search.toLowerCase()) ||
+          lp.nazev_uctu?.toLowerCase().includes(search.toLowerCase())
+        );
+      } catch (lpErr) {
+        console.error('⚠️ Chyba při načítání LP:', lpErr);
+        // Pokračovat i bez LP
+      }
+
       // Kombinuj výsledky s označením typu
       const combinedResults = [
         ...sentOrders.map(order => ({ ...order, _type: 'order' })),
-        ...activeContracts.map(contract => ({ ...contract, _type: 'smlouva' }))
+        ...activeContracts.map(contract => ({ ...contract, _type: 'smlouva' })),
+        ...filteredLPs.map(lp => ({ ...lp, _type: 'lp' })) // 🆕 LP
       ];
 
       setSuggestions(combinedResults);
@@ -3442,6 +3459,7 @@ export default function InvoiceEvidencePage() {
     setFormData(prev => ({ ...prev, order_id: '', smlouva_id: null }));
     setOrderData(null);
     setSmlouvaData(null);
+    setSelectedLP(null); // 🆕 Vyčistit LP
     setSelectedType('order'); // Reset na výchozí
   };
 
@@ -3551,6 +3569,53 @@ export default function InvoiceEvidencePage() {
     loadOrderData(order.id);
   };
 
+  // 🆕 Handler: výběr LP z autocomplete (pro standalone faktury bez objednávky/smlouvy)
+  const handleSelectLP = (lp) => {
+    console.log('🔖 Vybraný LP:', lp);
+    setShowSuggestions(false);
+    setSearchTerm(''); // Vyčistit search - LP se zobrazí jako badge
+    
+    // Clear objednávku/smlouvu pokud byly vybrané
+    setFormData(prev => ({
+      ...prev,
+      order_id: '',
+      smlouva_id: null
+    }));
+    
+    setSelectedType('lp');
+    setOrderData(null);
+    setSmlouvaData(null);
+    setSelectedLP(lp); // Nastavit vybraný LP
+    
+    console.log('✅ LP nastaven:', lp);
+  };
+
+  // 🆕 Handler: odstranění LP (včetně delete z DB pokud je editace)
+  const handleRemoveLP = async () => {
+    // Pokud editujeme fakturu a má LP přiřazení → smazat z DB
+    if (editingInvoiceId && selectedLP) {
+      try {
+        console.log('🗑️ Mažu LP přiřazení pro fakturu:', editingInvoiceId);
+        await deleteOdboryLP({
+          token,
+          username,
+          faktura_id: editingInvoiceId,
+          pokladni_polozka_id: null
+        });
+        console.log('✅ LP přiřazení úspěšně smazáno');
+        showToast && showToast('LP přiřazení odebráno', 'success');
+      } catch (err) {
+        console.error('❌ Chyba při mazání LP přiřazení:', err);
+        showToast && showToast('Chyba při odebírání LP: ' + err.message, 'error');
+        return; // Pokud API call selhal, nezřušujme v UI
+      }
+    }
+    
+    // Vyčistit state
+    setSelectedLP(null);
+    setSelectedType('order');
+  };
+
   // Handler: editace faktury - načte fakturu do formuláře
   const handleEditInvoice = useCallback(async (faktura) => {
     setFormData({
@@ -3609,6 +3674,37 @@ export default function InvoiceEvidencePage() {
       // Faktura nemá objednávku - vyčistit LP čerpání
       setLpCerpani([]);
       setLpCerpaniLoaded(true);
+      
+      // 🆕 ODBORY LP: Pokud faktura NENÍ k objednávce/smlouvě, zkus načíst standalone LP přiřazení
+      if (!faktura.objednavka_id && !faktura.smlouva_id && token && username) {
+        try {
+          console.log('🔍 Načítám standalone LP přiřazení pro fakturu:', faktura.id);
+          const lpAssignmentResponse = await getOdboryLP({
+            token,
+            username,
+            faktura_id: faktura.id,
+            pokladni_polozka_id: null
+          });
+          
+          // Response může být null pokud není přiřazení
+          if (lpAssignmentResponse && lpAssignmentResponse.lp_id) {
+            console.log('✅ Nalezeno LP přiřazení:', lpAssignmentResponse);
+            setSelectedLP({
+              id: lpAssignmentResponse.lp_id,
+              cislo_lp: lpAssignmentResponse.cislo_lp,
+              nazev_uctu: lpAssignmentResponse.nazev_uctu,
+              modul: lpAssignmentResponse.modul
+            });
+            setSelectedType('lp');
+          } else {
+            console.log('ℹ️ Faktura nemá přiřazený LP');
+            setSelectedLP(null);
+          }
+        } catch (lpErr) {
+          console.error('❌ Chyba při načítání odbory LP:', lpErr);
+          setSelectedLP(null);
+        }
+      }
     }
 
     // Scroll na začátek formuláře
@@ -5173,6 +5269,40 @@ export default function InvoiceEvidencePage() {
       let finalSuccessMessage = '';
       let finalSuccessTitle = '';
       
+      // 🆕 LP ODBORY: Pokud je vybrán LP a faktura NENÍ k objednávce/smlouvě → save odbory LP
+      if (selectedLP && !formData.order_id && !formData.smlouva_id) {
+        const savedInvoiceIdForLP = editingInvoiceId
+          || result?.data?.invoice_id
+          || result?.data?.id
+          || result?.invoice_id
+          || result?.id;
+        
+        if (savedInvoiceIdForLP) {
+          try {
+            console.log('🔖 Ukládám LP přiřazení pro standalone fakturu:', {
+              faktura_id: savedInvoiceIdForLP,
+              lp_id: selectedLP.id,
+              lp_cislo: selectedLP.cislo_lp
+            });
+            
+            await saveOdboryLP({
+              token,
+              username,
+              lp_id: selectedLP.id,
+              faktura_id: savedInvoiceIdForLP,
+              pokladni_polozka_id: null,
+              poznamka: `Přiřazeno při evidenci faktury ${faCislo}`
+            });
+            
+            console.log('✅ LP přiřazení úspěšně uloženo');
+          } catch (lpErr) {
+            console.error('❌ Chyba při ukládání LP přiřazení:', lpErr);
+            // Nezastavujeme proces - LP je bonusová data, faktura už je uložena
+            showToast && showToast('Faktura uložena, ale LP přiřazení se nepodařilo: ' + lpErr.message, 'warning');
+          }
+        }
+      }
+      
       if (editingInvoiceId) {
         // UPDATE faktury
         finalSuccessTitle = '✅ Faktura aktualizována';
@@ -6165,7 +6295,7 @@ export default function InvoiceEvidencePage() {
             <FieldRow $columns="2fr 1fr 1fr">
               <FieldGroup style={{ width: '100%' }}>
                 <FieldLabel>
-                  Vyberte objednávku nebo smlouvu
+                  Vyberte objednávku nebo smlouvu nebo LP
                 </FieldLabel>
                 <AutocompleteWrapper className="autocomplete-wrapper" style={{ width: '100%', position: 'relative' }}>
                   {/* Ikona zámku - klikatelná pro odemčení */}
@@ -6346,6 +6476,45 @@ export default function InvoiceEvidencePage() {
                             );
                           }
 
+                          // 🆕 Pro LP (Limitované přísliby)
+                          const isLP = item._type === 'lp';
+                          if (isLP) {
+                            return (
+                              <OrderSuggestionItem
+                                key={`lp-${item.id}`}
+                                onClick={() => handleSelectLP(item)}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '0.5rem' }}>
+                                  <OrderSuggestionTitle style={{ flex: 1 }}>
+                                    <OrderSuggestionBadge $color="#ec4899" $textColor="white" style={{ marginRight: '0.5rem' }}>
+                                      LP
+                                    </OrderSuggestionBadge>
+                                    {item.cislo_lp}
+                                    {item.modul && (
+                                      <OrderSuggestionBadge 
+                                        $color={
+                                          item.modul === 'fop' ? '#fb923c' : 
+                                          item.modul === 'fp' ? '#a855f7' :
+                                          item.modul === 'f' ? '#ec4899' :
+                                          item.modul === 'op' ? '#22c55e' :
+                                          item.modul === 'p' ? '#eab308' :
+                                          item.modul === 'o' ? '#3b82f6' : '#6b7280'
+                                        } 
+                                        $textColor="white" 
+                                        style={{ marginLeft: '0.5rem', fontSize: '0.7rem' }}
+                                      >
+                                        {item.modul.toUpperCase()}
+                                      </OrderSuggestionBadge>
+                                    )}
+                                  </OrderSuggestionTitle>
+                                </div>
+                                <OrderSuggestionDetail>
+                                  {item.nazev_uctu && <span><strong>Účet:</strong> {item.nazev_uctu}</span>}
+                                </OrderSuggestionDetail>
+                              </OrderSuggestionItem>
+                            );
+                          }
+
                           return null;
                         })
                       ) : (
@@ -6360,6 +6529,21 @@ export default function InvoiceEvidencePage() {
                     </AutocompleteDropdown>
                   )}
                 </AutocompleteWrapper>
+                
+                {/* 🆕 LP Badge - zobrazení vybraného LP */}
+                {selectedLP && (
+                  <div style={{ marginTop: '0.5rem' }}>
+                    <LPBadge 
+                      cislo_lp={selectedLP.cislo_lp}
+                      nazev_uctu={selectedLP.nazev_uctu}
+                      modul={selectedLP.modul}
+                      showModul={true}
+                      size="medium"
+                      onRemove={handleRemoveLP}
+                    />
+                  </div>
+                )}
+                
                 <HelpText>
                   {orderId 
                     ? 'Objednávka je předvyplněna z kontextu' 
