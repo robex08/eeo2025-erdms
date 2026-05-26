@@ -54,6 +54,7 @@ import {
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
 import { ProgressContext } from '../context/ProgressContext';
+import { safeToast } from '../utils/globalToast';
 import { createInvoiceWithAttachmentV2, createInvoiceV2, getInvoiceById25, updateInvoiceV2, deleteInvoiceAttachment25, checkInvoiceDuplicate, listInvoiceAttachments25, downloadInvoiceAttachment25 } from '../services/api25invoices';
 import { getOrderV2, updateOrderV2, lockOrderV2, unlockOrderV2 } from '../services/apiOrderV2';
 import { getSmlouvaDetail } from '../services/apiSmlouvy';
@@ -89,6 +90,68 @@ const formatDateForPicker = (date) => {
   const day = String(d.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
+
+const formatInvoiceValidationToast = (errors) => {
+  if (!errors || Object.keys(errors).length === 0) return null;
+
+  const messages = Object.values(errors).filter(Boolean);
+  if (messages.length === 0) return null;
+
+  return (
+    <div style={{ fontFamily: 'system-ui, -apple-system, sans-serif', lineHeight: '1.5' }}>
+      <div style={{
+        fontSize: '15px',
+        fontWeight: '600',
+        marginBottom: '12px',
+        color: '#1a1a1a',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px'
+      }}>
+        <FontAwesomeIcon icon={faExclamationTriangle} style={{ color: '#dc2626' }} />
+        <span>Pro uložení je nutné vyplnit následující položky:</span>
+      </div>
+      <div style={{
+        fontSize: '13px',
+        color: '#666',
+        marginTop: '6px',
+        backgroundColor: '#fff1f0',
+        padding: '10px',
+        borderRadius: '4px'
+      }}>
+        {messages.map((message, idx) => (
+          <div key={`${idx}-${message}`} style={{
+            marginTop: idx > 0 ? '4px' : '0',
+            display: 'flex',
+            alignItems: 'flex-start'
+          }}>
+            <span style={{ marginRight: '6px', color: '#ff4d4f', fontWeight: 'bold' }}>•</span>
+            <span>{message}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const INVOICE_ERROR_SCROLL_ORDER = [
+  'fa_cislo_vema',
+  'fa_typ',
+  'fa_datum_doruceni',
+  'fa_datum_vystaveni',
+  'fa_datum_splatnosti',
+  'fa_castka',
+  'fa_datum_vraceni_zam',
+  'vecna_spravnost_potvrzeno',
+  'lp_cerpani',
+  'vecna_spravnost_poznamka'
+];
+
+const MATERIAL_CORRECTNESS_ERROR_KEYS = new Set([
+  'vecna_spravnost_potvrzeno',
+  'vecna_spravnost_poznamka',
+  'lp_cerpani'
+]);
 
 const INVOICE_STATUS_LABELS = {
   ZAEVIDOVANA: 'Zaevidovaná',
@@ -1887,6 +1950,38 @@ export default function InvoiceEvidencePage() {
       ...prev,
       [sectionName]: !prev[sectionName]
     }));
+  }, []);
+
+  const scrollToFirstInvalidField = useCallback((errors) => {
+    if (!errors || Object.keys(errors).length === 0) return;
+
+    const firstKey = INVOICE_ERROR_SCROLL_ORDER.find(key => errors[key]) || Object.keys(errors)[0];
+
+    setSectionStates(prev => ({
+      ...prev,
+      invoiceData: true,
+      materialCorrectness: MATERIAL_CORRECTNESS_ERROR_KEYS.has(firstKey) ? true : prev.materialCorrectness
+    }));
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const byName = document.querySelector(`[name="${firstKey}"]`);
+        const byDatePicker = document.querySelector(`[data-datepicker="${firstKey}"]`);
+        const byDataField = document.querySelector(`[data-field="${firstKey}"]`);
+        const target = byName || byDatePicker || byDataField;
+
+        if (!target) return;
+
+        const focusTarget = target.matches('input, textarea, select, [tabindex]')
+          ? target
+          : target.querySelector('input, textarea, select, [tabindex]') || target;
+
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (focusTarget && typeof focusTarget.focus === 'function') {
+          focusTarget.focus({ preventScroll: true });
+        }
+      });
+    });
   }, []);
 
   // State
@@ -4636,6 +4731,13 @@ export default function InvoiceEvidencePage() {
       setError('Opravte prosím chyby ve formuláři před odesláním');
       // Zavřít progress modal při chybě validace
       setProgressModal({ show: false, status: 'error', progress: 0, title: '', message: '' });
+
+      const validationToast = formatInvoiceValidationToast(errors);
+      if (validationToast) {
+        safeToast(showToast, validationToast, { type: 'error', timeout: 8000 });
+      }
+
+      scrollToFirstInvalidField(errors);
       
       return;
     }
@@ -4821,12 +4923,22 @@ export default function InvoiceEvidencePage() {
         // ⏸️ POZASTAVENÍ: Success message se nastaví AŽ PO workflow update (dole)
       }
 
+      const savedInvoiceId = editingInvoiceId
+        || result?.data?.invoice_id
+        || result?.data?.id
+        || result?.invoice_id
+        || result?.id;
+
+      if (!savedInvoiceId) {
+        throw new Error('Nepodařilo se potvrdit uložení faktury (chybí ID).');
+      }
+
       // ✅ Pokud je faktura připojena k objednávce, aktualizuj workflow stav
       // - NOVÁ FAKTURA: přidat stav VECNA_SPRAVNOST
       // - EDITACE: vrátit na VECNA_SPRAVNOST (musí projít novou kontrolou)
       // 🆕 VEMA-ONLY SAVE: úpravu samotného VEMA kódu NEpovažujeme za změnu, která by měla
       // ovlivnit workflow objednávky (VEMA kód je jen externí identifikátor).
-      if (formData.order_id && orderData && !isVemaKodOnlySave) {
+      if (savedInvoiceId && formData.order_id && orderData && !isVemaKodOnlySave) {
         try {
           // Parsuj aktuální workflow stavy
           let stavKody = [];
@@ -4948,7 +5060,7 @@ export default function InvoiceEvidencePage() {
             const timestamp = new Date().toLocaleString('cs-CZ');
             // PRO OBJEDNÁVKY
             if (formData.order_id && orderData) {
-              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', editingInvoiceId, user_id, {
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', savedInvoiceId, user_id, {
                 invoice_number: formData.fa_cislo_vema || 'bez čísla',
                 invoice_state: currentStav
               });
@@ -4958,7 +5070,7 @@ export default function InvoiceEvidencePage() {
             // PRO SMLOUVY
             else if (formData.smlouva_id && smlouvaData) {
               
-              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', editingInvoiceId, user_id, {
+              await triggerNotification('INVOICE_MATERIAL_CHECK_REQUESTED', savedInvoiceId, user_id, {
                 smlouva_id: formData.smlouva_id,
                 invoice_number: formData.fa_cislo_vema || 'bez čísla',
                 invoice_state: currentStav
@@ -4985,7 +5097,7 @@ export default function InvoiceEvidencePage() {
       // 5. Faktura je připojena k objednávce NEBO smlouvě
       
       // ✅ ID faktury - buď existující (UPDATE) nebo nově vytvořená (CREATE)
-      const invoiceIdForNotification = editingInvoiceId || result?.data?.invoice_id || result?.data?.id || result?.invoice_id || result?.id;
+      const invoiceIdForNotification = savedInvoiceId;
       
       // ✅ OPRAVA: Notifikace i při CREATE (když je invoiceIdForNotification) a při UPDATE (když se změnilo)
       if (formData.fa_predana_zam_id && invoiceIdForNotification) {
@@ -6405,6 +6517,7 @@ export default function InvoiceEvidencePage() {
                   Datum doručení <RequiredStar>*</RequiredStar>
                 </FieldLabel>
                 <DatePicker
+                  fieldName="fa_datum_doruceni"
                   value={formData.fa_datum_doruceni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
@@ -6425,6 +6538,7 @@ export default function InvoiceEvidencePage() {
                   Datum vystavení <RequiredStar>*</RequiredStar>
                 </FieldLabel>
                 <DatePicker
+                  fieldName="fa_datum_vystaveni"
                   value={formData.fa_datum_vystaveni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
@@ -6445,6 +6559,7 @@ export default function InvoiceEvidencePage() {
                   Datum splatnosti <RequiredStar>*</RequiredStar>
                 </FieldLabel>
                 <DatePicker
+                  fieldName="fa_datum_splatnosti"
                   value={formData.fa_datum_splatnosti}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
@@ -6941,6 +7056,7 @@ export default function InvoiceEvidencePage() {
                   Datum předání
                 </FieldLabel>
                 <DatePicker
+                  fieldName="fa_datum_predani_zam"
                   value={formData.fa_datum_predani_zam}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
@@ -6954,6 +7070,7 @@ export default function InvoiceEvidencePage() {
                   Datum vrácení
                 </FieldLabel>
                 <DatePicker
+                  fieldName="fa_datum_vraceni_zam"
                   value={formData.fa_datum_vraceni_zam}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vraceni_zam: date }))}
@@ -7435,6 +7552,7 @@ export default function InvoiceEvidencePage() {
                     <FieldLabel>Umístění majetku</FieldLabel>
                     <input
                       type="text"
+                      name="vecna_spravnost_umisteni_majetku"
                       value={formData.vecna_spravnost_umisteni_majetku || ''}
                       disabled={!isVecnaSpravnostEditable || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_umisteni_majetku: e.target.value }))}
@@ -7474,6 +7592,7 @@ export default function InvoiceEvidencePage() {
                       {(orderData && formData.fa_castka && parseFloat(formData.fa_castka) > parseFloat(orderData.max_cena_s_dph || 0)) && ' (POVINNÁ - faktura překračuje MAX cenu)'}
                     </FieldLabel>
                     <textarea
+                      name="vecna_spravnost_poznamka"
                       value={formData.vecna_spravnost_poznamka || ''}
                       disabled={!isVecnaSpravnostEditable || loading}
                       onChange={(e) => setFormData(prev => ({ ...prev, vecna_spravnost_poznamka: e.target.value }))}
@@ -7551,7 +7670,8 @@ export default function InvoiceEvidencePage() {
                     if (fin?.typ === 'LP') {
                       return (
                         <>
-                          <LPCerpaniEditor
+                          <div data-field="lp_cerpani">
+                            <LPCerpaniEditor
                             faktura={formData}
                             orderData={orderData}
                             lpCerpani={lpCerpani}
@@ -7563,7 +7683,8 @@ export default function InvoiceEvidencePage() {
                               setLpCerpani(newLpCerpani);
                             }}
                             disabled={!isVecnaSpravnostEditable || loading}
-                          />
+                            />
+                          </div>
                           {/* Chybová zpráva pro LP čerpání */}
                           {fieldErrors.lp_cerpani && (
                             <FieldError style={{ marginTop: '0.5rem' }}>
@@ -7619,6 +7740,7 @@ export default function InvoiceEvidencePage() {
                   }}>
                     <input
                       type="checkbox"
+                      name="vecna_spravnost_potvrzeno"
                       checked={formData.vecna_spravnost_potvrzeno === 1}
                       disabled={!isVecnaSpravnostEditable || loading}
                       onChange={(e) => {

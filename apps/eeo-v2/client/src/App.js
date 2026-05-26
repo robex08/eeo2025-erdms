@@ -279,6 +279,25 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
 
   // Restore last location only on initial load from root
   useEffect(() => {
+    // 🚫 IMPERSONATION: Vynutit dashboard po přepnutí (přebije případné auto-navigace)
+    if (sessionStorage.getItem('impersonation_force_dashboard') === 'true') {
+      if (location.pathname !== '/dashboard') {
+        navigate('/dashboard', { replace: true });
+        return;
+      }
+      // ✅ Jakmile jsme na dashboardu, flag smažeme
+      sessionStorage.removeItem('impersonation_force_dashboard');
+      return;
+    }
+
+    // 🚫 IMPERSONATION: Pokud probíhá přepnutí uživatele, NEPROVÁDĚT auto-routing!
+    if (sessionStorage.getItem('impersonation_switching') === 'true') {
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('[App] Impersonation probíhá, auto-routing přeskočen.');
+      }
+      return;
+    }
+    
     // ⏳ KRITICKÉ: Počkat na načtení moduleSettings PŘED navigací
     if (isLoggedIn && location.pathname === '/' && moduleSettingsLoaded) {
       // 🔗 NOVINKA: Pokud má URL parametry (např. eventId=1&openPanel=true), NEPROVÁDĚT redirect!

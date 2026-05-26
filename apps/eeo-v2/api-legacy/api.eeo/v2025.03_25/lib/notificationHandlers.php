@@ -88,13 +88,67 @@ function createNotification($db, $params) {
 }
 
 /**
+ * Mapuje nové anglické event type kódy na staré názvy šablon v DB
+ * Zachovává zpětnou kompatibilitu se starými šablonami
+ */
+function mapEventTypeToTemplateName($eventType) {
+    $map = array(
+        // Nové anglické kódy → staré názvy šablon
+        'ORDER_CREATED' => 'order_status_nova',
+        'ORDER_DRAFT' => 'order_status_rozpracovana',
+        'ORDER_PENDING_APPROVAL' => 'order_status_ke_schvaleni',
+        'ORDER_APPROVED' => 'order_status_schvalena',
+        'ORDER_REJECTED' => 'order_status_zamitnuta',
+        'ORDER_AWAITING_CHANGES' => 'order_status_ceka_se',
+        'ORDER_SENT_TO_SUPPLIER' => 'order_status_odeslana',
+        'ORDER_AWAITING_CONFIRMATION' => 'order_status_ceka_potvrzeni',
+        'ORDER_CONFIRMED_BY_SUPPLIER' => 'order_status_potvrzena',
+        'ORDER_REGISTRY_PENDING' => 'order_status_registr_ceka',
+        'ORDER_REGISTRY_PUBLISHED' => 'order_status_registr_zverejnena',
+        'ORDER_INVOICE_PENDING' => 'order_status_faktura_ceka',
+        'ORDER_INVOICE_ADDED' => 'order_status_faktura_pridana',
+        'ORDER_INVOICE_APPROVED' => 'order_status_faktura_schvalena',
+        'ORDER_INVOICE_PAID' => 'order_status_faktura_uhrazena',
+        'ORDER_COMPLETED' => 'order_status_dokoncena',
+        'ORDER_CANCELLED' => 'order_status_zrusena',
+        'ORDER_DELETED' => 'order_status_smazana',
+        'ORDER_REALIZED' => 'order_status_realizovana',
+        'INVOICE_MATERIAL_CHECK_REQUESTED' => 'order_status_kontrola_ceka',
+        'INVOICE_MATERIAL_CHECK_APPROVED' => 'order_status_kontrola_potvrzena',
+        'INVOICE_MATERIAL_CHECK_REJECTED' => 'order_status_kontrola_zamitnuta'
+    );
+    
+    $upperType = strtoupper(trim($eventType));
+    if (isset($map[$upperType])) {
+        return $map[$upperType];
+    }
+    
+    // Pokud není v mappingu, vrať původní hodnotu (pro staré kódy a nové šablony)
+    return $eventType;
+}
+
+/**
  * Načte template pro daný typ notifikace
+ * Podporuje nové i staré názvy event types - automaticky fallbackuje na staré šablony
  */
 function getNotificationTemplate($db, $typ) {
+    // Zkus nejdřív přímé vyhledání (pro nové šablony a zpětnou kompatibilitu)
     $sql = "SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " WHERE LOWER(typ) = LOWER(:typ) AND aktivni = 1";
     $stmt = $db->prepare($sql);
     $stmt->execute(array(':typ' => $typ));
-    return $stmt->fetch(PDO::FETCH_ASSOC);
+    $template = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    // Pokud nenalezeno a typ vypadá jako nový anglický kód, zkus mapovat na starý název
+    if (!$template && preg_match('/^[A-Z_]+$/', $typ)) {
+        $oldTemplateName = mapEventTypeToTemplateName($typ);
+        if ($oldTemplateName !== $typ) {
+            error_log("🔄 [getNotificationTemplate] Mapping new event type '$typ' -> old template '$oldTemplateName'");
+            $stmt->execute(array(':typ' => $oldTemplateName));
+            $template = $stmt->fetch(PDO::FETCH_ASSOC);
+        }
+    }
+    
+    return $template;
 }
 
 /**
@@ -2315,6 +2369,13 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
             'financovani' => $financovani_text,
             'financovani_poznamka' => $financovani_poznamka,
             
+            // Poznámky
+            'poznamka' => $order['poznamka'] ?? '',  // Obecná poznámka k objednávce
+            'schvaleni_komentar' => $order['schvaleni_komentar'] ?? '',  // Poznámka při schválení/zamítnutí/vrácení
+            'approval_note' => $order['schvaleni_komentar'] ?? '',  // Alias pro anglickou verzi
+            'rejection_note' => $order['schvaleni_komentar'] ?? '',  // Alias pro zamítnutí
+            'postpone_note' => $order['schvaleni_komentar'] ?? '',  // Alias pro vrácení k doplnění
+            
             // Stav
             'stav_objednavky' => $order['stav_objednavky'] ?? '',
             
@@ -3119,30 +3180,35 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
                 // - recipientRole (EXCEPTIONAL, APPROVAL, INFO)
                 // - sendEmail (bool)
                 // - sendInApp (bool)
-                // - templateId
+                // - templateId (může být starý z hierarchie!)
                 // - templateVariant (normalVariant, urgentVariant, infoVariant)
                 
                 // 3. Načíst template z DB
-                $stmt = $db->prepare("
-                    SELECT * FROM " . TBL_NOTIFIKACE_SABLONY . " 
-                    WHERE id = :template_id AND aktivni = 1
-                ");
-                $stmt->execute([':template_id' => $recipient['templateId']]);
-                $template = $stmt->fetch(PDO::FETCH_ASSOC);
+                // ✅ OPRAVA: Použít eventType místo templateId z hierarchie!
+                // Pokud je v hierarchii stará template node (např. ID 2 "ke schválení"),
+                // musíme najít správnou šablonu podle event typu (ORDER_AWAITING_CHANGES → order_status_ceka_se)
+                $template = getNotificationTemplate($db, $eventType);
                 
                 // DEBUG do DB
                 try {
                     $stmt_debug = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
                     $stmt_debug->execute(['After template fetch', json_encode([
                         'found' => $template ? true : false,
-                        'template_id' => $recipient['templateId']
+                        'event_type' => $eventType,
+                        'old_template_id' => $recipient['templateId'],
+                        'actual_template_id' => $template ? $template['id'] : null
                     ])]);
                 } catch (Exception $e) {}
                 
                 if (!$template) {
-                    error_log("   ❌ Template {$recipient['templateId']} NOT FOUND or inactive");
-                    $result['errors'][] = "Template {$recipient['templateId']} not found";
+                    error_log("   ❌ Template for event type '$eventType' NOT FOUND or inactive");
+                    $result['errors'][] = "Template for event '$eventType' not found";
                     continue;
+                }
+                
+                // Log pokud se templateId liší (znamená fix starého mappingu)
+                if ($template['id'] != $recipient['templateId']) {
+                    error_log("   🔄 Template ID override: hierarchy had ID {$recipient['templateId']}, using correct ID {$template['id']} for event '$eventType' (template: {$template['typ']})");
                 }
                 
                 // ✅ VALIDACE: Zkontrolovat že template má email_telo pokud má poslat email

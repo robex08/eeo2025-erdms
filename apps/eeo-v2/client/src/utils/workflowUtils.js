@@ -348,12 +348,7 @@ export const validateWorkflowData = (formData, workflowCode = 'NOVA', sectionSta
     }
   });
 
-  // Speciální validace podle stavu
-  if (workflowCode === 'ZAMITNUTA' && !formData.schvaleni_komentar?.trim()) {
-    errors.schvaleni_komentar = `${FIELD_LABELS.schvaleni_komentar} - uveďte důvod zamítnutí objednávky`;
-  }
-
-  // Validace komentáře když je zobrazen (neschváleno nebo čeká se)
+  // Validace komentáře pouze pokud uživatel vybral stav (neschváleno nebo čeká se)
   if ((formData.stav_schvaleni === 'neschvaleno' || formData.stav_schvaleni === 'ceka_se') &&
       !formData.schvaleni_komentar?.trim()) {
     errors.schvaleni_komentar = formData.stav_schvaleni === 'neschvaleno'

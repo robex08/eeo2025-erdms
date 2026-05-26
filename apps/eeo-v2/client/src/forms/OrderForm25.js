@@ -12378,7 +12378,9 @@ function OrderForm25() {
             try {
               const notifResponseUpd3 = await triggerNotification('ORDER_APPROVED', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
-                order_subject: formData.predmet || ''
+                order_subject: formData.predmet || '',
+                schvaleni_komentar: result.schvaleni_komentar || formData.schvaleni_komentar || '',
+                approval_note: result.schvaleni_komentar || formData.schvaleni_komentar || ''
               });
 
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-schvalena', `Notifikace odeslána: objednávka schválena ${orderNumber}`);
@@ -12395,7 +12397,9 @@ function OrderForm25() {
             try {
               const notifResponseUpd4 = await triggerNotification('ORDER_REJECTED', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
-                order_subject: formData.predmet || ''
+                order_subject: formData.predmet || '',
+                schvaleni_komentar: result.schvaleni_komentar || formData.schvaleni_komentar || '',
+                rejection_note: result.schvaleni_komentar || formData.schvaleni_komentar || ''
               });
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-zamitnuta', `Notifikace odeslána: objednávka zamítnuta ${orderNumber}`);
             } catch (triggerError) {
@@ -12410,7 +12414,9 @@ function OrderForm25() {
             try {
               const notifResponseUpd5 = await triggerNotification('ORDER_AWAITING_CHANGES', formData.id, user_id || formData.objednatel_id, {
                 order_number: orderNumber,
-                order_subject: formData.predmet || ''
+                order_subject: formData.predmet || '',
+                schvaleni_komentar: result.schvaleni_komentar || formData.schvaleni_komentar || '',
+                postpone_note: result.schvaleni_komentar || formData.schvaleni_komentar || ''
               });
               addDebugLog('success', 'NOTIFICATION', 'trigger-sent-ceka-se', `Notifikace odeslána: objednávka vrácena k doplnění ${orderNumber}`);
             } catch (triggerError) {

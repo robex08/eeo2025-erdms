@@ -129,6 +129,17 @@ function getNotificationTypeLabel(englishCode) {
     'alarm_todo_high': 'TODO urgentní',
     'alarm_todo_expired': 'TODO prošlý termín',
     
+    // ✅ NOVÉ ANGLICKÉ KÓDY (priorita před starými)
+    'ORDER_CREATED': 'Nová objednávka',
+    'ORDER_PENDING_APPROVAL': 'Ke schválení',
+    'ORDER_APPROVED': 'Schváleno',
+    'ORDER_REJECTED': 'Zamítnuto',
+    'ORDER_AWAITING_CHANGES': 'Čeká na doplnění',
+    'ORDER_SENT_TO_SUPPLIER': 'Odesláno dodavateli',
+    'ORDER_CONFIRMED_BY_SUPPLIER': 'Potvrzeno dodavatelem',
+    'ORDER_COMPLETED': 'Dokončeno',
+    'ORDER_CANCELLED': 'Zrušeno',
+    
     // ⚠️ FALLBACK pro staré kódy (postupně odstraněno)
     'order_status_nova': 'Nová objednávka',
     'order_status_ke_schvaleni': 'Ke schválení', 

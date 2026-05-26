@@ -47,6 +47,96 @@ import {
   faBullseye
 } from '@fortawesome/free-solid-svg-icons';
 
+// ✅ Normalizace starých event type kódů na nové anglické
+function normalizeEventTypeCode(code) {
+  const map = {
+    // Staré české kódy workflow → nové anglické
+    'order_status_nova': 'ORDER_CREATED',
+    'order_status_rozpracovana': 'ORDER_DRAFT',
+    'order_status_ke_schvaleni': 'ORDER_PENDING_APPROVAL',
+    'order_status_schvalena': 'ORDER_APPROVED',
+    'order_status_zamitnuta': 'ORDER_REJECTED',
+    'order_status_ceka_se': 'ORDER_AWAITING_CHANGES',
+    'order_status_odeslana': 'ORDER_SENT_TO_SUPPLIER',
+    'order_status_ceka_potvrzeni': 'ORDER_AWAITING_CONFIRMATION',
+    'order_status_potvrzena': 'ORDER_CONFIRMED_BY_SUPPLIER',
+    'order_status_registr_ceka': 'ORDER_REGISTRY_PENDING',
+    'order_status_registr_zverejnena': 'ORDER_REGISTRY_PUBLISHED',
+    'order_status_faktura_ceka': 'ORDER_INVOICE_PENDING',
+    'order_status_faktura_pridana': 'ORDER_INVOICE_ADDED',
+    'order_status_faktura_schvalena': 'ORDER_INVOICE_APPROVED',
+    'order_status_faktura_uhrazena': 'ORDER_INVOICE_PAID',
+    'order_status_kontrola_ceka': 'INVOICE_MATERIAL_CHECK_REQUESTED',
+    'order_status_kontrola_potvrzena': 'INVOICE_MATERIAL_CHECK_APPROVED',
+    'order_status_kontrola_zamitnuta': 'INVOICE_MATERIAL_CHECK_REJECTED',
+    'order_status_realizovana': 'ORDER_COMPLETED',
+    'order_status_smazana': 'ORDER_DELETED',
+    'order_status_zrusena': 'ORDER_CANCELLED',
+    
+    // Uppercase varianty
+    'ORDER_STATUS_NOVA': 'ORDER_CREATED',
+    'ORDER_STATUS_ROZPRACOVANA': 'ORDER_DRAFT',
+    'ORDER_STATUS_KE_SCHVALENI': 'ORDER_PENDING_APPROVAL',
+    'ORDER_STATUS_SCHVALENA': 'ORDER_APPROVED',
+    'ORDER_STATUS_ZAMITNUTA': 'ORDER_REJECTED',
+    'ORDER_STATUS_CEKA_SE': 'ORDER_AWAITING_CHANGES',
+    'ORDER_STATUS_ODESLANA': 'ORDER_SENT_TO_SUPPLIER',
+    'ORDER_STATUS_CEKA_POTVRZENI': 'ORDER_AWAITING_CONFIRMATION',
+    'ORDER_STATUS_POTVRZENA': 'ORDER_CONFIRMED_BY_SUPPLIER',
+    'ORDER_STATUS_REGISTR_CEKA': 'ORDER_REGISTRY_PENDING',
+    'ORDER_STATUS_REGISTR_ZVEREJNENA': 'ORDER_REGISTRY_PUBLISHED',
+    'ORDER_STATUS_FAKTURA_CEKA': 'ORDER_INVOICE_PENDING',
+    'ORDER_STATUS_FAKTURA_PRIDANA': 'ORDER_INVOICE_ADDED',
+    'ORDER_STATUS_FAKTURA_SCHVALENA': 'ORDER_INVOICE_APPROVED',
+    'ORDER_STATUS_FAKTURA_UHRAZENA': 'ORDER_INVOICE_PAID',
+    'ORDER_STATUS_KONTROLA_CEKA': 'INVOICE_MATERIAL_CHECK_REQUESTED',
+    'ORDER_STATUS_KONTROLA_POTVRZENA': 'INVOICE_MATERIAL_CHECK_APPROVED',
+    'ORDER_STATUS_KONTROLA_ZAMITNUTA': 'INVOICE_MATERIAL_CHECK_REJECTED',
+    'ORDER_STATUS_REALIZOVANA': 'ORDER_COMPLETED',
+    'ORDER_STATUS_SMAZANA': 'ORDER_DELETED',
+    'ORDER_STATUS_ZRUSENA': 'ORDER_CANCELLED',
+    
+    // Bez prefixu
+    'NOVA': 'ORDER_CREATED',
+    'ROZPRACOVANA': 'ORDER_DRAFT',
+    'ODESLANA_KE_SCHVALENI': 'ORDER_PENDING_APPROVAL',
+    'SCHVALENA': 'ORDER_APPROVED',
+    'ZAMITNUTA': 'ORDER_REJECTED',
+    'CEKA_SE': 'ORDER_AWAITING_CHANGES',
+    'ODESLANA': 'ORDER_SENT_TO_SUPPLIER',
+    'CEKA_POTVRZENI': 'ORDER_AWAITING_CONFIRMATION',
+    'POTVRZENA': 'ORDER_CONFIRMED_BY_SUPPLIER',
+    'REGISTR_CEKA': 'ORDER_REGISTRY_PENDING',
+    'REGISTR_ZVEREJNENA': 'ORDER_REGISTRY_PUBLISHED',
+    'FAKTURA_CEKA': 'ORDER_INVOICE_PENDING',
+    'FAKTURA_PRIDANA': 'ORDER_INVOICE_ADDED',
+    'FAKTURA_SCHVALENA': 'ORDER_INVOICE_APPROVED',
+    'FAKTURA_UHRAZENA': 'ORDER_INVOICE_PAID',
+    'KONTROLA_CEKA': 'INVOICE_MATERIAL_CHECK_REQUESTED',
+    'KONTROLA_POTVRZENA': 'INVOICE_MATERIAL_CHECK_APPROVED',
+    'KONTROLA_ZAMITNUTA': 'INVOICE_MATERIAL_CHECK_REJECTED',
+    'REALIZOVANA': 'ORDER_COMPLETED',
+    'SMAZANA': 'ORDER_DELETED',
+    'ZRUSENA': 'ORDER_CANCELLED'
+  };
+  
+  const key = String(code).toLowerCase();
+  
+  // Pokud existuje mapování, použij ho
+  if (map[key]) {
+    return map[key];
+  }
+  
+  // Jinak převeď lowercase na uppercase (pro případy jako "user_mention" → "USER_MENTION")
+  const strCode = String(code);
+  if (strCode === strCode.toLowerCase() && strCode.includes('_')) {
+    return strCode.toUpperCase();
+  }
+  
+  // Pokud je už uppercase, vrať tak jak je
+  return strCode;
+}
+
 // ✅ Helper funkce pro konzistentní zobrazení event types
 function getNotificationTypeLabel(englishCode) {
   const labels = {
@@ -2568,7 +2658,14 @@ const OrganizationHierarchy = () => {
         setAllDepartments(departmentsData.data || []);
         setNotificationTypes(notifTypesData.data || []);
         setAllNotificationTemplates(templatesData.data || []);
-        setNotificationEventTypes(eventTypesData.data || []);
+        
+        // Normalizovat event types - převést staré kódy na nové
+        const normalizedEventTypes = (eventTypesData.data || []).map(eventType => ({
+          ...eventType,
+          kod: normalizeEventTypeCode(eventType.kod || eventType.code),
+          code: normalizeEventTypeCode(eventType.kod || eventType.code)
+        }));
+        setNotificationEventTypes(normalizedEventTypes);
         
         // Nastavit profily a najít aktivní
         const profilesList = profilesData.data || [];
@@ -2647,22 +2744,52 @@ const OrganizationHierarchy = () => {
 
           
           // API nodes jsou už ve správném formátu (id, typ, pozice, data)
-          const flowNodes = apiNodes.map(node => ({
-            id: node.id,
-            type: 'custom',
-            position: node.pozice || { x: 100, y: 100 },
-            data: node.data || {}
-          }));
+          const flowNodes = apiNodes.map(node => {
+            // Normalizovat event types v template nodes
+            if (node.data?.type === 'template' && node.data?.eventTypes) {
+              return {
+                id: node.id,
+                type: 'custom',
+                position: node.pozice || { x: 100, y: 100 },
+                data: {
+                  ...node.data,
+                  eventTypes: node.data.eventTypes.map(et => normalizeEventTypeCode(et))
+                }
+              };
+            }
+            return {
+              id: node.id,
+              type: 'custom',
+              position: node.pozice || { x: 100, y: 100 },
+              data: node.data || {}
+            };
+          });
           
           // API edges jsou už ve správném formátu (id, source, target, typ, data)
-          const flowEdges = apiEdges.map(edge => ({
-            id: edge.id,
-            source: edge.source,
-            target: edge.target,
-            type: 'custom',
-            animated: false,
-            data: edge.data || {}
-          }));
+          // Normalizovat event types v edges
+          const flowEdges = apiEdges.map(edge => {
+            if (edge.data?.eventTypes) {
+              return {
+                id: edge.id,
+                source: edge.source,
+                target: edge.target,
+                type: 'custom',
+                animated: false,
+                data: {
+                  ...edge.data,
+                  eventTypes: edge.data.eventTypes.map(et => normalizeEventTypeCode(et))
+                }
+              };
+            }
+            return {
+              id: edge.id,
+              source: edge.source,
+              target: edge.target,
+              type: 'custom',
+              animated: false,
+              data: edge.data || {}
+            };
+          });
           
           setNodes(flowNodes);
           setEdges(flowEdges);
@@ -2863,7 +2990,11 @@ const OrganizationHierarchy = () => {
         setTemplateUrgentVariant(node.data.urgentVariant || null);
         setTemplateInfoVariant(node.data.infoVariant || null);
         setTemplatePreviewVariant(node.data.previewVariant || node.data.normalVariant || null);
-        setTemplateEventTypes(node.data.eventTypes || []); // Načíst event types
+        
+        // Normalizovat event types při načtení z NODE
+        const rawEventTypes = node.data.eventTypes || [];
+        const normalizedEventTypes = rawEventTypes.map(et => normalizeEventTypeCode(et));
+        setTemplateEventTypes(normalizedEventTypes);
       }
       
       // Načíst TARGET NODE data (role/úsek/user)
@@ -2907,7 +3038,10 @@ const OrganizationHierarchy = () => {
     setEdgeSendEmail(edge.data?.sendEmail || false);
     setEdgeSendInApp(edge.data?.sendInApp !== false);
     setEdgeRecipientRole(edge.data?.priority || edge.data?.recipientRole || 'APPROVAL'); // NOVÉ: priority (fallback na recipientRole pro staré data)
-    setEdgeEventTypes(edge.data?.eventTypes || []); // ✅ Event types na EDGE (přesunuto z NODE)
+    // Normalizovat event types při načtení z EDGE
+    const rawEdgeEventTypes = edge.data?.eventTypes || [];
+    const normalizedEdgeEventTypes = rawEdgeEventTypes.map(et => normalizeEventTypeCode(et));
+    setEdgeEventTypes(normalizedEdgeEventTypes);
     setRelationshipType(edge.data?.relationshipType || edge.data?.druh_vztahu || 'prime');
     setRelationshipScope(edge.data?.scope || 'OWN');
     
@@ -3402,9 +3536,10 @@ const OrganizationHierarchy = () => {
       if (template) {
         const nodeId = `template-${notifId}-${Date.now()}`;
         
-        // 🔥 AUTOMATICKY NASTAVIT EVENT TYPE z template.typ
+        // 🔥 AUTOMATICKY NASTAVIT EVENT TYPE z template.typ (normalizovat staré kódy)
         const templateEventType = template.typ || template.type;
-        const initialEventTypes = templateEventType ? [templateEventType] : [];
+        const normalizedTemplateEventType = templateEventType ? normalizeEventTypeCode(templateEventType) : null;
+        const initialEventTypes = normalizedTemplateEventType ? [normalizedTemplateEventType] : [];
         
         const newNode = {
           id: nodeId,
@@ -5634,7 +5769,7 @@ const OrganizationHierarchy = () => {
                               borderRadius: '4px',
                               fontSize: '0.7rem'
                             }}>
-                              {template.typ || template.type}
+                              {normalizeEventTypeCode(template.typ || template.type)}
                             </code>
                             {template.email?.sendByDefault && (
                               <span style={{ color: '#3b82f6' }}>
@@ -6219,7 +6354,10 @@ const OrganizationHierarchy = () => {
                         onChange={(value) => setTemplateEventTypes(value)}
                         options={(() => {
                           const raw = (notificationEventTypes || []).map(eventType => {
-                            const code = eventType.kod || eventType.code;
+                            // ✅ NORMALIZOVAT KÓD - převést staré na nové anglické
+                            const rawCode = eventType.kod || eventType.code;
+                            const code = normalizeEventTypeCode(rawCode);
+                            
                             const category = eventType.kategorie || eventType.category || null;
                             // ✅ Český popis ber primárně z backendu/DB (`nazev`),
                             // fallback na FE helper mapping (pro starší/legacy případy)
@@ -6905,7 +7043,7 @@ const OrganizationHierarchy = () => {
                                   {scopeFilter === 'ENTITY_PARTICIPANTS' && <span style={{ color: '#10b981' }}> ⭐</span>}
                                   {eventTypes.length > 0 && (
                                     <>
-                                      <br/><strong>⚡ Event Types:</strong> {eventTypes.slice(0, 2).join(', ')}
+                                      <br/><strong>⚡ Event Types:</strong> {eventTypes.slice(0, 2).map(et => normalizeEventTypeCode(et)).join(', ')}
                                       {eventTypes.length > 2 && ` +${eventTypes.length - 2} dalších`}
                                     </>
                                   )}
