@@ -314,10 +314,55 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         $row_pokl = $stmt_pokl->fetch(PDO::FETCH_ASSOC);
         $cerpano_pokladna = (float)($row_pokl['cerpano_pokl'] ?? 0);
         
-        // ⚠️ DŮLEŽITÉ: skutecne_cerpano = JEN faktury (samostatný sloupec)
-        //              cerpano_pokladna = samostatný sloupec
+        // KROK 5A: Odborové faktury - samostatné faktury přiřazené přímo přes 25a_odbory_lp_prirazeni
+        // ✅ Započítávají se POUZE faktury s potvrzenou věcnou správností
+        // ✅ Tyto faktury NEMAJÍ objednávku (standalone faktury)
+        $sql_odbory_faktury = "
+            SELECT COALESCE(SUM(fakt.fa_castka), 0) as cerpano_odbory_fakt
+            FROM 25a_odbory_lp_prirazeni olp
+            INNER JOIN 25a_objednavky_faktury fakt ON fakt.id = olp.faktura_id
+            WHERE olp.lp_id = :lp_id_odbory_fakt
+            AND fakt.aktivni = 1
+            AND fakt.stav != 'STORNO'
+            AND fakt.potvrdil_vecnou_spravnost_id IS NOT NULL
+            AND YEAR(fakt.dt_vytvoreni) = :rok_odbory_fakt
+        ";
+        
+        $stmt_odbory_fakt = $pdo->prepare($sql_odbory_faktury);
+        $stmt_odbory_fakt->execute([
+            'lp_id_odbory_fakt' => $lp_id,
+            'rok_odbory_fakt' => $meta['rok']
+        ]);
+        
+        $row_odbory_fakt = $stmt_odbory_fakt->fetch(PDO::FETCH_ASSOC);
+        $cerpano_odbory_faktury = (float)($row_odbory_fakt['cerpano_odbory_fakt'] ?? 0);
+        
+        // KROK 5B: Odborové pokladna - samostatné pokladní položky přiřazené přímo přes 25a_odbory_lp_prirazeni
+        // ✅ Započítávají se okamžitě po uložení
+        $sql_odbory_pokladna = "
+            SELECT COALESCE(SUM(pp.castka_vydaj), 0) as cerpano_odbory_pokl
+            FROM 25a_odbory_lp_prirazeni olp
+            INNER JOIN " . TBL_POKLADNI_POLOZKY . " pp ON pp.id = olp.pokladni_polozka_id
+            INNER JOIN " . TBL_POKLADNI_KNIHY . " pk ON pk.id = pp.pokladni_kniha_id
+            WHERE olp.lp_id = :lp_id_odbory_pokl
+            AND pp.smazano = 0
+            AND pk.rok = :rok_odbory_pokl
+        ";
+        
+        $stmt_odbory_pokl = $pdo->prepare($sql_odbory_pokladna);
+        $stmt_odbory_pokl->execute([
+            'lp_id_odbory_pokl' => $lp_id,
+            'rok_odbory_pokl' => $meta['rok']
+        ]);
+        
+        $row_odbory_pokl = $stmt_odbory_pokl->fetch(PDO::FETCH_ASSOC);
+        $cerpano_odbory_pokladna = (float)($row_odbory_pokl['cerpano_odbory_pokl'] ?? 0);
+        
+        // ⚠️ DŮLEŽITÉ: skutecne_cerpano = faktury (z objednávek) + odborové faktury
+        //              cerpano_pokladna = pokladna (OLD formát) + odborové pokladna
         //              UI/API je sečte dohromady jako celkové skutečné čerpání
-        $skutecne_cerpano = $fakturovano; // JEN faktury!
+        $skutecne_cerpano = $fakturovano + $cerpano_odbory_faktury; // Faktury z obj + odbory faktury
+        $cerpano_pokladna = $cerpano_pokladna + $cerpano_odbory_pokladna; // Pokladna OLD + odbory
         
         // KROK 6: Vypočítat zůstatky a procenta
         // Zajistit že všechny hodnoty jsou validní floats (ne NULL)

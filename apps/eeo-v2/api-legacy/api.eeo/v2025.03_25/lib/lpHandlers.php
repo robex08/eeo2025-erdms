@@ -13,8 +13,15 @@
  * REQUEST BODY:
  * {
  *   "token": "xxx",
- *   "username": "user@domain.cz"
+ *   "username": "user@domain.cz",
+ *   "context": "orders" | "invoices" | "cashbook" | null (volitelné)
  * }
+ * 
+ * CONTEXT FILTROVÁNÍ:
+ * - "orders": Zobrazí LP s modulem obsahujícím 'o' (objednávky)
+ * - "invoices": Zobrazí LP s modulem obsahujícím 'f' (faktury)
+ * - "cashbook": Zobrazí LP s modulem obsahujícím 'p' (pokladna)
+ * - null nebo nevyplněno: Zobrazí všechny LP
  * 
  * RESPONSE:
  * {
@@ -60,6 +67,18 @@ function handle_lp_list($input, $config) {
         return;
     }
 
+    // Context filtrování (volitelné)
+    $context = isset($input['context']) ? trim($input['context']) : null;
+    $context_filter_letter = null;
+    
+    if ($context === 'orders') {
+        $context_filter_letter = 'o';
+    } elseif ($context === 'invoices') {
+        $context_filter_letter = 'f';
+    } elseif ($context === 'cashbook') {
+        $context_filter_letter = 'p';
+    }
+
     try {
         // 3. Připojení k DB
         $db = get_db($config);
@@ -81,6 +100,7 @@ function handle_lp_list($input, $config) {
                 lp.cislo_lp,
                 lp.nazev_uctu,
                 lp.vyuziti,
+                lp.modul,
                 lp.vyse_financniho_kryti as limit_celkem,
                 COALESCE(c.rezervovano, 0) as rezervovano,
                 COALESCE(c.predpokladane_cerpani, 0) as predpoklad,
@@ -93,16 +113,27 @@ function handle_lp_list($input, $config) {
             LEFT JOIN " . TBL_LP_CERPANI . " c ON c.cislo_lp = lp.cislo_lp AND c.rok = :current_year
             LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id
             WHERE lp.platne_od <= :year_end 
-            AND lp.platne_do >= :year_start
-            ORDER BY lp.cislo_lp ASC
-        ";
+            AND lp.platne_do >= :year_start";
+        
+        // Context filtrování: STRICT - zobrazíme pouze LP které obsahují daný modul
+        if ($context_filter_letter) {
+            $sql .= " AND (lp.modul LIKE :modul_filter OR lp.modul IS NULL)";
+        }
+        
+        $sql .= " ORDER BY lp.cislo_lp ASC";
         
         $stmt = $db->prepare($sql);
-        $stmt->execute([
+        $params = [
             ':current_year' => (int)$current_year,
             ':year_start' => $year_start,
             ':year_end' => $year_end
-        ]);
+        ];
+        
+        if ($context_filter_letter) {
+            $params[':modul_filter'] = '%' . $context_filter_letter . '%';
+        }
+        
+        $stmt->execute($params);
         $lp_list = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // 5. Úspěšná odpověď
