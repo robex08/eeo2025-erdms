@@ -112,7 +112,19 @@ function handle_lp_list($input, $config) {
                 prikazce.id as prikazce_id,
                 prikazce.jmeno as prikazce_jmeno,
                 prikazce.prijmeni as prikazce_prijmeni,
-                CONCAT(prikazce.jmeno, ' ', prikazce.prijmeni) as prikazce_cele_jmeno
+                CONCAT(prikazce.jmeno, ' ', prikazce.prijmeni) as prikazce_cele_jmeno,
+                -- Počet faktur na objednávkách
+                (SELECT COUNT(DISTINCT f.id) 
+                 FROM " . TBL_FAKTURY . " f
+                 INNER JOIN " . TBL_OBJEDNAVKY_LP_KODY . " lp_kod ON lp_kod.objednavka_id = f.objednavka_id
+                 WHERE lp_kod.lp_id = lp.id
+                 AND f.objednavka_id IS NOT NULL) as pocet_faktur_objednavky,
+                -- Počet standalone faktur (odbory LP)
+                (SELECT COUNT(*) 
+                 FROM " . TBL_FAKTURY . " f
+                 INNER JOIN " . TBL_ODBORY_LP_PRIRAZENI . " olp ON olp.faktura_id = f.id
+                 WHERE olp.lp_id = lp.id
+                 AND f.objednavka_id IS NULL) as pocet_faktur_odbory
             FROM " . TBL_LIMITOVANE_PRISLIBY . " lp
             LEFT JOIN " . TBL_LP_CERPANI . " c ON c.cislo_lp = lp.cislo_lp AND c.rok = :current_year
             LEFT JOIN " . TBL_USEKY . " u ON lp.usek_id = u.id
