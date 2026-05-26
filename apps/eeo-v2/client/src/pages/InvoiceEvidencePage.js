@@ -6485,6 +6485,18 @@ export default function InvoiceEvidencePage() {
                           // 🆕 Pro LP (Limitované přísliby)
                           const isLP = item._type === 'lp';
                           if (isLP) {
+                            const cerpanoNum = parseFloat(item.cerpano_celkem || 0);
+                            const limitNum = parseFloat(item.limit_celkem || 0);
+                            const percentCerpano = limitNum > 0 ? (cerpanoNum / limitNum * 100) : 0;
+                            
+                            // Barevné zvýraznění podle % čerpání
+                            const getCerpaniColor = () => {
+                              if (percentCerpano >= 90) return { bg: '#fee2e2', text: '#991b1b' }; // červená 90%+
+                              if (percentCerpano >= 75) return { bg: '#fef3c7', text: '#92400e' }; // žlutá 75-90%
+                              return { bg: '#dcfce7', text: '#166534' }; // zelená < 75%
+                            };
+                            const cerpaniColors = getCerpaniColor();
+                            
                             return (
                               <OrderSuggestionItem
                                 key={`lp-${item.id}`}
@@ -6496,7 +6508,26 @@ export default function InvoiceEvidencePage() {
                                       LP
                                     </OrderSuggestionBadge>
                                     {item.cislo_lp}
+                                    {/* Čerpání / Limit */}
+                                    <OrderSuggestionBadge 
+                                      $color={cerpaniColors.bg} 
+                                      $textColor={cerpaniColors.text} 
+                                      style={{ marginLeft: '0.5rem' }}
+                                    >
+                                      {cerpanoNum.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                                      {' / '}
+                                      {limitNum.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+                                    </OrderSuggestionBadge>
                                   </OrderSuggestionTitle>
+                                  {/* Počet faktur - pro odbory LP vždy 0 (faktury jsou standalone) */}
+                                  <OrderSuggestionBadge 
+                                    $color="#f1f5f9" 
+                                    $textColor="#64748b"
+                                    style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                                  >
+                                    <FontAwesomeIcon icon={faFileInvoice} style={{ fontSize: '0.7rem' }} />
+                                    0
+                                  </OrderSuggestionBadge>
                                 </div>
                                 <OrderSuggestionDetail>
                                   {item.nazev_uctu && <span><strong>Účet:</strong> {item.nazev_uctu}</span>}
