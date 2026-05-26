@@ -3173,6 +3173,12 @@ const Layout = ({ children }) => {
   // 🔐 USER IMPERSONATION: Handler pro zahájení impersonation
   const handleStartImpersonation = async (targetUserData) => {
     setImpersonationTransitioning(true);
+    
+    // 🚫 Nastavit flag pro blokování auto-routingu v App.js
+    sessionStorage.setItem('impersonation_switching', 'true');
+    // 🚫 Vynutit dashboard po přepnutí (přepíše případné auto-navigace)
+    sessionStorage.setItem('impersonation_force_dashboard', 'true');
+    
     try {
       const success = await startImpersonationContext(targetUserData.id);
       if (success) {
@@ -3209,14 +3215,35 @@ const Layout = ({ children }) => {
           
           showToast(`Přepnuto na uživatele: ${fullName}`, { type: 'success', timeout: 5000 });
         }
-      } else if (!success && showToast) {
-        showToast('Nepodařilo se přepnout na uživatele', { type: 'error', timeout: 5000 });
+        
+        // 🏠 Redirect na dashboard po přepnutí (nový uživatel nemusí mít přístup ke stávající stránce)
+        // ⚠️ Použít '/dashboard' místo '/' aby se vyhnulo RestoreLastRoute logice v App.js
+        navigate('/dashboard', { replace: true });
+        
+        // ✅ Smazat flag po dokončení navigace
+        setTimeout(() => {
+          sessionStorage.removeItem('impersonation_switching');
+        }, 100);
+        return true;
+      }
+
+      if (!success) {
+        if (showToast) {
+          showToast('Nepodařilo se přepnout na uživatele', { type: 'error', timeout: 5000 });
+        }
+        sessionStorage.removeItem('impersonation_switching');
+        sessionStorage.removeItem('impersonation_force_dashboard');
+        return false;
       }
     } catch (error) {
       console.error('❌ Chyba při přepnutí na uživatele:', error);
       if (showToast) {
         showToast('Chyba při přepnutí na uživatele', { type: 'error', timeout: 5000 });
       }
+      // ✅ Odstranit flag i při chybě
+      sessionStorage.removeItem('impersonation_switching');
+      sessionStorage.removeItem('impersonation_force_dashboard');
+      return false;
     } finally {
       setTimeout(() => setImpersonationTransitioning(false), 300);
     }
@@ -3225,6 +3252,9 @@ const Layout = ({ children }) => {
   // 🔐 USER IMPERSONATION: Handler pro ukončení impersonation
   const handleStopImpersonation = async () => {
     setImpersonationTransitioning(true);
+    sessionStorage.removeItem('impersonation_force_dashboard');
+    const stayUrl = `${location?.pathname || window.location.pathname}${location?.search || window.location.search}${location?.hash || window.location.hash}`;
+    sessionStorage.setItem('impersonation_return_url', stayUrl);
     try {
       const success = await stopImpersonationContext();
       if (success) {
@@ -3247,6 +3277,19 @@ const Layout = ({ children }) => {
           }
           
           showToast(`Vráceno na ${adminName}`, { type: 'success', timeout: 5000 });
+        }
+        
+        // 🔄 Zůstat na aktuální URL (admin může pokračovat tam, kde impersonovaný uživatel skončil)
+        // ŽÁDNÝ navigate() - zůstáváme na místě!
+        const forcedReturnUrl = sessionStorage.getItem('impersonation_return_url');
+        if (forcedReturnUrl) {
+          setTimeout(() => {
+            const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+            if (currentUrl !== forcedReturnUrl) {
+              navigate(forcedReturnUrl, { replace: true });
+            }
+            sessionStorage.removeItem('impersonation_return_url');
+          }, 50);
         }
       } else if (!success && showToast) {
         showToast('Nepodařilo se vrátit na původní účet', { type: 'error', timeout: 5000 });

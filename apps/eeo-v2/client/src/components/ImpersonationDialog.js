@@ -12,7 +12,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import AuthContext from '../context/AuthContext';
 import { fetchUsersList } from '../services/usersApi';
-import { startImpersonation } from '../services/impersonationService';
+// startImpersonation obsluhuje Layout přes AuthContext
 
 /**
  * 🔍 Helper funkce pro odstranění diakritiky (český specifická mapa)
@@ -44,7 +44,7 @@ const removeDiacritics = (str) => {
  * Props:
  * @param {boolean} isOpen - Zobrazit/skrýt dialog
  * @param {function} onClose - Callback při zavření
- * @param {function} onSuccess - Callback po úspěšném přepnutí (vrací {id, username, token, userDetail})
+ * @param {function} onSuccess - Callback pro přepnutí (vrací boolean)
  */
 
 const Overlay = styled.div`
@@ -599,19 +599,17 @@ const ImpersonationDialog = ({ isOpen, onClose, onSuccess }) => {
     setError(null);
 
     try {
-      const result = await startImpersonation(selectedUser.id, token, user.username);
+      if (typeof onSuccess !== 'function') {
+        throw new Error('Chybí handler pro přepnutí uživatele');
+      }
 
-      if (result.success && result.data) {
+      const success = await onSuccess(selectedUser);
+      if (success) {
         // Uložit do recent users
         saveToRecentUsers(selectedUser);
-        
-        // Úspěšné přepnutí
-        if (onSuccess) {
-          onSuccess(result.data);
-        }
         onClose();
       } else {
-        throw new Error(result.message || 'Nepodařilo se přepnout na uživatele');
+        throw new Error('Nepodařilo se přepnout na uživatele');
       }
     } catch (err) {
       console.error('❌ Chyba při přepnutí na uživatele:', err);

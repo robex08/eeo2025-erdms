@@ -2240,6 +2240,10 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
                 }
             }
         }
+
+        if (isset($normalizedNode['data']['eventTypes'])) {
+            $normalizedNode['data']['eventTypes'] = normalizeHierarchyEventTypes($normalizedNode['data']['eventTypes']);
+        }
         
         $normalizedNodes[] = $normalizedNode;
     }
@@ -2276,6 +2280,10 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
                 }
                 $normalizedEdge['data']['source_info_recipients']['fields'] = array_values(array_unique($cleanedFields));
             }
+        }
+
+        if (isset($normalizedEdge['data']['eventTypes'])) {
+            $normalizedEdge['data']['eventTypes'] = normalizeHierarchyEventTypes($normalizedEdge['data']['eventTypes']);
         }
         
         $normalizedEdges[] = $normalizedEdge;
@@ -2383,6 +2391,72 @@ function handle_hierarchy_profiles_load_structure($data, $pdo) {
 }
 
 /**
+ * Normalize legacy event type codes to current ones.
+ * Accepts array or scalar input and returns unique array.
+ */
+function normalizeHierarchyEventTypes($eventTypes) {
+    if ($eventTypes === null) {
+        return array();
+    }
+
+    if (!is_array($eventTypes)) {
+        $eventTypes = array($eventTypes);
+    }
+
+    $map = array(
+        'ORDER_STATUS_NOVA' => 'ORDER_CREATED',
+        'ORDER_STATUS_ROZPRACOVANA' => 'ORDER_DRAFT',
+        'ORDER_STATUS_KE_SCHVALENI' => 'ORDER_PENDING_APPROVAL',
+        'ORDER_STATUS_SCHVALENA' => 'ORDER_APPROVED',
+        'ORDER_STATUS_ZAMITNUTA' => 'ORDER_REJECTED',
+        'ORDER_STATUS_CEKA_SE' => 'ORDER_AWAITING_CHANGES',
+        'ORDER_STATUS_ODESLANA' => 'ORDER_SENT_TO_SUPPLIER',
+        'ORDER_STATUS_CEKA_POTVRZENI' => 'ORDER_AWAITING_CONFIRMATION',
+        'ORDER_STATUS_POTVRZENA' => 'ORDER_CONFIRMED_BY_SUPPLIER',
+        'ORDER_STATUS_REGISTR_CEKA' => 'ORDER_REGISTRY_PENDING',
+        'ORDER_STATUS_REGISTR_ZVEREJNENA' => 'ORDER_REGISTRY_PUBLISHED',
+        'ORDER_STATUS_FAKTURA_CEKA' => 'ORDER_INVOICE_PENDING',
+        'ORDER_STATUS_FAKTURA_PRIDANA' => 'ORDER_INVOICE_ADDED',
+        'ORDER_STATUS_FAKTURA_SCHVALENA' => 'ORDER_INVOICE_APPROVED',
+        'ORDER_STATUS_FAKTURA_UHRAZENA' => 'ORDER_INVOICE_PAID',
+        'ORDER_STATUS_KONTROLA_CEKA' => 'INVOICE_MATERIAL_CHECK_REQUESTED',
+        'ORDER_STATUS_KONTROLA_POTVRZENA' => 'INVOICE_MATERIAL_CHECK_APPROVED',
+        'ORDER_STATUS_KONTROLA_ZAMITNUTA' => 'INVOICE_MATERIAL_CHECK_REJECTED',
+        'NOVA' => 'ORDER_CREATED',
+        'ROZPRACOVANA' => 'ORDER_DRAFT',
+        'ODESLANA_KE_SCHVALENI' => 'ORDER_PENDING_APPROVAL',
+        'SCHVALENA' => 'ORDER_APPROVED',
+        'ZAMITNUTA' => 'ORDER_REJECTED',
+        'CEKA_SE' => 'ORDER_AWAITING_CHANGES',
+        'ODESLANA' => 'ORDER_SENT_TO_SUPPLIER',
+        'CEKA_POTVRZENI' => 'ORDER_AWAITING_CONFIRMATION',
+        'POTVRZENA' => 'ORDER_CONFIRMED_BY_SUPPLIER',
+        'REGISTR_CEKA' => 'ORDER_REGISTRY_PENDING',
+        'REGISTR_ZVEREJNENA' => 'ORDER_REGISTRY_PUBLISHED',
+        'FAKTURA_CEKA' => 'ORDER_INVOICE_PENDING',
+        'FAKTURA_PRIDANA' => 'ORDER_INVOICE_ADDED',
+        'FAKTURA_SCHVALENA' => 'ORDER_INVOICE_APPROVED',
+        'FAKTURA_UHRAZENA' => 'ORDER_INVOICE_PAID',
+        'KONTROLA_CEKA' => 'INVOICE_MATERIAL_CHECK_REQUESTED',
+        'KONTROLA_POTVRZENA' => 'INVOICE_MATERIAL_CHECK_APPROVED',
+        'KONTROLA_ZAMITNUTA' => 'INVOICE_MATERIAL_CHECK_REJECTED'
+    );
+
+    $normalized = array();
+    foreach ($eventTypes as $eventType) {
+        if (is_numeric($eventType)) {
+            $normalized[] = $eventType;
+            continue;
+        }
+
+        $key = strtoupper(trim((string)$eventType));
+        $normalized[] = isset($map[$key]) ? $map[$key] : $eventType;
+    }
+
+    return array_values(array_unique($normalized));
+}
+
+/**
  * Migrace starých hierarchických struktur na novou architekturu
  * 
  * ZMĚNY v2:
@@ -2412,6 +2486,8 @@ function migrateHierarchyStructureToV2($structure) {
                 if (!isset($node['data']['eventTypes'])) {
                     $node['data']['eventTypes'] = [];
                 }
+
+                $node['data']['eventTypes'] = normalizeHierarchyEventTypes($node['data']['eventTypes']);
             }
             
             // TARGET nodes (role/department/user) - přidat scopeDefinition a delivery
@@ -2462,6 +2538,8 @@ function migrateHierarchyStructureToV2($structure) {
             if (!isset($edge['data']['eventTypes'])) {
                 $edge['data']['eventTypes'] = [];
             }
+
+            $edge['data']['eventTypes'] = normalizeHierarchyEventTypes($edge['data']['eventTypes']);
         }
     }
     
