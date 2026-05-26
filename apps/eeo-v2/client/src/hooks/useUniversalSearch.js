@@ -33,6 +33,8 @@ export const useUniversalSearch = (onSearchSuccess = null) => {
 
   /**
    * Provede vyhledávání
+   * @param {string} searchQuery - Hledaný výraz
+   * @param {Object} options - Volitelné parametry (search_all, context, atd.)
    */
   const search = useCallback(async (searchQuery, options = {}) => {
     // Validace

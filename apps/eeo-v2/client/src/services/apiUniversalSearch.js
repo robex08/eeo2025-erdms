@@ -20,6 +20,7 @@ const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
  * @param {boolean} [params.include_inactive=false] - Zahrnout neaktivní záznamy
  * @param {number} [params.archivovano=0] - Zahrnout archivované objednávky (0=ne, 1=ano)
  * @param {boolean} [params.search_all=false] - Ignorovat user permissions, vrátit všechny výsledky
+ * @param {string} [params.context] - Context pro LP filtrování: 'orders', 'invoices', 'cashbook'
  * 
  * @returns {Promise<Object>} Search response s výsledky
  */
@@ -80,7 +81,8 @@ export const universalSearch = async (params) => {
     limit: params.limit || 15,
     include_inactive: params.include_inactive || false,
     archivovano: showArchived,  // ✅ Respektuj ARCHIV filtr z Orders25List
-    search_all: params.search_all || false  // ✅ Ignorovat permissions, vrátit všechny výsledky
+    search_all: params.search_all || false,  // ✅ Ignorovat permissions, vrátit všechny výsledky
+    context: params.context || null  // 🆕 Context pro LP filtrování
   };
 
   try {

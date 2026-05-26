@@ -156,8 +156,9 @@ const HintText = styled.div`
 
 /**
  * Universal Search Input Component
+ * @param {string} context - LP filtering context: 'orders', 'invoices', 'cashbook', null
  */
-const UniversalSearchInput = () => {
+const UniversalSearchInput = ({ context = null }) => {
   const { username, token, hasPermission, user_id } = useContext(AuthContext) || {};
   
   // Kontrola oprávnění - admin vidí všechny výsledky
@@ -275,7 +276,7 @@ const UniversalSearchInput = () => {
       
       // Debounced search pouze pokud je >= 4 znaky
       if (newQuery.length >= 4) {
-        search(newQuery, { search_all: canViewAllOrders });
+        search(newQuery, { search_all: canViewAllOrders, context });
       }
     }
   };
@@ -384,7 +385,7 @@ const UniversalSearchInput = () => {
     // Enter - immediate search
     if (e.key === 'Enter' && query.length >= 4) {
       e.preventDefault();
-      immediateSearch(query, { search_all: canViewAllOrders });
+      immediateSearch(query, { search_all: canViewAllOrders, context });
       setShowDropdown(true);
       setShowHistory(false);
       setSelectedHistoryIndex(-1);
@@ -411,7 +412,7 @@ const UniversalSearchInput = () => {
     
     // Proveď hledání
     if (selectedQuery.length >= 4) {
-      immediateSearch(selectedQuery, { search_all: canViewAllOrders });
+      immediateSearch(selectedQuery, { search_all: canViewAllOrders, context });
       setShowDropdown(true);
     }
   };
