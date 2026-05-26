@@ -62,21 +62,6 @@ import { universalSearch } from '../services/apiUniversalSearch';
 import { fetchAllUsers } from '../services/api2auth';
 import { getStrediska25, getTypyFaktur25, getInvoiceTypes25 } from '../services/api25orders';
 import { formatDateOnly } from '../utils/format';
-
-// Helper: formátování kódu LP s rokem platnosti (např. LPP4'26)
-const formatLpWithYear = (cisloLp, platneDo) => {
-  if (!cisloLp) return '';
-  if (!platneDo) return cisloLp;
-  try {
-    const date = typeof platneDo === 'string' ? new Date(platneDo) : platneDo;
-    const year = date.getFullYear();
-    const shortYear = year.toString().slice(-2);
-    return `${cisloLp}'${shortYear}`;
-  } catch (e) {
-    return cisloLp;
-  }
-};
-
 import OrderFormReadOnly from '../components/OrderFormReadOnly';
 import SmlouvaPreview from '../components/SmlouvaPreview';
 import LPPreview from '../components/LPPreview';
@@ -96,6 +81,20 @@ import { useDictionaries } from '../forms/OrderForm25/hooks/useDictionaries';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import { fetchLPList, saveOdboryLP, getOdboryLP, deleteOdboryLP } from '../services/apiLP';
 import LPBadge from '../components/LPBadge';
+
+// Helper: formátování kódu LP s rokem platnosti (např. LPP4'26)
+const formatLpWithYear = (cisloLp, platneDo) => {
+  if (!cisloLp) return '';
+  if (!platneDo) return cisloLp;
+  try {
+    const date = typeof platneDo === 'string' ? new Date(platneDo) : platneDo;
+    const year = date.getFullYear();
+    const shortYear = year.toString().slice(-2);
+    return `${cisloLp}'${shortYear}`;
+  } catch (e) {
+    return cisloLp;
+  }
+};
 
 // Helper: formát data pro input type="date" (YYYY-MM-DD)
 const formatDateForPicker = (date) => {

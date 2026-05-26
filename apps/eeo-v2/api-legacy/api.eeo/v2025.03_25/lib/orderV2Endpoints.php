@@ -1685,6 +1685,21 @@ function handle_order_v2_update($input, $config, $queries) {
                             }
                         }
                         
+                        // ✅ AUTOMATIKA: Zrušení věcné správnosti → vrátit stav zpět na ZAEVIDOVANA pokud je aktuálně VECNA_SPRAVNOST
+                        if (isset($faktura['vecna_spravnost_potvrzeno']) && (int)$faktura['vecna_spravnost_potvrzeno'] === 0) {
+                            // Načíst aktuální stav faktury
+                            $current_check = $db->prepare("SELECT stav FROM `{$faktury_table}` WHERE id = ?");
+                            $current_check->execute(array($faktura_id));
+                            $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
+                            
+                            if ($current_row && $current_row['stav'] === 'VECNA_SPRAVNOST') {
+                                // Je ve stavu VECNA_SPRAVNOST → vrátit zpět na ZAEVIDOVANA
+                                $update_fields[] = 'stav = ?';
+                                $update_values[] = 'ZAEVIDOVANA';
+                                error_log("🔙 [OrderV2] Auto změna stavu faktury #{$faktura_id}: VECNA_SPRAVNOST → ZAEVIDOVANA (zrušena věcná správnost)");
+                            }
+                        }
+                        
                         // Pokud jsou nějaká pole k aktualizaci
                         if (!empty($update_fields)) {
                             // Automatické pole
