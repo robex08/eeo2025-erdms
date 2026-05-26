@@ -10958,6 +10958,23 @@ function OrderForm25() {
         addDebugLog('info', 'SAVE', 'workflow', '✅ WorkflowManager.handleWaitingForApproval()');
       }
 
+      // ✅ Pokud uživatel zruší výběr schválení (radio), vrať stav na ODESLANA_KE_SCHVALENI
+      // Platí jen pro fázi schvalování (bez vyšších workflow stavů)
+      if (!approvalChoice) {
+        const hasAdvancedState = workflowStates.some(s => [
+          'ROZPRACOVANA', 'ODESLANA', 'POTVRZENA', 'UVEREJNIT', 'UVEREJNENA', 'NEUVEREJNIT',
+          'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'
+        ].includes(s));
+
+        if (!hasAdvancedState && !workflowStates.includes('ZRUSENA')) {
+          workflowStates = workflowStates.filter(s => !['CEKA_SE', 'ZAMITNUTA', 'SCHVALENA'].includes(s));
+          if (!workflowStates.includes('ODESLANA_KE_SCHVALENI')) {
+            workflowStates.push('ODESLANA_KE_SCHVALENI');
+            addDebugLog('info', 'SAVE', 'workflow', '✅ Reset na ODESLANA_KE_SCHVALENI (zrušen výběr schválení)');
+          }
+        }
+      }
+
       // 3. ROZPRACOVANA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const wasAlreadyApproved = existingStates?.includes('SCHVALENA') || false;
       const isJustNowApproved = approvalChoice === 'schvaleno' && !wasAlreadyApproved;
@@ -11633,8 +11650,8 @@ function OrderForm25() {
             }
           }
 
-          // ✅ STANDARDNÍ NOTIFIKACE (zvoneček) - VŽDY zavolat!
-          await sendOrderNotifications(orderId, orderNumber, workflowKod, null, formData);
+          // ⚠️ DEPRECATED - ODSTRANĚNO: sendOrderNotifications() byla nahrazena novými triggerNotification() callsy níže
+          // await sendOrderNotifications(orderId, orderNumber, workflowKod, null, formData);
 
           // 🆕 DUAL-TEMPLATE EMAIL: Nová objednávka má automaticky ODESLANA_KE_SCHVALENI (NAVÍC k zvonečku)
           if (hasWorkflowState(workflowKod, 'ODESLANA_KE_SCHVALENI')) {
@@ -12276,14 +12293,16 @@ function OrderForm25() {
         try {
           const orderNumber = result.ev_cislo || result.cislo_objednavky || formData.ev_cislo || formData.cislo_objednavky || formData.id;
           
-          // ✅ STANDARDNÍ NOTIFIKACE (zvoneček) - VŽDY zavolat!
-          await sendOrderNotifications(formData.id, orderNumber, result.stav_workflow_kod, oldWorkflowKod, formData);
+          // ⚠️ DEPRECATED - ODSTRANĚNO: sendOrderNotifications() byla nahrazena novými triggerNotification() callsy níže
+          // await sendOrderNotifications(formData.id, orderNumber, result.stav_workflow_kod, oldWorkflowKod, formData);
           
           // 🆕 DUAL-TEMPLATE EMAIL: Při prvním odeslání ke schválení (NAVÍC k zvonečku)
+          // ⚠️ DŮLEŽITÉ: Nevoláme tuto notifikaci pokud jde o CEKA_SE - ta má vlastní handler níže
           const hasKeSchvaleni = hasWorkflowState(result.stav_workflow_kod, 'ODESLANA_KE_SCHVALENI');
           const hadKeSchvaleni = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'ODESLANA_KE_SCHVALENI') : false;
+          const hasCekaSe = hasWorkflowState(result.stav_workflow_kod, 'CEKA_SE');
           
-          if (hasKeSchvaleni && !hadKeSchvaleni) {
+          if (hasKeSchvaleni && !hadKeSchvaleni && !hasCekaSe) {
             // 🆕 NOVÝ SYSTÉM: Org-hierarchy-aware notifications
             try {
               // Převést kódy středisek na názvy (strediskaOptions má strukturu {value, label})
@@ -12385,7 +12404,6 @@ function OrderForm25() {
           }
 
           // 🆕 Vrácení k doplnění
-          const hasCekaSe = hasWorkflowState(result.stav_workflow_kod, 'CEKA_SE');
           const hadCekaSe = oldWorkflowKod ? hasWorkflowState(oldWorkflowKod, 'CEKA_SE') : false;
           
           if (hasCekaSe && !hadCekaSe) {
@@ -18215,11 +18233,13 @@ function OrderForm25() {
         }
 
         if (currentPhase >= 3 && Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) {
-          formData.polozky_objednavky.forEach((polozka, index) => {
-            if (!polozka.lp_id && !polozka.polozka_lp_id) {
-              errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné při financování z Limitovaného příslibu`;
-            }
-          });
+          if (sectionStates.phase3.visible && !sectionStates.phase3.locked) {
+            formData.polozky_objednavky.forEach((polozka, index) => {
+              if (!polozka.lp_id && !polozka.polozka_lp_id) {
+                errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné při financování z Limitovaného příslibu`;
+              }
+            });
+          }
         }
       }
 
@@ -18617,11 +18637,13 @@ function OrderForm25() {
           errors.lp_kod = 'LP kód je povinný';
         }
         if (currentPhase >= 3 && Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) {
-          formData.polozky_objednavky.forEach((polozka, index) => {
-            if (!polozka.lp_id && !polozka.polozka_lp_id) {
-              errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné`;
-            }
-          });
+          if (sectionStates.phase3.visible && !sectionStates.phase3.locked) {
+            formData.polozky_objednavky.forEach((polozka, index) => {
+              if (!polozka.lp_id && !polozka.polozka_lp_id) {
+                errors[`polozka_${index}_lp`] = `Položka ${index + 1}: LP je povinné`;
+              }
+            });
+          }
         }
       }
 
