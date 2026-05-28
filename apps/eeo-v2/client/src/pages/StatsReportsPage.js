@@ -175,7 +175,8 @@ const SECTION_BLOCKS = {
   ],
   cashbook: [
     { key: 'cashbookOverview', label: 'Přehled pokladen' },
-    { key: 'cashbookCharts', label: 'Grafy' }
+    { key: 'cashbookCharts', label: 'Grafy' },
+    { key: 'cashbookEntries', label: 'Detail položek' }
   ],
   dohadne: [
     { key: 'dohadneLpUctu', label: 'Dohadné položky — Limitované přísliby - dle LP účtu' },
@@ -2973,6 +2974,19 @@ export default function StatsReportsPage() {
   const [cashbookEntries, setCashbookEntries] = useState({});
   const [cashbookSearch, setCashbookSearch] = useState('');
   const [cashbookSearchActive, setCashbookSearchActive] = useState('');
+  
+  // ─── Detail položek - filtry pro tabulku ──────────────────────────────────
+  const [cashbookEntriesFilters, setCashbookEntriesFilters] = useState(() => {
+    try {
+      const raw = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_cashbook_entries_filters`);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { 
+      pokladny: [], // pole cislo_pokladny
+      lp_kody: [] // pole LP kódů
+    };
+  });
+  const [cashbookEntriesSort, setCashbookEntriesSort] = useState({ field: 'datum_zapisu', dir: 'desc' });
 
   // ─── Dohadné položky ──────────────────────────────────────────────────────
   const [dohadneData, setDohadneData] = useState(null);
