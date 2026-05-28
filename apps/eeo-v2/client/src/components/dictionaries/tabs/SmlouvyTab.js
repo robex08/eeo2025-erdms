@@ -1635,8 +1635,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     return d;
   }, []);
 
+  // ✅ Archivní = JEN smlouvy se stavem UKONCENA a platnost_do starší 3 měsíců
   const isArchivedByDate = useCallback((smlouva) => {
     if (!smlouva?.platnost_do) return false;
+    if (String(smlouva?.stav || '').toUpperCase() !== 'UKONCENA') return false;
     const d = new Date(smlouva.platnost_do);
     if (Number.isNaN(d.getTime())) return false;
     return d < archiveCutoff;
@@ -1657,7 +1659,12 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     // ✅ FIX: loose == místo === protože API vrací aktivni jako string "1"
     const isInactive = !(smlouva?.aktivni == 1 || smlouva?.aktivni === true);
     const isArchived = !isInactive && isArchivedByDate(smlouva);
-    if (isAllStavFilter) return true;
+    // ✅ "Všechny stavy" = vše KROMĚ archivních (Archivní jsou viditelné jen přes explicitní filtr ARCHIVNI)
+    if (isAllStavFilter) {
+      if (isInactive) return false;
+      if (isArchived) return false;
+      return true;
+    }
     if (isArchiveOnlyFilter) return isArchived;
     if (isInactiveOnlyFilter) return isInactive;
     if (isInactive) return false;
@@ -2800,11 +2807,24 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     }),
     columnHelper.accessor('stav', {
       header: 'Stav',
-      cell: info => (
-        <StatusBadge $color={getStavSmlouvyColor(info.getValue())}>
-          {getStavSmlouvyLabel(info.getValue())}
-        </StatusBadge>
-      ),
+      cell: info => {
+        const stav = info.getValue();
+        const row = info.row?.original;
+        const isArchived = isArchivedByDate(row);
+        // Archivní (UKONCENA + platnost_do >3 měs.) → odlišná šedá s "Archivní" labelem
+        if (isArchived) {
+          return (
+            <StatusBadge $color="#6b7280" title="Ukončená smlouva starší 3 měsíců">
+              Ukončené (archiv)
+            </StatusBadge>
+          );
+        }
+        return (
+          <StatusBadge $color={getStavSmlouvyColor(stav)}>
+            {getStavSmlouvyLabel(stav)}
+          </StatusBadge>
+        );
+      },
       enableSorting: true
     }),
     columnHelper.display({
