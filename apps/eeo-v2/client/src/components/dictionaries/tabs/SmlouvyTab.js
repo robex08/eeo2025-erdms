@@ -1651,6 +1651,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   const isInactiveOnlyFilter = filters.stav === 'NEAKTIVNI';
 
   const passesArchiveVisibility = useCallback((smlouva) => {
+    // ✅ FIX: Pokud je nastaven column filter STAV (header sloupce), header filtr ustoupí
+    // - column filter prevezme rizeni viditelnosti archived/inactive
+    if (columnFilters.stav) return true;
     // ✅ FIX: loose == místo === protože API vrací aktivni jako string "1"
     const isInactive = !(smlouva?.aktivni == 1 || smlouva?.aktivni === true);
     const isArchived = !isInactive && isArchivedByDate(smlouva);
@@ -1660,7 +1663,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     if (isInactive) return false;
     if (isArchived) return false;
     return true;
-  }, [isAllStavFilter, isArchiveOnlyFilter, isInactiveOnlyFilter, isArchivedByDate]);
+  }, [isAllStavFilter, isArchiveOnlyFilter, isInactiveOnlyFilter, isArchivedByDate, columnFilters.stav]);
 
   // Základ pro options: smlouvy po aplikaci restriction + archiv viditelnosti (bez druh/stav/search filtrů)
   // Tím zajistíme, že options nabízí pouze hodnoty které uživatel skutečně může vidět
