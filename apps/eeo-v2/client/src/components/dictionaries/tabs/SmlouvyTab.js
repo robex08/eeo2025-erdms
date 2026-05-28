@@ -1651,7 +1651,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   const isInactiveOnlyFilter = filters.stav === 'NEAKTIVNI';
 
   const passesArchiveVisibility = useCallback((smlouva) => {
-    const isInactive = !(smlouva?.aktivni === 1 || smlouva?.aktivni === true);
+    // ✅ FIX: loose == místo === protože API vrací aktivni jako string "1"
+    const isInactive = !(smlouva?.aktivni == 1 || smlouva?.aktivni === true);
     const isArchived = !isInactive && isArchivedByDate(smlouva);
     if (isAllStavFilter) return true;
     if (isArchiveOnlyFilter) return isArchived;
@@ -1739,7 +1740,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
 
       // Stav
       if (filters.stav === 'NEAKTIVNI') {
-        if (smlouva.aktivni === 1 || smlouva.aktivni === true) return false;
+        if (smlouva.aktivni == 1 || smlouva.aktivni === true) return false;
       } else if (filters.stav && !isDefaultActiveFilter && !isArchiveOnlyFilter && smlouva.stav !== filters.stav) {
         return false;
       }
@@ -1830,7 +1831,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       }
 
       // ✅ Neaktivní smlouvy zobrazit JEN když je vybraný filtr STAV = NEAKTIVNI
-      const isInactive = !(smlouva.aktivni === 1 || smlouva.aktivni === true);
+      const isInactive = !(smlouva.aktivni == 1 || smlouva.aktivni === true);
       if (isInactive && filters.stav !== 'NEAKTIVNI') {
         return false;
       }
@@ -2276,7 +2277,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         }
         
         const isExpanded = expandedContracts[row.id];
-        const isInactive = !(row?.aktivni === 1 || row?.aktivni === true);
+        const isInactive = !(row?.aktivni == 1 || row?.aktivni === true);
         const isArchived = !isInactive && isArchivedByDate(row);
         
         const filterByUser = isRestrictedCerpaniUser && !isMujUsek;
