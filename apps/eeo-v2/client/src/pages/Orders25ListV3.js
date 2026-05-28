@@ -897,6 +897,11 @@ function Orders25ListV3() {
   // 🔒 State pro locked order dialog
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
   const [lockedOrderInfo, setLockedOrderInfo] = useState(null);
+  
+  // 🎯 State pro draft confirm dialog (kontrola rozdělaných objednávek)
+  const [showEditConfirmModal, setShowEditConfirmModal] = useState(false);
+  const [currentDraftData, setCurrentDraftData] = useState(null);
+  const [orderToEdit, setOrderToEdit] = useState(null);
 
   // 🧾 State pro popup výběru faktury (když má objednávka již přiřazené faktury)
   const [invoicePopupVisible, setInvoicePopupVisible] = useState(false);
@@ -1646,6 +1651,63 @@ function Orders25ListV3() {
         }
       }
 
+      // 🎯 KONTROLA DRAFTU - PŘED NAVIGACÍ!
+      // Zkontroluj, jestli existuje validní koncept (pro rozhodnutí o confirm dialogu)
+      draftManager.setCurrentUser(user_id);
+      const hasDraft = await draftManager.hasDraft();
+
+      let shouldShowConfirmDialog = false;
+      let draftDataToStore = null;
+      let isDraftForThisOrder = false;
+
+      if (hasDraft) {
+        try {
+          const draftData = await draftManager.loadDraft();
+
+          // 🎯 KONTROLA OWNERSHIP: Patří draft k TÉTO objednávce?
+          const draftOrderId = draftData.savedOrderId || draftData.formData?.id;
+          const currentOrderId = order.id;
+
+          // ✅ Pokud draft patří k TÉTO objednávce, NEPTAT SE!
+          if (draftOrderId && currentOrderId && String(draftOrderId) === String(currentOrderId)) {
+            shouldShowConfirmDialog = false; // Draft patří k této objednávce - použij ho tiše
+            isDraftForThisOrder = true;
+          } else {
+            // ❌ Draft patří k JINÉ objednávce - zeptej se
+            const hasNewConcept = isValidConcept(draftData);
+            const hasDbChanges = hasDraftChanges(draftData);
+            shouldShowConfirmDialog = hasNewConcept || hasDbChanges;
+
+            if (shouldShowConfirmDialog) {
+              draftDataToStore = draftData; // Ulož pro zobrazení v modalu
+            }
+          }
+
+        } catch (error) {
+          console.warn('⚠️ Chyba při kontrole draftu:', error);
+          shouldShowConfirmDialog = false;
+        }
+      }
+
+      // 🎯 OPTIMALIZACE: Pokud draft patří k TÉTO objednávce, rovnou naviguj bez reload
+      if (isDraftForThisOrder) {
+        navigate(`/order-form-25?edit=${order.id}`, { 
+          state: { 
+            returnTo: '/orders25-list-v3',
+            highlightOrderId: order.id
+          } 
+        });
+        return;
+      }
+
+      // Pokud existuje draft JINÉ objednávky, zobraz confirm dialog
+      if (shouldShowConfirmDialog) {
+        setCurrentDraftData(draftDataToStore);
+        setOrderToEdit(order);
+        setShowEditConfirmModal(true);
+        return;
+      }
+
       // ✅ Objednávka je dostupná - naviguj na formulář
       navigate(`/order-form-25?edit=${order.id}`, { 
         state: { 
@@ -1658,6 +1720,40 @@ function Orders25ListV3() {
       console.error('❌ Chyba při kontrole dostupnosti objednávky:', error);
       showToast('Chyba při kontrole dostupnosti objednávky', { type: 'error' });
     }
+  };
+
+  // 🎯 Handler pro POTVRZENÍ editace (z confirm dialogu)
+  const handleEditConfirm = () => {
+    setShowEditConfirmModal(false);
+    
+    // Smaž existující draft - uživatel potvrdil, že chce opustit rozdělanou objednávku
+    try {
+      draftManager.setCurrentUser(user_id);
+      draftManager.deleteDraft();
+    } catch (error) {
+      console.warn('⚠️ Chyba při mazání draftu:', error);
+    }
+
+    // Naviguj na formulář
+    if (orderToEdit) {
+      navigate(`/order-form-25?edit=${orderToEdit.id}`, { 
+        state: { 
+          returnTo: '/orders25-list-v3',
+          highlightOrderId: orderToEdit.id
+        } 
+      });
+    }
+    
+    // Reset state
+    setOrderToEdit(null);
+    setCurrentDraftData(null);
+  };
+
+  // 🎯 Handler pro ZRUŠENÍ editace (z confirm dialogu)
+  const handleEditCancel = () => {
+    setShowEditConfirmModal(false);
+    setOrderToEdit(null);
+    setCurrentDraftData(null);
   };
 
   // Handler pro evidování faktury
@@ -2664,6 +2760,52 @@ function Orders25ListV3() {
           Máte rozpracovanou objednávku v Order formuláři.
           <br />
           Pokud budete pokračovat, rozpracovaná data se zavřou a otevře se nová objednávka.
+        </ConfirmDialog>,
+        document.body
+      )}
+
+      {/* 🎯 Dialog pro potvrzení editace - varování o rozděl aných objednávkách */}
+      {createPortal(
+        <ConfirmDialog
+          isOpen={showEditConfirmModal}
+          onClose={handleEditCancel}
+          onConfirm={handleEditConfirm}
+          title="Potvrzení editace objednávky"
+          icon={faExclamationTriangle}
+          variant="warning"
+          confirmText="Ano, pokračovat"
+          cancelText="Ne, zrušit"
+        >
+          <p>
+            Chystáte se editovat objednávku <strong>"{orderToEdit?.cislo_objednavky || orderToEdit?.evidencni_cislo || orderToEdit?.predmet || (orderToEdit?.id ? `ID ${orderToEdit.id}` : 'neznámá objednávka')}"</strong>.
+          </p>
+
+          {/* Zobraz varování o rozepracované objednávce, pokud existuje */}
+          {(() => {
+            if (!currentDraftData) return null;
+
+            try {
+              const formData = currentDraftData.formData || currentDraftData;
+              const draftTitle = formData.ev_cislo || formData.cislo_objednavky || formData.predmet || '★ KONCEPT ★';
+              const isNewConcept = isValidConcept(currentDraftData);
+
+              return (
+                <p style={{ background: '#fef3c7', padding: '0.75rem', borderRadius: '6px', border: '1px solid #f59e0b', margin: '0.5rem 0' }}>
+                  <strong>Pozor:</strong> Máte rozepracovanou {isNewConcept ? 'novou objednávku' : 'editaci objednávky'}{' '}
+                  <strong>{draftTitle}</strong>. Přepnutím na jinou objednávku přijdete o neuložené změny!
+                </p>
+              );
+            } catch (error) {
+              return null;
+            }
+          })()}
+
+          <p>
+            <strong>Varování:</strong> Tímto budou zrušeny všechny případné neuložené změny v jiných objednávkách a může dojít ke ztrátě dat.
+          </p>
+          <p>
+            Chcete pokračovat v editaci?
+          </p>
         </ConfirmDialog>,
         document.body
       )}

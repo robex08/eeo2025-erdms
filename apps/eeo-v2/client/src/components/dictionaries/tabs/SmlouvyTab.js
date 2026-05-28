@@ -2719,7 +2719,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     }),
     columnHelper.accessor('zbyva', {
         id: 'zbyva',
-        header: 'Zbývá s DPH',
+        header: 'Zbývá s DPH / bez DPH',
         cell: info => {
           const row = info.row.original;
           const pocatecniStav = parseFloat(row.hodnota_s_dph) || 0;
@@ -2748,13 +2748,28 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
               </span>
             );
           }
+
+          // Výpočet zbývající částky bez DPH
+          const sazbaDph = parseFloat(row.sazba_dph) || 0;
+          const zbyvaBezDph = sazbaDph > 0 ? zbyva / (1 + sazbaDph / 100) : zbyva;
+
           return (
-            <span style={{ 
-              color: zbyva >= 0 ? '#10b981' : '#dc2626',
-              fontWeight: '600'
-            }}>
-              {formatCurrency(zbyva)}
-            </span>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <span style={{ 
+                color: zbyva >= 0 ? '#10b981' : '#dc2626',
+                fontWeight: '600'
+              }}>
+                {formatCurrency(zbyva)}
+              </span>
+              <span style={{ 
+                fontSize: '0.75rem',
+                color: '#6b7280',
+                fontWeight: '400',
+                marginTop: '2px'
+              }}>
+                bez DPH: {formatCurrency(zbyvaBezDph)}
+              </span>
+            </div>
           );
         },
         enableSorting: true,

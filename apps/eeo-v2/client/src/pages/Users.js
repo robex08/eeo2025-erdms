@@ -2980,7 +2980,9 @@ const Users = () => {
 
   const clearColumnFilters = () => {
     setColumnFilters({});
-    // localStorage will be updated automatically via useEffect hook
+    setStatusFilter('all'); // Reset ikonového filtru "Aktivní"
+    setForcePasswordChangeFilter('all'); // Reset ikonového filtru "Vynucení změny hesla"
+    // localStorage will be updated automatically via useEffect hooks
   };
 
   // Handler pro toggle rozšířeného filtru
