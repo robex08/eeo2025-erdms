@@ -627,7 +627,8 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
         }
         
         // Filter: show_inactive
-        $show_inactive = isset($input['show_inactive']) && $input['show_inactive'];
+        // ⚠️ FIX: JavaScript false se přenáší jako string "false" (truthy v PHP!)
+        $show_inactive = isset($input['show_inactive']) && filter_var($input['show_inactive'], FILTER_VALIDATE_BOOLEAN);
         if (!$show_inactive) {
             $where[] = 's.aktivni = 1';
         }
