@@ -186,7 +186,19 @@ function handle_get_settings($db, $forDisplay = false) {
             
             // EntraID Authentication
             'entra_enabled' => $settings['entra_enabled'] ?? '0',
-            'auth_mode' => $settings['auth_mode'] ?? 'local_only'
+            'auth_mode' => $settings['auth_mode'] ?? 'local_only',
+            
+            // 🆕 INVOICE ACCOUNTANT EDIT SETTINGS - editace faktur pro ÚČETNÍ/INVOICE_MANAGE
+            'invoice_accountant_edit_enabled' => ($settings['invoice_accountant_edit_enabled'] ?? '0') === '1',
+            'invoice_accountant_edit_vema_kod' => ($settings['invoice_accountant_edit_vema_kod'] ?? '1') === '1', // Default ON
+            'invoice_accountant_edit_datum_doruceni' => ($settings['invoice_accountant_edit_datum_doruceni'] ?? '0') === '1',
+            'invoice_accountant_edit_datum_vystaveni' => ($settings['invoice_accountant_edit_datum_vystaveni'] ?? '0') === '1',
+            'invoice_accountant_edit_datum_splatnosti' => ($settings['invoice_accountant_edit_datum_splatnosti'] ?? '0') === '1',
+            'invoice_accountant_edit_variabilni_symbol' => ($settings['invoice_accountant_edit_variabilni_symbol'] ?? '0') === '1',
+            'invoice_accountant_edit_typ_faktury' => ($settings['invoice_accountant_edit_typ_faktury'] ?? '0') === '1',
+            'invoice_accountant_edit_strediska' => ($settings['invoice_accountant_edit_strediska'] ?? '0') === '1',
+            'invoice_accountant_edit_poznamka' => ($settings['invoice_accountant_edit_poznamka'] ?? '0') === '1',
+            'invoice_accountant_edit_prilohy' => ($settings['invoice_accountant_edit_prilohy'] ?? '0') === '1'
         );
         
         http_response_code(200);
@@ -256,7 +268,18 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
             'rss_refresh_interval' => 'rss_refresh_interval',
             // EntraID Authentication
             'entra_enabled' => 'entra_enabled',
-            'auth_mode' => 'auth_mode'
+            'auth_mode' => 'auth_mode',
+            // 🆕 INVOICE ACCOUNTANT EDIT SETTINGS
+            'invoice_accountant_edit_enabled' => 'invoice_accountant_edit_enabled',
+            'invoice_accountant_edit_vema_kod' => 'invoice_accountant_edit_vema_kod',
+            'invoice_accountant_edit_datum_doruceni' => 'invoice_accountant_edit_datum_doruceni',
+            'invoice_accountant_edit_datum_vystaveni' => 'invoice_accountant_edit_datum_vystaveni',
+            'invoice_accountant_edit_datum_splatnosti' => 'invoice_accountant_edit_datum_splatnosti',
+            'invoice_accountant_edit_variabilni_symbol' => 'invoice_accountant_edit_variabilni_symbol',
+            'invoice_accountant_edit_typ_faktury' => 'invoice_accountant_edit_typ_faktury',
+            'invoice_accountant_edit_strediska' => 'invoice_accountant_edit_strediska',
+            'invoice_accountant_edit_poznamka' => 'invoice_accountant_edit_poznamka',
+            'invoice_accountant_edit_prilohy' => 'invoice_accountant_edit_prilohy'
         );
         
         $db->beginTransaction();
