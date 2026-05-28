@@ -1408,14 +1408,6 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     pouzit_v_obj_formu: ''
   });
 
-  // ✅ FIX: Pokud columnFilters.stav obsahuje speciální hodnotu (AKTIVNI_NEARCHIVNI, ARCHIVNI)
-  // resetuj ji - column filter STAV smí mít jen reálné DB stavy (AKTIVNI, UKONCENA, PRIPRAVOVANA)
-  useEffect(() => {
-    if (columnFilters.stav && !STAV_SMLOUVY_OPTIONS.some(opt => opt.value === columnFilters.stav)) {
-      setColumnFilters(prev => ({ ...prev, stav: '' }));
-    }
-  }, [columnFilters.stav]);
-
   // Filtr skupiny (klik na dlaždici): null = vše, 'se_stropem', 'bez_stropu'
   const [skupinaFilter, setSkupinaFilter] = useState(() => loadSkupinaFilterFromStorage());
 
@@ -1795,8 +1787,20 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       if (columnFilters.druh_smlouvy && smlouva.druh_smlouvy !== columnFilters.druh_smlouvy) {
         return false;
       }
-      if (columnFilters.stav && smlouva.stav !== columnFilters.stav) {
-        return false;
+      if (columnFilters.stav) {
+        // ✅ Column filter STAV - podporuje virtuální stavy (AKTIVNI_NEARCHIVNI, ARCHIVNI, NEAKTIVNI)
+        const cfStav = columnFilters.stav;
+        const isInactiveRow = !(smlouva.aktivni == 1 || smlouva.aktivni === true);
+        const isArchivedRow = !isInactiveRow && isArchivedByDate(smlouva);
+        if (cfStav === 'NEAKTIVNI') {
+          if (!isInactiveRow) return false;
+        } else if (cfStav === 'ARCHIVNI') {
+          if (!isArchivedRow) return false;
+        } else if (cfStav === 'AKTIVNI_NEARCHIVNI') {
+          if (isInactiveRow || isArchivedRow) return false;
+        } else if (smlouva.stav !== cfStav) {
+          return false;
+        }
       }
       if (columnFilters.pouzit_v_obj_formu !== '' && smlouva.pouzit_v_obj_formu !== parseInt(columnFilters.pouzit_v_obj_formu)) {
         return false;
@@ -1905,8 +1909,20 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       if (columnFilters.druh_smlouvy && smlouva.druh_smlouvy !== columnFilters.druh_smlouvy) {
         return false;
       }
-      if (columnFilters.stav && smlouva.stav !== columnFilters.stav) {
-        return false;
+      if (columnFilters.stav) {
+        // ✅ Column filter STAV - podporuje virtuální stavy (AKTIVNI_NEARCHIVNI, ARCHIVNI, NEAKTIVNI)
+        const cfStav = columnFilters.stav;
+        const isInactiveRow = !(smlouva.aktivni == 1 || smlouva.aktivni === true);
+        const isArchivedRow = !isInactiveRow && isArchivedByDate(smlouva);
+        if (cfStav === 'NEAKTIVNI') {
+          if (!isInactiveRow) return false;
+        } else if (cfStav === 'ARCHIVNI') {
+          if (!isArchivedRow) return false;
+        } else if (cfStav === 'AKTIVNI_NEARCHIVNI') {
+          if (isInactiveRow || isArchivedRow) return false;
+        } else if (smlouva.stav !== cfStav) {
+          return false;
+        }
       }
       if (columnFilters.pouzit_v_obj_formu !== '' && smlouva.pouzit_v_obj_formu !== parseInt(columnFilters.pouzit_v_obj_formu)) {
         return false;
@@ -3402,7 +3418,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     onChange={(e) => setColumnFilters(prev => ({...prev, stav: e.target.value}))}
                   >
                     <option value="">Všechny</option>
-                    {STAV_SMLOUVY_OPTIONS.map(opt => (
+                    {availableStavOptions.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </ColumnFilterSelect>
