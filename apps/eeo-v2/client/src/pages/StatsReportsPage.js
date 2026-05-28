@@ -2966,6 +2966,7 @@ export default function StatsReportsPage() {
   // Cashbook Overview state
   const [cashbookData, setCashbookData] = useState(null);
   const [cashbookLoading, setCashbookLoading] = useState(false);
+  const [cashbookEntriesLoading, setCashbookEntriesLoading] = useState(false);
   const [cashbookFilters, setCashbookFilters] = useState(() => {
     try {
       const raw = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_cashbook_filters`);
@@ -2988,11 +2989,17 @@ export default function StatsReportsPage() {
   const [cashbookEntriesFilters, setCashbookEntriesFilters] = useState(() => {
     try {
       const raw = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_cashbook_entries_filters`);
-      if (raw) return JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Zajistit zpětnou kompatibilitu - doplnit typ, pokud chybí
+        if (!parsed.typ) parsed.typ = 'all';
+        return parsed;
+      }
     } catch (e) {}
     return { 
       pokladny: [], // pole cislo_pokladny
-      lp_kody: [] // pole LP kódů
+      lp_kody: [], // pole LP kódů
+      typ: 'all' // 'all' | 'prijem' | 'vydaj'
     };
   });
   const [cashbookEntriesSearch, setCashbookEntriesSearch] = useState('');
@@ -3731,6 +3738,7 @@ export default function StatsReportsPage() {
     if (!token || !username) return;
     
     setCashbookLoading(true);
+    setCashbookEntriesLoading(true);
     // Použít cashbookFilters (vlastní filtr tabu Přehled pokladen)
     const cbRok = cashbookFilters.rok || new Date().getFullYear();
     const cbMesic = cashbookFilters.mesic || null; // null = celý rok
@@ -3745,12 +3753,49 @@ export default function StatsReportsPage() {
       
       if (response.status === 'ok' && response.data) {
         setCashbookData(response.data);
+        
+        // Načíst položky všech knih pro grafy a detail tabulku
+        const allKnihaIds = [];
+        response.data.books?.forEach(book => {
+          if (book.mesic && book.kniha_id) {
+            allKnihaIds.push(book.kniha_id);
+          } else if (book.mesice) {
+            book.mesice.forEach(m => { if (m.kniha_id) allKnihaIds.push(m.kniha_id); });
+          }
+        });
+        
+        // Načíst všechny entries paralelně
+        if (allKnihaIds.length > 0) {
+          await Promise.all(allKnihaIds.map(async (knihaId) => {
+            try {
+              const entriesResp = await getCashbookOverviewEntries({
+                username,
+                token,
+                kniha_id: knihaId,
+                page: 1,
+                limit: 100
+              });
+              if (entriesResp.status === 'ok' && entriesResp.data) {
+                setCashbookEntries(prev => ({
+                  ...prev,
+                  [knihaId]: entriesResp.data.entries || []
+                }));
+              }
+            } catch (e) {
+              console.error(`Chyba při načítání položek knihy ${knihaId}:`, e);
+            }
+          }));
+        }
+        
+        setCashbookEntriesLoading(false);
       } else {
         setCashbookData(null);
+        setCashbookEntriesLoading(false);
         if (showToast) showToast(response.message || 'Nepodařilo se načíst data pokladen', 'error');
       }
     } catch (e) {
       setCashbookData(null);
+      setCashbookEntriesLoading(false);
       if (showToast) showToast(e?.message || 'Chyba při načítání přehledu pokladen', 'error');
     } finally {
       setCashbookLoading(false);
@@ -4560,18 +4605,19 @@ export default function StatsReportsPage() {
   }, [dohadneStavFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Po načtení dat automaticky načíst položky všech knih (pro LP grafy)
-  useEffect(() => {
-    if (!cashbookData?.books?.length || !token || !username) return;
-    const allKnihaIds = [];
-    cashbookData.books.forEach(book => {
-      if (book.mesic && book.kniha_id) {
-        allKnihaIds.push(book.kniha_id);
-      } else if (book.mesice) {
-        book.mesice.forEach(m => { if (m.kniha_id) allKnihaIds.push(m.kniha_id); });
-      }
-    });
-    allKnihaIds.forEach(id => loadCashbookEntries(id));
-  }, [cashbookData, token, username, loadCashbookEntries]);
+  // POZN: Toto je nyní součástí loadCashbookData, takže tento useEffect už není potřeba
+  // useEffect(() => {
+  //   if (!cashbookData?.books?.length || !token || !username) return;
+  //   const allKnihaIds = [];
+  //   cashbookData.books.forEach(book => {
+  //     if (book.mesic && book.kniha_id) {
+  //       allKnihaIds.push(book.kniha_id);
+  //     } else if (book.mesice) {
+  //       book.mesice.forEach(m => { if (m.kniha_id) allKnihaIds.push(m.kniha_id); });
+  //     }
+  //   });
+  //   allKnihaIds.forEach(id => loadCashbookEntries(id));
+  // }, [cashbookData, token, username, loadCashbookEntries]);
 
   // Normalizovaný hledaný výraz
   const cashbookNormSearch = useMemo(() =>
@@ -4731,6 +4777,13 @@ export default function StatsReportsPage() {
       });
     }
     
+    // Filtr podle typu transakce
+    if (cashbookEntriesFilters.typ === 'prijem') {
+      filtered = filtered.filter(e => (Number(e.castka_prijem) || 0) > 0);
+    } else if (cashbookEntriesFilters.typ === 'vydaj') {
+      filtered = filtered.filter(e => (Number(e.castka_vydaj) || 0) > 0);
+    }
+    
     // Fulltext search (pokud aktivní) - bez diakritiky
     if (cashbookEntriesSearchActive) {
       const term = removeDiacritics(cashbookEntriesSearchActive.toLowerCase().trim());
@@ -4763,6 +4816,10 @@ export default function StatsReportsPage() {
         } else if (field === 'castka_prijem' || field === 'castka_vydaj' || field === 'zustatek') {
           valA = Number(valA) || 0;
           valB = Number(valB) || 0;
+        } else if (field === 'lp_kody') {
+          // Sortování podle LP kódů - spojíme je čárkami a porovnáme
+          valA = (a.lp_kody_array || []).join(', ').toLowerCase();
+          valB = (b.lp_kody_array || []).join(', ').toLowerCase();
         } else if (typeof valA === 'string') {
           valA = valA.toLowerCase();
           valB = (valB || '').toLowerCase();
@@ -9499,7 +9556,7 @@ export default function StatsReportsPage() {
   const ordersWithoutAttachmentsReady = ordersWithoutAttachments != null;
   const invoicesWithoutAttachmentsReady = invoicesWithoutAttachments != null;
   const isAttachmentsPending = isAttachmentsTab && (attachmentsLoading || !attachmentsStatsReady || !ordersWithoutAttachmentsReady || !invoicesWithoutAttachmentsReady);
-  const isCashbookPending = isCashbookTab && cashbookLoading;
+  const isCashbookPending = isCashbookTab && (cashbookLoading || cashbookEntriesLoading);
   const isDohadnePending = isDohadneTab && dohadneLoading;
 
   const isActiveTabFailed = isGateTab && failedTabs.has(activeTab);
@@ -12439,8 +12496,8 @@ export default function StatsReportsPage() {
                         Přehled čerpání – Pokladna
                       </SectionTitle>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        {cashbookLoading && <SectionBadge $tone="info">Načítám...</SectionBadge>}
-                        {!cashbookLoading && cashbookBooksToRender.length > 0 && (
+                        {(cashbookLoading || cashbookEntriesLoading) && <SectionBadge $tone="info">Načítám...</SectionBadge>}
+                        {!cashbookLoading && !cashbookEntriesLoading && cashbookBooksToRender.length > 0 && (
                           <>
                             <ExpandAllBtn
                               onClick={() => {
@@ -12473,7 +12530,7 @@ export default function StatsReportsPage() {
                     </SectionHeader>
 
                     {/* Summary: celkové výdaje */}
-                    {cashbookData?.summary && !cashbookLoading && (
+                    {cashbookData?.summary && !cashbookLoading && !cashbookEntriesLoading && (
                       <div style={{ padding: '0.75rem 1.5rem', background: '#f8fafc', borderBottom: '1px solid #e2e8f0', display: 'flex', gap: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
                         <div>
                           <span style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Celkové výdaje</span>
@@ -12494,7 +12551,7 @@ export default function StatsReportsPage() {
                     )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', padding: cashbookBooksToRender.length > 0 ? '0.75rem' : 0 }}>
-                      {cashbookLoading ? null : cashbookBooksToRender.length === 0 ? (
+                      {(cashbookLoading || cashbookEntriesLoading) ? null : cashbookBooksToRender.length === 0 ? (
                         <EmptyState>Žádná data pokladny pro zvolené období</EmptyState>
                       ) : (
                         <>
@@ -14637,7 +14694,7 @@ export default function StatsReportsPage() {
                             : `Celý rok ${cashbookFilters.rok}`}
                         </SectionBadge>
                         <button onClick={handleExportCsv_cashbookOverview} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
-                        {cashbookLoading && <SectionBadge $tone="info">Načítám...</SectionBadge>}
+                        {(cashbookLoading || cashbookEntriesLoading) && <SectionBadge $tone="info">Načítám...</SectionBadge>}
                       </div>
                     </SectionHeader>
                     
@@ -14647,11 +14704,12 @@ export default function StatsReportsPage() {
                         <label style={{ fontSize: '0.875rem', fontWeight: '600', color: '#334155' }}>Období:</label>
                         <select
                           value={cashbookFilters.mesic || 'all'}
-                          onChange={(e) => setCashbookFilters(prev => {
-                            const next = { ...prev, mesic: e.target.value === 'all' ? null : Number(e.target.value) };
+                          onChange={(e) => {
+                            const next = { ...cashbookFilters, mesic: e.target.value === 'all' ? null : Number(e.target.value) };
+                            setCashbookFilters(next);
+                            setCashbookEntriesPage(1); // Reset stránky v Detail položek
                             try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_filters`, JSON.stringify(next)); } catch (_) {}
-                            return next;
-                          })}
+                          }}
                           style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', cursor: 'pointer' }}
                         >
                           <option value="all">Celý rok {cashbookFilters.rok}</option>
@@ -14724,7 +14782,7 @@ export default function StatsReportsPage() {
                     })()}
 
                     {/* Tabulka pokladních knih */}
-                    {!cashbookLoading && cashbookData?.books && cashbookData.books.length > 0 ? (
+                    {!cashbookLoading && !cashbookEntriesLoading && cashbookData?.books && cashbookData.books.length > 0 ? (
                       <TableWrapper style={{ margin: 0 }}>
                         <Table>
                           <thead>
@@ -14956,7 +15014,10 @@ export default function StatsReportsPage() {
                                                             </tr>
                                                           </thead>
                                                           <tbody>
-                                                            {monthEntries.map((entry, idx) => {
+                                                            {monthEntries
+                                                              .map((entry, idx) => ({ entry, idx }))
+                                                              .filter(({ idx }) => !cashbookNormSearch || cbMatchData?.entryMatchSets[month.kniha_id]?.has(idx))
+                                                              .map(({ entry, idx }) => {
                                                               const isEntryMatch = cashbookNormSearch && cbMatchData?.entryMatchSets[month.kniha_id]?.has(idx);
                                                               const isPrijem = (entry.castka_prijem || 0) > 0;
                                                               const isVydaj = (entry.castka_vydaj || 0) > 0;
@@ -15010,7 +15071,7 @@ export default function StatsReportsPage() {
                                                   <Table>
                                                     <thead>
                                                       <tr>
-                                                        <Th style={{ width: '100px' }}>Datum zápisu</Th>
+                                                        <Th style={{ width: '100px' }}>Datum</Th>
                                                         <Th style={{ width: '120px' }}>Číslo dokladu</Th>
                                                         <Th>Obsah zápisu</Th>
                                                         <Th style={{ width: '150px' }}>Komu/Od koho</Th>
@@ -15022,19 +15083,22 @@ export default function StatsReportsPage() {
                                                       </tr>
                                                     </thead>
                                                     <tbody>
-                                                      {entries.map((entry, idx) => {
+                                                      {entries
+                                                        .map((entry, idx) => ({ entry, idx }))
+                                                        .filter(({ idx }) => !cashbookNormSearch || cbMatchData?.entryMatchSets[book.kniha_id]?.has(idx))
+                                                        .map(({ entry, idx }) => {
                                                         const isEntryMatch = cashbookNormSearch && cbMatchData?.entryMatchSets[book.kniha_id]?.has(idx);
                                                         const isPrijem = (entry.castka_prijem || 0) > 0;
                                                         const isVydaj = (entry.castka_vydaj || 0) > 0;
                                                         const bgColor = isEntryMatch ? '#fefce8' : isPrijem ? '#f0fdf4' : isVydaj ? '#fef2f2' : undefined;
                                                         return (
-                                                          <Tr key={entry.id || idx} style={{ fontSize: '0.875rem' }} $bgColor={bgColor}>
+                                                          <Tr key={entry.id || idx} style={{ fontSize: '0.8rem' }} $bgColor={bgColor}>
                                                             <Td>{entry.datum_zapisu ? new Date(entry.datum_zapisu).toLocaleDateString('cs-CZ') : '-'}</Td>
-                                                            <Td style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{cbHighlightText(entry.cislo_dokladu, cashbookNormSearch)}</Td>
+                                                            <Td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{cbHighlightText(entry.cislo_dokladu, cashbookNormSearch)}</Td>
                                                             <Td style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                               {cbHighlightText(entry.obsah_zapisu, cashbookNormSearch)}
                                                             </Td>
-                                                            <Td style={{ fontSize: '0.8rem' }}>{cbHighlightText(entry.komu_od_koho, cashbookNormSearch)}</Td>
+                                                            <Td style={{ fontSize: '0.75rem' }}>{cbHighlightText(entry.komu_od_koho, cashbookNormSearch)}</Td>
                                                             <TdR style={{ color: entry.castka_prijem > 0 ? '#15803d' : '#94a3b8', fontWeight: entry.castka_prijem > 0 ? '600' : 'normal' }}>
                                                               {entry.castka_prijem > 0 ? fmtCurrency(entry.castka_prijem) : '-'}
                                                             </TdR>
@@ -15042,7 +15106,7 @@ export default function StatsReportsPage() {
                                                               {entry.castka_vydaj > 0 ? fmtCurrency(entry.castka_vydaj) : '-'}
                                                             </TdR>
                                                             <TdR style={{ fontWeight: '600', color: '#334155' }}>{fmtCurrency(entry.zustatek_po_operaci || 0)}</TdR>
-                                                            <Td style={{ fontSize: '0.8rem' }}>
+                                                            <Td style={{ fontSize: '0.75rem' }}>
                                                               {entry.detail_items && entry.detail_items.length > 0 ? (
                                                                 <div style={{ fontSize: '11px', color: '#666' }}>
                                                                   {entry.detail_items.map((item, itemIdx) => (
@@ -15089,7 +15153,7 @@ export default function StatsReportsPage() {
                   cashbookData.books.forEach(book => {
                     const key = book.pokladna_id || book.cislo_pokladny;
                     const label = book.pokladna_nazev || `Pokladna ${book.cislo_pokladny}`;
-                    if (!pokladnaMap[key]) pokladnaMap[key] = { label, prijmy: 0, vydaje: 0 };
+                    if (!pokladnaMap[key]) pokladnaMap[key] = { label, prijmy: 0, vydaje: 0, cislo: book.cislo_pokladny };
                     pokladnaMap[key].prijmy += parseFloat(book.celkove_prijmy || 0);
                     pokladnaMap[key].vydaje += parseFloat(book.celkove_vydaje || 0);
                   });
@@ -15105,6 +15169,25 @@ export default function StatsReportsPage() {
                   };
                   const donut1Opts = {
                     responsive: true, maintainAspectRatio: false,
+                    onHover: (event, elements) => {
+                      event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    },
+                    onClick: (event, elements) => {
+                      if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const cisloPokladny = p1Entries[index].cislo;
+                        // Nastavit filtr pouze na tuto pokladnu (zachovat LP kódy)
+                        const next = { ...cashbookEntriesFilters, pokladny: [cisloPokladny] };
+                        setCashbookEntriesFilters(next);
+                        setCashbookEntriesPage(1);
+                        try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_entries_filters`, JSON.stringify(next)); } catch (_) {}
+                        // Scroll na Detail položek
+                        setTimeout(() => {
+                          const el = document.getElementById('section-cashbookEntries');
+                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 100);
+                      }
+                    },
                     plugins: {
                       legend: { display: false },
                       datalabels: {
@@ -15178,6 +15261,25 @@ export default function StatsReportsPage() {
                   };
                   const donut2Opts = {
                     responsive: true, maintainAspectRatio: false,
+                    onHover: (event, elements) => {
+                      event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    },
+                    onClick: (event, elements) => {
+                      if (elements.length > 0) {
+                        const index = elements[0].index;
+                        const lpKod = lpLabels[index];
+                        // Nastavit filtr pouze na tento LP kód (zachovat pokladny)
+                        const next = { ...cashbookEntriesFilters, lp_kody: [lpKod] };
+                        setCashbookEntriesFilters(next);
+                        setCashbookEntriesPage(1);
+                        try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_entries_filters`, JSON.stringify(next)); } catch (_) {}
+                        // Scroll na Detail položek
+                        setTimeout(() => {
+                          const el = document.getElementById('section-cashbookEntries');
+                          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                        }, 100);
+                      }
+                    },
                     plugins: {
                       legend: { display: false },
                       datalabels: {
@@ -15205,6 +15307,7 @@ export default function StatsReportsPage() {
                           </SectionTitle>
                           <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.5rem' }}>
                             Podíl výdajů per pokladna — {obdobiLabel} — celkem {fmtCurrency(p1TotalV)}
+                            <span style={{ marginLeft: '0.5rem', color: '#3b82f6', fontWeight: 600 }}>• Kliknutím filtruj Seznam položek</span>
                           </div>
                           <ChartExpandBtn title="Celá obrazovka (ESC = zavřít)" onClick={() => setFullscreenChart({ title: `Výdaje podle pokladen — ${obdobiLabel}`, el: <Doughnut data={donut1Data} options={withFsFont(donut1Opts)} plugins={[ChartDataLabels]} /> })}>
                             <FontAwesomeIcon icon={faExpand} />
@@ -15240,7 +15343,10 @@ export default function StatsReportsPage() {
                           </SectionTitle>
                           <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '0.5rem' }}>
                             {hasLpData
-                              ? `Podíl výdajů per LP kód — z ${loadedCount} načtených měsíců — celkem ${fmtCurrency(lpTotalV)}`
+                              ? <>
+                                  {`Podíl výdajů per LP kód — z ${loadedCount} načtených měsíců — celkem ${fmtCurrency(lpTotalV)}`}
+                                  <span style={{ marginLeft: '0.5rem', color: '#3b82f6', fontWeight: 600 }}>• Kliknutím filtruj Seznam položek</span>
+                                </>
                               : loadedCount === 0
                                 ? 'Načítám položky…'
                                 : 'Žádné LP kódy v evidovaných zápisech'}
@@ -15420,9 +15526,42 @@ export default function StatsReportsPage() {
                               </span>
                             )}
                           </div>
+
+                          {/* Tlačítko vymazat filtry */}
+                          <button
+                            onClick={() => {
+                              const next = { pokladny: [], lp_kody: [], typ: 'all' };
+                              setCashbookEntriesFilters(next);
+                              setCashbookEntriesSearch('');
+                              setCashbookEntriesSearchActive('');
+                              setCashbookEntriesPage(1);
+                              try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_entries_filters`, JSON.stringify(next)); } catch (_) {}
+                            }}
+                            style={{ 
+                              padding: '0.5rem 1rem', 
+                              borderRadius: '6px', 
+                              border: '2px solid #dc2626', 
+                              background: '#fff', 
+                              color: '#dc2626', 
+                              fontSize: '0.875rem', 
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.4rem',
+                              transition: 'all 0.15s'
+                            }}
+                            onMouseEnter={(e) => { e.target.style.background = '#fef2f2'; e.target.style.borderColor = '#b91c1c'; }}
+                            onMouseLeave={(e) => { e.target.style.background = '#fff'; e.target.style.borderColor = '#dc2626'; }}
+                            title="Zrušit všechny filtry (zachová období)"
+                          >
+                            <FontAwesomeIcon icon={faXmark} style={{ fontSize: '0.9rem' }} />
+                            Vymazat filtry
+                          </button>
                         </div>
 
-                        {/* Řádek 2: Pokladny + LP kódy */}
+                        {/* Řádek 2: Pokladny + LP kódy + Typ */}
                         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
                           {/* Filtr pokladen */}
                           <div>
@@ -15465,6 +15604,27 @@ export default function StatsReportsPage() {
                               placeholder="Všechny LP kódy"
                             />
                           </div>
+
+                          {/* Filtr typu transakce */}
+                          <div>
+                            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '600', color: '#334155', marginBottom: '0.4rem' }}>
+                              Typ transakce:
+                            </label>
+                            <select
+                              value={cashbookEntriesFilters.typ || 'all'}
+                              onChange={(e) => {
+                                const next = { ...cashbookEntriesFilters, typ: e.target.value };
+                                setCashbookEntriesFilters(next);
+                                setCashbookEntriesPage(1);
+                                try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_entries_filters`, JSON.stringify(next)); } catch (_) {}
+                              }}
+                              style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', cursor: 'pointer', background: '#fff' }}
+                            >
+                              <option value="all">Všechny</option>
+                              <option value="prijem">Příjmy</option>
+                              <option value="vydaj">Výdaje</option>
+                            </select>
+                          </div>
                         </div>
                       </div>
 
@@ -15496,7 +15656,9 @@ export default function StatsReportsPage() {
                                   <ThRSort style={{ color: '#b91c1c', width: '100px' }} onClick={() => handleTableSort('cashbookEntries', 'castka_vydaj')}>
                                     Výdaj{sortIcon('cashbookEntries', 'castka_vydaj')}
                                   </ThRSort>
-                                  <Th style={{ width: '120px' }}>LP kódy</Th>
+                                  <ThSort style={{ width: '120px' }} onClick={() => handleTableSort('cashbookEntries', 'lp_kody')}>
+                                    LP kódy{sortIcon('cashbookEntries', 'lp_kody')}
+                                  </ThSort>
                                 </tr>
                               </thead>
                               <tbody>
@@ -15550,60 +15712,53 @@ export default function StatsReportsPage() {
                           {/* Paging */}
                           {totalPages > 1 && (
                             <div style={{ padding: '1rem 1.5rem', background: '#f8fafc', borderTop: '1px solid #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
-                              <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                                Stránka {cashbookEntriesPage} z {totalPages} • Položky {startIdx + 1}–{Math.min(endIdx, totalEntries)} z {totalEntries.toLocaleString('cs-CZ')}
+                              <div style={{ fontSize: '0.875rem', color: '#64748b' }}>
+                                Zobrazeno {startIdx + 1} - {Math.min(endIdx, totalEntries)} z {totalEntries.toLocaleString('cs-CZ')}
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                                <button
-                                  disabled={cashbookEntriesPage === 1}
-                                  onClick={() => setCashbookEntriesPage(1)}
-                                  style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === 1 ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === 1 ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
-                                >
-                                  ««
-                                </button>
-                                <button
-                                  disabled={cashbookEntriesPage === 1}
-                                  onClick={() => setCashbookEntriesPage(p => Math.max(1, p - 1))}
-                                  style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === 1 ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === 1 ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
-                                >
-                                  «
-                                </button>
-                                <select
-                                  value={cashbookEntriesPage}
-                                  onChange={(e) => setCashbookEntriesPage(Number(e.target.value))}
-                                  style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.75rem', cursor: 'pointer' }}
-                                >
-                                  {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                                    <option key={p} value={p}>Strana {p}</option>
-                                  ))}
-                                </select>
-                                <button
-                                  disabled={cashbookEntriesPage === totalPages}
-                                  onClick={() => setCashbookEntriesPage(p => Math.min(totalPages, p + 1))}
-                                  style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === totalPages ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
-                                >
-                                  »
-                                </button>
-                                <button
-                                  disabled={cashbookEntriesPage === totalPages}
-                                  onClick={() => setCashbookEntriesPage(totalPages)}
-                                  style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === totalPages ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.75rem' }}
-                                >
-                                  »»
-                                </button>
+                                <span style={{ fontSize: '0.875rem', color: '#64748b' }}>Zobrazit:</span>
                                 <select
                                   value={cashbookEntriesPageSize}
                                   onChange={(e) => {
                                     setCashbookEntriesPageSize(Number(e.target.value));
                                     setCashbookEntriesPage(1);
                                   }}
-                                  style={{ padding: '0.3rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.75rem', cursor: 'pointer' }}
+                                  style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', cursor: 'pointer' }}
                                 >
-                                  <option value={25}>25 / strana</option>
-                                  <option value={50}>50 / strana</option>
-                                  <option value={100}>100 / strana</option>
-                                  <option value={200}>200 / strana</option>
+                                  <option value={25}>25</option>
+                                  <option value={50}>50</option>
+                                  <option value={100}>100</option>
+                                  <option value={200}>200</option>
                                 </select>
+                                <button
+                                  disabled={cashbookEntriesPage === 1}
+                                  onClick={() => setCashbookEntriesPage(1)}
+                                  style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === 1 ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === 1 ? 'not-allowed' : 'pointer', fontSize: '0.875rem', color: '#334155' }}
+                                >
+                                  ««
+                                </button>
+                                <button
+                                  disabled={cashbookEntriesPage === 1}
+                                  onClick={() => setCashbookEntriesPage(p => Math.max(1, p - 1))}
+                                  style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === 1 ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === 1 ? 'not-allowed' : 'pointer', fontSize: '0.875rem', color: '#334155' }}
+                                >
+                                  ‹
+                                </button>
+                                <span style={{ fontSize: '0.875rem', color: '#64748b', padding: '0 0.5rem' }}>Stránka {cashbookEntriesPage} z {totalPages}</span>
+                                <button
+                                  disabled={cashbookEntriesPage === totalPages}
+                                  onClick={() => setCashbookEntriesPage(p => Math.min(totalPages, p + 1))}
+                                  style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === totalPages ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.875rem', color: '#334155' }}
+                                >
+                                  ›
+                                </button>
+                                <button
+                                  disabled={cashbookEntriesPage === totalPages}
+                                  onClick={() => setCashbookEntriesPage(totalPages)}
+                                  style={{ padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid #cbd5e1', background: cashbookEntriesPage === totalPages ? '#f1f5f9' : '#fff', cursor: cashbookEntriesPage === totalPages ? 'not-allowed' : 'pointer', fontSize: '0.875rem', color: '#334155' }}
+                                >
+                                  »»
+                                </button>
                               </div>
                             </div>
                           )}
