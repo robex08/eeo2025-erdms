@@ -1199,14 +1199,19 @@ const Tr = styled.tr`
   }
 
   /* ✅ FIX: Sticky první sloupec musí mít stejné pozadí jako zbytek řádku */
-  & td:first-child {
-    background: ${props => props.$bgColor || '#fff'} !important;
-    box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
-  }
-
-  &:nth-of-type(even) td:first-child {
-    background: ${props => props.$bgColor || '#f8fafc'} !important;
-  }
+  ${props => props.$bgColor ? `
+    & td:first-child {
+      background: ${props.$bgColor} !important;
+      box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+    }
+  ` : `
+    & td:first-child {
+      box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
+    }
+    &:nth-of-type(even) td:first-child {
+      background: #f8fafc !important;
+    }
+  `}
 
   &:hover td:first-child {
     background: #e2e8f0 !important;
@@ -4629,11 +4634,12 @@ export default function StatsReportsPage() {
   }, [cbMatchData]);
 
   // 🆕 Flat list všech položek ze všech pokladních knih - pro detail tabulku
+  // POUŽÍVÁ cashbookBooksToRender (už filtrované podle globálního fulltextu)
   const cashbookFlatEntries = useMemo(() => {
-    if (!cashbookData?.books) return [];
+    if (!cashbookBooksToRender || cashbookBooksToRender.length === 0) return [];
     
     const entries = [];
-    cashbookData.books.forEach(book => {
+    cashbookBooksToRender.forEach(book => {
       // Expandovat LP kódy z detail_items pokud existují
       const expandLpCodes = (entry) => {
         const codes = new Set();
@@ -4680,7 +4686,7 @@ export default function StatsReportsPage() {
     });
     
     return entries;
-  }, [cashbookData, cashbookEntries]);
+  }, [cashbookBooksToRender, cashbookEntries]);
 
   // 🆕 Dostupné unikátní pokladny a LP kódy pro filtry
   const cashbookAvailableFilters = useMemo(() => {
@@ -15500,18 +15506,21 @@ export default function StatsReportsPage() {
                                   const isVydaj = (entry.castka_vydaj || 0) > 0;
                                   const bgColor = isPrijem ? '#f0fdf4' : isVydaj ? '#fef2f2' : undefined;
                                   
+                                  // Normalizovaný term pro zvýraznění
+                                  const normSearchTerm = cashbookEntriesSearchActive ? removeDiacritics(cashbookEntriesSearchActive.toLowerCase().trim()) : null;
+                                  
                                   return (
                                   <Tr key={entry.id || idx} style={{ fontSize: '0.8rem' }} $bgColor={bgColor}>
                                     <Td>{entry.datum_zapisu ? new Date(entry.datum_zapisu).toLocaleDateString('cs-CZ') : '-'}</Td>
-                                    <Td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{entry.cislo_dokladu || '-'}</Td>
+                                    <Td style={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{cbHighlightText(entry.cislo_dokladu, normSearchTerm)}</Td>
                                     <Td style={{ fontSize: '0.75rem' }}>
-                                      <div style={{ fontWeight: '600', color: '#334155' }}>{entry.pokladna_nazev}</div>
+                                      <div style={{ fontWeight: '600', color: '#334155' }}>{cbHighlightText(entry.pokladna_nazev, normSearchTerm)}</div>
                                       <div style={{ fontSize: '0.7rem', color: '#94a3b8' }}>č. {entry.cislo_pokladny} • {entry.mesic}/{entry.rok}</div>
                                     </Td>
                                     <Td style={{ maxWidth: '300px', overflow: 'hidden', textOverflow: 'ellipsis' }} title={entry.obsah_zapisu}>
-                                      {entry.obsah_zapisu || '-'}
+                                      {cbHighlightText(entry.obsah_zapisu, normSearchTerm)}
                                     </Td>
-                                    <Td style={{ fontSize: '0.75rem' }}>{entry.komu_od_koho || '-'}</Td>
+                                    <Td style={{ fontSize: '0.75rem' }}>{cbHighlightText(entry.komu_od_koho, normSearchTerm)}</Td>
                                     <TdR style={{ color: entry.castka_prijem > 0 ? '#15803d' : '#94a3b8', fontWeight: entry.castka_prijem > 0 ? '600' : '400' }}>
                                       {entry.castka_prijem > 0 ? fmtCurrency(entry.castka_prijem) : '-'}
                                     </TdR>
