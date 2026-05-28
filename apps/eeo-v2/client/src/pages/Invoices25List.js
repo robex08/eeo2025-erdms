@@ -928,12 +928,31 @@ const TableRow = styled.tr`
     background: #ffffff;
   }
 
-  &[data-from-spisovka="true"] {
+  /* ❌ DISABLED: Faktury ze spisovky nejsou zvýrazněné - mají ikonu ve sloupci Příloha */
+  /* &[data-from-spisovka="true"] {
     background: #f0fdf4;
   }
 
   &[data-from-spisovka="true"]:hover {
     background: #dcfce7 !important;
+  } */
+
+  /* ✅ DOKONČENÁ - zelená */
+  &[data-dokoncena="true"] {
+    background: #f0fdf4 !important;
+  }
+
+  &[data-dokoncena="true"]:hover {
+    background: #dcfce7 !important;
+  }
+
+  /* ✅ ZAPLACENO - světlejší zelená */
+  &[data-zaplaceno="true"] {
+    background: #f7fee7 !important;
+  }
+
+  &[data-zaplaceno="true"]:hover {
+    background: #ecfccb !important;
   }
 
   &:hover {
@@ -4749,6 +4768,8 @@ const Invoices25List = () => {
                     data-storno={invoice.stav === 'STORNO' ? 'true' : 'false'}
                     data-inactive={!invoice.aktivni ? 'true' : 'false'}
                     data-from-spisovka={invoice.from_spisovka ? 'true' : 'false'}
+                    data-dokoncena={invoice.stav === 'DOKONCENA' ? 'true' : 'false'}
+                    data-zaplaceno={invoice.stav === 'ZAPLACENO' ? 'true' : 'false'}
                     className={idx % 2 === 0 ? 'row-even' : 'row-odd'}
                   >
                     {/* Kontrola řádku faktury - PRVNÍ SLOUPEC */}

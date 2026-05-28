@@ -35,8 +35,9 @@ const spinAnimation = keyframes`
 `;
 
 const SpinningIcon = styled.span`
-  display: inline-block;
-  animation: ${spinAnimation} 1s linear infinite;
+  display: inline-flex;
+  align-items: center;
+  animation: ${spinAnimation} 2s ease-in-out infinite;
 `;
 
 const PageContainer = styled.div`
@@ -4043,18 +4044,21 @@ const ProfilePage = () => {
                     opacity: isSavingSettings ? 0.7 : 1,
                     cursor: isSavingSettings ? 'not-allowed' : 'pointer',
                     boxShadow: '0 8px 16px rgba(59, 130, 246, 0.4)',
-                    border: 'none'
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
                   }}
                 >
                   {isSavingSettings ? (
                     <>
-                      <SpinningIcon><RefreshCw size={20} style={{ marginRight: '0.75rem' }} /></SpinningIcon>
-                      Ukládám a aplikuji...
+                      <SpinningIcon><RefreshCw size={20} /></SpinningIcon>
+                      <span style={{ marginLeft: '0.75rem' }}>Ukládám a aplikuji...</span>
                     </>
                   ) : (
                     <>
-                      <Save size={20} style={{ marginRight: '0.75rem' }} />
-                      Uložit a aplikovat nastavení
+                      <Save size={20} />
+                      <span style={{ marginLeft: '0.75rem' }}>Uložit a aplikovat nastavení</span>
                     </>
                   )}
                 </SaveButton>

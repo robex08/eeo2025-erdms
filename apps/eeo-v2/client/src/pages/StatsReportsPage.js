@@ -9435,26 +9435,31 @@ export default function StatsReportsPage() {
               <FontAwesomeIcon icon={faFilter} /> Filtry
             </PanelTitle>
             <FilterStack>
-              <FilterRow>
-                <FieldLabel>Datum od</FieldLabel>
-                <DatePicker
-                  fieldName="dateFrom"
-                  value={pendingFilters.dateFrom}
-                  onChange={v => handleFilterChange('dateFrom', v || '')}
-                  placeholder="Datum od"
-                  highlight={!!pendingFilters.dateFrom}
-                />
-              </FilterRow>
-              <FilterRow>
-                <FieldLabel>Datum do</FieldLabel>
-                <DatePicker
-                  fieldName="dateTo"
-                  value={pendingFilters.dateTo}
-                  onChange={v => handleFilterChange('dateTo', v || '')}
-                  placeholder="Datum do"
-                  highlight={!!pendingFilters.dateTo}
-                />
-              </FilterRow>
+              {/* Datum od a Datum do – skryté pro tab Pokladny (používá vlastní Období dropdown) */}
+              {activeTab !== 'cashbook' && (
+                <>
+                  <FilterRow>
+                    <FieldLabel>Datum od</FieldLabel>
+                    <DatePicker
+                      fieldName="dateFrom"
+                      value={pendingFilters.dateFrom}
+                      onChange={v => handleFilterChange('dateFrom', v || '')}
+                      placeholder="Datum od"
+                      highlight={!!pendingFilters.dateFrom}
+                    />
+                  </FilterRow>
+                  <FilterRow>
+                    <FieldLabel>Datum do</FieldLabel>
+                    <DatePicker
+                      fieldName="dateTo"
+                      value={pendingFilters.dateTo}
+                      onChange={v => handleFilterChange('dateTo', v || '')}
+                      placeholder="Datum do"
+                      highlight={!!pendingFilters.dateTo}
+                    />
+                  </FilterRow>
+                </>
+              )}
               <FilterRow>
                 <FieldLabel>Rok objednávek</FieldLabel>
                 <Input
