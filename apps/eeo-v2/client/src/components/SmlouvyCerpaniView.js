@@ -132,6 +132,14 @@ const SummaryLabel = styled.span`
   color: #94a3b8;
 `;
 
+const SummarySubLabel = styled.span`
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #94a3b8;
+  font-style: italic;
+  margin-top: -0.1rem;
+`;
+
 const SummaryValue = styled.span`
   font-size: 1.05rem;
   font-weight: 800;
@@ -685,14 +693,17 @@ export default function SmlouvyCerpaniView({ forceUnrestricted = false }) {
           </SummaryItem>
           <SummaryItem>
             <SummaryLabel>Celkový limit</SummaryLabel>
+            <SummarySubLabel>(jen smlouvy s finančním stropem)</SummarySubLabel>
             <SummaryValue $color="#1e40af">{fmtCurrency(totals.totalLimit)}</SummaryValue>
           </SummaryItem>
           <SummaryItem>
             <SummaryLabel>Vyčerpáno</SummaryLabel>
+            <SummarySubLabel>(smlouvy s finančním stropem)</SummarySubLabel>
             <SummaryValue $color="#10b981">{fmtCurrency(totals.totalCerpano)}</SummaryValue>
           </SummaryItem>
           <SummaryItem>
             <SummaryLabel>Zbývá</SummaryLabel>
+            <SummarySubLabel>(limit − vyčerpáno)</SummarySubLabel>
             <SummaryValue $color={totals.totalZbyva < 0 ? '#dc2626' : '#0f766e'}>
               {fmtCurrency(totals.totalZbyva)}
             </SummaryValue>
