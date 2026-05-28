@@ -190,12 +190,12 @@ const StatLabel = styled.div`
 `;
 
 const StatSubLabel = styled.div`
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 500;
-  color: ${props => props.$light ? 'rgba(255, 255, 255, 0.75)' : '#94a3b8'};
+  color: ${props => props.$light ? 'rgba(255, 255, 255, 0.7)' : '#94a3b8'};
   font-style: italic;
-  margin-top: 0.1rem;
-  margin-bottom: 0.25rem;
+  margin-top: -0.05rem;
+  line-height: 1.1;
 `;
 
 const StatValue = styled.div`
@@ -1642,7 +1642,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     return d < archiveCutoff;
   }, [archiveCutoff]);
 
-  const includeInactive = useMemo(() => !filters.stav || filters.stav === 'NEAKTIVNI', [filters.stav]);
+  // ✅ FIX: VŽDY false - API posílá jen aktivní smlouvy (show_inactive: false)
+  // Checkbox pro neaktivní smlouvy byl zrušen, filtrování je jen přes STAV dropdown
+  const includeInactive = false;
   const isDefaultActiveFilter = filters.stav === DEFAULT_STAV_FILTER;
   const isAllStavFilter = !filters.stav;
   const isArchiveOnlyFilter = filters.stav === ARCHIVE_STAV_FILTER;
@@ -1827,8 +1829,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         }
       }
 
+      // ✅ Neaktivní smlouvy zobrazit JEN když je vybraný filtr STAV = NEAKTIVNI
       const isInactive = !(smlouva.aktivni === 1 || smlouva.aktivni === true);
-      if (isInactive && !includeInactive && filters.stav !== 'NEAKTIVNI') {
+      if (isInactive && filters.stav !== 'NEAKTIVNI') {
         return false;
       }
 
@@ -1919,7 +1922,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         sensitivity: 'base'
       });
     });
-  }, [smlouvy, filters, columnFilters, includeInactive, isRestrictedCerpaniUser, isRowInUserUsek]);
+  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, isRowInUserUsek]);
 
   const filteredSmlouvy = useMemo(() => {
     if (!skupinaFilter) {
@@ -1974,10 +1977,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     });
     const vyprselychSmluv = aktivniSmlouvy.length - platneSmlouvy.length;
     
-    // ✅ PRAVIDLO: Kdyz se neukazuji neaktivni, pocitat jen aktivni smlouvy
-    const smlouvyProStatistiku = includeInactive
-      ? filteredSmlouvyBaseAll      // Zobrazují se i neaktivní → sečíst všechny zobrazené
-      : aktivniSmlouvy;       // Nezobrazují se neaktivní → sečíst jen kde aktivni!=0
+    // ✅ Vždy používáme jen aktivní smlouvy (API posílá show_inactive: false)
+    const smlouvyProStatistiku = aktivniSmlouvy;
     
     // ✅ CELKEM ČERPÁNO: Podle pravidla výše
     const celkemCerpano = smlouvyProStatistiku.reduce((sum, s) => sum + resolveCerpani(s).celkem, 0);
@@ -2036,7 +2037,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         return { pocet: arr.length, cerpano };
       })(),
     };
-  }, [filteredSmlouvyBaseAll, includeInactive, resolveCerpani]);
+  }, [filteredSmlouvyBaseAll, resolveCerpani]);
 
   // =============================================================================
   // HANDLERS
