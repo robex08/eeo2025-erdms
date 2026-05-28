@@ -5,7 +5,8 @@ import {
   faCog, faBell, faEnvelope, faSitemap, faTools, 
   faToggleOn, faSave, faUndo, faExclamationTriangle,
   faInfoCircle, faCodeBranch, faRss, faPlus, faTrash,
-  faUserClock, faEye, faShieldAlt, faKey, faUserSecret
+  faUserClock, faEye, faShieldAlt, faKey, faUserSecret,
+  faFileInvoice, faTimes
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -409,7 +410,18 @@ const AppSettings = () => {
     rss_refresh_interval: 15,
     // EntraID Authentication
     entra_enabled: '0',
-    auth_mode: 'local_only'
+    auth_mode: 'local_only',
+    // 🆕 INVOICE ACCOUNTANT EDIT SETTINGS
+    invoice_accountant_edit_enabled: false,
+    invoice_accountant_edit_vema_kod: true, // Default ON
+    invoice_accountant_edit_datum_doruceni: false,
+    invoice_accountant_edit_datum_vystaveni: false,
+    invoice_accountant_edit_datum_splatnosti: false,
+    invoice_accountant_edit_variabilni_symbol: false,
+    invoice_accountant_edit_typ_faktury: false,
+    invoice_accountant_edit_strediska: false,
+    invoice_accountant_edit_poznamka: false,
+    invoice_accountant_edit_prilohy: false
   });
   
   const [loading, setLoading] = useState(true);
@@ -744,90 +756,200 @@ const AppSettings = () => {
           )}
         </SettingCard>
         
-        <SettingsGrid>
-          {/* NOTIFIKACE */}
-          <SettingCard>
-            <CardHeader>
-              <CardIcon>
-                <FontAwesomeIcon icon={faBell} />
-              </CardIcon>
-              <div>
-                <CardTitle>Notifikace</CardTitle>
-                <StatusBadge $active={settings.notifications_enabled}>
-                  {settings.notifications_enabled ? 'Aktivní' : 'Vypnuto'}
-                </StatusBadge>
+        {/* 🧾 EDITACE FAKTUR PRO ÚČETNÍ/INVOICE_MANAGE */}
+        <SettingCard $fullWidth style={{marginBottom: '1.5rem'}}>
+          <CardHeader>
+            <CardIcon style={{background: '#f0fdfa', color: '#0d9488'}}>
+              <FontAwesomeIcon icon={faFileInvoice} />
+            </CardIcon>
+            <div>
+              <CardTitle>Rozšířená editace faktur pro účetní</CardTitle>
+              <StatusBadge $active={settings.invoice_accountant_edit_enabled}>
+                {settings.invoice_accountant_edit_enabled ? 'Aktivní' : 'Neaktivní'}
+              </StatusBadge>
+            </div>
+          </CardHeader>
+          
+          <WarningBox $type="info">
+            <FontAwesomeIcon icon={faInfoCircle} />
+            <div>
+              <strong>ℹ️ Toto nastavení platí pouze pro role ÚČETNÍ, HLAVNÍ ÚČETNÍ nebo uživatele s právem INVOICE_MANAGE</strong><br />
+              Povolí editaci vybraných polí faktur i po dokončení objednávky. Ostatní uživatelé mohou nadále přidávat přílohy dokud není faktura označena jako dokončená.
+            </div>
+          </WarningBox>
+          
+          <SettingRow>
+            <SettingInfo>
+              <SettingLabel>
+                <FontAwesomeIcon icon={faToggleOn} />
+                Povolit rozšířenou editaci pro účetní
+              </SettingLabel>
+              <SettingDescription>
+                Hlavní přepínač pro všechna níže uvedená pole. Pokud je vypnutý, účetní nemají žádná speciální oprávnění.
+              </SettingDescription>
+            </SettingInfo>
+            <ToggleButton
+              $active={settings.invoice_accountant_edit_enabled}
+              onClick={() => toggleSetting('invoice_accountant_edit_enabled')}
+            >
+              <ToggleThumb $active={settings.invoice_accountant_edit_enabled} />
+            </ToggleButton>
+          </SettingRow>
+          
+          {settings.invoice_accountant_edit_enabled && (
+            <>
+              <div style={{
+                marginTop: '1rem',
+                paddingTop: '1rem',
+                borderTop: '2px solid #e5e7eb'
+              }}>
+                <SettingLabel style={{marginBottom: '0.75rem', fontSize: '1rem', color: '#0d9488'}}>
+                  📋 Editovatelná pole faktury
+                </SettingLabel>
+                <SettingDescription style={{marginBottom: '1rem'}}>
+                  Vyberte, která pole mohou účetní editovat i u dokončených objednávek. Změny těchto polí neovlivní stav objednávky ani věcného břemene.
+                </SettingDescription>
+                
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(2, 1fr)',
+                  gap: '0.75rem'
+                }}>
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>VEMA číslo</SettingLabel>
+                      <SettingDescription>Externí identifikátor faktury</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_vema_kod}
+                      onClick={() => toggleSetting('invoice_accountant_edit_vema_kod')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_vema_kod} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>Datum doručení</SettingLabel>
+                      <SettingDescription>Datum doručení faktury</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_datum_doruceni}
+                      onClick={() => toggleSetting('invoice_accountant_edit_datum_doruceni')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_datum_doruceni} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>Datum vystavení</SettingLabel>
+                      <SettingDescription>Datum vystavení faktury</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_datum_vystaveni}
+                      onClick={() => toggleSetting('invoice_accountant_edit_datum_vystaveni')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_datum_vystaveni} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>Datum splatnosti</SettingLabel>
+                      <SettingDescription>Datum splatnosti faktury</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_datum_splatnosti}
+                      onClick={() => toggleSetting('invoice_accountant_edit_datum_splatnosti')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_datum_splatnosti} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>Variabilní symbol</SettingLabel>
+                      <SettingDescription>Číslo faktury / variabilní symbol</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_variabilni_symbol}
+                      onClick={() => toggleSetting('invoice_accountant_edit_variabilni_symbol')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_variabilni_symbol} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>Typ faktury</SettingLabel>
+                      <SettingDescription>BĚŽNÁ, ZÁLOHOVÁ, DOBROPIS, atd.</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_typ_faktury}
+                      onClick={() => toggleSetting('invoice_accountant_edit_typ_faktury')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_typ_faktury} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>Střediska</SettingLabel>
+                      <SettingDescription>Pouze u faktury, ne u věcného břemene</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_strediska}
+                      onClick={() => toggleSetting('invoice_accountant_edit_strediska')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_strediska} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px'}}>
+                    <SettingInfo>
+                      <SettingLabel>Poznámka</SettingLabel>
+                      <SettingDescription>Interní poznámka k faktuře</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_poznamka}
+                      onClick={() => toggleSetting('invoice_accountant_edit_poznamka')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_poznamka} />
+                    </ToggleButton>
+                  </SettingRow>
+                  
+                  <SettingRow style={{padding: '0.75rem', background: '#f9fafb', borderRadius: '8px', gridColumn: '1 / -1'}}>
+                    <SettingInfo>
+                      <SettingLabel>Přílohy objednávky</SettingLabel>
+                      <SettingDescription>Možnost přidávat, mazat a měnit klasifikaci příloh i po dokončení</SettingDescription>
+                    </SettingInfo>
+                    <ToggleButton
+                      $active={settings.invoice_accountant_edit_prilohy}
+                      onClick={() => toggleSetting('invoice_accountant_edit_prilohy')}
+                    >
+                      <ToggleThumb $active={settings.invoice_accountant_edit_prilohy} />
+                    </ToggleButton>
+                  </SettingRow>
+                </div>
               </div>
-            </CardHeader>
-            
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>
-                  <FontAwesomeIcon icon={faToggleOn} />
-                  Povolit notifikace
-                </SettingLabel>
-                <SettingDescription>
-                  Hlavní vypínač pro celý notifikační systém. Má vyšší prioritu než nastavení hierarchie a uživatelů.
-                </SettingDescription>
-              </SettingInfo>
-              <ToggleButton
-                $active={settings.notifications_enabled}
-                onClick={() => toggleSetting('notifications_enabled')}
-              >
-                <ToggleThumb $active={settings.notifications_enabled} />
-              </ToggleButton>
-            </SettingRow>
-            
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>
-                  <FontAwesomeIcon icon={faBell} />
-                  Zvoneček (in-app notifikace)
-                </SettingLabel>
-                <SettingDescription>
-                  Zobrazování notifikací ve zvoničku v horní liště aplikace.
-                </SettingDescription>
-              </SettingInfo>
-              <ToggleButton
-                $active={settings.notifications_bell_enabled}
-                onClick={() => toggleSetting('notifications_bell_enabled')}
-                disabled={!settings.notifications_enabled}
-              >
-                <ToggleThumb $active={settings.notifications_bell_enabled} />
-              </ToggleButton>
-            </SettingRow>
-            
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>
-                  <FontAwesomeIcon icon={faEnvelope} />
-                  E-mailové notifikace
-                </SettingLabel>
-                <SettingDescription>
-                  Zasílání notifikací na e-mailové adresy uživatelů.
-                </SettingDescription>
-              </SettingInfo>
-              <ToggleButton
-                $active={settings.notifications_email_enabled}
-                onClick={() => toggleSetting('notifications_email_enabled')}
-                disabled={!settings.notifications_enabled}
-              >
-                <ToggleThumb $active={settings.notifications_email_enabled} />
-              </ToggleButton>
-            </SettingRow>
-            
-            {!settings.notifications_enabled && (
-              <WarningBox $type="warning">
+              
+              <WarningBox $type="warning" style={{marginTop: '1rem'}}>
                 <FontAwesomeIcon icon={faExclamationTriangle} />
                 <div>
-                  <strong>Notifikace jsou globálně vypnuty!</strong><br />
-                  Uživatelé nebudou dostávat žádné upozornění ani e-maily.
+                  <strong>⚠️ Důležité upozornění</strong><br />
+                  • Změny těchto polí NEOVLIVNÍ stav objednávky nebo věcného břemene<br />
+                  • Ostatní uživatelé mohou stále přidávat přílohy dokud není faktura DOKONČENA<br />
+                  • Toto nastavení platí pouze pro účetní role (ÚČETNÍ, HLAVNÍ_ÚČETNÍ, INVOICE_MANAGE)
                 </div>
               </WarningBox>
-            )}
-          </SettingCard>
-          
-          {/* HIERARCHIE */}
-          <SettingCard $spanRows={2}>
+            </>
+          )}
+        </SettingCard>
+        
+        <SettingsGrid>
+          {/* HIERARCHIE WORKFLOW */}
+          <SettingCard>
             <CardHeader>
               <CardIcon>
                 <FontAwesomeIcon icon={faSitemap} />
@@ -929,200 +1051,7 @@ const AppSettings = () => {
             )}
           </SettingCard>
           
-          {/* ZASTUPOVÁNÍ */}
-          <SettingCard>
-            <CardHeader>
-              <CardIcon>
-                <FontAwesomeIcon icon={faUserClock} />
-              </CardIcon>
-              <div>
-                <CardTitle>Zastupování</CardTitle>
-                <StatusBadge $active={settings.substitution_enabled}>
-                  {settings.substitution_enabled ? 'Aktivní' : 'Vypnuto'}
-                </StatusBadge>
-              </div>
-            </CardHeader>
-            
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>
-                  <FontAwesomeIcon icon={faToggleOn} />
-                  Povolit zastupování
-                </SettingLabel>
-                <SettingDescription>
-                  Zapnutí/vypnutí systému zastupování uživatelů. Pokud je aktivní, uživatelé mohou nastavit zastupce, kteří budou vidět jejich data a mohou je zastupovat v definovaném období.
-                </SettingDescription>
-              </SettingInfo>
-              <ToggleButton
-                $active={settings.substitution_enabled}
-                onClick={() => toggleSetting('substitution_enabled')}
-              >
-                <ToggleThumb $active={settings.substitution_enabled} />
-              </ToggleButton>
-            </SettingRow>
-            
-            {settings.substitution_enabled && (
-              <WarningBox $type="info">
-                <FontAwesomeIcon icon={faInfoCircle} />
-                <div>
-                  <strong>Systém zastupování je aktivní</strong><br />
-                  Uživatelé mohou nastavit zastupce v sekci Můj profil → Zastupování. Zastupce bude mít rozšířenou viditelnost na data zastupovaného uživatele podle přidělených oprávnění (prohlížení, schvalování, potvrzování).
-                </div>
-              </WarningBox>
-            )}
-            
-            {!settings.substitution_enabled && (
-              <WarningBox $type="warning">
-                <FontAwesomeIcon icon={faExclamationTriangle} />
-                <div>
-                  <strong>Zastupování je vypnuto!</strong><br />
-                  Uživatelé nemohou nastavovat zastupce a aktivní zastupování nebude fungovat. Domovská stránka a ostatní části systému zobrazují pouze vlastní data uživatele.
-                </div>
-              </WarningBox>
-            )}
-          </SettingCard>
-          
-          {/* USER IMPERSONATION */}
-          <SettingCard>
-            <CardHeader>
-              <CardIcon>
-                <FontAwesomeIcon icon={faUserSecret} />
-              </CardIcon>
-              <div>
-                <CardTitle>Přepínání uživatelů (Impersonation)</CardTitle>
-                <StatusBadge $active={settings.user_impersonation_enabled}>
-                  {settings.user_impersonation_enabled ? 'Aktivní' : 'Vypnuto'}
-                </StatusBadge>
-              </div>
-            </CardHeader>
-            
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>
-                  <FontAwesomeIcon icon={faToggleOn} />
-                  Povolit impersonation
-                </SettingLabel>
-                <SettingDescription>
-                  Umožní superadmin a administrator účtům dočasně se přepnout na jiného uživatele a získat jeho práva. Po přepnutí vidí pouze menu a funkce daného uživatele.
-                </SettingDescription>
-              </SettingInfo>
-              <ToggleButton
-                $active={settings.user_impersonation_enabled}
-                onClick={() => toggleSetting('user_impersonation_enabled')}
-                disabled={!isSuperAdminOrAdmin}
-              >
-                <ToggleThumb $active={settings.user_impersonation_enabled} />
-              </ToggleButton>
-            </SettingRow>
-            
-            {!isSuperAdminOrAdmin && (
-              <WarningBox $type="warning">
-                <FontAwesomeIcon icon={faShieldAlt} />
-                <div>
-                  <strong>Pouze pro SUPERADMIN nebo ADMINISTRATOR</strong><br />
-                  Toto nastavení mohou měnit pouze uživatelé s rolí SUPERADMIN nebo ADMINISTRATOR z bezpečnostních důvodů.
-                </div>
-              </WarningBox>
-            )}
-            
-            {settings.user_impersonation_enabled && isSuperAdmin && (
-              <WarningBox $type="info">
-                <FontAwesomeIcon icon={faInfoCircle} />
-                <div>
-                  <strong>Impersonation je aktivní</strong><br />
-                  Superadmin a administrator vidí ikonu pro přepnutí v hlavičce aplikace (vedle kalendáře). Po přepnutí na jiného uživatele získají jeho práva a vidí pouze jeho menu. Všechny akce jsou zaznamenány v audit logu.
-                </div>
-              </WarningBox>
-            )}
-            
-            {!settings.user_impersonation_enabled && isSuperAdmin && (
-              <WarningBox $type="warning">
-                <FontAwesomeIcon icon={faExclamationTriangle} />
-                <div>
-                  <strong>Impersonation je vypnuto!</strong><br />
-                  Ikona pro přepínání uživatelů se nezobrazuje. Backend API odmítne všechny pokusy o impersonation s HTTP 403.
-                </div>
-              </WarningBox>
-            )}
-          </SettingCard>
-          
-          {/* ÚDRŽBA SYSTÉMU */}
-          <SettingCard $warning={settings.maintenance_mode}>
-            <CardHeader>
-              <CardIcon>
-                <FontAwesomeIcon icon={faTools} />
-              </CardIcon>
-              <div>
-                <CardTitle>Údržba systému</CardTitle>
-                <StatusBadge $active={!settings.maintenance_mode}>
-                  {settings.maintenance_mode ? 'Režim údržby' : 'Normální provoz'}
-                </StatusBadge>
-              </div>
-            </CardHeader>
-            
-            <SettingRow>
-              <SettingInfo>
-                <SettingLabel>
-                  <FontAwesomeIcon icon={faTools} />
-                  Režim údržby
-                </SettingLabel>
-                <SettingDescription>
-                  Aktivuje údržbový režim - přístup pouze pro SUPERADMIN nebo ADMINISTRATOR.
-                </SettingDescription>
-              </SettingInfo>
-              <ToggleButton
-                $active={settings.maintenance_mode}
-                onClick={() => toggleSetting('maintenance_mode')}
-                disabled={!isSuperAdminOrAdmin}
-              >
-                <ToggleThumb $active={settings.maintenance_mode} />
-              </ToggleButton>
-            </SettingRow>
-            
-            {settings.maintenance_mode && (
-              <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
-                <SettingInfo>
-                  <SettingLabel>
-                    <FontAwesomeIcon icon={faInfoCircle} />
-                    Zpráva pro uživatele
-                  </SettingLabel>
-                  <SettingDescription>
-                    Vlastní text, který uvidí uživatelé na údržbové stránce.
-                  </SettingDescription>
-                  <TextArea
-                    value={settings.maintenance_message}
-                    onChange={(e) => setSettings(prev => ({
-                      ...prev,
-                      maintenance_message: e.target.value
-                    }))}
-                    placeholder="Zadejte zprávu o údržbě..."
-                    disabled={!isSuperAdminOrAdmin}
-                  />
-                </SettingInfo>
-              </SettingRow>
-            )}
-            
-            {settings.maintenance_mode && (
-              <WarningBox $type="danger">
-                <FontAwesomeIcon icon={faExclamationTriangle} />
-                <div>
-                  <strong>VAROVÁNÍ: Režim údržby je aktivní!</strong><br />
-                  Pouze uživatelé s rolí SUPERADMIN mohou přistupovat do systému.
-                </div>
-              </WarningBox>
-            )}
-            
-            {!isSuperAdmin && (
-              <WarningBox $type="warning">
-                <FontAwesomeIcon icon={faExclamationTriangle} />
-                <div>
-                  Pouze SUPERADMIN může aktivovat režim údržby.
-                </div>
-              </WarningBox>
-            )}
-          </SettingCard>
-          
-          {/* RSS FEED NASTAVENÍ */}
+          {/* RSS KANÁLY */}
           <SettingCard>
             <CardHeader>
               <CardIcon style={{background: '#f9731618', color: '#f97316'}}>
@@ -1310,6 +1239,280 @@ const AppSettings = () => {
                   </SettingRow>
                 </div>
               </>
+            )}
+          </SettingCard>
+          
+          {/* NOTIFIKACE */}
+          <SettingCard>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faBell} />
+              </CardIcon>
+              <div>
+                <CardTitle>Notifikace</CardTitle>
+                <StatusBadge $active={settings.notifications_enabled}>
+                  {settings.notifications_enabled ? 'Aktivní' : 'Vypnuto'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faToggleOn} />
+                  Povolit notifikace
+                </SettingLabel>
+                <SettingDescription>
+                  Hlavní vypínač pro celý notifikační systém. Má vyšší prioritu než nastavení hierarchie a uživatelů.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.notifications_enabled}
+                onClick={() => toggleSetting('notifications_enabled')}
+              >
+                <ToggleThumb $active={settings.notifications_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faBell} />
+                  Zvoneček (in-app notifikace)
+                </SettingLabel>
+                <SettingDescription>
+                  Zobrazování notifikací ve zvoničku v horní liště aplikace.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.notifications_bell_enabled}
+                onClick={() => toggleSetting('notifications_bell_enabled')}
+                disabled={!settings.notifications_enabled}
+              >
+                <ToggleThumb $active={settings.notifications_bell_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faEnvelope} />
+                  E-mailové notifikace
+                </SettingLabel>
+                <SettingDescription>
+                  Zasílání notifikací na e-mailové adresy uživatelů.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.notifications_email_enabled}
+                onClick={() => toggleSetting('notifications_email_enabled')}
+                disabled={!settings.notifications_enabled}
+              >
+                <ToggleThumb $active={settings.notifications_email_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {!settings.notifications_enabled && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <div>
+                  <strong>Notifikace jsou globálně vypnuty!</strong><br />
+                  Uživatelé nebudou dostávat žádné upozornění ani e-maily.
+                </div>
+              </WarningBox>
+            )}
+          </SettingCard>
+          
+          {/* ZASTUPOVÁNÍ */}
+          <SettingCard>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faUserClock} />
+              </CardIcon>
+              <div>
+                <CardTitle>Zastupování</CardTitle>
+                <StatusBadge $active={settings.substitution_enabled}>
+                  {settings.substitution_enabled ? 'Aktivní' : 'Vypnuto'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faToggleOn} />
+                  Povolit zastupování
+                </SettingLabel>
+                <SettingDescription>
+                  Zapnutí/vypnutí systému zastupování uživatelů. Pokud je aktivní, uživatelé mohou nastavit zastupce, kteří budou vidět jejich data a mohou je zastupovat v definovaném období.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.substitution_enabled}
+                onClick={() => toggleSetting('substitution_enabled')}
+              >
+                <ToggleThumb $active={settings.substitution_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {settings.substitution_enabled && (
+              <WarningBox $type="info">
+                <FontAwesomeIcon icon={faInfoCircle} />
+                <div>
+                  <strong>Systém zastupování je aktivní</strong><br />
+                  Uživatelé mohou nastavit zastupce v sekci Můj profil → Zastupování. Zastupce bude mít rozšířenou viditelnost na data zastupovaného uživatele podle přidělených oprávnění (prohlížení, schvalování, potvrzování).
+                </div>
+              </WarningBox>
+            )}
+            
+            {!settings.substitution_enabled && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <div>
+                  <strong>Zastupování je vypnuto!</strong><br />
+                  Uživatelé nemohou nastavovat zastupce a aktivní zastupování nebude fungovat. Domovská stránka a ostatní části systému zobrazují pouze vlastní data uživatele.
+                </div>
+              </WarningBox>
+            )}
+          </SettingCard>
+          
+          {/* PŘEPÍNÁNÍ UŽIVATELŮ (IMPERSONATION) */}
+          <SettingCard>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faUserSecret} />
+              </CardIcon>
+              <div>
+                <CardTitle>Přepínání uživatelů (Impersonation)</CardTitle>
+                <StatusBadge $active={settings.user_impersonation_enabled}>
+                  {settings.user_impersonation_enabled ? 'Aktivní' : 'Vypnuto'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faToggleOn} />
+                  Povolit impersonation
+                </SettingLabel>
+                <SettingDescription>
+                  Umožní superadmin a administrator účtům dočasně se přepnout na jiného uživatele a získat jeho práva. Po přepnutí vidí pouze menu a funkce daného uživatele.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.user_impersonation_enabled}
+                onClick={() => toggleSetting('user_impersonation_enabled')}
+                disabled={!isSuperAdminOrAdmin}
+              >
+                <ToggleThumb $active={settings.user_impersonation_enabled} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {!isSuperAdminOrAdmin && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faShieldAlt} />
+                <div>
+                  <strong>Pouze pro SUPERADMIN nebo ADMINISTRATOR</strong><br />
+                  Toto nastavení mohou měnit pouze uživatelé s rolí SUPERADMIN nebo ADMINISTRATOR z bezpečnostních důvodů.
+                </div>
+              </WarningBox>
+            )}
+            
+            {settings.user_impersonation_enabled && isSuperAdmin && (
+              <WarningBox $type="info">
+                <FontAwesomeIcon icon={faInfoCircle} />
+                <div>
+                  <strong>Impersonation je aktivní</strong><br />
+                  Superadmin a administrator vidí ikonu pro přepnutí v hlavičce aplikace (vedle kalendáře). Po přepnutí na jiného uživatele získají jeho práva a vidí pouze jeho menu. Všechny akce jsou zaznamenány v audit logu.
+                </div>
+              </WarningBox>
+            )}
+            
+            {!settings.user_impersonation_enabled && isSuperAdmin && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <div>
+                  <strong>Impersonation je vypnuto!</strong><br />
+                  Ikona pro přepínání uživatelů se nezobrazuje. Backend API odmítne všechny pokusy o impersonation s HTTP 403.
+                </div>
+              </WarningBox>
+            )}
+          </SettingCard>
+          
+          {/* ÚDRŽBA SYSTÉMU */}
+          <SettingCard $warning={settings.maintenance_mode}>
+            <CardHeader>
+              <CardIcon>
+                <FontAwesomeIcon icon={faTools} />
+              </CardIcon>
+              <div>
+                <CardTitle>Údržba systému</CardTitle>
+                <StatusBadge $active={!settings.maintenance_mode}>
+                  {settings.maintenance_mode ? 'Režim údržby' : 'Normální provoz'}
+                </StatusBadge>
+              </div>
+            </CardHeader>
+            
+            <SettingRow>
+              <SettingInfo>
+                <SettingLabel>
+                  <FontAwesomeIcon icon={faTools} />
+                  Režim údržby
+                </SettingLabel>
+                <SettingDescription>
+                  Aktivuje údržbový režim - přístup pouze pro SUPERADMIN nebo ADMINISTRATOR.
+                </SettingDescription>
+              </SettingInfo>
+              <ToggleButton
+                $active={settings.maintenance_mode}
+                onClick={() => toggleSetting('maintenance_mode')}
+                disabled={!isSuperAdminOrAdmin}
+              >
+                <ToggleThumb $active={settings.maintenance_mode} />
+              </ToggleButton>
+            </SettingRow>
+            
+            {settings.maintenance_mode && (
+              <SettingRow style={{flexDirection: 'column', alignItems: 'stretch'}}>
+                <SettingInfo>
+                  <SettingLabel>
+                    <FontAwesomeIcon icon={faInfoCircle} />
+                    Zpráva pro uživatele
+                  </SettingLabel>
+                  <SettingDescription>
+                    Vlastní text, který uvidí uživatelé na údržbové stránce.
+                  </SettingDescription>
+                  <TextArea
+                    value={settings.maintenance_message}
+                    onChange={(e) => setSettings(prev => ({
+                      ...prev,
+                      maintenance_message: e.target.value
+                    }))}
+                    placeholder="Zadejte zprávu o údržbě..."
+                    disabled={!isSuperAdminOrAdmin}
+                  />
+                </SettingInfo>
+              </SettingRow>
+            )}
+            
+            {settings.maintenance_mode && (
+              <WarningBox $type="danger">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <div>
+                  <strong>VAROVÁNÍ: Režim údržby je aktivní!</strong><br />
+                  Pouze uživatelé s rolí SUPERADMIN mohou přistupovat do systému.
+                </div>
+              </WarningBox>
+            )}
+            
+            {!isSuperAdmin && (
+              <WarningBox $type="warning">
+                <FontAwesomeIcon icon={faExclamationTriangle} />
+                <div>
+                  Pouze SUPERADMIN může aktivovat režim údržby.
+                </div>
+              </WarningBox>
             )}
           </SettingCard>
           

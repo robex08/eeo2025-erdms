@@ -2170,6 +2170,9 @@ export default function InvoiceEvidencePage() {
   
   // 🔄 Flag pro sledování zda už bylo načteno z localStorage (zabránit opakovanému načítání)
   const [lsLoaded, setLsLoaded] = useState(false);
+  
+  // 🔄 Flag pro povolení auto-save do localStorage (zakázat během načítání z LS)
+  const [allowLSSave, setAllowLSSave] = useState(true);
 
   // 🔥 LP čerpání (Limitované přísliby) - např. [{lp_cislo: '6', lp_id: 6, castka: 50000, poznamka: ''}]
   const [lpCerpani, setLpCerpani] = useState([]);
@@ -2180,9 +2183,51 @@ export default function InvoiceEvidencePage() {
   useEffect(() => {
     lpCerpaniRef.current = lpCerpani;
   }, [lpCerpani]);
-  // ✅ Flag pro kontrolu zda POVOLIT auto-save do localStorage
-  // Když uživatel klikne "Zrušit úpravu", nastaví se na false aby se data znovu neuložila
-  const [allowLSSave, setAllowLSSave] = useState(true);
+  
+  // 🆕 GLOBAL SETTINGS - načíst nastavení pro editaci faktur účetními
+  const [globalSettings, setGlobalSettings] = useState({
+    invoice_accountant_edit_enabled: false,
+    invoice_accountant_edit_vema_kod: true, // Default ON
+    invoice_accountant_edit_datum_doruceni: false,
+    invoice_accountant_edit_datum_vystaveni: false,
+    invoice_accountant_edit_datum_splatnosti: false,
+    invoice_accountant_edit_variabilni_symbol: false,
+    invoice_accountant_edit_typ_faktury: false,
+    invoice_accountant_edit_strediska: false,
+    invoice_accountant_edit_poznamka: false,
+    invoice_accountant_edit_prilohy: false
+  });
+  
+  // Načíst globální nastavení při načtení komponenty
+  useEffect(() => {
+    const loadGlobalSettings = async () => {
+      try {
+        const { getGlobalSettings } = await import('../services/globalSettingsApi');
+        const settings = await getGlobalSettings(token, username);
+        
+        // ✅ Správná konverze z DB hodnot ('1'/'0' stringy) na boolean
+        const toBool = (val) => val === '1' || val === 1 || val === true;
+        
+        setGlobalSettings({
+          invoice_accountant_edit_enabled: toBool(settings.invoice_accountant_edit_enabled),
+          invoice_accountant_edit_vema_kod: settings.invoice_accountant_edit_vema_kod === undefined ? true : toBool(settings.invoice_accountant_edit_vema_kod), // Default ON
+          invoice_accountant_edit_datum_doruceni: toBool(settings.invoice_accountant_edit_datum_doruceni),
+          invoice_accountant_edit_datum_vystaveni: toBool(settings.invoice_accountant_edit_datum_vystaveni),
+          invoice_accountant_edit_datum_splatnosti: toBool(settings.invoice_accountant_edit_datum_splatnosti),
+          invoice_accountant_edit_variabilni_symbol: toBool(settings.invoice_accountant_edit_variabilni_symbol),
+          invoice_accountant_edit_typ_faktury: toBool(settings.invoice_accountant_edit_typ_faktury),
+          invoice_accountant_edit_strediska: toBool(settings.invoice_accountant_edit_strediska),
+          invoice_accountant_edit_poznamka: toBool(settings.invoice_accountant_edit_poznamka),
+          invoice_accountant_edit_prilohy: toBool(settings.invoice_accountant_edit_prilohy)
+        });
+      } catch (error) {
+        console.error('Chyba při načítání globálních nastavení:', error);
+        // Při chybě ponecháme defaultní hodnoty
+      }
+    };
+    
+    loadGlobalSettings();
+  }, [token, username]);
 
   // 📋 SPISOVKA METADATA - pomocná proměnná pro tracking (uloží se při drag & drop ze Spisovky)
   // Používáme useRef místo useState, aby se metadata neztrácela v closure callbacků
@@ -2308,6 +2353,7 @@ export default function InvoiceEvidencePage() {
   }, [isReadOnlyMode, originalFormData, isOrderStateBlockingInvoiceOperations, formData.vecna_spravnost_potvrzeno, hasPermission, hasAccountantRole]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO PŘÍLOHY - dostupné dokud faktura NENÍ DOKONČENÁ
+  // 🆕 + ÚČETNÍ/INVOICE_MANAGE může editovat přílohy i po dokončení objednávky (pokud povoleno v nastavení)
   const areAttachmentsEditable = useMemo(() => {
     // Pro nové faktury (editingInvoiceId je null) jsou přílohy VŽDY dostupné
     if (!editingInvoiceId) {
@@ -2318,8 +2364,13 @@ export default function InvoiceEvidencePage() {
     const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
     const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
     
+    // 🆕 ÚČETNÍ/INVOICE_MANAGE může editovat přílohy pokud je to povoleno v nastavení
+    const hasAccountantEditRight = (hasAccountantRole || hasInvoiceManage) &&
+                                     globalSettings.invoice_accountant_edit_enabled &&
+                                     globalSettings.invoice_accountant_edit_prilohy;
+    
     // Admini, INVOICE_MANAGE a ÚČETNÍ mohou vždy editovat (dokud není DOKONČENÁ)
-    if (isAdmin || hasInvoiceManage || hasAccountantRole) {
+    if (isAdmin || hasInvoiceManage || hasAccountantRole || hasAccountantEditRight) {
       // Pokud se data ještě nenačetla, předpokládáme že může editovat
       if (!originalFormData) {
         return true;
@@ -2340,35 +2391,180 @@ export default function InvoiceEvidencePage() {
     // Pro běžné uživatele: přílohy editovatelné dokud faktura NENÍ DOKONČENÁ
     // (konkrétní oprávnění pro delete/edit konkrétních příloh kontroluje backend)
     return originalFormData.stav !== 'DOKONCENA';
-  }, [editingInvoiceId, originalFormData, hasPermission, hasAccountantRole]);
+  }, [editingInvoiceId, originalFormData, hasPermission, hasAccountantRole, globalSettings]);
 
   // 🆕 SEPARÁTNÍ LOGIKA PRO POLE FA_VEMA_KOD - editovatelné pro INVOICE_EDIT/MANAGE/ADMIN dokud není DOKONČENÁ
   // ⚠️ VEMA kód je editovatelné NEZÁVISLE na isReadOnlyMode, protože INVOICE_EDIT může existovat
   // i společně s INVOICE_VIEW/INVOICE_MATERIAL_CORRECTNESS (které jinak zapínají readonly režim).
   // Pole je editovatelné i když nadřazená objednávka je v uzamčeném stavu (DOKONCENA apod.),
   // protože VEMA kód je pouze informativní externí identifikátor.
+  // 🆕 + ÚČETNÍ/INVOICE_MANAGE může editovat i po dokončení objednávky (pokud je to povoleno v nastavení)
   const isVemaKodEditable = useMemo(() => {
     // KONTROLOR_FAKTUR - plné readonly (nesmí editovat nic)
     if (hasInvoiceControlRole) return false;
-
-    // Kontrola oprávnění uživatele
-    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
-    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
-    const hasInvoiceEdit = hasPermission('INVOICE_EDIT');
-
-    // Pokud NEMÁ práva INVOICE_EDIT/MANAGE ani není ADMIN/ÚČETNÍ, nemůže editovat
-    if (!isAdmin && !hasInvoiceManage && !hasInvoiceEdit && !hasAccountantRole) {
-      return false;
-    }
 
     // Pro nové faktury VŽDY povolit editaci
     if (!originalFormData) {
       return true;
     }
 
-    // Pole fa_vema_kod je editovatelné dokud faktura NENÍ DOKONČENÁ
-    return originalFormData.stav !== 'DOKONCENA';
-  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole]);
+    // ❌ Dokončená faktura - NIKDO nesmí editovat
+    if (originalFormData.stav === 'DOKONCENA') {
+      return false;
+    }
+
+    // 🔒 POKUD JE ZAPNUTO ROZŠÍŘENÉ NASTAVENÍ PRO ÚČETNÍ:
+    // → Kontroluje se master toggle + konkrétní pole
+    // → Platí pro VŠECHNY role včetně ADMIN/SUPERADMIN
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      // Nastavení je zapnuto → kontrolujeme konkrétní pole
+      if (globalSettings.invoice_accountant_edit_vema_kod) {
+        // Pole je povoleno → mohou editovat ADMIN/SUPERADMIN/INVOICE_MANAGE/ÚČETNÍ
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      // Pole není povoleno → použijeme původní logiku
+      return isInvoiceEditable;
+    }
+    
+    // ⚠️ Nastavení NENÍ zapnuto → použijeme původní logiku (věcná správnost atd.)
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
+  
+  // 🆕 EDITACE DATUM DORUČENÍ - pro ÚČETNÍ/INVOICE_MANAGE (pokud povoleno v nastavení)
+  const isDatumDoruceniEditable = useMemo(() => {
+    if (hasInvoiceControlRole) return false;
+    if (!originalFormData) return true;
+    if (originalFormData.stav === 'DOKONCENA') return false;
+    
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      if (globalSettings.invoice_accountant_edit_datum_doruceni) {
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      return isInvoiceEditable;
+    }
+    
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
+  
+  // 🆕 EDITACE DATUM VYSTAVENÍ - pro ÚČETNÍ/INVOICE_MANAGE (pokud povoleno v nastavení)
+  const isDatumVystaveniEditable = useMemo(() => {
+    if (hasInvoiceControlRole) return false;
+    if (!originalFormData) return true;
+    if (originalFormData.stav === 'DOKONCENA') return false;
+    
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      if (globalSettings.invoice_accountant_edit_datum_vystaveni) {
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      return isInvoiceEditable;
+    }
+    
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
+  
+  // 🆕 EDITACE DATUM SPLATNOSTI - pro ÚČETNÍ/INVOICE_MANAGE (pokud povoleno v nastavení)
+  const isDatumSplatnostiEditable = useMemo(() => {
+    if (hasInvoiceControlRole) return false;
+    if (!originalFormData) return true;
+    if (originalFormData.stav === 'DOKONCENA') return false;
+    
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      if (globalSettings.invoice_accountant_edit_datum_splatnosti) {
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      return isInvoiceEditable;
+    }
+    
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
+  
+  // 🆕 EDITACE VARIABILNÍ SYMBOL - pro ÚČETNÍ/INVOICE_MANAGE (pokud povoleno v nastavení)
+  const isVariabilniSymbolEditable = useMemo(() => {
+    if (hasInvoiceControlRole) return false;
+    if (!originalFormData) return true;
+    if (originalFormData.stav === 'DOKONCENA') return false;
+    
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      if (globalSettings.invoice_accountant_edit_variabilni_symbol) {
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      return isInvoiceEditable;
+    }
+    
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
+  
+  // 🆕 EDITACE TYP FAKTURY - pro ÚČETNÍ/INVOICE_MANAGE (pokud povoleno v nastavení)
+  const isTypFakturyEditable = useMemo(() => {
+    if (hasInvoiceControlRole) return false;
+    if (!originalFormData) return true;
+    if (originalFormData.stav === 'DOKONCENA') return false;
+    
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      if (globalSettings.invoice_accountant_edit_typ_faktury) {
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      return isInvoiceEditable;
+    }
+    
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
+  
+  // 🆕 EDITACE STŘEDISKA - pro ÚČETNÍ/INVOICE_MANAGE (pokud povoleno v nastavení)
+  const isStrediskaEditable = useMemo(() => {
+    if (hasInvoiceControlRole) return false;
+    if (!originalFormData) return true;
+    if (originalFormData.stav === 'DOKONCENA') return false;
+    
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      if (globalSettings.invoice_accountant_edit_strediska) {
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      return isInvoiceEditable;
+    }
+    
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
+  
+  // 🆕 EDITACE POZNÁMKA - pro ÚČETNÍ/INVOICE_MANAGE (pokud povoleno v nastavení)
+  const isPoznamkaEditable = useMemo(() => {
+    if (hasInvoiceControlRole) return false;
+    if (!originalFormData) return true;
+    if (originalFormData.stav === 'DOKONCENA') return false;
+    
+    const isAdmin = hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR');
+    const hasInvoiceManage = hasPermission('INVOICE_MANAGE');
+    
+    if (globalSettings.invoice_accountant_edit_enabled) {
+      if (globalSettings.invoice_accountant_edit_poznamka) {
+        return isAdmin || hasInvoiceManage || hasAccountantRole;
+      }
+      return isInvoiceEditable;
+    }
+    
+    return isInvoiceEditable;
+  }, [originalFormData, hasPermission, hasAccountantRole, hasInvoiceControlRole, globalSettings, isInvoiceEditable]);
 
   // 🆕 Detekce změny POUZE pole fa_vema_kod (pro povolení uložení i v jinak readonly režimu
   // nebo když je nadřazená objednávka v zamčeném stavu).
@@ -4984,25 +5180,83 @@ export default function InvoiceEvidencePage() {
 
       let result;
       
-      // 🔍 DETEKCE ZMĚN: Pokud se změnily klíčové údaje faktury (částka, VS, datum doručení, datum vystavení),
+      // 🔍 DETEKCE ZMĚN: Pokud se změnily klíčové údaje faktury,
       // MUSÍME RESETOVAT věcnou správnost na 0 a vrátit workflow na VECNA_SPRAVNOST
+      // ⚠️ VÝJIMKA: Pole povolená v "rozšířené editaci pro účetní" NERESETUJÍ věcnou správnost
       let shouldResetVecnaSpravnost = false;
       
       if (editingInvoiceId && orderData && orderData.faktury) {
         const originalInvoice = orderData.faktury.find(inv => inv.id === editingInvoiceId);
         
         if (originalInvoice && formData.vecna_spravnost_potvrzeno === 1) {
-          // Kontrola změny klíčových polí faktury
-          const keyFieldsChanged = (
-            originalInvoice.fa_castka !== formData.fa_castka ||
-            originalInvoice.fa_cislo_vema !== formData.fa_cislo_vema ||
-            originalInvoice.fa_datum_doruceni !== formData.fa_datum_doruceni ||
-            originalInvoice.fa_datum_vystaveni !== formData.fa_datum_vystaveni ||
-            originalInvoice.fa_datum_splatnosti !== formData.fa_datum_splatnosti
-          );
+          // 🔓 Detekce změn pole: POUZE ta která NEJSOU povolena v accountant edit settings
+          // → Pokud je rozšířené nastavení zapnuto + konkrétní pole povoleno → NERESETUJE věcnou
           
-          if (keyFieldsChanged) {
+          const isAccountantEditEnabled = globalSettings.invoice_accountant_edit_enabled;
+          
+          const changedFields = [];
+          
+          // Částka - VŽDY kontrolujeme (není v accountant edit)
+          if (originalInvoice.fa_castka !== formData.fa_castka) {
+            changedFields.push('fa_castka');
+          }
+          
+          // Variabilní symbol (fa_cislo_vema) - kontrolujeme POKUD NENÍ povoleno v settings
+          if (originalInvoice.fa_cislo_vema !== formData.fa_cislo_vema) {
+            if (!isAccountantEditEnabled || !globalSettings.invoice_accountant_edit_variabilni_symbol) {
+              changedFields.push('fa_cislo_vema');
+            }
+          }
+          
+          // Datum doručení - kontrolujeme POKUD NENÍ povoleno v settings
+          if (originalInvoice.fa_datum_doruceni !== formData.fa_datum_doruceni) {
+            if (!isAccountantEditEnabled || !globalSettings.invoice_accountant_edit_datum_doruceni) {
+              changedFields.push('fa_datum_doruceni');
+            }
+          }
+          
+          // Datum vystavení - kontrolujeme POKUD NENÍ povoleno v settings
+          if (originalInvoice.fa_datum_vystaveni !== formData.fa_datum_vystaveni) {
+            if (!isAccountantEditEnabled || !globalSettings.invoice_accountant_edit_datum_vystaveni) {
+              changedFields.push('fa_datum_vystaveni');
+            }
+          }
+          
+          // Datum splatnosti - kontrolujeme POKUD NENÍ povoleno v settings
+          if (originalInvoice.fa_datum_splatnosti !== formData.fa_datum_splatnosti) {
+            if (!isAccountantEditEnabled || !globalSettings.invoice_accountant_edit_datum_splatnosti) {
+              changedFields.push('fa_datum_splatnosti');
+            }
+          }
+          
+          // Typ faktury - kontrolujeme POKUD NENÍ povoleno v settings
+          if (originalInvoice.fa_typ !== formData.fa_typ) {
+            if (!isAccountantEditEnabled || !globalSettings.invoice_accountant_edit_typ_faktury) {
+              changedFields.push('fa_typ');
+            }
+          }
+          
+          // Střediska - kontrolujeme POKUD NENÍ povoleno v settings
+          // fa_strediska_kod je JSON array, musíme porovnat jako stringy
+          const originalStrediska = JSON.stringify(originalInvoice.fa_strediska_kod || []);
+          const currentStrediska = JSON.stringify(formData.fa_strediska_kod || []);
+          if (originalStrediska !== currentStrediska) {
+            if (!isAccountantEditEnabled || !globalSettings.invoice_accountant_edit_strediska) {
+              changedFields.push('fa_strediska_kod');
+            }
+          }
+          
+          // Poznámka - kontrolujeme POKUD NENÍ povoleno v settings
+          if ((originalInvoice.fa_poznamka || '') !== (formData.fa_poznamka || '')) {
+            if (!isAccountantEditEnabled || !globalSettings.invoice_accountant_edit_poznamka) {
+              changedFields.push('fa_poznamka');
+            }
+          }
+          
+          // Pokud se změnila NĚJAKÁ pole která NEJSOU v accountant edit → RESETOVAT věcnou
+          if (changedFields.length > 0) {
             shouldResetVecnaSpravnost = true;
+            console.log('🔄 Resetování věcné správnosti kvůli změně polí:', changedFields);
           }
         }
       }
@@ -6846,7 +7100,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_doruceni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_doruceni: date }))}
-                  disabled={!isInvoiceEditable || loading}
+                  disabled={!isDatumDoruceniEditable || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_doruceni}
                 />
@@ -6867,7 +7121,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_vystaveni}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_vystaveni: date }))}
-                  disabled={!isInvoiceEditable || loading}
+                  disabled={!isDatumVystaveniEditable || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_vystaveni}
                 />
@@ -6888,7 +7142,7 @@ export default function InvoiceEvidencePage() {
                   value={formData.fa_datum_splatnosti}
                   onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_splatnosti: date }))}
-                  disabled={!isInvoiceEditable || loading}
+                  disabled={!isDatumSplatnostiEditable || loading}
                   placeholder="dd.mm.rrrr"
                   hasError={!!fieldErrors.fa_datum_splatnosti}
                 />
@@ -6914,7 +7168,7 @@ export default function InvoiceEvidencePage() {
                     // CustomSelect pro fa_typ volá onChange PŘÍMO s hodnotou (string), ne s eventem
                     setFormData(prev => ({ ...prev, fa_typ: value }));
                   }}
-                  disabled={!isInvoiceEditable || loading || invoiceTypesLoading}
+                  disabled={!isTypFakturyEditable || loading || invoiceTypesLoading}
                   options={invoiceTypesOptions}
                   placeholder={invoiceTypesLoading ? "Načítám typy faktur..." : "-- Vyberte typ --"}
                   required={true}
@@ -6946,19 +7200,19 @@ export default function InvoiceEvidencePage() {
                         e.preventDefault();
                         setFormData(prev => ({ ...prev, fa_cislo_vema: '' }));
                       }}
-                      disabled={!isInvoiceEditable}
+                      disabled={!isVariabilniSymbolEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
-                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
+                        color: isVariabilniSymbolEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isVariabilniSymbolEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
-                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
+                      onMouseEnter={(e) => { if (isVariabilniSymbolEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isVariabilniSymbolEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat variabilní symbol"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -6970,7 +7224,7 @@ export default function InvoiceEvidencePage() {
                   name="fa_cislo_vema"
                   value={formData.fa_cislo_vema}
                   onChange={handleInputChange}
-                  disabled={!isInvoiceEditable || loading}
+                  disabled={!isVariabilniSymbolEditable || loading}
                   onBlur={(e) => {
                     // Po ztrátě fokusu zvýraznit text tučně (pokud má hodnotu)
                     if (e.target.value) {
@@ -7248,19 +7502,19 @@ export default function InvoiceEvidencePage() {
                         e.preventDefault();
                         setFormData(prev => ({ ...prev, fa_strediska_kod: [] }));
                       }}
-                      disabled={!isInvoiceEditable}
+                      disabled={!isStrediskaEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
-                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
+                        color: isStrediskaEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isStrediskaEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
-                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
+                      onMouseEnter={(e) => { if (isStrediskaEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isStrediskaEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat střediska"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -7279,7 +7533,7 @@ export default function InvoiceEvidencePage() {
                   }}
                   options={strediskaOptions}
                   placeholder={strediskaLoading ? "Načítám střediska..." : "Vyberte střediska..."}
-                  disabled={!isInvoiceEditable || loading || strediskaLoading}
+                  disabled={!isStrediskaEditable || loading || strediskaLoading}
                 />
               </FieldGroup>
             </FieldRow>
@@ -7297,19 +7551,19 @@ export default function InvoiceEvidencePage() {
                         e.preventDefault();
                         setFormData(prev => ({ ...prev, fa_poznamka: '' }));
                       }}
-                      disabled={!isInvoiceEditable}
+                      disabled={!isPoznamkaEditable}
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: isInvoiceEditable ? '#9ca3af' : '#d1d5db',
-                        cursor: isInvoiceEditable ? 'pointer' : 'not-allowed',
+                        color: isPoznamkaEditable ? '#9ca3af' : '#d1d5db',
+                        cursor: isPoznamkaEditable ? 'pointer' : 'not-allowed',
                         padding: '0.25rem',
                         display: 'flex',
                         alignItems: 'center',
                         fontSize: '0.875rem'
                       }}
-                      onMouseEnter={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#6b7280'; }}
-                      onMouseLeave={(e) => { if (isInvoiceEditable) e.currentTarget.style.color = '#9ca3af'; }}
+                      onMouseEnter={(e) => { if (isPoznamkaEditable) e.currentTarget.style.color = '#6b7280'; }}
+                      onMouseLeave={(e) => { if (isPoznamkaEditable) e.currentTarget.style.color = '#9ca3af'; }}
                       title="Vymazat poznámku"
                     >
                       <FontAwesomeIcon icon={faTimes} />
@@ -7320,7 +7574,7 @@ export default function InvoiceEvidencePage() {
                   name="fa_poznamka"
                   value={formData.fa_poznamka}
                   onChange={handleInputChange}
-                  disabled={!isInvoiceEditable || loading}
+                  disabled={!isPoznamkaEditable || loading}
                   placeholder="Volitelná poznámka..."
                 />
               </FieldGroup>
