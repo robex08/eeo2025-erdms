@@ -1408,6 +1408,14 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     pouzit_v_obj_formu: ''
   });
 
+  // ✅ FIX: Pokud columnFilters.stav obsahuje speciální hodnotu (AKTIVNI_NEARCHIVNI, ARCHIVNI)
+  // resetuj ji - column filter STAV smí mít jen reálné DB stavy (AKTIVNI, UKONCENA, PRIPRAVOVANA)
+  useEffect(() => {
+    if (columnFilters.stav && !STAV_SMLOUVY_OPTIONS.some(opt => opt.value === columnFilters.stav)) {
+      setColumnFilters(prev => ({ ...prev, stav: '' }));
+    }
+  }, [columnFilters.stav]);
+
   // Filtr skupiny (klik na dlaždici): null = vše, 'se_stropem', 'bez_stropu'
   const [skupinaFilter, setSkupinaFilter] = useState(() => loadSkupinaFilterFromStorage());
 
@@ -1815,7 +1823,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         sensitivity: 'base'
       });
     });
-  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, isRowInUserUsek, passesArchiveVisibility]);
+  }, [smlouvy, filters, columnFilters, isRestrictedCerpaniUser, isRowInUserUsek, passesArchiveVisibility, isDefaultActiveFilter, isArchiveOnlyFilter]);
 
   const filteredSmlouvyBaseAll = useMemo(() => {
     const result = smlouvy.filter(smlouva => {
@@ -3394,7 +3402,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     onChange={(e) => setColumnFilters(prev => ({...prev, stav: e.target.value}))}
                   >
                     <option value="">Všechny</option>
-                    {availableStavOptions.map(opt => (
+                    {STAV_SMLOUVY_OPTIONS.map(opt => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </ColumnFilterSelect>
