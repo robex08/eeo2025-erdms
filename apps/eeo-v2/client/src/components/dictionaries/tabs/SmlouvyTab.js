@@ -189,6 +189,15 @@ const StatLabel = styled.div`
   color: ${props => props.$light ? 'rgba(255, 255, 255, 0.85)' : '#64748b'};
 `;
 
+const StatSubLabel = styled.div`
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: ${props => props.$light ? 'rgba(255, 255, 255, 0.75)' : '#94a3b8'};
+  font-style: italic;
+  margin-top: 0.1rem;
+  margin-bottom: 0.25rem;
+`;
+
 const StatValue = styled.div`
   font-size: 1.2rem;
   font-weight: 800;
@@ -3069,6 +3078,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           </StatIcon>
           <StatContent>
             <StatLabel $light>Celkový limit</StatLabel>
+            <StatSubLabel $light>(jen smlouvy s finančním stropem)</StatSubLabel>
             <StatValue $light>{statistics.celkem_limit.toLocaleString('cs-CZ')} Kč</StatValue>
           </StatContent>
         </StatCard>
@@ -3079,6 +3089,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           </StatIcon>
           <StatContent>
             <StatLabel $light>Dokončeno</StatLabel>
+            <StatSubLabel $light>(vyčerpáno ze smluv s finančním stropem)</StatSubLabel>
             <StatValue $light style={{ marginBottom: '0.5rem' }}>{statistics.celkem_cerpano.toLocaleString('cs-CZ')} Kč</StatValue>
           </StatContent>
         </StatCard>
@@ -3089,6 +3100,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           </StatIcon>
           <StatContent>
             <StatLabel $light>Zbývá</StatLabel>
+            <StatSubLabel $light>(limit − vyčerpáno)</StatSubLabel>
             <StatValue $light>{statistics.celkem_zbyva !== null ? statistics.celkem_zbyva.toLocaleString('cs-CZ') + ' Kč' : 'bez stropu'}</StatValue>
           </StatContent>
         </StatCard>
