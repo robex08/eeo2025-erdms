@@ -126,9 +126,12 @@ function validateAndParseOrderItems($input) {
                 'sazba_dph' => isset($item['sazba_dph']) ? intval($item['sazba_dph']) : 21,
                 'cena_s_dph' => isset($item['cena_s_dph']) ? floatval($item['cena_s_dph']) : 0.0,
                 // Zjednodušená lokalizace - 3 kódy + poznamka
-                'usek_kod' => isset($item['usek_kod']) && !empty($item['usek_kod']) ? trim($item['usek_kod']) : null,
-                'budova_kod' => isset($item['budova_kod']) && !empty($item['budova_kod']) ? trim($item['budova_kod']) : null,
-                'mistnost_kod' => isset($item['mistnost_kod']) && !empty($item['mistnost_kod']) ? trim($item['mistnost_kod']) : null,
+                // ⚠️ POZOR: nepoužívat empty() – v PHP je empty("0") === true, takže
+                // platný kód "0" by se nesprávně uložil jako NULL. Kontrolujeme proto
+                // explicitně oproti prázdnému řetězci po trim() s castem na string.
+                'usek_kod' => (isset($item['usek_kod']) && trim((string)$item['usek_kod']) !== '') ? trim((string)$item['usek_kod']) : null,
+                'budova_kod' => (isset($item['budova_kod']) && trim((string)$item['budova_kod']) !== '') ? trim((string)$item['budova_kod']) : null,
+                'mistnost_kod' => (isset($item['mistnost_kod']) && trim((string)$item['mistnost_kod']) !== '') ? trim((string)$item['mistnost_kod']) : null,
                 'poznamka' => null, // Bude sestaveno jako JSON níže
                 // LP na úrovni položky
                 'lp_id' => isset($item['lp_id']) && $item['lp_id'] > 0 ? intval($item['lp_id']) : null
