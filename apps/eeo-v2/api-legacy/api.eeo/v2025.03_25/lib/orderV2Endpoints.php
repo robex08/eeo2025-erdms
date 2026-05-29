@@ -1842,7 +1842,74 @@ function handle_order_v2_update($input, $config, $queries) {
         // ✅ NOTIFIKACE: Nyní se posílají CENTRÁLNĚ přes frontend triggerNotification()
         // Backend už neposílá automatické notifikace při změně workflow stavu.
         // Frontend explicitně volá /notifications/trigger s hierarchií.
-        error_log("Order V2 UPDATE: Notification check complete for order ID $order_id (handled by frontend)");
+        //
+        // 🆕 VÝJIMKA (BE re-trigger): pokud objednávka ZŮSTÁVÁ ve stavu "Ke schválení"
+        // a změnil se některý z příjemců schvalovacího workflow (příkazce / garant / schvalovatel),
+        // frontend tuhle situaci NEPOKRÝVÁ (jeho podmínka je "had==false && has==true").
+        // Bez tohoto bloku by nově dosazený příkazce/garant nedostal in-app ani email "Ke schválení".
+        $isStillPendingApproval = $hasWorkflowState($old_workflow_array, 'ODESLANA_KE_SCHVALENI')
+            && $hasWorkflowState($new_workflow_array, 'ODESLANA_KE_SCHVALENI')
+            && !$hasWorkflowState($new_workflow_array, 'CEKA_SE');
+
+        $oldPrikazce     = isset($existingOrder['prikazce_id'])        ? (string)$existingOrder['prikazce_id']        : '';
+        $oldGarant       = isset($existingOrder['garant_uzivatel_id']) ? (string)$existingOrder['garant_uzivatel_id'] : '';
+        $oldSchvalovatel = isset($existingOrder['schvalovatel_id'])    ? (string)$existingOrder['schvalovatel_id']    : '';
+
+        $newPrikazce     = isset($updatedOrder['prikazce_id'])        ? (string)$updatedOrder['prikazce_id']        : '';
+        $newGarant       = isset($updatedOrder['garant_uzivatel_id']) ? (string)$updatedOrder['garant_uzivatel_id'] : '';
+        $newSchvalovatel = isset($updatedOrder['schvalovatel_id'])    ? (string)$updatedOrder['schvalovatel_id']    : '';
+
+        $prikazceChanged     = ($oldPrikazce     !== $newPrikazce);
+        $garantChanged       = ($oldGarant       !== $newGarant);
+        $schvalovatelChanged = ($oldSchvalovatel !== $newSchvalovatel);
+
+        if ($isStillPendingApproval && ($prikazceChanged || $garantChanged || $schvalovatelChanged)) {
+            $changed_fields = array_values(array_filter(array(
+                $prikazceChanged     ? 'prikazce_id'        : null,
+                $garantChanged       ? 'garant_uzivatel_id' : null,
+                $schvalovatelChanged ? 'schvalovatel_id'    : null,
+            )));
+            error_log("Order V2 UPDATE [$order_id]: Approver changed while still pending approval "
+                . "(prikazce: $oldPrikazce→$newPrikazce, garant: $oldGarant→$newGarant, schvalovatel: $oldSchvalovatel→$newSchvalovatel) "
+                . "– re-triggering ORDER_PENDING_APPROVAL via hierarchy. Changed fields: " . implode(',', $changed_fields));
+
+            try {
+                // Minimální placeholderData – router si zbytek dotáhne z DB v notificationRouter()
+                $placeholderData = array(
+                    'order_number'       => isset($updatedOrder['cislo_objednavky']) ? $updatedOrder['cislo_objednavky']
+                                            : (isset($updatedOrder['ev_cislo']) ? $updatedOrder['ev_cislo'] : ''),
+                    'order_subject'      => isset($updatedOrder['predmet']) ? $updatedOrder['predmet'] : '',
+                    'prikazce_id'        => $newPrikazce,
+                    'garant_uzivatel_id' => $newGarant,
+                    'schvalovatel_id'    => $newSchvalovatel,
+                    'objednatel_id'      => isset($updatedOrder['objednatel_id']) ? $updatedOrder['objednatel_id'] : $current_user_id,
+                    'uzivatel_id'        => isset($updatedOrder['objednatel_id']) ? $updatedOrder['objednatel_id'] : $current_user_id,
+                    'supplier_name'      => isset($updatedOrder['dodavatel_nazev']) ? $updatedOrder['dodavatel_nazev'] : 'Neuvedeno',
+                    'max_price_with_dph' => isset($updatedOrder['max_cena_s_dph']) ? $updatedOrder['max_cena_s_dph'] : 0,
+                    'mimoradna_udalost'  => isset($updatedOrder['mimoradna_udalost']) ? (bool)$updatedOrder['mimoradna_udalost'] : false,
+                    'financovani_json'   => isset($updatedOrder['financovani'])
+                                            ? (is_string($updatedOrder['financovani']) ? $updatedOrder['financovani'] : json_encode($updatedOrder['financovani']))
+                                            : '',
+                    'trigger_reason'     => 'approver_changed_while_pending',
+                    'changed_fields'     => $changed_fields,
+                );
+
+                $routerResult = notificationRouter(
+                    $db,
+                    'ORDER_PENDING_APPROVAL',
+                    $order_id,
+                    $current_user_id,
+                    $placeholderData,
+                    false
+                );
+                error_log("Order V2 UPDATE [$order_id]: Re-trigger ORDER_PENDING_APPROVAL result: " . json_encode($routerResult));
+            } catch (Exception $reTrigErr) {
+                // Nekritická chyba – update objednávky nesmí spadnout kvůli notifikaci
+                error_log("Order V2 UPDATE [$order_id]: Re-trigger ORDER_PENDING_APPROVAL FAILED: " . $reTrigErr->getMessage());
+            }
+        }
+
+        error_log("Order V2 UPDATE: Notification check complete for order ID $order_id (handled by frontend; BE re-trigger for approver changes only)");
         
         // Sestavení zprávy o úspěšné aktualizaci
         $message_parts = array('Objednávka byla úspěšně aktualizována');

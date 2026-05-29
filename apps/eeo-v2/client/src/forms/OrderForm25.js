@@ -10537,9 +10537,10 @@ function OrderForm25() {
               cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
               sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
               cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-              usek_kod: polozka.usek_kod || null,
-              budova_kod: polozka.budova_kod || null,
-              mistnost_kod: polozka.mistnost_kod || null,
+              // 🏢 Lokalizace: prázdný string/undefined/null → NULL, ale "0" a 0 jsou platné hodnoty (musí se zachovat)
+              usek_kod: (polozka.usek_kod !== '' && polozka.usek_kod !== null && polozka.usek_kod !== undefined) ? String(polozka.usek_kod) : null,
+              budova_kod: (polozka.budova_kod !== '' && polozka.budova_kod !== null && polozka.budova_kod !== undefined) ? String(polozka.budova_kod) : null,
+              mistnost_kod: (polozka.mistnost_kod !== '' && polozka.mistnost_kod !== null && polozka.mistnost_kod !== undefined) ? String(polozka.mistnost_kod) : null,
               poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
               // 🎯 LP kód na úrovni položky
               lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
@@ -10789,9 +10790,10 @@ function OrderForm25() {
               sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
               cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
               // 🏢 Volitelná lokalizace (úsek, budova, místnost, poznámka)
-              usek_kod: polozka.usek_kod || null,
-              budova_kod: polozka.budova_kod || null,
-              mistnost_kod: polozka.mistnost_kod || null,
+              // Prázdný string/undefined/null → NULL, ale "0" a 0 jsou platné hodnoty (musí se zachovat)
+              usek_kod: (polozka.usek_kod !== '' && polozka.usek_kod !== null && polozka.usek_kod !== undefined) ? String(polozka.usek_kod) : null,
+              budova_kod: (polozka.budova_kod !== '' && polozka.budova_kod !== null && polozka.budova_kod !== undefined) ? String(polozka.budova_kod) : null,
+              mistnost_kod: (polozka.mistnost_kod !== '' && polozka.mistnost_kod !== null && polozka.mistnost_kod !== undefined) ? String(polozka.mistnost_kod) : null,
               poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
               // 🎯 LP kód na úrovni položky
               lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
@@ -10812,9 +10814,10 @@ function OrderForm25() {
             cena_bez_dph: parseFloat((polozka.cena_bez_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
             sazba_dph: polozka.sazba_dph !== undefined && polozka.sazba_dph !== null ? parseInt(polozka.sazba_dph) : 21,
             cena_s_dph: parseFloat((polozka.cena_s_dph || '0').toString().replace(/[^\d,.-]/g, '').replace(',', '.')) || 0,
-            usek_kod: polozka.usek_kod || null,
-            budova_kod: polozka.budova_kod || null,
-            mistnost_kod: polozka.mistnost_kod || null,
+            // 🏢 Lokalizace: prázdný string/undefined/null → NULL, ale "0" a 0 jsou platné hodnoty (musí se zachovat)
+            usek_kod: (polozka.usek_kod !== '' && polozka.usek_kod !== null && polozka.usek_kod !== undefined) ? String(polozka.usek_kod) : null,
+            budova_kod: (polozka.budova_kod !== '' && polozka.budova_kod !== null && polozka.budova_kod !== undefined) ? String(polozka.budova_kod) : null,
+            mistnost_kod: (polozka.mistnost_kod !== '' && polozka.mistnost_kod !== null && polozka.mistnost_kod !== undefined) ? String(polozka.mistnost_kod) : null,
             poznamka_lokalizace: polozka.poznamka || null,  // ✅ Poslat jako plain text (backend sestaví JSON)
             lp_id: polozka.lp_id ? parseInt(polozka.lp_id) : null
           };
