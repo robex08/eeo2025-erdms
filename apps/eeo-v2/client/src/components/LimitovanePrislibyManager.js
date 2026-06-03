@@ -1315,6 +1315,141 @@ const TooltipTable = styled.table`
   }
 `;
 
+const OrderTooltipContent = styled(TooltipContent)`
+  min-width: 360px;
+  max-width: 520px;
+  background: linear-gradient(180deg, #111827 0%, #0f172a 100%);
+  border: 1px solid rgba(148,163,184,0.25);
+`;
+
+const OrderTooltipHeader = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+`;
+
+const OrderTooltipTitle = styled.div`
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.01em;
+`;
+
+const OrderTooltipSubtitle = styled.div`
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.55);
+`;
+
+const OrderTooltipBadge = styled.span`
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border: 1px solid;
+
+  ${props => {
+    if (props.$variant === 'fact') {
+      return `
+        background: rgba(16, 185, 129, 0.15);
+        color: #a7f3d0;
+        border-color: rgba(16, 185, 129, 0.5);
+      `;
+    }
+    return `
+      background: rgba(59, 130, 246, 0.15);
+      color: #bfdbfe;
+      border-color: rgba(59, 130, 246, 0.5);
+    `;
+  }}
+`;
+
+const OrderTooltipSection = styled.div`
+  padding: 0.6rem 0;
+  border-top: 1px solid rgba(255,255,255,0.12);
+`;
+
+const OrderTooltipSectionTitle = styled.div`
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255,255,255,0.6);
+  margin-bottom: 0.45rem;
+`;
+
+const OrderTooltipChips = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+`;
+
+const OrderTooltipChip = styled.span`
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  border: 1px solid;
+  text-transform: uppercase;
+
+  ${props => {
+    if (props.$variant === 'current') {
+      return `
+        background: rgba(16, 185, 129, 0.2);
+        color: #a7f3d0;
+        border-color: rgba(16, 185, 129, 0.55);
+      `;
+    }
+    if (props.$variant === 'other') {
+      return `
+        background: rgba(245, 158, 11, 0.18);
+        color: #fde68a;
+        border-color: rgba(245, 158, 11, 0.5);
+      `;
+    }
+    if (props.$variant === 'missing') {
+      return `
+        background: rgba(148, 163, 184, 0.2);
+        color: #e2e8f0;
+        border-color: rgba(148, 163, 184, 0.5);
+      `;
+    }
+    return `
+      background: rgba(59, 130, 246, 0.2);
+      color: #bfdbfe;
+      border-color: rgba(59, 130, 246, 0.5);
+    `;
+  }}
+`;
+
+const OrderTooltipRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.2rem 0;
+  font-size: 0.78rem;
+`;
+
+const OrderTooltipKey = styled.span`
+  color: rgba(255,255,255,0.7);
+`;
+
+const OrderTooltipValue = styled.span`
+  font-weight: 700;
+  color: #ffffff;
+  white-space: nowrap;
+`;
+
+const OrderTooltipMuted = styled.div`
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.55);
+`;
+
 const TooltipFooter = styled.div`
   margin-top: 0.75rem;
   padding-top: 0.5rem;
@@ -2739,6 +2874,167 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     return <JezevcikBarWithTooltip lp={lp} getJezevcikState={getJezevcikState} />;
   }, [getJezevcikState]);
 
+  const OrderAmountWithTooltip = ({ ord, lpData, currentLpId, currentLpCode, children }) => {
+    const [isHovered, setIsHovered] = React.useState(false);
+    const containerRef = React.useRef(null);
+
+    const normalizeLpId = (value) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? num : null;
+    };
+
+    let financovani = null;
+    if (ord.financovani) {
+      if (typeof ord.financovani === 'string') {
+        try {
+          financovani = JSON.parse(ord.financovani);
+        } catch (e) {
+          financovani = null;
+        }
+      } else if (typeof ord.financovani === 'object') {
+        financovani = ord.financovani;
+      }
+    }
+
+    const lpKody = Array.isArray(financovani?.lp_kody) ? financovani.lp_kody : [];
+    const normalizedCurrentId = normalizeLpId(currentLpId);
+    const plannedLp = lpKody.map((lpIdRaw) => {
+      const lpId = normalizeLpId(lpIdRaw);
+      const lpRow = lpData.find(l => normalizeLpId(l.lp_master_id || l.id) === lpId);
+      const code = lpRow ? lpRow.cislo_lp : (lpId ? `LP#${lpId}` : `LP#${lpIdRaw}`);
+      return { id: lpId, code };
+    }).filter(p => p.code);
+
+    const plannedCodes = plannedLp.map(p => p.code);
+    const otherPlannedCodes = plannedLp
+      .filter(p => normalizedCurrentId == null || p.id !== normalizedCurrentId)
+      .map(p => p.code);
+
+    const faktury = Array.isArray(ord.faktury) ? ord.faktury : [];
+    const fakturyVecna = faktury.filter(fa => fa.vecna_spravnost_potvrzeno);
+    const fakturyBezVecne = faktury.filter(fa => !fa.vecna_spravnost_potvrzeno);
+    const fakturyThisLp = fakturyVecna.filter(fa => fa.lp_castka !== null && fa.lp_castka !== undefined && !fa.ma_jiny_lp);
+    const fakturyOtherLp = fakturyVecna.filter(fa => fa.ma_jiny_lp);
+    const fakturyBezLp = fakturyVecna.filter(fa => fa.lp_castka === null || fa.lp_castka === undefined);
+
+    const sumaThisLp = fakturyThisLp.reduce((sum, fa) => sum + (fa.lp_castka || 0), 0);
+
+    return (
+      <span
+        ref={containerRef}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+        style={{ display: 'inline-flex', alignItems: 'center', cursor: 'help', borderBottom: '1px dotted rgba(71,85,105,0.8)' }}
+      >
+        {children}
+        <TooltipPortal targetRef={containerRef} isVisible={isHovered}>
+          <OrderTooltipContent $isVisible={isHovered}>
+            <OrderTooltipHeader>
+              <div>
+                <OrderTooltipTitle>Plánováno / čerpáno LP</OrderTooltipTitle>
+                <OrderTooltipSubtitle>Objednávka: {ord.cislo_objednavky || '—'}</OrderTooltipSubtitle>
+              </div>
+              <OrderTooltipBadge $variant={ord.ma_lp_rozpis ? 'fact' : 'plan'}>
+                {ord.ma_lp_rozpis ? 'Fakturace' : 'Plán'}
+              </OrderTooltipBadge>
+            </OrderTooltipHeader>
+
+            <OrderTooltipSection>
+              <OrderTooltipSectionTitle>Plánované LP kódy (objednávka)</OrderTooltipSectionTitle>
+              <OrderTooltipChips>
+                {plannedCodes.length > 0 ? (
+                  plannedLp.map((lpItem, idx) => (
+                    <OrderTooltipChip
+                      key={`${lpItem.code}-${idx}`}
+                      $variant={lpItem.id === normalizedCurrentId ? 'current' : 'planned'}
+                    >
+                      {lpItem.code}
+                    </OrderTooltipChip>
+                  ))
+                ) : (
+                  <OrderTooltipMuted>Neurčeno</OrderTooltipMuted>
+                )}
+              </OrderTooltipChips>
+              <OrderTooltipRow>
+                <OrderTooltipKey>Plánovaná částka LP:</OrderTooltipKey>
+                <OrderTooltipValue>{formatAmount(ord.planovana_castka_lp || 0)}</OrderTooltipValue>
+              </OrderTooltipRow>
+              {ord.planovana_castka_polozky > 0 && (
+                <OrderTooltipRow>
+                  <OrderTooltipKey>Položky s LP:</OrderTooltipKey>
+                  <OrderTooltipValue>{formatAmount(ord.planovana_castka_polozky)}</OrderTooltipValue>
+                </OrderTooltipRow>
+              )}
+            </OrderTooltipSection>
+
+            <OrderTooltipSection>
+              <OrderTooltipSectionTitle>Fakturace (věcná správnost)</OrderTooltipSectionTitle>
+              {fakturyVecna.length === 0 ? (
+                <OrderTooltipMuted>Žádná potvrzená faktura</OrderTooltipMuted>
+              ) : (
+                <>
+                  <OrderTooltipChips>
+                    {fakturyThisLp.length > 0 && (
+                      <OrderTooltipChip $variant="current">
+                        {currentLpCode || 'Tento LP'}
+                      </OrderTooltipChip>
+                    )}
+                    {fakturyOtherLp.length > 0 && (
+                      (otherPlannedCodes.length > 0 ? otherPlannedCodes : ['Jiné LP']).map((code, idx) => (
+                        <OrderTooltipChip key={`other-${code}-${idx}`} $variant="other">
+                          {code}
+                        </OrderTooltipChip>
+                      ))
+                    )}
+                    {fakturyBezLp.length > 0 && (
+                      <OrderTooltipChip $variant="missing">Bez LP</OrderTooltipChip>
+                    )}
+                  </OrderTooltipChips>
+                  {fakturyThisLp.length > 0 && (
+                    <OrderTooltipRow>
+                      <OrderTooltipKey>Čerpáno pro tento LP:</OrderTooltipKey>
+                      <OrderTooltipValue>{formatAmount(sumaThisLp)} ({fakturyThisLp.length}×)</OrderTooltipValue>
+                    </OrderTooltipRow>
+                  )}
+                  {fakturyOtherLp.length > 0 && (
+                    <OrderTooltipRow>
+                      <OrderTooltipKey>Faktury pro jiné LP:</OrderTooltipKey>
+                      <OrderTooltipValue>{fakturyOtherLp.length}×</OrderTooltipValue>
+                    </OrderTooltipRow>
+                  )}
+                  {fakturyBezLp.length > 0 && (
+                    <OrderTooltipRow>
+                      <OrderTooltipKey>Faktury bez LP:</OrderTooltipKey>
+                      <OrderTooltipValue>{fakturyBezLp.length}×</OrderTooltipValue>
+                    </OrderTooltipRow>
+                  )}
+                </>
+              )}
+              {fakturyBezVecne.length > 0 && (
+                <OrderTooltipRow>
+                  <OrderTooltipKey>Bez věcné správnosti:</OrderTooltipKey>
+                  <OrderTooltipValue>{fakturyBezVecne.length}×</OrderTooltipValue>
+                </OrderTooltipRow>
+              )}
+            </OrderTooltipSection>
+
+            <OrderTooltipSection>
+              <OrderTooltipSectionTitle>Souhrn</OrderTooltipSectionTitle>
+              <OrderTooltipRow>
+                <OrderTooltipKey>Celková cena obj.:</OrderTooltipKey>
+                <OrderTooltipValue>{formatAmount(ord.max_cena_s_dph || 0)}</OrderTooltipValue>
+              </OrderTooltipRow>
+              <OrderTooltipRow>
+                <OrderTooltipKey>Faktury celkem:</OrderTooltipKey>
+                <OrderTooltipValue>{formatAmount(ord.suma_faktur || 0)} ({ord.pocet_faktur || 0}×)</OrderTooltipValue>
+              </OrderTooltipRow>
+            </OrderTooltipSection>
+          </OrderTooltipContent>
+        </TooltipPortal>
+      </span>
+    );
+  };
+
   // Toggle sekce (s ukládáním do localStorage)
   const toggleSection = (key) => {
     setCollapsedSections(prev => {
@@ -3257,7 +3553,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('datum')}>Datum{sortIcon('datum')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('dodavatel')}>Dodavatel{sortIcon('dodavatel')}</th>
-                          <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('cena')}>Plánováno (LP){sortIcon('cena')}</th>
+                          <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('cena')}>Plánováno / Čerpáno LP{sortIcon('cena')}</th>
                           <th style={{ ...thBase, textAlign: 'right' }} onClick={() => toggleSort('faktury')}>Faktury{sortIcon('faktury')}</th>
                         </tr>
                       </thead>
@@ -3303,53 +3599,60 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                             <td style={{ padding: '0.25rem 0.5rem', color: '#374151', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ord.dodavatel_nazev || '—'}</td>
                             <td 
                               style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}
-                              title={(() => {
-                                const parts = [];
-                                if (ord.suma_lp_z_faktur > 0) {
-                                  parts.push(`✅ LP rozpis z faktur: ${formatAmount(ord.suma_lp_z_faktur)}`);
-                                }
-                                if (ord.planovana_castka_polozky > 0) {
-                                  parts.push(`📋 Položky s LP: ${formatAmount(ord.planovana_castka_polozky)}`);
-                                }
-                                parts.push(`💰 Celková cena obj.: ${formatAmount(ord.max_cena_s_dph || 0)}`);
-                                return parts.join('\n');
-                              })()}
                             >
-                              {formatAmount(ord.planovana_castka_lp || ord.max_cena_s_dph || 0)}
+                              <OrderAmountWithTooltip
+                                ord={ord}
+                                lpData={lpData}
+                                currentLpId={lpKey}
+                                currentLpCode={lp.cislo_lp}
+                              >
+                                {formatAmount(ord.planovana_castka_lp || ord.max_cena_s_dph || 0)}
+                              </OrderAmountWithTooltip>
                             </td>
                             <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontSize: '0.75rem', color: '#6b7280' }}>
                               {ord.pocet_faktur > 0 ? `${ord.pocet_faktur}× / ${formatAmount(ord.suma_faktur || 0)}` : '—'}
                             </td>
                           </tr>
                           {ord.faktury?.length > 0 && ord.faktury.map((fa, fi) => {
-                            const faHasLP = fa.lp_castka != null && fa.lp_castka > 0;
+                            // 🔧 FIX: Rozlišovat pomocí backend flagu ma_jiny_lp
+                            // - lp_castka === null → Faktura NEMÁ vůbec LP rozpis → "BEZ LP"
+                            // - ma_jiny_lp === true → Faktura NEMÁ záznam pro tento LP (čerpá z jiného) → "JINÉ LP"
+                            // - lp_castka === 0 && ma_jiny_lp === false → Má rozpis s 0 Kč PRO tento LP → normální zobrazení
+                            // - lp_castka > 0 → Faktura má LP rozpis pro aktuální LP → zelená
+                            const faHasLP = fa.lp_castka !== null && fa.lp_castka !== undefined;
+                            const faHasPositiveLP = faHasLP && fa.lp_castka > 0;
+                            const faHasOtherLP = fa.ma_jiny_lp === true; // Backend určuje, zda čerpá z JINÉHO LP
+                            const faLpAmount = faHasLP ? fa.lp_castka : null;
                             const faVecnaKontrola = fa.vecna_spravnost_potvrzeno === true || fa.vecna_spravnost_potvrzeno === 1;
                             // Badge logika:
                             // 1. Není provedena věcná kontrola → "NEKONTROLOVÁNA" (červená)
-                            // 2. Je věcná kontrola, ale chybí LP rozpis → "BEZ LP" (oranžová)
-                            // 3. Je věcná kontrola a má LP → bez badge (zelená)
+                            // 2. Je věcná kontrola, ale chybí LP rozpis úplně (null) → "BEZ LP" (oranžová)
+                            // 3. ma_jiny_lp === true → "JINÉ LP" (modrá) - faktura čerpá z jiného LP kódu
+                            // 4. Je věcná kontrola a má LP rozpis (i 0 Kč) → normální zobrazení
                             const showWarning = !faVecnaKontrola || (!faHasLP && faVecnaKontrola);
+                            const showOtherLP = faHasOtherLP && faVecnaKontrola;
                             return (
                             <tr key={`fa-${fa.id}`} style={{
-                              background: faHasLP ? '#fffbeb' : '#fef2f2',
-                              opacity: faHasLP ? 1 : 0.85,
-                              borderBottom: fi === ord.faktury.length - 1 ? '1px solid #e2e8f0' : (faHasLP ? '1px dashed #fde68a' : '1px dashed #fecaca'),
-                              borderLeft: faHasLP ? '3px solid #16a34a' : '3px solid #f97316'
+                              background: faHasPositiveLP ? '#fffbeb' : (faHasOtherLP ? '#f1f5f9' : (faHasLP ? '#f8fafc' : '#fef2f2')),
+                              opacity: faHasPositiveLP ? 1 : (faHasOtherLP ? 0.65 : 0.85),
+                              borderBottom: fi === ord.faktury.length - 1 ? '1px solid #e2e8f0' : (faHasPositiveLP ? '1px dashed #fde68a' : (faHasOtherLP ? '1px dashed #cbd5e1' : (faHasLP ? '1px dashed #cbd5e1' : '1px dashed #fecaca'))),
+                              borderLeft: faHasPositiveLP ? '3px solid #16a34a' : (faHasOtherLP ? '3px solid #64748b' : (faHasLP ? '3px solid #94a3b8' : '3px solid #f97316'))
                             }}>
-                              <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.5rem', fontSize: '0.75rem', color: faHasLP ? '#92400e' : '#64748b' }}>
+                              <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.5rem', fontSize: '0.75rem', color: faHasPositiveLP ? '#92400e' : '#64748b' }}>
                                 ↳{' '}
                                 <button
                                   onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
                                   style={{ 
                                     background: 'none', 
                                     border: 'none', 
-                                    color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : (faHasLP ? '#7c3aed' : '#94a3b8'), 
+                                    color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : (faHasPositiveLP ? '#7c3aed' : '#94a3b8'), 
                                     cursor: 'pointer', 
                                     fontWeight: 600, 
                                     padding: 0, 
                                     fontSize: 'inherit', 
                                     fontFamily: 'inherit', 
-                                    borderBottom: `1px dashed ${(fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#86efac' : (faHasLP ? '#c4b5fd' : '#cbd5e1')}` 
+                                    borderBottom: `1px dashed ${(fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#86efac' : (faHasPositiveLP ? '#c4b5fd' : '#cbd5e1')}`,
+                                    textDecoration: faHasOtherLP ? 'line-through' : 'none'
                                   }}
                                   title="Otevřít fakturu"
                                 >
@@ -3378,31 +3681,56 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                                     {!faVecnaKontrola ? '🚫 NEKONTROLOVÁNA' : '⚠️ BEZ LP'}
                                   </span>
                                 )}
+                                {showOtherLP && (
+                                  <span 
+                                    style={{ 
+                                      marginLeft: '0.4rem', 
+                                      background: '#dbeafe', 
+                                      color: '#1e40af', 
+                                      border: '1px solid #93c5fd',
+                                      borderRadius: '3px', 
+                                      padding: '1px 5px', 
+                                      fontSize: '0.65rem', 
+                                      fontWeight: 700, 
+                                      verticalAlign: 'middle',
+                                      letterSpacing: '0.01em'
+                                    }} 
+                                    title="📊 Faktura čerpá z jiného LP kódu (má LP rozpis, ale ne pro aktuálně zobrazený LP)"
+                                  >
+                                    📊 JINÉ LP
+                                  </span>
+                                )}
                               </td>
                               <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={fa.fa_poznamka || ''}>
                                 {fa.fa_poznamka || '—'}
                               </td>
-                              <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasLP ? '#78716c' : '#94a3b8' }}>{czDate(fa.fa_datum_vystaveni)}</td>
+                              <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasPositiveLP ? '#78716c' : '#94a3b8' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                               <td style={{ padding: '0.2rem 0.5rem' }}>
                                 <span style={{
-                                  background: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#dcfce7' : (faHasLP ? '#f3e8ff' : '#f3f4f6'),
-                                  color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : (faHasLP ? '#7c3aed' : '#6b7280'),
+                                  background: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#dcfce7' : (faHasPositiveLP ? '#f3e8ff' : '#f3f4f6'),
+                                  color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : (faHasPositiveLP ? '#7c3aed' : '#6b7280'),
                                   borderRadius: '4px', padding: '1px 5px', fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em',
-                                  opacity: faHasLP ? 1 : 0.7
+                                  opacity: faHasPositiveLP ? 1 : 0.7
                                 }}>{getInvoiceStateLabel(fa.stav)}</span>
                               </td>
-                              <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasLP ? '#78716c' : '#94a3b8' }}>
+                              <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasPositiveLP ? '#78716c' : '#94a3b8' }}>
                                 {/* Prázdný sloupec - Dodavatel (stejný jako u objednávky) */}
                               </td>
                               <td
-                                style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: faHasLP ? '#92400e' : '#9ca3af' }}
-                                title={faHasLP ? `LP rozpis: ${formatAmount(fa.lp_castka)}\nCelková FA: ${formatAmount(fa.fa_castka)}` : `Celková FA: ${formatAmount(fa.fa_castka)}\nBez LP rozpisu na toto LP`}
+                                style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: faHasPositiveLP ? '#92400e' : '#9ca3af' }}
+                                title={faHasLP ? (faHasOtherLP ? `Faktura čerpá z jiného LP kódu\nLP rozpis pro toto LP: 0 Kč\nCelková FA: ${formatAmount(fa.fa_castka)}` : `LP rozpis: ${formatAmount(fa.lp_castka)}\nCelková FA: ${formatAmount(fa.fa_castka)}`) : `Celková FA: ${formatAmount(fa.fa_castka)}\nBez LP rozpisu`}
                               >
                                 {faHasLP ? (
                                   <>
-                                    <span style={{ color: '#16a34a', fontWeight: 700 }}>LP: {formatAmount(fa.lp_castka)}</span>
+                                    <span style={{ 
+                                      color: faHasPositiveLP ? '#16a34a' : '#94a3b8', 
+                                      fontWeight: 700,
+                                      textDecoration: faHasOtherLP ? 'line-through' : 'none'
+                                    }}>
+                                      LP: {formatAmount(fa.lp_castka)}
+                                    </span>
                                     {' '}
-                                    <span style={{ fontSize: '0.65rem', color: '#78716c', fontWeight: 400 }}>
+                                    <span style={{ fontSize: '0.65rem', color: faHasOtherLP ? '#94a3b8' : '#78716c', fontWeight: 400, textDecoration: faHasOtherLP ? 'line-through' : 'none' }}>
                                       (celkem: {formatAmount(fa.fa_castka)})
                                     </span>
                                   </>
@@ -3410,7 +3738,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                                   <span style={{ textDecoration: 'line-through', color: '#9ca3af' }}>{formatAmount(fa.fa_castka)}</span>
                                 )}
                               </td>
-                              <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontSize: '0.7rem', color: faHasLP ? '#78716c' : '#94a3b8' }}>
+                              <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontSize: '0.7rem', color: faHasPositiveLP ? '#78716c' : '#94a3b8' }}>
                                 {fa.fa_datum_splatnosti ? czDate(fa.fa_datum_splatnosti) : '—'}
                               </td>
                             </tr>

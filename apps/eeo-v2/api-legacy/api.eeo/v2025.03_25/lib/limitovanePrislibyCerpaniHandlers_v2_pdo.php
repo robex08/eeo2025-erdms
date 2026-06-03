@@ -148,9 +148,8 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
         // ✅ Podporuje NEW formát (JSON) i OLD formát (plain string)
         // ✅ OPRAVA: Sčítá POUZE položky s tímto lp_id (ne všechny položky / počet LP)
         // KROK 3: PŘEDPOKLAD - suma pro objednávky BEZ potvrzené věcné správnosti faktury
-        // ✅ Započítávají se objednávky:
-        //    a) bez faktury (fakt.id IS NULL)
-        //    b) s fakturou BEZ potvrzené věcné správnosti (fakt.potvrdil_vecnou_spravnost_id IS NULL)
+        // ✅ Započítávají se POUZE objednávky které NEMAJÍ ŽÁDNOU fakturu s věcnou správností
+        // ⚠️ FIX: Pokud objednávka má fakturu s věcnou pro JAKÝKOLIV LP kód → čerpání se určuje POUZE z LP rozpisu faktur, NE z objednávky
         // ✅ PRIORITA:
         //    1. Pokud faktura (bez věcné) má LP rozpis v 25a_faktury_lp_cerpani → použij rozpis
         //    2. Jinak pokud má obj. POLOŽKY s lp_id → sečti je
@@ -184,13 +183,19 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 ), 0) as ma_lp_rozpis_v_procesu
             FROM " . TBL_OBJEDNAVKY . " obj
             LEFT JOIN " . TBL_OBJEDNAVKY_POLOZKY . " pol ON pol.objednavka_id = obj.id
-            LEFT JOIN 25a_objednavky_faktury fakt ON fakt.objednavka_id = obj.id AND fakt.aktivni = 1 AND fakt.stav != 'STORNO'
             WHERE obj.aktivni = 1
             AND obj.financovani IS NOT NULL
             AND obj.financovani != ''
             AND obj.stav_objednavky NOT IN ('Ke schválení', 'Schválená', 'Nová', 'Zamítnutá', 'Zrušena', 'Dokončená', 'Archivovaná', 'Smazaná', 'Rozpracovaná')
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
-            AND (fakt.id IS NULL OR fakt.potvrdil_vecnou_spravnost_id IS NULL)
+            AND NOT EXISTS (
+                SELECT 1
+                FROM 25a_objednavky_faktury fakt_vecna
+                WHERE fakt_vecna.objednavka_id = obj.id
+                AND fakt_vecna.aktivni = 1
+                AND fakt_vecna.stav != 'STORNO'
+                AND fakt_vecna.potvrdil_vecnou_spravnost_id IS NOT NULL
+            )
             GROUP BY obj.id, obj.financovani, obj.max_cena_s_dph
         ";
         

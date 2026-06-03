@@ -4255,9 +4255,15 @@ function handle_orderV3_lp_expand($input, $config) {
             }
             
             // LP rozpis z faktur (25a_faktury_lp_cerpani)
+            // ⚠️ FIX: Musíme rozlišit 2 případy pro lp_castka = 0:
+            // 1. Faktura má LP rozpis PRO TENTO LP s částkou 0 Kč → normální zobrazení
+            // 2. Faktura má LP rozpis PRO JINÝ LP, ne pro tento → badge "JINÉ LP"
+            $faktury_jine_lp_map = []; // Faktury které čerpají z JINÉHO LP (ne aktuálního)
             if (!empty($faktura_ids)) {
                 $fa_placeholders = implode(',', array_fill(0, count($faktura_ids), '?'));
                 $lp_placeholders = implode(',', array_fill(0, count($master_ids_int), '?'));
+                
+                // 1. Načíst LP rozpis pro AKTUÁLNÍ LP kódy
                 $sql_lp_rozpis = "
                     SELECT flp.faktura_id, SUM(flp.castka) as lp_castka
                     FROM 25a_faktury_lp_cerpani flp
@@ -4269,6 +4275,27 @@ function handle_orderV3_lp_expand($input, $config) {
                 $stmt_lp->execute(array_merge($faktura_ids, $master_ids_int));
                 foreach ($stmt_lp->fetchAll(PDO::FETCH_ASSOC) as $lp_row) {
                     $lp_rozpis_map[(int)$lp_row['faktura_id']] = (float)$lp_row['lp_castka'];
+                }
+                
+                // 2. Najít faktury které MAJÍ LP rozpis, ale NE pro aktuální LP
+                // (čerpají z JINÉHO LP kódu)
+                $sql_check_any_lp = "
+                    SELECT DISTINCT flp_check.faktura_id
+                    FROM 25a_faktury_lp_cerpani flp_check
+                    WHERE flp_check.faktura_id IN ($fa_placeholders)
+                ";
+                $stmt_check = $db->prepare($sql_check_any_lp);
+                $stmt_check->execute($faktura_ids);
+                $faktury_s_lp_rozpisem = $stmt_check->fetchAll(PDO::FETCH_COLUMN);
+                
+                foreach ($faktury_s_lp_rozpisem as $fa_id_with_lp) {
+                    $fa_id_int = (int)$fa_id_with_lp;
+                    if (!isset($lp_rozpis_map[$fa_id_int])) {
+                        // Faktura má LP rozpis, ale NE pro aktuálně zobrazovaný LP
+                        // → nastavit 0 + přidat do "jiné LP" mapy
+                        $lp_rozpis_map[$fa_id_int] = 0.0;
+                        $faktury_jine_lp_map[$fa_id_int] = true;
+                    }
                 }
             }
             
@@ -4295,16 +4322,23 @@ function handle_orderV3_lp_expand($input, $config) {
             $faktury = $faktury_map[$oid] ?? [];
             
             // PRIORITA ČERPÁNÍ:
-            // 1. LP rozpis z faktur (25a_faktury_lp_cerpani)
+            // 1. LP rozpis z faktur (25a_faktury_lp_cerpani) - i když je 0 pro tento LP
             // 2. Položky objednávky s LP
-            // 3. max_cena_s_dph (pokud nic není)
+            // 3. max_cena_s_dph / počet LP (pokud nic není)
             
             $suma_lp_z_faktur = 0.0;
+            $ma_lp_rozpis = false; // Má JAKÁKOLIV faktura LP rozpis?
             foreach ($faktury as &$fa) {
-                $fa_lp_castka = $lp_rozpis_map[(int)$fa['id']] ?? null;
-                $fa['lp_castka'] = $fa_lp_castka; // Přidáme LP částku k faktuře
+                $fa_id = (int)$fa['id'];
+                $fa_lp_castka = $lp_rozpis_map[$fa_id] ?? null;
+                $fa_ma_jiny_lp = isset($faktury_jine_lp_map[$fa_id]) && $faktury_jine_lp_map[$fa_id];
+                
+                $fa['lp_castka'] = $fa_lp_castka; // LP částka pro tento LP
+                $fa['ma_jiny_lp'] = $fa_ma_jiny_lp; // True = čerpá z JINÉHO LP (ne aktuálního)
+                
                 if ($fa_lp_castka !== null) {
                     $suma_lp_z_faktur += $fa_lp_castka;
+                    $ma_lp_rozpis = true; // Faktura má LP rozpis (i když 0 pro tento LP)
                 }
             }
             unset($fa); // Ukončit referenci
@@ -4323,9 +4357,10 @@ function handle_orderV3_lp_expand($input, $config) {
             }
             
             // Určit plánovanou částku LP
+            // ⚠️ FIX: Pokud JAKÁKOLIV faktura má LP rozpis → použij ho (i když je 0 pro tento LP)
             $planovana_castka_lp = 0.0;
-            if ($suma_lp_z_faktur > 0) {
-                // Priorita 1: LP rozpis z faktur
+            if ($ma_lp_rozpis) {
+                // Priorita 1: LP rozpis z faktur existuje → použij suma_lp_z_faktur (i když je 0)
                 $planovana_castka_lp = $suma_lp_z_faktur;
             } elseif ($planovana_castka_polozky > 0) {
                 // Priorita 2: Položky s LP
@@ -4334,6 +4369,16 @@ function handle_orderV3_lp_expand($input, $config) {
                 // Priorita 3: fallback - rozdělit dle počtu LP v objednávce
                 $fallback_base = $suma_faktur_total > 0 ? $suma_faktur_total : (float)$ord['max_cena_s_dph'];
                 $planovana_castka_lp = $pocet_lp > 0 ? ($fallback_base / $pocet_lp) : 0.0;
+            }
+            
+            // ⚠️ FILTR: Pokud objednávka má LP rozpis (fakturu s věcnou) a částka = 0 pro tento LP
+            // → NEZOBRAZZIT JI (nečerpá z tohoto LP)
+            // Zobrazit POUZE:
+            // 1. Objednávky s planovana_castka_lp > 0 (čerpají z tohoto LP)
+            // 2. Objednávky BEZ LP rozpisu (ještě nemají fakturu s věcnou, mohou čerpat v budoucnu)
+            if ($ma_lp_rozpis && $planovana_castka_lp == 0) {
+                // Objednávka má fakturu s LP rozpisem, ale NE pro tento LP → skip
+                continue;
             }
             
             $result[] = [
@@ -4348,6 +4393,8 @@ function handle_orderV3_lp_expand($input, $config) {
                 'suma_lp_z_faktur' => $suma_lp_z_faktur,
                 'dt_vytvoreni' => $ord['dt_vytvoreni'],
                 'objednatel_jmeno' => $ord['objednatel_jmeno'],
+                'financovani' => $ord['financovani'], // JSON s lp_kody pro tooltip
+                'ma_lp_rozpis' => $ma_lp_rozpis, // True = má fakturu s věcnou (čerpání z faktur)
                 'faktury' => $faktury,
                 'pocet_faktur' => count($faktury),
                 'suma_faktur' => $suma_faktur_total,
