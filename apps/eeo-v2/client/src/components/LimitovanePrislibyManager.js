@@ -3260,21 +3260,27 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               {paged.map((ord, oi) => (
                                 <tr key={ord.id || oi} style={{ borderBottom: '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc' }}>
                                   <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
-                                    <button
-                                      onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
-                                      style={{ 
-                                        background: 'none', 
-                                        border: 'none', 
-                                        color: '#3b82f6',
-                                        fontWeight: 600, 
-                                        cursor: 'pointer', 
-                                        padding: 0, 
-                                        fontSize: 'inherit'
-                                      }}
-                                      title="Otevřít objednávku"
-                                    >
-                                      {ord.cislo_objednavky || '—'}
-                                    </button>
+                                    {ord.id < 0 || ord.je_odborova_faktura ? (
+                                      <span style={{ color: '#64748b', fontWeight: 600 }} title="Odborová faktura bez objednávky">
+                                        {ord.cislo_objednavky || '—'}
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
+                                        style={{ 
+                                          background: 'none', 
+                                          border: 'none', 
+                                          color: '#3b82f6',
+                                          fontWeight: 600, 
+                                          cursor: 'pointer', 
+                                          padding: 0, 
+                                          fontSize: 'inherit'
+                                        }}
+                                        title="Otevřít objednávku"
+                                      >
+                                        {ord.cislo_objednavky || '—'}
+                                      </button>
+                                    )}
                                   </td>
                                   <td style={{ padding: '0.25rem 0.5rem' }}>{ord.predmet || '—'}</td>
                                   <td style={{ padding: '0.25rem 0.5rem' }}>{czDate(ord.dt_vytvoreni)}</td>
@@ -3562,28 +3568,34 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                           <React.Fragment key={ord.id || oi}>
                           <tr style={{ borderBottom: ord.faktury?.length ? 'none' : '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc', transition: 'background-color 0.15s ease', borderLeft: ord.suma_lp_z_faktur > 0 ? '3px solid #10b981' : ord.planovana_castka_polozky > 0 ? '3px solid #f59e0b' : '3px solid #d1d5db' }}>
                             <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
-                              <button
-                                onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
-                                style={{ 
-                                  background: 'none', 
-                                  border: 'none', 
-                                  color: ord.stav === 'Dokončená' ? '#059669' : (ord.stav === 'Zkontrolovaná' ? '#ea580c' : '#3b82f6'),
-                                  fontWeight: 600, 
-                                  cursor: 'pointer', 
-                                  padding: 0, 
-                                  fontSize: 'inherit', 
-                                  fontFamily: 'inherit', 
-                                  borderBottom: `1px dashed ${ord.stav === 'Dokončená' ? '#86efac' : (ord.stav === 'Zkontrolovaná' ? '#fdba74' : '#93c5fd')}`
-                                }}
-                                title="Klikněte pro editaci objednávky"
-                              >
-                                {isMimoradnaObjednavka(ord) && (
-                                  <span style={{ color: '#dc2626', marginRight: '4px' }}>
-                                    <FontAwesomeIcon icon={faBoltLightning} />
-                                  </span>
-                                )}
-                                {ord.cislo_objednavky || '—'}
-                              </button>
+                              {ord.id < 0 || ord.je_odborova_faktura ? (
+                                <span style={{ color: '#64748b', fontWeight: 600 }} title="Odborová faktura bez objednávky">
+                                  {ord.cislo_objednavky || '—'}
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
+                                  style={{ 
+                                    background: 'none', 
+                                    border: 'none', 
+                                    color: ord.stav === 'Dokončená' ? '#059669' : (ord.stav === 'Zkontrolovaná' ? '#ea580c' : '#3b82f6'),
+                                    fontWeight: 600, 
+                                    cursor: 'pointer', 
+                                    padding: 0, 
+                                    fontSize: 'inherit', 
+                                    fontFamily: 'inherit', 
+                                    borderBottom: `1px dashed ${ord.stav === 'Dokončená' ? '#86efac' : (ord.stav === 'Zkontrolovaná' ? '#fdba74' : '#93c5fd')}`
+                                  }}
+                                  title="Klikněte pro editaci objednávky"
+                                >
+                                  {isMimoradnaObjednavka(ord) && (
+                                    <span style={{ color: '#dc2626', marginRight: '4px' }}>
+                                      <FontAwesomeIcon icon={faBoltLightning} />
+                                    </span>
+                                  )}
+                                  {ord.cislo_objednavky || '—'}
+                                </button>
+                              )}
                             </td>
                             <td style={{ padding: '0.25rem 0.5rem', color: '#374151', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ord.predmet || ''}>
                               {ord.predmet || '—'}
@@ -3641,7 +3653,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.5rem', fontSize: '0.75rem', color: faHasPositiveLP ? '#92400e' : '#64748b' }}>
                                 ↳{' '}
                                 <button
-                                  onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
+                                  onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: (ord.id < 0 || ord.je_odborova_faktura) ? null : ord.id, returnTo: location.pathname } })}
                                   style={{ 
                                     background: 'none', 
                                     border: 'none', 
