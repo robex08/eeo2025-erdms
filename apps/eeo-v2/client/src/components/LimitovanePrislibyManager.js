@@ -2919,6 +2919,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
 
     const sumaThisLp = fakturyThisLp.reduce((sum, fa) => sum + (fa.lp_castka || 0), 0);
 
+    // Pro odborové faktury zkontroluj stav jejich faktury (mají jen jednu)
+    const isFakturace = ord.je_odborova_faktura 
+      ? (faktury.length > 0 && faktury[0].vecna_spravnost_potvrzeno)
+      : fakturyVecna.length > 0;
+
     return (
       <span
         ref={containerRef}
@@ -2934,8 +2939,8 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 <OrderTooltipTitle>Plánováno / čerpáno LP</OrderTooltipTitle>
                 <OrderTooltipSubtitle>Objednávka: {ord.cislo_objednavky || '—'}</OrderTooltipSubtitle>
               </div>
-              <OrderTooltipBadge $variant={ord.ma_lp_rozpis ? 'fact' : 'plan'}>
-                {ord.ma_lp_rozpis ? 'Fakturace' : 'Plán'}
+              <OrderTooltipBadge $variant={isFakturace ? 'fact' : 'plan'}>
+                {isFakturace ? 'Fakturace' : 'Plán'}
               </OrderTooltipBadge>
             </OrderTooltipHeader>
 
