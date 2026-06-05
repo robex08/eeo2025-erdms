@@ -1786,7 +1786,7 @@ function handle_invoices25_list($input, $config, $queries) {
             // Filtry pro částku (operator-based: =, <, >)
             'castka_gt', 'castka_lt', 'castka_eq', 'filter_ma_prilohy',
             // Filtry pro věcnou kontrolu a předání zaměstnanci
-            'filter_vecna_kontrola', 'filter_vecnou_provedl', 'filter_predano_zamestnanec',
+            'filter_vecna_kontrola', 'filter_vecna_spravnost_status', 'filter_vecnou_provedl', 'filter_predano_zamestnanec',
             // Filtr pro kontrolu řádku
             'filter_kontrola_radku',
             // ADMIN FEATURE: Zobrazení pouze neaktivních faktur
@@ -2312,8 +2312,27 @@ function handle_invoices25_list($input, $config, $queries) {
             }
         }
         
-        // Filtr: filter_vecna_kontrola (věcná kontrola provedena/neprovedena)
-        if (isset($filters['filter_vecna_kontrola']) && $filters['filter_vecna_kontrola'] !== '') {
+        // Filtr: filter_vecna_spravnost_status (věcná správnost: schváleno/zamítnuto/nepotvrzeno)
+        if (isset($filters['filter_vecna_spravnost_status']) && is_numeric($filters['filter_vecna_spravnost_status'])) {
+            $status = (int)$filters['filter_vecna_spravnost_status'];
+            if ($status === 1) {
+                // Pouze potvrzena
+                $where_conditions[] = 'f.vecna_spravnost_potvrzeno = 1';
+                error_log("Invoices25 LIST: Applying filter_vecna_spravnost_status = 1 (potvrzena)");
+            } else if ($status === 2) {
+                // Pouze zamítnuto
+                $where_conditions[] = 'f.vecna_spravnost_potvrzeno = 2';
+                error_log("Invoices25 LIST: Applying filter_vecna_spravnost_status = 2 (zamítnuto)");
+            } else if ($status === 0) {
+                // Pouze nepotvrzeno
+                $where_conditions[] = '(f.vecna_spravnost_potvrzeno = 0 OR f.vecna_spravnost_potvrzeno IS NULL)';
+                error_log("Invoices25 LIST: Applying filter_vecna_spravnost_status = 0 (nepotvrzeno)");
+            }
+        }
+        
+        // Podpora starého filtru filter_vecna_kontrola (provedena/neprovedena) - DEPRECATED
+        if (isset($filters['filter_vecna_kontrola']) && $filters['filter_vecna_kontrola'] !== '' && 
+            !isset($filters['filter_vecna_spravnost_status'])) {
             if ((int)$filters['filter_vecna_kontrola'] === 1) {
                 // Pouze provedena
                 $where_conditions[] = 'f.vecna_spravnost_potvrzeno = 1';

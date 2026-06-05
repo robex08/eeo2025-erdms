@@ -1737,7 +1737,8 @@ export async function listInvoices25({
   castka_lt,   // 💰 Operátorový filtr - částka menší než (<) 
   castka_eq,   // 💰 Operátorový filtr - částka rovná se (=)
   filter_ma_prilohy,  // 📎 Sloupcový filtr - přílohy
-  filter_vecna_kontrola,  // 📋 Sloupcový filtr - věcná kontrola
+  filter_vecna_kontrola,  // 📋 Sloupcový filtr - věcná kontrola (DEPRECATED)
+  filter_vecna_spravnost_status,  // 📋 Sloupcový filtr - věcná správnost status (0=nepotvrzeno, 1=potvrzena, 2=zamítnuto)
   filter_vecnou_provedl,  // 📋 Sloupcový filtr - kdo provedl věcnou kontrolu
   filter_predano_zamestnanec,  // 📋 Sloupcový filtr - předáno zaměstnanci
   filter_kontrola_radku,  // ✅ Sloupcový filtr - kontrola řádku (kontrolovano/nekontrolovano)
@@ -1794,6 +1795,7 @@ export async function listInvoices25({
     
     // Filtry pro věcnou kontrolu a předání zaměstnanci
     if (filter_vecna_kontrola !== undefined && filter_vecna_kontrola !== '') payload.filter_vecna_kontrola = filter_vecna_kontrola;
+    if (filter_vecna_spravnost_status !== undefined) payload.filter_vecna_spravnost_status = filter_vecna_spravnost_status;
     if (filter_vecnou_provedl !== undefined && filter_vecnou_provedl !== '') payload.filter_vecnou_provedl = filter_vecnou_provedl;
     if (filter_predano_zamestnanec !== undefined && filter_predano_zamestnanec !== '') payload.filter_predano_zamestnanec = filter_predano_zamestnanec;
     
