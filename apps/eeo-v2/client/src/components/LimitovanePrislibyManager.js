@@ -6,6 +6,7 @@ import { keyframes, css } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
+import { getDruhyObjednavky25, getInvoiceTypes25 } from '../services/api25orders';
 import ConfirmDialog from './ConfirmDialog';
 import { CustomSelect } from './CustomSelect';
 import { RefreshCw, TrendingUp, AlertTriangle, CheckCircle, XCircle, Coins, Calendar, User, Building2, ChevronDown, ChevronUp, Filter, X, Search } from 'lucide-react';
@@ -249,25 +250,28 @@ const StatValue = styled.div`
 `;
 
 const FilterBar = styled.div`
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
   margin-bottom: 2rem;
-  align-items: start;
-  
+  padding: 0 1.5rem 1.5rem 1.5rem;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  align-items: flex-end;
+  min-height: 60px;
+
   @media (max-width: 1400px) {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  @media (max-width: 768px) {
-    grid-template-columns: 1fr;
+    gap: 1rem;
   }
 `;
 
 const FilterWrapper = styled.div`
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.6rem;
+  flex: 0 1 auto;
 `;
 
 const FilterLabel = styled.label`
@@ -275,13 +279,19 @@ const FilterLabel = styled.label`
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #374151;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
   width: 100%;
+  margin-bottom: 0.4rem;
   
   svg {
-    color: #6b7280;
+    color: #64748b;
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
   }
 `;
 
@@ -320,20 +330,23 @@ const FilterClearButton = styled.button`
 const FilterSelect = styled.select`
   width: 100%;
   box-sizing: border-box;
-  padding: 0.75rem 1.75rem 0.75rem 0.75rem;
-  border: 2px solid #e5e7eb;
+  padding: 0.65rem 1.75rem 0.65rem 0.75rem;
+  border: 2px solid #cbd5e1;
   border-radius: 8px;
-  font-size: 0.875rem;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 500;
   background: white;
   cursor: pointer;
   color: #1f2937;
-  font-weight: 500;
   transition: all 0.2s ease;
   appearance: none;
   -moz-appearance: none;
   -webkit-appearance: none;
   flex: 1;
-  min-width: 200px;
+  min-width: 150px;
+  height: 38px;
+  line-height: 1.2;
 
   &:focus {
     outline: none;
@@ -342,18 +355,19 @@ const FilterSelect = styled.select`
   }
 
   &:hover {
-    border-color: #3b82f6;
+    border-color: #94a3b8;
+    background: #f8fafc;
   }
 
-  /* Custom dropdown arrow - stejná jako v OrderForm25 */
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  /* Custom dropdown arrow */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.5rem center;
   background-size: 16px 16px;
 
   /* Styling pro placeholder option */
   option[value="all"] {
-    color: #6b7280;
+    color: #64748b;
     font-weight: 500;
   }
 
@@ -361,6 +375,147 @@ const FilterSelect = styled.select`
     color: #1f2937;
     font-weight: 500;
     padding: 0.5rem;
+  }
+`;
+
+const FilterInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.75rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 500;
+  background: white;
+  color: #1f2937;
+  transition: all 0.2s ease;
+  flex: 1;
+  min-width: 200px;
+
+  &::placeholder {
+    color: #9ca3af;
+    font-weight: 400;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &:hover {
+    border-color: #d1d5db;
+  }
+`;
+
+const FilterSection = styled.div`
+  width: 100%;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  margin-bottom: 2rem;
+  overflow: hidden;
+`;
+
+const FulltextRow = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: 1.5rem;
+  padding-bottom: 1.2rem;
+`;
+
+const FulltextTopRow = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+`;
+
+const FulltextInputRow = styled.div`
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+`;
+
+const FulltextActions = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+`;
+
+const FulltextSearchWrapper = styled.div`
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+`;
+
+const FulltextInputContainer = styled.div`
+  position: relative;
+  flex: 1;
+  min-width: 300px;
+`;
+
+const FulltextInput = styled.input`
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 2.5rem 0.65rem 1rem;
+  border: 2px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 500;
+  background: white;
+  color: #1f2937;
+  transition: all 0.2s ease;
+  height: 38px;
+  line-height: 1.2;
+
+  &::placeholder {
+    color: #94a3b8;
+    font-weight: 400;
+  }
+
+  &:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  }
+
+  &:hover {
+    border-color: #94a3b8;
+  }
+`;
+
+const FulltextClearButton = styled.button`
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+  color: #cbd5e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  opacity: ${props => props.$visible ? 1 : 0};
+  pointer-events: ${props => props.$visible ? 'auto' : 'none'};
+
+  &:hover {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+  }
+
+  svg {
+    width: 16px;
+    height: 16px;
   }
 `;
 
@@ -1534,10 +1689,31 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   const [lastUpdate, setLastUpdate] = useState(null);
   
   // State pro filtry - MULTI-SELECT podporuje pole hodnot
-  const [filterUsek, setFilterUsek] = useState([]);
-  const [filterUser, setFilterUser] = useState([]);
-  const [filterKategorie, setFilterKategorie] = useState([]);
+  // Persistence do localStorage - po reloadu obnoví filtry
+  const _lsKey = (suffix) => `lp_filter_${suffix}_${user?.id || 'default'}`;
+  const _loadLS = (suffix, fallback) => {
+    try {
+      const saved = localStorage.getItem(_lsKey(suffix));
+      return saved !== null ? JSON.parse(saved) : fallback;
+    } catch { return fallback; }
+  };
+  
+  const [filterUsek, setFilterUsek] = useState(() => _loadLS('usek', []));
+  const [filterUser, setFilterUser] = useState(() => _loadLS('user', []));
+  const [filterDruhObjednavky, setFilterDruhObjednavky] = useState(() => _loadLS('druh_objednavky', []));
   const [filterText, setFilterText] = useState(initialFilter || '');
+  const [druhyObjednavkyOptions, setDruhyObjednavkyOptions] = useState([]);
+  const [loadingDruhyObjednavky, setLoadingDruhyObjednavky] = useState(false);
+  const [invoiceTypes, setInvoiceTypes] = useState([]);
+  const [fullTextSearch, setFullTextSearch] = useState(() => _loadLS('fulltext', '')); // Nový fulltext search
+  
+  // BE fulltext search results - komplexní vyhledávání
+  const [ftSearchResults, setFtSearchResults] = useState(null); // null = nehledáme, {matching_lp_ids, ...} = výsledky
+  const [ftSearchLoading, setFtSearchLoading] = useState(false);
+  
+  // BE filter results pro druh_objednavky filter - {matching_lp_ids, matched_orders_by_lp}
+  const [druhFilterResults, setDruhFilterResults] = useState(null);
+  const [druhFilterLoading, setDruhFilterLoading] = useState(false);
   
   // CustomSelect states (pro vyhledávání a dropdown)
   const [selectStates, setSelectStates] = useState({});
@@ -1578,6 +1754,20 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   useEffect(() => {
     try { localStorage.setItem(`lp_expand_page_${user?.id || 'default'}`, JSON.stringify(lpExpandPage)); } catch {}
   }, [lpExpandPage, user?.id]);
+
+  // Persist filtry do LS
+  useEffect(() => {
+    try { localStorage.setItem(_lsKey('usek'), JSON.stringify(filterUsek)); } catch {}
+  }, [filterUsek, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    try { localStorage.setItem(_lsKey('user'), JSON.stringify(filterUser)); } catch {}
+  }, [filterUser, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    try { localStorage.setItem(_lsKey('druh_objednavky'), JSON.stringify(filterDruhObjednavky)); } catch {}
+  }, [filterDruhObjednavky, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    try { localStorage.setItem(_lsKey('fulltext'), JSON.stringify(fullTextSearch)); } catch {}
+  }, [fullTextSearch, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
   
   // State pro collapsed sekce (s localStorage)
   const [collapsedSections, setCollapsedSections] = useState(() => {
@@ -1617,6 +1807,181 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
       return currentYear;
     }
   });
+  
+  // Helper: Mapuj fa_typ na české jméno - kombinace fa_typ_nazev z backendu + invoiceTypes + fallback
+  const getInvoiceTypeName = (invoice) => {
+    // 1. Priorita: fa_typ_nazev z backendu (JOIN na 25_ciselnik_stavy)
+    if (invoice?.fa_typ_nazev) {
+      return invoice.fa_typ_nazev;
+    }
+    
+    // 2. Hledej v načtených typech z API
+    if (invoiceTypes.length > 0 && invoice?.fa_typ) {
+      const foundType = invoiceTypes.find(type => type.id === invoice.fa_typ);
+      if (foundType?.nazev) {
+        return foundType.nazev;
+      }
+    }
+    
+    // 3. Fallback: hardcoded mapování
+    const faTypMap = {
+      'BEZNA': 'Běžná',
+      'ZALOHOVA': 'Zálohová',
+      'VYUCTOVACI': 'Vyúčtovací',
+      'OPRAVNA': 'Opravná',
+      'PROFORMA': 'Proforma',
+      'DOBROPIS': 'Dobropis',
+      'INERNI': 'Interní',
+      'JINA': 'Jiná'
+    };
+    return faTypMap[invoice?.fa_typ] || invoice?.fa_typ || '—';
+  };
+  
+  // BE Fulltext search - debounced fetch (MUSÍ BÝT PO selectedYear declaration!)
+  useEffect(() => {
+    const q = (fullTextSearch || '').trim();
+    if (q.length < 2) {
+      setFtSearchResults(null);
+      setFtSearchLoading(false);
+      return;
+    }
+    
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        setFtSearchLoading(true);
+        const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const resp = await fetch(`${API_BASE_URL}limitovane-prisliby/fulltext-search`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            username,
+            query: q,
+            rok: selectedYear
+          })
+        });
+        const json = await resp.json();
+        if (cancelled) return;
+        if (json.status === 'success' && json.data) {
+          setFtSearchResults(json.data);
+        } else {
+          setFtSearchResults(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Fulltext search error:', err);
+          setFtSearchResults(null);
+        }
+      } finally {
+        if (!cancelled) setFtSearchLoading(false);
+      }
+    }, 350); // 350ms debounce
+    
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [fullTextSearch, selectedYear, token, username]);
+  
+  // BE filter podle druh_objednavky - volat při změně filterDruhObjednavky
+  useEffect(() => {
+    if (!filterDruhObjednavky || filterDruhObjednavky.length === 0) {
+      setDruhFilterResults(null);
+      setDruhFilterLoading(false);
+      return;
+    }
+    
+    let cancelled = false;
+    const fetchFilter = async () => {
+      try {
+        setDruhFilterLoading(true);
+        const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+        const _userId = user?.id ?? userDetail?.id;
+        const resp = await fetch(`${API_BASE_URL}limitovane-prisliby/filter-by-druh-objednavky`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            username,
+            druh_objednavky_kody: filterDruhObjednavky,
+            rok: selectedYear,
+            ...(viewOwnOnly && _userId ? { requesting_user_id: _userId } : {})
+          })
+        });
+        const json = await resp.json();
+        if (cancelled) return;
+        if (json.status === 'success' && json.data) {
+          setDruhFilterResults(json.data);
+        } else {
+          setDruhFilterResults(null);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('Druh objednavky filter error:', err);
+          setDruhFilterResults(null);
+        }
+      } finally {
+        if (!cancelled) setDruhFilterLoading(false);
+      }
+    };
+    
+    fetchFilter();
+    return () => { cancelled = true; };
+  }, [filterDruhObjednavky, selectedYear, token, username, viewOwnOnly, user, userDetail]);
+  
+  // Auto-expand LP s matchujícími objednávkami z druh_objednavky filtru
+  useEffect(() => {
+    if (!druhFilterResults) return;
+    const source = druhFilterResults.all_orders_by_lp || druhFilterResults.matched_orders_by_lp;
+    if (!source) return;
+    const toExpand = {};
+    Object.keys(source).forEach(lpId => {
+      const orderIds = source[lpId];
+      if (Array.isArray(orderIds) && orderIds.length > 0) {
+        toExpand[`all-${lpId}`] = true;
+      }
+    });
+    if (Object.keys(toExpand).length > 0) {
+      setExpandedLPs(prev => ({ ...prev, ...toExpand }));
+    }
+  }, [druhFilterResults]);
+  
+  // Načtení typů faktur z DB (pouze jednou při mount) - stejné jako v Invoices25List
+  useEffect(() => {
+    const loadInvoiceTypes = async () => {
+      if (!token || !username || invoiceTypes.length > 0) return;
+      
+      try {
+        const data = await getInvoiceTypes25({ token, username, aktivni: 1 });
+        if (data && Array.isArray(data)) {
+          setInvoiceTypes(data);
+        }
+      } catch (err) {
+        console.error('Chyba při načítání typů faktur:', err);
+      }
+    };
+
+    loadInvoiceTypes();
+  }, [token, username, invoiceTypes.length]);
+  
+  // Auto-expand LP s matchujícími objednávkami z fulltext search
+  // Použij all_orders_by_lp (VŠECHNY objednávky), ne jen matched_orders_by_lp (jen fulltext match)
+  useEffect(() => {
+    if (!ftSearchResults) return;
+    const source = ftSearchResults.all_orders_by_lp || ftSearchResults.matched_orders_by_lp;
+    if (!source) return;
+    const toExpand = {};
+    Object.keys(source).forEach(lpId => {
+      const orderIds = source[lpId];
+      if (Array.isArray(orderIds) && orderIds.length > 0) {
+        toExpand[`all-${lpId}`] = true;
+      }
+    });
+    if (Object.keys(toExpand).length > 0) {
+      setExpandedLPs(prev => ({ ...prev, ...toExpand }));
+    }
+  }, [ftSearchResults]);
   
   // ===== MAPOVÁNÍ LP KATEGORIÍ S POPISY =====
   const LP_CATEGORY_NAMES = {
@@ -1977,6 +2342,22 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
   useEffect(() => {
     if (token && username && userDetail) {
       loadLPData();
+      
+      // Paralelně načíst druhy objednávek z ciselníků
+      const loadDruhyObjednavky = async () => {
+        setLoadingDruhyObjednavky(true);
+        try {
+          const druhy = await getDruhyObjednavky25({ token, username });
+          setDruhyObjednavkyOptions(Array.isArray(druhy) ? druhy : []);
+        } catch (error) {
+          console.error('Chyba při načítání druhů objednávek:', error);
+          setDruhyObjednavkyOptions([]);
+        } finally {
+          setLoadingDruhyObjednavky(false);
+        }
+      };
+      
+      loadDruhyObjednavky();
     }
   }, [loadLPData, token, username, userDetail]);
 
@@ -2151,21 +2532,76 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     }
   };
   
+  // Helper: normalizace pro fulltext (lowercase + odstranění diakritiky)
+  const normalizeText = (text) => {
+    if (!text) return '';
+    return String(text)
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+  };
+
   // Filtrování dat - MULTI-SELECT logika
   const filteredData = lpData.filter(lp => {
-    // Textový filtr - hledání v cislo_lp a nazev_uctu
-    if (filterText) {
-      const search = filterText.toLowerCase();
-      const matchCislo = (lp.cislo_lp || '').toLowerCase().includes(search);
-      const matchNazev = (lp.nazev_uctu || '').toLowerCase().includes(search);
-      if (!matchCislo && !matchNazev) return false;
+    // FULLTEXT SEARCH - prioritně použít BE výsledky
+    if (fullTextSearch.trim().length >= 2) {
+      // Pokud máme BE výsledky, použijeme matching_lp_ids
+      if (ftSearchResults && Array.isArray(ftSearchResults.matching_lp_ids)) {
+        const lpMasterId = lp.lp_master_id || lp.id;
+        if (!ftSearchResults.matching_lp_ids.includes(Number(lpMasterId))) {
+          // Fallback: pokud BE nenajde, zkus klient-side basic match
+          const search = normalizeText(fullTextSearch.trim());
+          const localMatch = 
+            normalizeText(lp.cislo_lp).includes(search) ||
+            normalizeText(lp.nazev_uctu).includes(search) ||
+            normalizeText(lp.spravce).includes(search) ||
+            normalizeText(lp.usek_nazev).includes(search) ||
+            normalizeText(lp.kategorie).includes(search) ||
+            normalizeText(lp.cislo_uctu).includes(search);
+          if (!localMatch) return false;
+        }
+      } else if (ftSearchLoading) {
+        // Během načítání BE - použij klient-side filter (zatímco čekáme)
+        const search = normalizeText(fullTextSearch.trim());
+        const localMatch = 
+          normalizeText(lp.cislo_lp).includes(search) ||
+          normalizeText(lp.nazev_uctu).includes(search) ||
+          normalizeText(lp.spravce).includes(search) ||
+          normalizeText(lp.usek_nazev).includes(search) ||
+          normalizeText(lp.kategorie).includes(search) ||
+          normalizeText(lp.cislo_uctu).includes(search);
+        if (!localMatch) return false;
+      } else {
+        // BE selhal nebo nedostupný - použij klient-side
+        const search = normalizeText(fullTextSearch.trim());
+        const matchCislo = normalizeText(lp.cislo_lp).includes(search);
+        const matchNazev = normalizeText(lp.nazev_uctu).includes(search);
+        const matchSpravce = normalizeText(lp.spravce).includes(search);
+        const matchUsek = normalizeText(lp.usek_nazev).includes(search);
+        const matchCisloUctu = normalizeText(lp.cislo_uctu).includes(search);
+        if (!matchCislo && !matchNazev && !matchSpravce && !matchUsek && !matchCisloUctu) {
+          return false;
+        }
+      }
     }
-    // Filtr úseku - pokud je pole prázdné, zobraz vše
+    
+    // Filtr úseku
     if (filterUsek.length > 0 && !filterUsek.includes(lp.usek_nazev)) return false;
-    // Filtr správce - pokud je pole prázdné, zobraz vše
+    // Filtr správce
     if (filterUser.length > 0 && !filterUser.includes(lp.spravce)) return false;
-    // Filtr kategorie - pokud je pole prázdné, zobraz vše
-    if (filterKategorie.length > 0 && !filterKategorie.includes(lp.kategorie)) return false;
+    // Filtr na druh objednavky - používá výsledky z BE endpointu
+    if (filterDruhObjednavky.length > 0) {
+      if (!druhFilterResults || !Array.isArray(druhFilterResults.matching_lp_ids)) {
+        // Pokud BE ještě neodpověděl, schovat všechny LP (loading state)
+        if (druhFilterLoading) return false;
+        // BE selhal - schovat všechny
+        return false;
+      }
+      const lpMasterId = lp.lp_master_id || lp.id;
+      if (!druhFilterResults.matching_lp_ids.includes(Number(lpMasterId))) {
+        return false;
+      }
+    }
     return true;
   });
   
@@ -3087,7 +3523,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
               <tr>
                 <th style={{ width: '40px' }}></th>
                 <th>Kód LP</th>
-                <th>Kategorie</th>
+                <th>Druh objednávky</th>
                 <th>Účet</th>
                 <th>Název účtu</th>
                 <th>Příkazce operace</th>
@@ -3218,12 +3654,35 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               {sortState.col !== col ? '⇅' : sortState.dir === 'asc' ? '↑' : '↓'}
                             </span>
                           );
-                          const sorted = [...lpExpandOrders[expandKey]].sort((a, b) => {
+                          const sorted = [...lpExpandOrders[expandKey]]
+                            .filter((ord) => {
+                              // Filtruj podle druh_objednavky (data z BE endpointu)
+                              if (filterDruhObjednavky.length > 0 && druhFilterResults) {
+                                const matchedIds = druhFilterResults.matched_orders_by_lp?.[String(lp.lp_master_id)] || [];
+                                if (!matchedIds.includes(ord.id)) return false;
+                              }
+                              
+                              // Když je aktivní fulltext, ukaž jen objednávky které matchují (nebo mají matched fakturu)
+                              if (fullTextSearch && fullTextSearch.trim().length >= 2 && ftSearchResults) {
+                                const matchedIds = ftSearchResults.matched_orders_by_lp?.[String(lp.lp_master_id)] || [];
+                                if (!matchedIds.includes(ord.id)) return false;
+                              }
+                              return true;
+                            })
+                            .sort((a, b) => {
                             if (!sortState.col || !sortState.dir) return 0;
                             const m = sortState.dir === 'asc' ? 1 : -1;
                             switch (sortState.col) {
                               case 'cislo': return m * (a.cislo_objednavky || '').localeCompare(b.cislo_objednavky || '', 'cs');
                               case 'predmet': return m * (a.predmet || '').localeCompare(b.predmet || '', 'cs');
+                              case 'druh': {
+                                const getDruhNazev = (ord) => {
+                                  if (!ord.druh_objednavky_kod) return '';
+                                  const druh = typeof ord.druh_objednavky_kod === 'string' ? JSON.parse(ord.druh_objednavky_kod) : ord.druh_objednavky_kod;
+                                  return druh?.nazev_stavu || druh?.kod_stavu || '';
+                                };
+                                return m * (getDruhNazev(a) || '').localeCompare(getDruhNazev(b) || '', 'cs');
+                              }
                               case 'datum': return m * (a.dt_vytvoreni || '').localeCompare(b.dt_vytvoreni || '');
                               case 'stav': return m * (a.stav || '').localeCompare(b.stav || '', 'cs');
                               case 'dodavatel': return m * (a.dodavatel_nazev || '').localeCompare(b.dodavatel_nazev || '', 'cs');
@@ -3245,16 +3704,18 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                           <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.82rem', letterSpacing: '-0.01em' }}>
                             <colgroup>
                               <col style={{ width: '140px' }} />
-                              <col style={{ width: '320px' }} />
-                              <col style={{ width: '110px' }} />
-                              <col style={{ width: '110px' }} />
-                              <col style={{ width: '240px' }} />
-                              <col style={{ width: '120px' }} />
+                              <col style={{ width: '280px' }} />
+                              <col style={{ width: '90px' }} />
+                              <col style={{ width: '90px' }} />
+                              <col style={{ width: '90px' }} />
+                              <col style={{ width: '160px' }} />
+                              <col style={{ width: '100px' }} />
                             </colgroup>
                             <thead>
                               <tr style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
                                 <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('cislo')}>Č. obj.{sortIcon('cislo')}</th>
                                 <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('predmet')}>Předmět obj.{sortIcon('predmet')}</th>
+                                <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('druh')}>Druh obj.{sortIcon('druh')}</th>
                                 <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('datum')}>Datum{sortIcon('datum')}</th>
                                 <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
                                 <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('dodavatel')}>Dodavatel{sortIcon('dodavatel')}</th>
@@ -3262,40 +3723,85 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               </tr>
                             </thead>
                             <tbody>
-                              {paged.map((ord, oi) => (
-                                <tr key={ord.id || oi} style={{ borderBottom: '1px solid #f1f5f9', background: oi % 2 === 0 ? 'white' : '#f8fafc' }}>
-                                  <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
-                                    {ord.id < 0 || ord.je_odborova_faktura ? (
-                                      <span style={{ color: '#64748b', fontWeight: 600 }} title="Odborová faktura bez objednávky">
-                                        {ord.cislo_objednavky || '—'}
-                                      </span>
-                                    ) : (
-                                      <button
-                                        onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
-                                        style={{ 
-                                          background: 'none', 
-                                          border: 'none', 
-                                          color: '#3b82f6',
-                                          fontWeight: 600, 
-                                          cursor: 'pointer', 
-                                          padding: 0, 
-                                          fontSize: 'inherit'
-                                        }}
-                                        title="Otevřít objednávku"
-                                      >
-                                        {ord.cislo_objednavky || '—'}
-                                      </button>
-                                    )}
-                                  </td>
-                                  <td style={{ padding: '0.25rem 0.5rem' }}>{ord.predmet || '—'}</td>
-                                  <td style={{ padding: '0.25rem 0.5rem' }}>{czDate(ord.dt_vytvoreni)}</td>
-                                  <td style={{ padding: '0.25rem 0.5rem' }}>{ord.stav || '—'}</td>
-                                  <td style={{ padding: '0.25rem 0.5rem' }}>{ord.dodavatel_nazev || '—'}</td>
-                                  <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
-                                    {formatAmount(ord.planovana_castka_lp || ord.max_cena_s_dph || 0)}
-                                  </td>
-                                </tr>
-                              ))}
+                              {paged.map((ord, oi) => {
+                                // Zkontrolovat - matchuje tato objednávka fulltext hledání?
+                                const matchesFulltext = fullTextSearch && ftSearchResults 
+                                  ? (ftSearchResults.matched_orders_by_lp?.[String(lp.lp_master_id)] || []).includes(ord.id)
+                                  : false;
+                                
+                                return (
+                                  <React.Fragment key={ord.id || oi}>
+                                    <tr style={{ borderBottom: '1px solid #f1f5f9', background: matchesFulltext ? '#fef08a' : (oi % 2 === 0 ? 'white' : '#f8fafc'), fontWeight: matchesFulltext ? 600 : 'normal' }}>
+                                      <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>
+                                        {ord.id < 0 || ord.je_odborova_faktura ? (
+                                          <span style={{ color: '#64748b', fontWeight: 600 }} title="Odborová faktura bez objednávky">
+                                            {ord.cislo_objednavky || '—'}
+                                          </span>
+                                        ) : (
+                                          <button
+                                            onClick={() => navigate(`/order-form-25?edit=${ord.id}`, { state: { returnTo: location.pathname } })}
+                                            style={{ 
+                                              background: 'none', 
+                                              border: 'none', 
+                                              color: '#3b82f6',
+                                              fontWeight: 600, 
+                                              cursor: 'pointer', 
+                                              padding: 0, 
+                                              fontSize: 'inherit'
+                                            }}
+                                            title="Otevřít objednávku"
+                                          >
+                                            {ord.cislo_objednavky || '—'}
+                                          </button>
+                                        )}
+                                      </td>
+                                      <td style={{ padding: '0.25rem 0.5rem' }}>{ord.predmet || '—'}</td>
+                                      <td style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                                        {ord.druh_objednavky_kod ? (() => {
+                                          const druh = typeof ord.druh_objednavky_kod === 'string' ? JSON.parse(ord.druh_objednavky_kod) : ord.druh_objednavky_kod;
+                                          return druh?.nazev_stavu || druh?.kod_stavu || '—';
+                                        })() : '—'}
+                                      </td>
+                                      <td style={{ padding: '0.25rem 0.5rem' }}>{czDate(ord.dt_vytvoreni)}</td>
+                                      <td style={{ padding: '0.25rem 0.5rem' }}>{ord.stav || '—'}</td>
+                                      <td style={{ padding: '0.25rem 0.5rem' }}>{ord.dodavatel_nazev || '—'}</td>
+                                      <td style={{ padding: '0.25rem 0.5rem', textAlign: 'right', fontWeight: 600 }}>
+                                        {formatAmount(ord.planovana_castka_lp || ord.max_cena_s_dph || 0)}
+                                      </td>
+                                    </tr>
+                                    {/* Faktury pod objednávkou */}
+                                    {(ord.faktury && ord.faktury.length > 0) && 
+                                      ord.faktury.map((fa, fi) => {
+                                        const faTypMap = {
+                                          'BEZNA': 'Běžná',
+                                          'ZALOHOVA': 'Zálohová',
+                                          'OPRAVNA': 'Opravná',
+                                          'PROFORMA': 'Proforma',
+                                          'DOBROPIS': 'Dobropis'
+                                        };
+                                        return (
+                                          <tr key={`fa_${ord.id}_${fa.id}`} style={{ borderBottom: '1px solid #e2e8f0', background: '#fafbfc' }}>
+                                            <td colSpan="8" style={{ padding: '0.3rem 0.5rem' }}>
+                                              <div style={{ fontSize: '0.75rem', color: '#475569', display: 'grid', gridTemplateColumns: '140px 280px 90px auto 1fr', gap: '0.5rem', alignItems: 'center' }}>
+                                                <div style={{ fontWeight: 600 }}>📋 {fa.fa_cislo_vema || fa.id}</div>
+                                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fa.fa_poznamka || '—'}</div>
+                                                <div style={{ fontSize: '0.75rem', color: '#475569', textAlign: 'left' }}>
+                                                  <span style={{ color: '#94a3b8', marginRight: '4px' }}>Typ:</span>
+                                                  <span style={{ fontWeight: 600 }}>
+                                                  {getInvoiceTypeName(fa)}
+                                                  </span>
+                                                </div>
+                                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>—</div>
+                                                <div>{fa.fa_poznamka && `${fa.fa_poznamka} | `}{formatAmount(fa.fa_castka)}</div>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        );
+                                      })
+                                    }
+                                  </React.Fragment>
+                                );
+                              })}
                             </tbody>
                           </table>
                           {totalRows > PAGE_SIZES[0] && (
@@ -3360,7 +3866,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         <Thead>
           <tr>
             <th>Kód LP</th>
-            <th>Kategorie</th>
+            <th>Druh objednávky</th>
             <th>Účet</th>
             <th>Název účtu</th>
             {showUserColumn && <th>Příkazce operace</th>}
@@ -3532,12 +4038,35 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                         {sortState.col !== col ? '⇅' : sortState.dir === 'asc' ? '↑' : '↓'}
                       </span>
                     );
-                    const sorted = [...lpExpandOrders[expandKey]].sort((a, b) => {
+                    const sorted = [...lpExpandOrders[expandKey]]
+                      .filter((ord) => {
+                        // Filtruj podle druh_objednavky (data z BE endpointu)
+                        if (filterDruhObjednavky.length > 0 && druhFilterResults) {
+                          const matchedIds = druhFilterResults.matched_orders_by_lp?.[String(lp.lp_master_id)] || [];
+                          if (!matchedIds.includes(ord.id)) return false;
+                        }
+                        
+                        // Když je aktivní fulltext, ukaž jen objednávky které matchují
+                        if (fullTextSearch && fullTextSearch.trim().length >= 2 && ftSearchResults) {
+                          const matchedIds = ftSearchResults.matched_orders_by_lp?.[String(lp.lp_master_id)] || [];
+                          if (!matchedIds.includes(ord.id)) return false;
+                        }
+                        return true;
+                      })
+                      .sort((a, b) => {
                       if (!sortState.col || !sortState.dir) return 0;
                       const m = sortState.dir === 'asc' ? 1 : -1;
                       switch (sortState.col) {
                         case 'cislo': return m * (a.cislo_objednavky || '').localeCompare(b.cislo_objednavky || '', 'cs');
                         case 'predmet': return m * (a.predmet || '').localeCompare(b.predmet || '', 'cs');
+                        case 'druh': {
+                          const getDruhNazev = (ord) => {
+                            if (!ord.druh_objednavky_kod) return '';
+                            const druh = typeof ord.druh_objednavky_kod === 'string' ? JSON.parse(ord.druh_objednavky_kod) : ord.druh_objednavky_kod;
+                            return druh?.nazev_stavu || druh?.kod_stavu || '';
+                          };
+                          return m * (getDruhNazev(a) || '').localeCompare(getDruhNazev(b) || '', 'cs');
+                        }
                         case 'datum': return m * (a.dt_vytvoreni || '').localeCompare(b.dt_vytvoreni || '');
                         case 'stav': return m * (a.stav || '').localeCompare(b.stav || '', 'cs');
                         case 'dodavatel': return m * (a.dodavatel_nazev || '').localeCompare(b.dodavatel_nazev || '', 'cs');
@@ -3557,10 +4086,21 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                     return (
                     <>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.82rem', letterSpacing: '-0.01em' }}>
+                      <colgroup>
+                        <col style={{ width: '140px' }} />
+                        <col style={{ width: '260px' }} />
+                        <col style={{ width: '90px' }} />
+                        <col style={{ width: '80px' }} />
+                        <col style={{ width: '70px' }} />
+                        <col style={{ width: '150px' }} />
+                        <col style={{ width: '140px' }} />
+                        <col style={{ width: '80px' }} />
+                      </colgroup>
                       <thead>
                         <tr style={{ background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)' }}>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('cislo')}>Č. obj.{sortIcon('cislo')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('predmet')}>Předmět obj.{sortIcon('predmet')}</th>
+                          <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('druh')}>Druh obj.{sortIcon('druh')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('datum')}>Datum{sortIcon('datum')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('stav')}>Stav{sortIcon('stav')}</th>
                           <th style={{ ...thBase, textAlign: 'left' }} onClick={() => toggleSort('dodavatel')}>Dodavatel{sortIcon('dodavatel')}</th>
@@ -3605,6 +4145,12 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                             <td style={{ padding: '0.25rem 0.5rem', color: '#374151', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ord.predmet || ''}>
                               {ord.predmet || '—'}
                             </td>
+                            <td style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem' }}>
+                              {ord.druh_objednavky_kod ? (() => {
+                                const druh = typeof ord.druh_objednavky_kod === 'string' ? JSON.parse(ord.druh_objednavky_kod) : ord.druh_objednavky_kod;
+                                return druh?.nazev_stavu || druh?.kod_stavu || '—';
+                              })() : '—'}
+                            </td>
                             <td style={{ padding: '0.25rem 0.5rem', color: '#475569' }}>{czDate(ord.dt_vytvoreni)}</td>
                             <td style={{ padding: '0.25rem 0.5rem' }}>
                               <span style={{
@@ -3630,7 +4176,15 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               {ord.pocet_faktur > 0 ? `${ord.pocet_faktur}× / ${formatAmount(ord.suma_faktur || 0)}` : '—'}
                             </td>
                           </tr>
-                          {ord.faktury?.length > 0 && ord.faktury.map((fa, fi) => {
+                          {ord.faktury?.length > 0 && (() => {
+                            const faTypMap = {
+                              'BEZNA': 'Běžná',
+                              'ZALOHOVA': 'Zálohová',
+                              'OPRAVNA': 'Opravná',
+                              'PROFORMA': 'Proforma',
+                              'DOBROPIS': 'Dobropis'
+                            };
+                            return ord.faktury.map((fa, fi) => {
                             // 🔧 FIX: Rozlišovat pomocí backend flagu ma_jiny_lp
                             // - lp_castka === null → Faktura NEMÁ vůbec LP rozpis → "BEZ LP"
                             // - ma_jiny_lp === true → Faktura NEMÁ záznam pro tento LP (čerpá z jiného) → "JINÉ LP"
@@ -3721,6 +4275,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#78716c', maxWidth: '260px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={fa.fa_poznamka || ''}>
                                 {fa.fa_poznamka || '—'}
                               </td>
+                              <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasPositiveLP ? '#475569' : '#94a3b8' }}>
+                                <span style={{ fontWeight: 600 }}>
+                                {getInvoiceTypeName(fa)}
+                                </span>
+                              </td>
                               <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: faHasPositiveLP ? '#78716c' : '#94a3b8' }}>{czDate(fa.fa_datum_vystaveni)}</td>
                               <td style={{ padding: '0.2rem 0.5rem' }}>
                                 <span style={{
@@ -3760,7 +4319,8 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                               </td>
                             </tr>
                             );
-                          })}
+                          });
+                          })()}
                           </React.Fragment>
                         ))}
                       </tbody>
@@ -3872,8 +4432,6 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
     }
   });
   const uniqueUsers = Array.from(userMap.values());
-  
-  const uniqueKategorie = [...new Set(lpData.map(lp => lp.kategorie).filter(k => k))];
   
   return (
     <>
@@ -4041,47 +4599,109 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         )}
       </StatsGrid>
       
-      {/* Filtry - Custom multi-select s vyhledáváním */}
+      {/* Filtry - Jednotný blok */}
       {isAdmin && (
-        <FilterBar>
-          {/* Textové vyhledávání LP */}
-          <FilterWrapper>
-            <FilterLabel>
-              <FilterLabelLeft>
-                <Search size={16} />
-                Hledat LP
-              </FilterLabelLeft>
-              <FilterClearButton
+        <FilterSection>
+          {/* Fulltext vyhledávání - NA VRCHOLU */}
+          <FulltextRow>
+            <FulltextTopRow>
+              <FilterLabel>
+                <FilterLabelLeft>
+                  <Search size={16} />
+                  Fulltext vyhledávání
+                  {ftSearchLoading && (
+                    <span style={{ fontSize: '0.7rem', color: '#3b82f6', fontWeight: 500, marginLeft: '0.5rem' }}>
+                      vyhledávám…
+                    </span>
+                  )}
+                  {!ftSearchLoading && ftSearchResults && fullTextSearch.trim().length >= 2 && (
+                    <span style={{ fontSize: '0.7rem', color: '#059669', fontWeight: 600, marginLeft: '0.5rem' }}>
+                      LP: {ftSearchResults.matching_lp_ids?.length || 0}
+                      {' · '}OBJ: {Object.keys(ftSearchResults.orders_detail || {}).length}
+                      {' · '}FA: {Object.values(ftSearchResults.matched_faktury_by_order || {}).reduce((s, arr) => s + (Array.isArray(arr) ? arr.length : 0), 0)}
+                    </span>
+                  )}
+                </FilterLabelLeft>
+              </FilterLabel>
+            </FulltextTopRow>
+            <FulltextInputRow>
+              <FulltextInputContainer>
+                <FulltextInput
+                  type="text"
+                  value={fullTextSearch}
+                  onChange={(e) => setFullTextSearch(e.target.value)}
+                  placeholder="Hledej LP, objednávky, faktury, příkazce..."
+                />
+                <FulltextClearButton
+                  type="button"
+                  $visible={fullTextSearch.length > 0}
+                  onClick={() => setFullTextSearch('')}
+                  title="Vymazat vyhledávání"
+                >
+                  <X size={16} />
+                </FulltextClearButton>
+              </FulltextInputContainer>
+              <button
                 type="button"
-                $visible={filterText.length > 0}
-                onClick={() => setFilterText('')}
-                title="Vymazat"
+                onClick={() => {
+                  setFullTextSearch('');
+                  setFilterText('');
+                  setFilterUsek([]);
+                  setFilterUser([]);
+                  setFilterDruhObjednavky([]);
+                }}
+                style={{
+                  padding: '0.45rem 0.9rem',
+                  background: '#fee2e2',
+                  color: '#dc2626',
+                  border: '1px solid #fca5a5',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  whiteSpace: 'nowrap',
+                  transition: 'all 0.2s ease',
+                  flexShrink: 0
+                }}
               >
-                <X size={12} />
-              </FilterClearButton>
-            </FilterLabel>
-            <FilterSelect
-              as="input"
-              type="text"
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              placeholder="Číslo LP, název účtu..."
-              style={{ maxWidth: '220px' }}
-            />
-          </FilterWrapper>
+                <X size={13} /> Smazat filtry
+              </button>
+            </FulltextInputRow>
+          </FulltextRow>
 
-          {/* Filtr roku - PRVNÍ NA ŘÁDKU */}
+          {/* Ostatní filtry */}
+          <FilterBar>
           <FilterWrapper>
             <FilterLabel>
               <FilterLabelLeft>
                 <Calendar size={16} />
                 Rok
               </FilterLabelLeft>
+              <FilterClearButton
+                type="button"
+                $visible={selectedYear !== new Date().getFullYear()}
+                onClick={() => {
+                  const defaultYear = new Date().getFullYear();
+                  setSelectedYear(defaultYear);
+                  try {
+                    localStorage.setItem(`lp_year_filter_${user?.id || 'default'}`, String(defaultYear));
+                  } catch (err) {
+                    console.error('Chyba při ukládání roku do localStorage:', err);
+                  }
+                }}
+                title="Vymazat filtr"
+              >
+                <X size={12} />
+              </FilterClearButton>
             </FilterLabel>
-            <FilterSelect 
-              value={selectedYear}
-              onChange={(e) => {
-                const year = parseInt(e.target.value, 10);
+            <CustomSelect
+              field="selectedYear"
+              value={[selectedYear]}
+              onChange={(newValues) => {
+                const year = Array.isArray(newValues) && newValues.length > 0 ? newValues[0] : new Date().getFullYear();
                 setSelectedYear(year);
                 try {
                   localStorage.setItem(`lp_year_filter_${user?.id || 'default'}`, String(year));
@@ -4089,14 +4709,28 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                   console.error('Chyba při ukládání roku do localStorage:', err);
                 }
               }}
-              style={{ maxWidth: '150px' }}
-            >
-              {availableYears.map(year => (
-                <option key={year} value={year}>
-                  {year}
-                </option>
-              ))}
-            </FilterSelect>
+              options={availableYears.map(year => ({
+                id: year,
+                nazev: String(year)
+              }))}
+              placeholder="Všechny roky"
+              multiple={false}
+              selectStates={selectStates}
+              setSelectStates={setSelectStates}
+              searchStates={searchStates}
+              setSearchStates={setSearchStates}
+              touchedSelectFields={touchedSelectFields}
+              setTouchedSelectFields={setTouchedSelectFields}
+              toggleSelect={(field) => setSelectStates(prev => ({ ...prev, [field]: !prev[field] }))}
+              filterOptions={(options, searchTerm) => {
+                if (!searchTerm) return options;
+                return options.filter(opt => 
+                  String(opt.nazev).includes(searchTerm)
+                );
+              }}
+              getOptionLabel={(option) => option?.nazev || ''}
+              enableSearch={false}
+            />
           </FilterWrapper>
           
           <FilterWrapper>
@@ -4189,26 +4823,26 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
             <FilterLabel>
               <FilterLabelLeft>
                 <Filter size={16} />
-                Kategorie
+                Druh objednávky
               </FilterLabelLeft>
               <FilterClearButton
                 type="button"
-                $visible={filterKategorie.length > 0}
-                onClick={() => setFilterKategorie([])}
+                $visible={filterDruhObjednavky.length > 0}
+                onClick={() => setFilterDruhObjednavky([])}
                 title="Vymazat filtr"
               >
                 <X size={12} />
               </FilterClearButton>
             </FilterLabel>
             <CustomSelect
-              field="filterKategorie"
-              value={filterKategorie}
-              onChange={(newValues) => setFilterKategorie(Array.isArray(newValues) ? newValues : [])}
-              options={uniqueKategorie.map(kat => ({
-                id: kat,
-                nazev: `${kat} - ${LP_CATEGORY_NAMES[kat] || kat}`
+              field="filterDruhObjednavky"
+              value={filterDruhObjednavky}
+              onChange={(newValues) => setFilterDruhObjednavky(Array.isArray(newValues) ? newValues : [])}
+              options={druhyObjednavkyOptions.map(druh => ({
+                id: druh.kod_stavu,
+                nazev: druh.nazev_stavu
               }))}
-              placeholder="Všechny kategorie"
+              placeholder="Všechny druhy objednávek"
               multiple={true}
               selectStates={selectStates}
               setSelectStates={setSelectStates}
@@ -4224,41 +4858,11 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 );
               }}
               getOptionLabel={(option) => option?.nazev || ''}
-              enableSearch={uniqueKategorie.length > 5}
+              enableSearch={druhyObjednavkyOptions.length > 5}
             />
           </FilterWrapper>
-
-          {/* Smazat všechny filtry */}
-          {(filterText || filterUsek.length > 0 || filterUser.length > 0 || filterKategorie.length > 0) && (
-            <FilterWrapper style={{ alignSelf: 'flex-end' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setFilterText('');
-                  setFilterUsek([]);
-                  setFilterUser([]);
-                  setFilterKategorie([]);
-                }}
-                style={{
-                  padding: '0.5rem 1rem',
-                  background: '#fee2e2',
-                  color: '#dc2626',
-                  border: '1px solid #fca5a5',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '0.85rem',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.4rem',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                <X size={14} /> Smazat filtry
-              </button>
-            </FilterWrapper>
-          )}
-        </FilterBar>
+          </FilterBar>
+        </FilterSection>
       )}
       
       {/* Tabulka LP */}
@@ -4616,29 +5220,41 @@ const CashbookLPSummary = () => {
                   <tbody>
                     {lpSummary.map((lp, idx) => {
                       const isOverLimit = lp.prekroceni;
+                      const hasNoLimit = !lp.ma_limit || !lp.celkovy_limit;
                       const percentColor = lp.procento_cerpani > 100 ? '#dc2626' : lp.procento_cerpani > 80 ? '#f59e0b' : '#10b981';
                       
                       return (
-                        <tr key={lp.id || `lp-${idx}`} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                        <tr key={lp.id || `lp-${idx}`} style={{ 
+                          borderBottom: '1px solid #f3f4f6',
+                          background: hasNoLimit ? '#fef3c7' : 'white',  // Žlutý podklad pro LP bez limitů
+                          opacity: hasNoLimit ? 0.85 : 1
+                        }}>
                           <td style={{ padding: '0.75rem' }}>
-                            <div style={{ fontWeight: '600', color: '#1f2937', marginBottom: '0.25rem' }}>{lp.lp_kod}</div>
+                            <div style={{ 
+                              fontWeight: '600', 
+                              color: hasNoLimit ? '#92400e' : '#1f2937', 
+                              marginBottom: '0.25rem' 
+                            }}>
+                              {lp.lp_kod}
+                              {hasNoLimit && <span style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#f59e0b', fontWeight: 700 }}>⚠️ BEZ LIMITU</span>}
+                            </div>
                             {lp.nazev_uctu && (
-                              <div style={{ fontSize: '0.75rem', color: '#9ca3af', fontStyle: 'italic' }}>{lp.nazev_uctu}</div>
+                              <div style={{ fontSize: '0.75rem', color: hasNoLimit ? '#92400e' : '#9ca3af', fontStyle: 'italic' }}>{lp.nazev_uctu}</div>
                             )}
                           </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#1f2937' }}>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: hasNoLimit ? '#92400e' : '#1f2937' }}>
                             {lp.cerpano_pokladna.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
                           </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6b7280' }}>
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: hasNoLimit ? '#92400e' : '#6b7280' }}>
                             {lp.pocet_dokladu} dokladů
                             {lp.pocet_polozek > lp.pocet_dokladu && (
-                              <span style={{ fontSize: '0.75rem', color: '#9ca3af', marginLeft: '0.25rem' }}>
+                              <span style={{ fontSize: '0.75rem', color: hasNoLimit ? '#92400e' : '#9ca3af', marginLeft: '0.25rem' }}>
                                 ({lp.pocet_polozek} položek)
                               </span>
                             )}
                           </td>
-                          <td style={{ padding: '0.75rem', textAlign: 'right', color: '#6b7280' }}>
-                            {lp.celkovy_limit ? lp.celkovy_limit.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč' : '-'}
+                          <td style={{ padding: '0.75rem', textAlign: 'right', color: hasNoLimit ? '#92400e' : '#6b7280' }}>
+                            {lp.celkovy_limit ? lp.celkovy_limit.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč' : <span style={{ color: '#f59e0b', fontWeight: 600 }}>—</span>}
                           </td>
                           <td style={{ padding: '0.75rem', textAlign: 'center' }}>
                             {lp.procento_cerpani !== null ? (
