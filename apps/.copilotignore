@@ -1,0 +1,36 @@
+# 🚫 KRITICKÉ IGNOROVÁNÍ
+
+# 📦 NODE MODULES - všude
+**/node_modules/
+node_modules/
+
+# 🔐 PRODUKČNÍ CREDENTIALS
+**/.env.production
+**/.env.production.*
+.env.production
+
+# 🏗️ BUILD OUTPUTS - všechny projekty
+**/build/
+**/build-*/
+**/dist/
+**/.webpack-cache/
+**/tmp/
+**/.next/
+
+# 🐛 CACHE A DEBUG
+**/cache/
+**/.cache/
+**/*.log
+**/logs/
+
+# 🧪 TESTOVACÍ SOUBORY
+test*.php
+test*.sh
+test*.js
+test*.ts
+
+# 📚 VELKÉ DOKUMENTACE
+_docs/
+_sql/
+podklady/
+manualy/

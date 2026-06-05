@@ -4249,7 +4249,7 @@ function handle_orderV3_lp_expand($input, $config) {
                     'fa_datum_splatnosti' => $fa['fa_datum_splatnosti'],
                     'fa_zaplacena' => (bool)$fa['fa_zaplacena'],
                     'fa_poznamka' => $fa['fa_poznamka'],
-                    'vecna_spravnost_potvrzeno' => (bool)$fa['vecna_spravnost_potvrzeno']
+                    'vecna_spravnost_potvrzeno' => (int)$fa['vecna_spravnost_potvrzeno'] // 0=neověřeno, 1=potvrzeno, 2=zamítnuto
                 ];
                 $faktura_ids[] = (int)$fa['id'];
             }
@@ -4466,7 +4466,7 @@ function handle_orderV3_lp_expand($input, $config) {
                         'fa_datum_splatnosti' => $row['fa_datum_splatnosti'],
                         'fa_zaplacena' => (bool)$row['fa_zaplacena'],
                         'fa_poznamka' => $row['fa_poznamka'],
-                        'vecna_spravnost_potvrzeno' => (bool)$row['vecna_spravnost_potvrzeno'],
+                        'vecna_spravnost_potvrzeno' => (int)$row['vecna_spravnost_potvrzeno'], // 0=neověřeno, 1=potvrzeno, 2=zamítnuto
                         'lp_castka' => $lp_castka
                     ],
                     'objednavka_id' => $row['objednavka_id'] !== null ? (int)$row['objednavka_id'] : null

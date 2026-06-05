@@ -41,24 +41,65 @@ require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/handlers.php';
 
 /**
- * POST - Přepne stav kontroly faktury (řádku v InvoiceListu)
- * Endpoint: invoices/toggle-check
- * POST: {token, username, faktura_id, kontrolovano}
+ * Helper - Ověří, zda je faktura uzamčena pro změnu věcné správnosti
  * 
- * @param array $input POST data (token, username, faktura_id, kontrolovano)
+ * LOGIKA LOCK:
+ * - Pokud je faktura zamítnuta (status 2) a od té doby nebyla aktualizována účetní,
+ *   je uzamčena pro další VS rozhodnutí.
+ * - Odemčení: účetní upraví fakturu (jakákoli změna) → dt_aktualizace > dt_potvrzeni_vecne_spravnosti
+ * 
+ * @param array $faktura Data faktury (musí obsahovat vecna_spravnost_potvrzeno, dt_aktualizace, dt_potvrzeni_vecne_spravnosti)
+ * @return bool TRUE = faktura je uzamčena, FALSE = faktura je odemčena
+ */
+function isFakturaLockedForVS($faktura) {
+    // Pokud není zamítnuta, není uzamčena
+    if (!isset($faktura['vecna_spravnost_potvrzeno']) || $faktura['vecna_spravnost_potvrzeno'] != VS_STATUS_ZAMITNUTA) {
+        return false;
+    }
+    
+    // Pokud chybí datum potvrzení/zamítnutí, není uzamčena (nemělo by nastat)
+    if (empty($faktura['dt_potvrzeni_vecne_spravnosti'])) {
+        return false;
+    }
+    
+    // Pokud dt_aktualizace je novější než dt_potvrzeni, faktura byla upravena → odemčena
+    if (!empty($faktura['dt_aktualizace'])) {
+        $dt_aktualizace = strtotime($faktura['dt_aktualizace']);
+        $dt_potvrzeni = strtotime($faktura['dt_potvrzeni_vecne_spravnosti']);
+        
+        if ($dt_aktualizace > $dt_potvrzeni) {
+            return false; // Byla aktualizována po zamítnutí → odemčena
+        }
+    }
+    
+    // Faktura je zamítnutá a nebyla od té doby upravena → uzamčena
+    return true;
+}
+
+/**
+ * POST - Nastaví stav věcné správnosti faktury (0=neověřeno, 1=potvrzeno, 2=zamítnuto)
+ * 
+ * 🆕 ROZŠÍŘENO O ZAMÍTNUTÍ VĚCNÉ SPRÁVNOSTI (status 0/1/2)
+ * 
+ * Endpoint: invoices/toggle-check
+ * POST: {token, username, faktura_id, status, vecna_spravnost_poznamka}
+ * 
+ * BACKWARD COMPATIBILITY: Pokud přijde starý parametr "kontrolovano" (bool), mapuje se na status 0/1
+ * 
+ * @param array $input POST data (token, username, faktura_id, status, vecna_spravnost_poznamka)
  * @param array $config Konfigurace (DB přístup)
  * @return void Vrací JSON response
  */
 function handle_invoice_toggle_check($input, $config) {
     // ==========================================
-    // 🐛 DEV DEBUG LOGGING - KONTROLA FAKTURY
+    // 🐛 DEV DEBUG LOGGING - VĚCNÁ SPRÁVNOST
     // ==========================================
     error_log("╔═══════════════════════════════════════════════════════════");
-    error_log("║ ✅ MODUL FAKTUR - KONTROLA ŘÁDKU");
+    error_log("║ ✅ MODUL FAKTUR - VĚCNÁ SPRÁVNOST");
     error_log("║ Čas: " . date('Y-m-d H:i:s'));
     error_log("║ Uživatel: " . (isset($input['username']) ? $input['username'] : 'N/A'));
     error_log("║ Faktura ID: " . (isset($input['faktura_id']) ? $input['faktura_id'] : 'N/A'));
-    error_log("║ Kontrolováno: " . (isset($input['kontrolovano']) ? ($input['kontrolovano'] ? 'ANO' : 'NE') : 'N/A'));
+    error_log("║ Status: " . (isset($input['status']) ? $input['status'] : (isset($input['kontrolovano']) ? 'legacy' : 'N/A')));
     error_log("║ Endpoint: invoices/toggle-check");
     error_log("╚═══════════════════════════════════════════════════════════");
     
@@ -73,8 +114,21 @@ function handle_invoice_toggle_check($input, $config) {
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     $faktura_id = isset($input['faktura_id']) ? (int)$input['faktura_id'] : 0;
-    $kontrolovano = isset($input['kontrolovano']) ? (bool)$input['kontrolovano'] : false;
     
+    // BACKWARD COMPATIBILITY: mapování starého "kontrolovano" (bool) na nový "status" (0/1/2)
+    if (isset($input['status'])) {
+        $status = (int)$input['status'];
+    } elseif (isset($input['kontrolovano'])) {
+        // Starý parametr kontrolovano → mapování na status 0/1
+        $status = $input['kontrolovano'] ? VS_STATUS_POTVRZENA : VS_STATUS_NEPOTVRZENA;
+    } else {
+        $status = VS_STATUS_NEPOTVRZENA; // Default
+    }
+    
+    $vecna_spravnost_poznamka = isset($input['vecna_spravnost_poznamka']) ? trim($input['vecna_spravnost_poznamka']) : '';
+    $vecna_spravnost_poznamka = isset($input['vecna_spravnost_poznamka']) ? trim($input['vecna_spravnost_poznamka']) : '';
+    
+    // Validace základních parametrů
     if (!$token || !$username) {
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
@@ -84,6 +138,20 @@ function handle_invoice_toggle_check($input, $config) {
     if ($faktura_id <= 0) {
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Neplatné faktura_id'));
+        return;
+    }
+    
+    // Validace status hodnoty (0/1/2)
+    if (!in_array($status, array(VS_STATUS_NEPOTVRZENA, VS_STATUS_POTVRZENA, VS_STATUS_ZAMITNUTA))) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný status (očekávány hodnoty 0, 1 nebo 2)'));
+        return;
+    }
+    
+    // Validace povinné poznámky při zamítnutí
+    if ($status === VS_STATUS_ZAMITNUTA && strlen($vecna_spravnost_poznamka) < 5) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Při zamítnutí je povinné uvést důvod (minimálně 5 znaků)'));
         return;
     }
 
@@ -124,9 +192,16 @@ function handle_invoice_toggle_check($input, $config) {
             return;
         }
 
-        // 5. Načtení aktuálního stavu faktury
+        // 5. Načtení aktuálního stavu faktury (s dt_aktualizace pro lock check)
         $stmt_faktura = $db->prepare("
-            SELECT id, rozsirujici_data, fa_cislo_vema 
+            SELECT 
+                id, 
+                fa_cislo_vema,
+                objednavka_id,
+                vecna_spravnost_potvrzeno,
+                dt_potvrzeni_vecne_spravnosti,
+                dt_aktualizace,
+                rozsirujici_data 
             FROM " . TBL_FAKTURY . " 
             WHERE id = ? AND aktivni = 1
         ");
@@ -138,79 +213,115 @@ function handle_invoice_toggle_check($input, $config) {
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nenalezena'));
             return;
         }
+        
+        // 6. Kontrola zamčeného stavu (pokud je zamítnuta a od té doby nebyla upravena)
+        if (isFakturaLockedForVS($faktura)) {
+            http_response_code(423); // HTTP 423 Locked
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Faktura je uzamčena. Vyčkejte na opravu od účetní. Po úpravě faktury bude možné znovu rozhodnout o věcné správnosti.',
+                'locked' => true
+            ));
+            return;
+        }
 
-        // 6. Parsování nebo vytvoření rozsirujici_data
-        $rozsirujici_data = array();
-        if (!empty($faktura['rozsirujici_data'])) {
-            $parsed = json_decode($faktura['rozsirujici_data'], true);
-            if (is_array($parsed)) {
-                $rozsirujici_data = $parsed;
+        // 7. START TRANSAKCE - všechny změny v jedné transakci
+        $db->beginTransaction();
+        
+        try {
+            $czech_datetime = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+            
+            // 8a. Uložení statusu věcné správnosti do hlavní tabulky faktury
+            if ($status === VS_STATUS_NEPOTVRZENA) {
+                // Reset všech VS údajů
+                $stmt_update_vs = $db->prepare("
+                    UPDATE " . TBL_FAKTURY . "
+                    SET 
+                        vecna_spravnost_potvrzeno = NULL,
+                        potvrdil_vecnou_spravnost_id = NULL,
+                        dt_potvrzeni_vecne_spravnosti = NULL,
+                        vecna_spravnost_poznamka = NULL,
+                        vecna_spravnost_umisteni_majetku = NULL
+                    WHERE id = ?
+                ");
+                $stmt_update_vs->execute(array($faktura_id));
+                
+            } else {
+                // Status 1 (potvrzeno) nebo 2 (zamítnuto) - uložit údaje
+                $stmt_update_vs = $db->prepare("
+                    UPDATE " . TBL_FAKTURY . "
+                    SET 
+                        vecna_spravnost_potvrzeno = ?,
+                        potvrdil_vecnou_spravnost_id = ?,
+                        dt_potvrzeni_vecne_spravnosti = ?,
+                        vecna_spravnost_poznamka = ?
+                    WHERE id = ?
+                ");
+                $stmt_update_vs->execute(array(
+                    $status,
+                    $token_data['id'],
+                    $czech_datetime,
+                    $vecna_spravnost_poznamka,
+                    $faktura_id
+                ));
             }
+            
+            // 8b. Pokud je status ZAMÍTNUTO (2), provést další akce
+            if ($status === VS_STATUS_ZAMITNUTA) {
+                // 8b1. Změna stavu faktury na V_RESENI
+                $stmt_update_stav = $db->prepare("
+                    UPDATE " . TBL_FAKTURY . "
+                    SET stav = ?
+                    WHERE id = ?
+                ");
+                $stmt_update_stav->execute(array(INVOICE_STATUS_IN_PROGRESS, $faktura_id));
+                
+                // 8b2. Smazání LP čerpání faktury
+                $stmt_delete_lp = $db->prepare("
+                    DELETE FROM " . TBL_FAKTURY_LP_CERPANI . "
+                    WHERE faktura_id = ?
+                ");
+                $stmt_delete_lp->execute(array($faktura_id));
+                
+                error_log("🔴 Zamítnuta VS faktury #$faktura_id - stav změněn na V_RESENI, LP čerpání smazáno");
+            }
+            
+            // 9. COMMIT transakce
+            $db->commit();
+            
+            // 10. Úspěšná odpověď
+            http_response_code(200);
+            echo json_encode(array(
+                'status' => 'success',
+                'message' => ($status === VS_STATUS_ZAMITNUTA) 
+                    ? 'Věcná správnost faktury byla zamítnuta. Faktura vrácena k dořešení.' 
+                    : (($status === VS_STATUS_POTVRZENA) 
+                        ? 'Věcná správnost faktury byla potvrzena.' 
+                        : 'Věcná správnost faktury byla resetována.'),
+                'data' => array(
+                    'faktura_id' => $faktura_id,
+                    'fa_cislo_vema' => $faktura['fa_cislo_vema'],
+                    'vecna_spravnost_status' => $status,
+                    'vecna_spravnost_poznamka' => $vecna_spravnost_poznamka,
+                    'potvrdil_id' => ($status > 0) ? $token_data['id'] : null,
+                    'dt_potvrzeni' => ($status > 0) ? $czech_datetime : null,
+                    'lp_cerpani_smazano' => ($status === VS_STATUS_ZAMITNUTA)
+                )
+            ));
+            
+        } catch (Exception $e) {
+            // ROLLBACK při chybě
+            $db->rollBack();
+            throw $e;
         }
-
-        // 7. Načtení celého jména uživatele
-        $stmt_user = $db->prepare("
-            SELECT prijmeni, jmeno 
-            FROM " . TBL_UZIVATELE . " 
-            WHERE id = ?
-        ");
-        $stmt_user->execute(array($token_data['id']));
-        $user_data = $stmt_user->fetch(PDO::FETCH_ASSOC);
-        $cele_jmeno = $user_data ? trim($user_data['prijmeni'] . ' ' . $user_data['jmeno']) : $username;
-        
-        // 8. Aktualizace stavu kontroly
-        if ($kontrolovano) {
-            // Zaškrtnout kontrolu
-            $rozsirujici_data['kontrola_radku'] = array(
-                'kontrolovano' => true,
-                'kontroloval_user_id' => $token_data['id'],
-                'kontroloval_username' => $username,
-                'kontroloval_cele_jmeno' => $cele_jmeno,
-                'dt_kontroly' => TimezoneHelper::getCzechDateTime('Y-m-d H:i:s')
-            );
-        } else {
-            // Odškrtnout kontrolu - smazat nebo nastavit false
-            $rozsirujici_data['kontrola_radku'] = array(
-                'kontrolovano' => false,
-                'kontroloval_user_id' => null,
-                'kontroloval_username' => null,
-                'kontroloval_cele_jmeno' => null,
-                'dt_kontroly' => null
-            );
-        }
-
-        // 9. Uložení změn do DB - POUZE rozsirujici_data, NEMĚNIT dt_aktualizace!
-        // Kontrola si ukládá vlastní datum do dt_kontroly, datum aktualizace faktury zůstává beze změny
-        $stmt_update = $db->prepare("
-            UPDATE " . TBL_FAKTURY . " 
-            SET rozsirujici_data = ?
-            WHERE id = ?
-        ");
-        
-        $stmt_update->execute(array(
-            json_encode($rozsirujici_data),
-            $faktura_id
-        ));
-
-        // 9. Úspěšná odpověď
-        http_response_code(200);
-        echo json_encode(array(
-            'status' => 'success',
-            'message' => 'Stav kontroly faktury byl úspěšně změněn',
-            'data' => array(
-                'faktura_id' => $faktura_id,
-                'fa_cislo_vema' => $faktura['fa_cislo_vema'],
-                'kontrolovano' => $kontrolovano,
-                'kontrola_radku' => $rozsirujici_data['kontrola_radku']
-            )
-        ));
 
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array(
             'status' => 'error', 
-            'message' => 'Chyba při změně stavu kontroly: ' . $e->getMessage()
+            'message' => 'Chyba při změně stavu věcné správnosti: ' . $e->getMessage()
         ));
+        error_log("❌ Chyba při změně VS faktury #$faktura_id: " . $e->getMessage());
     }
 }
 
