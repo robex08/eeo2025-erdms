@@ -195,7 +195,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
                 AND fakt_vecna.aktivni = 1
                 AND fakt_vecna.stav != 'STORNO'
                 AND fakt_vecna.potvrdil_vecnou_spravnost_id IS NOT NULL
-                AND (fakt_vecna.vecna_spravnost_potvrzeno IS NULL OR fakt_vecna.vecna_spravnost_potvrzeno != 2)
+                AND fakt_vecna.vecna_spravnost_potvrzeno = 1
             )
             GROUP BY obj.id, obj.financovani, obj.max_cena_s_dph
         ";
@@ -315,7 +315,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             AND obj.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
             AND fakt.stav != 'STORNO'
             AND fakt.potvrdil_vecnou_spravnost_id IS NOT NULL
-            AND (fakt.vecna_spravnost_potvrzeno IS NULL OR fakt.vecna_spravnost_potvrzeno != 2)
+            AND fakt.vecna_spravnost_potvrzeno = 1
             AND DATE(obj.dt_vytvoreni) BETWEEN :datum_od AND :datum_do
             GROUP BY obj.id, obj.financovani
         ";
@@ -415,7 +415,7 @@ function prepocetCerpaniPodleIdLP_PDO($pdo, $lp_id, $rok = null) {
             AND fakt.aktivni = 1
             AND fakt.stav != 'STORNO'
             AND fakt.potvrdil_vecnou_spravnost_id IS NOT NULL
-            AND (fakt.vecna_spravnost_potvrzeno IS NULL OR fakt.vecna_spravnost_potvrzeno != 2)
+            AND fakt.vecna_spravnost_potvrzeno = 1
             AND DATE(fakt.dt_vytvoreni) BETWEEN :datum_od_odbory_fakt AND :datum_do_odbory_fakt
         ";
         

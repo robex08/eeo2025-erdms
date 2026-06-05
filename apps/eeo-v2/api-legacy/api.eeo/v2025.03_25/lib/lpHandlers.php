@@ -115,13 +115,13 @@ function handle_lp_list($input, $config) {
                  FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp
                  INNER JOIN " . TBL_FAKTURY . " f ON f.id = olp.faktura_id
                  WHERE olp.lp_id = lp.id AND olp.faktura_id IS NOT NULL
-                 AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)) as fakturovano_odbory,
+                 AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1) as fakturovano_odbory,
                 -- 3) Faktury z objednávek s tímto LP v JSON financovani
                 (SELECT COALESCE(SUM(f.fa_castka), 0)
                  FROM " . TBL_OBJEDNAVKY . " o
                  INNER JOIN " . TBL_FAKTURY . " f ON f.objednavka_id = o.id
                  WHERE o.financovani IS NOT NULL
-                 AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)
+                 AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1
                  AND (
                    JSON_CONTAINS(o.financovani, CONCAT('', lp.id), '$.lp_kody')
                    OR JSON_SEARCH(o.financovani, 'one', CONCAT('', lp.id), NULL, '$.doplnujici_data.lp_kod[*]') IS NOT NULL
@@ -135,13 +135,13 @@ function handle_lp_list($input, $config) {
                    FROM " . TBL_ODBORY_LP_PRIRAZENI . " olp
                    INNER JOIN " . TBL_FAKTURY . " f ON f.id = olp.faktura_id
                    WHERE olp.lp_id = lp.id AND olp.faktura_id IS NOT NULL
-                   AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2))
+                   AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1)
                   +
                   (SELECT COALESCE(SUM(f.fa_castka), 0)
                    FROM " . TBL_OBJEDNAVKY . " o
                    INNER JOIN " . TBL_FAKTURY . " f ON f.objednavka_id = o.id
                    WHERE o.financovani IS NOT NULL
-                   AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)
+                   AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1
                    AND (
                      JSON_CONTAINS(o.financovani, CONCAT('', lp.id), '$.lp_kody')
                      OR JSON_SEARCH(o.financovani, 'one', CONCAT('', lp.id), NULL, '$.doplnujici_data.lp_kod[*]') IS NOT NULL

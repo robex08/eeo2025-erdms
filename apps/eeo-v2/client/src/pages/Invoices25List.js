@@ -887,9 +887,9 @@ const Table = styled.table`
   thead th:nth-of-type(12),
   tbody td:nth-of-type(12) { width: 150px; min-width: 150px; max-width: 250px; }
 
-  /* Věcnou provedl - dynamicky rozšiřitelný */
+  /* Věcnou provedl - standardní šírka */
   thead th:nth-of-type(13),
-  tbody td:nth-of-type(13) { width: 135px; min-width: 135px; max-width: 200px; }
+  tbody td:nth-of-type(13) { width: 110px; min-width: 110px; max-width: 130px; }
 
   thead th:nth-of-type(14),
   tbody td:nth-of-type(14) { width: 70px; min-width: 70px; max-width: 80px; }

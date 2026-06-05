@@ -377,8 +377,8 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
             -- Celková částka: stejná priorita jako OrderV3 (faktury > položky > max_cena_s_dph)
             COALESCE(SUM(
                 CASE
-                    WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)) > 0
-                    THEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2))
+                    WHEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1) > 0
+                    THEN (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1)
                     WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id) > 0
                     THEN (SELECT COALESCE(SUM(p.cena_s_dph), 0) FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p WHERE p.objednavka_id = o.id)
                     ELSE COALESCE(o.max_cena_s_dph, 0)
@@ -1546,13 +1546,13 @@ function _dashboard_get_my_stats($db, $user_id) {
             SELECT 
                 COUNT(*) as cnt,
                 COALESCE(SUM(
-                    (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2))
+                    (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1)
                 ), 0) as castka
             FROM `" . TBL_OBJEDNAVKY . "` o
             WHERE o.aktivni = 1 AND o.id != 1
               AND (o.objednatel_id = ? OR o.garant_uzivatel_id = ?)
               AND {$stav_sql} NOT IN ('DOKONCENA', 'ZKONTROLOVANA', 'ZRUSENA', 'STORNOVANA', 'ZAMITNUTA')
-              AND (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)) > 0
+              AND (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1) > 0
         ");
         $stmt->execute([$user_id, $user_id]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -1771,10 +1771,10 @@ function _dashboard_get_orders_timeline($db, $user_id, $is_admin, $has_order_rea
                    CASE
                        WHEN (SELECT COALESCE(SUM(f.fa_castka), 0)
                              FROM `" . TBL_FAKTURY . "` f
-                             WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)) > 0
+                             WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1) > 0
                        THEN (SELECT COALESCE(SUM(f.fa_castka), 0)
                              FROM `" . TBL_FAKTURY . "` f
-                             WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2))
+                             WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.vecna_spravnost_potvrzeno = 1)
                        WHEN (SELECT COALESCE(SUM(p.cena_s_dph), 0)
                              FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` p
                              WHERE p.objednavka_id = o.id) > 0
@@ -2077,7 +2077,7 @@ function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_man
         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
         LEFT JOIN `" . TBL_SMLOUVY . "` sm ON f.smlouva_id = sm.id
         WHERE f.aktivni = 1
-          AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)
+          AND f.vecna_spravnost_potvrzeno = 1
           AND (
               (f.objednavka_id IS NULL OR o.aktivni = 1)
               AND (f.smlouva_id IS NULL OR sm.aktivni = 1)
@@ -2553,7 +2553,7 @@ function _dashboard_get_majetek_by_druh($db, $user_id, $is_admin) {
         INNER JOIN `" . TBL_FAKTURY . "` f
             ON f.objednavka_id = o.id
             AND f.aktivni = 1
-            AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)
+            AND f.vecna_spravnost_potvrzeno = 1
             AND f.stav NOT IN ('STORNO')
         LEFT JOIN `" . TBL_CISELNIK_STAVY . "` cs
             ON cs.kod_stavu = JSON_UNQUOTE(JSON_EXTRACT(o.druh_objednavky_kod, '$.kod_stavu'))
