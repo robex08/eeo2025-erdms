@@ -319,8 +319,14 @@ function handle_invoice_toggle_check($input, $config) {
                     triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $faktura_id, $token_data['id']);
                     error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice $faktura_id");
                 } elseif ($status === VS_STATUS_ZAMITNUTA) {
-                    // ❌ ZAMÍTNUTO - poslat notifikaci přes organizační hierarchii
-                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $token_data['id']);
+                    // ❌ ZAMÍTNUTO - poslat notifikaci přes organizační hierarchii s důvodem
+                    $reason = $vecna_spravnost_duvod ?: 'Neuvedeno';
+                    $customPlaceholders = array(
+                        'vecna_spravnost_duvod' => $reason,
+                        'rejection_reason'      => $reason,  // ✅ Alias pro šablonu 137
+                        'reason'                => $reason,  // ✅ Univerzální alias
+                    );
+                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $token_data['id'], $customPlaceholders);
                     error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REJECTED for invoice $faktura_id (reason: $vecna_spravnost_duvod)");
                 } elseif ($status === VS_STATUS_NEPOTVRZENA) {
                     // 🔄 RESET - poslat notifikaci o požadavku na nové ověření
