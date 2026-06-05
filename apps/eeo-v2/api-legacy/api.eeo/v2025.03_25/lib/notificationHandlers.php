@@ -4980,7 +4980,7 @@ function loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId =
                 // ✅ PŘIDAT: detail_url (CTA tlačítko v emailu)
                 $apiBaseUrl = $_ENV['FRONTEND_BASE_URL'] ?? '';
                 $placeholders['frontend_base_url'] = $apiBaseUrl;
-                $placeholders['detail_url'] = $apiBaseUrl ? rtrim($apiBaseUrl, '/') . '/invoice-evidence?editInvoiceId=' . $objectId : '#';
+                $placeholders['detail_url'] = $apiBaseUrl ? rtrim($apiBaseUrl, '/') . '/invoice-evidence?edit=' . $objectId : '#';
                 $placeholders['invoice_detail_url'] = $placeholders['detail_url'];  // ✅ Alias
             }
         }
