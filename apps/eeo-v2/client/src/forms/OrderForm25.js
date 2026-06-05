@@ -67,6 +67,7 @@ import {
 } from '../services/apiOrderV2';
 import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/apiInvoiceV2';
 import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
+import { toggleVecnaSpravnost, VS_STATUS } from '../services/apiInvoiceCheck';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
 import { triggerNotification } from '../services/notificationsApi'; // 🆕 Org-hierarchy-aware notifications
 import { loadOrderComments, addOrderComment, deleteOrderComment } from '../services/apiOrdersV3'; // 💬 Komentáře
@@ -8806,6 +8807,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 s DB
       vecna_spravnost_umisteni_majetku: fakturaFormData.vecna_spravnost_umisteni_majetku || '',
       vecna_spravnost_poznamka: fakturaFormData.vecna_spravnost_poznamka || '',
+      vecna_spravnost_duvod: fakturaFormData.vecna_spravnost_duvod || '',
       vecna_spravnost_potvrzeno: fakturaFormData.vecna_spravnost_potvrzeno || 0
     };
 
@@ -8830,6 +8832,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost
       vecna_spravnost_umisteni_majetku: '',
       vecna_spravnost_poznamka: '',
+      vecna_spravnost_duvod: '',
       vecna_spravnost_potvrzeno: 0
     });
     setEditingFaktura(null);
@@ -9097,6 +9100,7 @@ function OrderForm25() {
         // ⚠️ fa_vema_kod (prefix) se NEKONTROLUJE - není to podstatná změna!
         vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_umisteni_majetku || ''),
         vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_poznamka || ''),
+        vecna_spravnost_duvod: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_duvod || ''),
         vecna_spravnost_potvrzeno: shouldResetVecnaSpravnost ? 0 : (fakturaFormData.vecna_spravnost_potvrzeno || 0),
         potvrdil_vecnou_spravnost_id: shouldResetVecnaSpravnost ? null : (fakturaFormData.potvrdil_vecnou_spravnost_id || null),
         dt_potvrzeni_vecne_spravnosti: shouldResetVecnaSpravnost ? null : (fakturaFormData.dt_potvrzeni_vecne_spravnosti || null)
@@ -9151,6 +9155,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
+        vecna_spravnost_duvod: '',
         vecna_spravnost_potvrzeno: 0
       });
       setEditingFaktura(null);
@@ -9270,6 +9275,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost (prázdné při ISDOC importu)
       vecna_spravnost_umisteni_majetku: '',
       vecna_spravnost_poznamka: '',
+      vecna_spravnost_duvod: '',
       vecna_spravnost_potvrzeno: 0
     };
 
@@ -9466,6 +9472,7 @@ function OrderForm25() {
       // ✅ NOVÉ: Per-invoice věcná správnost
       vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
       vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
+      vecna_spravnost_duvod: faktura.vecna_spravnost_duvod || '',
       vecna_spravnost_potvrzeno: faktura.vecna_spravnost_potvrzeno || 0
     });
     setShowAddFakturaForm(true);
@@ -9795,6 +9802,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
+        vecna_spravnost_duvod: '',
         vecna_spravnost_potvrzeno: 0
       });
       setShowAddFakturaForm(true);
@@ -9853,6 +9861,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
+        vecna_spravnost_duvod: '',
         vecna_spravnost_potvrzeno: 0
       };
 
@@ -9871,6 +9880,7 @@ function OrderForm25() {
         // ✅ NOVÉ: Per-invoice věcná správnost
         vecna_spravnost_umisteni_majetku: '',
         vecna_spravnost_poznamka: '',
+        vecna_spravnost_duvod: '',
         vecna_spravnost_potvrzeno: 0
       });
     }
@@ -11404,9 +11414,18 @@ function OrderForm25() {
             // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 DB mapping
             vecna_spravnost_umisteni_majetku: faktura.vecna_spravnost_umisteni_majetku || '',
             vecna_spravnost_poznamka: faktura.vecna_spravnost_poznamka || '',
-            vecna_spravnost_potvrzeno: (faktura.vecna_spravnost_potvrzeno === 1 || faktura.vecna_spravnost_potvrzeno === true) ? 1 : 0,
-            potvrdil_vecnou_spravnost_id: faktura.potvrdil_vecnou_spravnost_id || null,
-            dt_potvrzeni_vecne_spravnosti: faktura.dt_potvrzeni_vecne_spravnosti || null,
+            vecna_spravnost_duvod: faktura.vecna_spravnost_duvod || '',
+            // ✅ OPRAVA: Poslat správnou hodnotu 0/1/2 (NEPOTVRZENA/POTVRZENA/ZAMITNUTA)
+            vecna_spravnost_potvrzeno: (faktura.vecna_spravnost_potvrzeno === 1) ? 1 
+                                     : (faktura.vecna_spravnost_potvrzeno === 2) ? 2 
+                                     : 0,
+            // 🔍 DEBUG log před odesláním
+            ...(console.log(`🔍 [DEBUG SEND] Faktura ID=${faktura.id}:`, {
+              duvod: faktura.vecna_spravnost_duvod,
+              poznamka: faktura.vecna_spravnost_poznamka,
+              potvrzeno: faktura.vecna_spravnost_potvrzeno
+            }) || {}),
+            // ❌ NEPOSÍLAT potvrdil_vecnou_spravnost_id a dt - backend si je nastaví sám!
             rozsirujici_data: faktura._isPokladna
               ? {
                   // 🆕 POKLADNÍ DOKLAD - JEN nová data (BEZ spreadu!)
@@ -12483,9 +12502,10 @@ function OrderForm25() {
           if (hasVecnaSpravnost && !hadVecnaSpravnost) {
             // Načíst faktury z výsledku (aktualizované stavy z DB)
             const fakturyPoUlozeni = result.faktury || [];
-            // Poslat notifikaci PRO KAŽDOU FAKTURU, která JEŠ  NEMÁ potvrrzenou věcnou správnost
+            // Poslat notifikaci PRO KAŽDOU FAKTURU, která JEŠTĚ NEMÁ potvrzenou věcnou správnost
+            // Status: 0 nebo null = nepotvrzeno, 2 = zamítnuto (obě stavy čekají na kontrolu)
             const cekajiciNaKontrolu = fakturyPoUlozeni.filter(f => 
-              !f.vecna_spravnost_potvrzeno || f.vecna_spravnost_potvrzeno === 0 || f.vecna_spravnost_potvrzeno === false
+              f.vecna_spravnost_potvrzeno !== 1
             );
 
             for (const faktura of cekajiciNaKontrolu) {
@@ -12662,6 +12682,9 @@ function OrderForm25() {
         // 📎 NAČÍST PŘÍLOHY PRO FAKTURY (PŘED setFormData)
         const fakturyWithAttachments = parsedUpdateData.faktury ? await Promise.all(
           parsedUpdateData.faktury.map(async (fakturaFromDB) => {
+            // 🔍 NAJÍT ODPOVÍDAJÍCÍ FAKTURU V SOUČASNÉM formData (PŘED přepsáním!)
+            const currentFaktura = formData.faktury?.find(f => f.id === fakturaFromDB.id);
+            
             // Parsovat ISDOC data z rozsirujici_data pokud existují
             const isdocData = fakturaFromDB.rozsirujici_data?.isdoc;
 
@@ -12712,6 +12735,15 @@ function OrderForm25() {
                 console.error(`❌ [OrderForm25] Chyba při načítání příloh faktury ID=${fakturaFromDB.id}:`, err);
               }
             }
+
+            // 🔍 DEBUG: Co přišlo z DB
+            console.log(`🔍 [DEBUG RELOAD] Faktura ID=${fakturaFromDB.id}:`, {
+              vecna_spravnost_duvod: fakturaFromDB.vecna_spravnost_duvod,
+              vecna_spravnost_poznamka: fakturaFromDB.vecna_spravnost_poznamka,
+              vecna_spravnost_potvrzeno: fakturaFromDB.vecna_spravnost_potvrzeno,
+              potvrdil_vecnou_spravnost_id: fakturaFromDB.potvrdil_vecnou_spravnost_id,
+              dt_potvrzeni_vecne_spravnosti: fakturaFromDB.dt_potvrzeni_vecne_spravnosti
+            });
 
             return {
               ...fakturaFromDB,
@@ -18404,14 +18436,23 @@ function OrderForm25() {
         const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
         
         formData.faktury.forEach((faktura, index) => {
-          // Potvrzení věcné správnosti je POVINNÉ ve FÁZI 7+
-          if (faktura.vecna_spravnost_potvrzeno !== 1 && faktura.vecna_spravnost_potvrzeno !== true) {
-            errors[`faktura_${index + 1}_vecna_spravnost`] = `Faktura ${index + 1}: Zaškrtněte políčko "Potvrzuji věcnou správnost" po kontrole faktury`;
+          // ✅ Potvrzení věcné správnosti - MUSÍ být buď potvrzeno (1) nebo zamítnuto (2), ne nepotvrzeno (0/null)
+          const status = faktura.vecna_spravnost_potvrzeno;
+          if (status !== VS_STATUS.POTVRZENA && status !== VS_STATUS.ZAMITNUTA) {
+            errors[`faktura_${index + 1}_vecna_spravnost`] = `Faktura ${index + 1}: Musíte potvrdit nebo zamítnout věcnou správnost`;
           }
           
-          // Poznámka je POVINNÁ pokud faktura překračuje MAX cenu objednávky
+          // ✅ Důvod je POVINNÝ při zamítnutí (min 5 znaků)
+          if (status === VS_STATUS.ZAMITNUTA) {
+            const duvod = (faktura.vecna_spravnost_duvod || '').trim();
+            if (duvod.length < 5) {
+              errors[`faktura_${index + 1}_duvod_vs`] = `Faktura ${index + 1}: Při zamítnutí věcné správnosti je povinné uvést důvod (min. 5 znaků)`;
+            }
+          }
+          
+          // ✅ Poznámka je POVINNÁ pokud faktura překračuje MAX cenu objednávky (pouze pro potvrzení)
           const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
-          if (fakturaCastka > maxCena && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
+          if (status === VS_STATUS.POTVRZENA && fakturaCastka > maxCena && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
             errors[`faktura_${index + 1}_poznamka_vs`] = `Faktura ${index + 1}: Vysvětlete v poznámce, proč faktura překračuje max. cenu objednávky (${maxCena.toFixed(2)} Kč)`;
           }
           
@@ -26386,7 +26427,7 @@ function OrderForm25() {
                                       <Label>Umístění majetku</Label>
                                       <Input
                                         value={faktura.vecna_spravnost_umisteni_majetku || ''}
-                                        disabled={shouldLockVecnaSpravnost}
+                                        disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
                                         onChange={(e) => {
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
@@ -26399,16 +26440,17 @@ function OrderForm25() {
                                       />
                                     </FormGroup>
 
+                                    {/* ✅ POZNÁMKA K VĚCNÉ SPRÁVNOSTI - NAD TLAČÍTKY */}
                                     <FormGroup style={{gridColumn: '1 / -1'}}>
                                       {(() => {
                                         const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
                                         const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
-                                        const prekroceno = fakturaCastka > maxCena;
+                                        const prekroceno = fakturaCastka > maxCena && maxCena > 0;
                                         return <Label required={prekroceno} style={prekroceno ? {color: '#dc2626', fontWeight: '700'} : {}}>Poznámka k věcné správnosti{prekroceno ? ' (POVINNÁ - faktura překračuje MAX cenu)' : ''}</Label>;
                                       })()}
                                       <TextArea
                                         value={faktura.vecna_spravnost_poznamka || ''}
-                                        disabled={shouldLockVecnaSpravnost}
+                                        disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
                                         hasError={!!validationErrors[`faktura_${index + 1}_poznamka_vs`]}
                                         onChange={(e) => {
                                           const updatedFaktury = formData.faktury.map(f =>
@@ -26427,7 +26469,7 @@ function OrderForm25() {
                                     </FormGroup>
                                   </FormRow>
 
-                                  {/* Checkbox potvrzení věcné správnosti */}
+                                  {/* ✅ VĚCNÁ SPRÁVNOST - 3 TLAČÍTKA + DŮVOD POD TLAČÍTKY */}
                                   {(() => {
                                     const hasError = !!validationErrors[`faktura_${index + 1}_vecna_spravnost`];
                                     return (
@@ -26439,207 +26481,327 @@ function OrderForm25() {
                                           border: hasError ? '2px solid #ef4444' : '1px solid #d1d5db',
                                           borderRadius: '6px'
                                         }}>
-                                          <label style={{
+                                          {/* 3 tlačítka pro výběr statusu */}
+                                          <div style={{
                                             display: 'flex',
-                                            alignItems: 'center',
                                             gap: '0.75rem',
-                                            cursor: shouldLockVecnaSpravnost ? 'not-allowed' : 'pointer',
-                                            fontSize: '0.9rem',
-                                            fontWeight: shouldLockVecnaSpravnost ? '400' : '600',
-                                            color: hasError ? '#dc2626' : (shouldLockVecnaSpravnost ? '#9ca3af' : '#374151')
+                                            flexWrap: 'wrap',
+                                            marginBottom: '1rem'
                                           }}>
-                                            <input
-                                              type="checkbox"
-                                              checked={faktura.vecna_spravnost_potvrzeno === 1}
-                                              disabled={shouldLockVecnaSpravnost}
-                                        onChange={(e) => {
-                                          const newValue = e.target.checked ? 1 : 0;
-
-                                          // 💰 LP VALIDACE: Pokud se potvrzuje věcná správnost (newValue === 1)
-                                          if (newValue === 1) {
-                                            // Zkontrolovat LP financování
-                                            const financovani = formData.financovani;
-                                            if (financovani) {
-                                              try {
-                                                const fin = typeof financovani === 'string' 
-                                                  ? JSON.parse(financovani) 
-                                                  : financovani;
+                                            {/* Potvrdit - zelené */}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (shouldLockVecnaSpravnost) return;
                                                 
-                                                if (fin?.typ === 'LP') {
-                                                  // Pro LP financování validovat čerpání
-                                                  const fakturaId = faktura.id;
-                                                  const lpData = fakturyLPCerpani[fakturaId];
-                                                  const lpCerpani = lpData?.lpCerpani || [];
-                                                  
-                                                  const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
-                                                  const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
-
-                                                  const hasCastkaValue = (v) => {
-                                                    if (v === null || v === undefined) return false;
-                                                    if (v === '') return false;
-                                                    if (typeof v === 'string' && v.trim() === '') return false;
-                                                    return !isNaN(parseFloat(v));
-                                                  };
-
-                                                  const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
-                                                  
-                                                  // 🔥 AUTO-FILL FALLBACK: Pokud je jen 1 LP kód a validní částka → auto-fill (stejná logika jako v save a workflow validaci)
-                                                  const faCastkaRaw = faktura.fa_castka;
-                                                  const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
-                                                  const hasAutoFill = selectedLpValues.length === 1 && faCastkaValid;
-                                                  
-                                                  let autoLpRows;
-                                                  if (hasAutoFill) {
-                                                    // Jen 1 LP kód → auto-fill s plnou částkou (i 0 Kč nebo záporná - zálohy, dobropisy)
-                                                    var ref = selectedLpValues[0];
-                                                    var refId = null;
-                                                    var refCislo = '';
-                                                    if (ref && typeof ref === 'object') {
-                                                      refId = ref.id || ref.lp_id || null;
-                                                      refCislo = ref.cislo_lp || ref.kod || ref.lp_cislo || '';
-                                                    } else {
-                                                      var refStr = String(ref || '');
-                                                      if (/^\d+$/.test(refStr)) {
-                                                        refId = parseInt(refStr, 10);
-                                                      }
-                                                      refCislo = refStr;
-                                                    }
-                                                    autoLpRows = [{
-                                                      id: 'auto-lp-0',
-                                                      lp_id: refId,
-                                                      lp_cislo: refCislo,
-                                                      castka: fakturaCastka,
-                                                      poznamka: ''
-                                                    }];
-                                                  } else {
-                                                    autoLpRows = allowZeroLpAmount ? buildZeroLpRowsFromSelection(selectedLpValues) : [];
-                                                  }
-                                                  const effectiveLpRows = lpCerpani.length > 0 ? lpCerpani : autoLpRows;
-
-                                                  // Validace: MUSÍ být přiřazen minimálně 1 LP kód
-                                                  // ✅ Částka může být i 0 (zálohy) nebo záporná (dobropisy/vyúčtovací)
-                                                  const validLpRows = (effectiveLpRows || []).filter(lp => {
-                                                    const hasLpId = lp.lp_id !== null && lp.lp_id !== undefined && String(lp.lp_id).trim() !== '';
-                                                    const hasLpCislo = lp.lp_cislo !== null && lp.lp_cislo !== undefined && String(lp.lp_cislo).trim() !== '';
-                                                    const hasLp = hasLpId || hasLpCislo;
-                                                    const hasCastka = hasCastkaValue(lp.castka);
-                                                    return hasLp && hasCastka;
-                                                  });
-
-                                                  if (!validLpRows || validLpRows.length === 0) {
-                                                    showToast && showToast(
-                                                      allowZeroLpAmount
-                                                        ? 'Pro LP financování je povinné přiřadit alespoň jeden LP kód (u faktury 0 Kč může být částka 0 Kč)'
-                                                        : 'Pro LP financování je povinné rozdělit fakturu mezi LP kódy (alespoň jeden řádek musí mít částku > 0 Kč)',
-                                                      'error'
-                                                    );
-                                                    return; // Nepovolí zaškrtnutí
-                                                  }
-                                                  
-                                                  // Validace: Součet nesmí překročit fa_castka
-                                                  const totalLP = effectiveLpRows.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
-                                                  
-                                                  if (totalLP > fakturaCastka) {
-                                                    showToast && showToast(`Součet LP čerpání (${totalLP.toLocaleString('cs-CZ')} Kč) překračuje částku faktury (${fakturaCastka.toLocaleString('cs-CZ')} Kč)`, 'error');
-                                                    return; // Nepovolí zaškrtnutí
-                                                  }
-                                                  
+                                                // Toggle: pokud už je potvrzeno, zruš to (reset na NULL)
+                                                // ✅ ZACHOVAT existující hodnoty polí (umisteni_majetku, poznamka, duvod)
+                                                if (faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA) {
+                                                  const updatedFaktury = formData.faktury.map(f => 
+                                                    f.id === faktura.id 
+                                                      ? { ...f, vecna_spravnost_potvrzeno: null, potvrdil_vecnou_spravnost_id: null, dt_potvrzeni_vecne_spravnosti: null, _isNew: false } 
+                                                      : f
+                                                  );
+                                                  updateFaktury(updatedFaktury);
+                                                  return;
                                                 }
-                                              } catch (e) {
-                                                console.error('❌ Chyba při validaci LP čerpání:', e);
-                                                showToast && showToast('Chyba při validaci LP čerpání', 'error');
-                                                return;
-                                              }
-                                            }
-                                          }
+                                                
+                                                // 💰 LP VALIDACE při potvrzení
+                                                const financovani = formData.financovani;
+                                                if (financovani) {
+                                                  try {
+                                                    const fin = typeof financovani === 'string' ? JSON.parse(financovani) : financovani;
+                                                    if (fin?.typ === 'LP') {
+                                                      const fakturaId = faktura.id;
+                                                      const lpData = fakturyLPCerpani[fakturaId];
+                                                      const lpCerpani = lpData?.lpCerpani || [];
+                                                      const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
+                                                      const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
 
-                                          let updatedFields = { vecna_spravnost_potvrzeno: newValue, _isNew: false };
-                                          if (newValue === 1 && user_id && !faktura.potvrdil_vecnou_spravnost_id) {
-                                            const now = new Date();
-                                            const year = now.getFullYear();
-                                            const month = String(now.getMonth() + 1).padStart(2, '0');
-                                            const day = String(now.getDate()).padStart(2, '0');
-                                            const hours = String(now.getHours()).padStart(2, '0');
-                                            const minutes = String(now.getMinutes()).padStart(2, '0');
-                                            const seconds = String(now.getSeconds()).padStart(2, '0');
-                                            const localTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+                                                      const hasCastkaValue = (v) => v !== null && v !== undefined && v !== '' && !isNaN(parseFloat(v));
+                                                      const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
+                                                      const faCastkaValid = hasCastkaValue(faktura.fa_castka);
+                                                      const hasAutoFill = selectedLpValues.length === 1 && faCastkaValid;
+                                                      
+                                                      let autoLpRows;
+                                                      if (hasAutoFill) {
+                                                        const ref = selectedLpValues[0];
+                                                        let refId = null, refCislo = '';
+                                                        if (ref && typeof ref === 'object') {
+                                                          refId = ref.id || ref.lp_id || null;
+                                                          refCislo = ref.cislo_lp || ref.kod || ref.lp_cislo || '';
+                                                        } else {
+                                                          const refStr = String(ref || '');
+                                                          if (/^\d+$/.test(refStr)) refId = parseInt(refStr, 10);
+                                                          refCislo = refStr;
+                                                        }
+                                                        autoLpRows = [{ id: 'auto-lp-0', lp_id: refId, lp_cislo: refCislo, castka: fakturaCastka, poznamka: '' }];
+                                                      } else {
+                                                        autoLpRows = [];
+                                                      }
+                                                      const effectiveLpRows = lpCerpani.length > 0 ? lpCerpani : autoLpRows;
+                                                      const validLpRows = (effectiveLpRows || []).filter(lp => {
+                                                        const hasLp = (lp.lp_id || lp.lp_cislo);
+                                                        return hasLp && hasCastkaValue(lp.castka);
+                                                      });
+
+                                                      if (!validLpRows || validLpRows.length === 0) {
+                                                        showToast && showToast(allowZeroLpAmount ? 'Pro LP financování je povinné přiřadit alespoň jeden LP kód' : 'Pro LP financování je povinné rozdělit fakturu mezi LP kódy', 'error');
+                                                        return;
+                                                      }
+                                                      
+                                                      const totalLP = effectiveLpRows.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
+                                                      if (totalLP > fakturaCastka) {
+                                                        showToast && showToast(`Součet LP čerpání (${totalLP.toLocaleString('cs-CZ')} Kč) překračuje částku faktury (${fakturaCastka.toLocaleString('cs-CZ')} Kč)`, 'error');
+                                                        return;
+                                                      }
+                                                    }
+                                                  } catch (e) {
+                                                    console.error('❌ Chyba při validaci LP:', e);
+                                                    showToast && showToast('Chyba při validaci LP čerpání', 'error');
+                                                    return;
+                                                  }
+                                                }
+                                                
+                                                // ✅ NENASTAVOVAT lokálně potvrdil_vecnou_spravnost_id!
+                                                // Backend ho nastaví při uložení, a teprve po reload z DB se pole zamknou
+                                                let updatedFields = { vecna_spravnost_potvrzeno: VS_STATUS.POTVRZENA, _isNew: false };
+                                                const updatedFaktury = formData.faktury.map(f => f.id === faktura.id ? { ...f, ...updatedFields } : f);
+                                                updateFaktury(updatedFaktury);
+                                              }}
+                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                              style={{
+                                                flex: '1 1 auto',
+                                                padding: '0.75rem 1.5rem',
+                                                background: faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : '#f9fafb',
+                                                color: faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA ? 'white' : '#374151',
+                                                border: faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA ? '2px solid #10b981' : '2px solid #e5e7eb',
+                                                borderRadius: '8px',
+                                                fontWeight: '600',
+                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 'not-allowed' : 'pointer',
+                                                opacity: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 0.5 : 1,
+                                                fontSize: '0.875rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '0.5rem',
+                                                boxShadow: faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA ? '0 2px 4px rgba(16, 185, 129, 0.2)' : 'none',
+                                                transition: 'all 0.2s ease'
+                                              }}
+                                            >
+                                              <FontAwesomeIcon icon={faCheckCircle} />
+                                              Potvrdit
+                                            </button>
                                             
-                                            updatedFields.potvrdil_vecnou_spravnost_id = user_id;
-                                            updatedFields.dt_potvrzeni_vecne_spravnosti = localTimestamp;
-                                            addDebugLog('info', 'VECNA-FAKTURA', 'metadata-set', `Faktura #${faktura.id}: Nastaveno ID=${user_id}, dt=${localTimestamp}`);
-                                          }
-
-                                          const updatedFaktury = formData.faktury.map(f =>
-                                            f.id === faktura.id
-                                              ? { ...f, ...updatedFields }
-                                              : f
-                                          );
-                                          updateFaktury(updatedFaktury);
-
-                                          // ❌ ZRUŠENO: Trigger se volá pouze při uložení objednávky, ne při checked
-                                          // Notifikace se pošle v saveOrderToAPI při detekci změny workflow stavu
-                                        }}
-                                        style={{
-                                          width: '18px',
-                                          height: '18px',
-                                          cursor: shouldLockVecnaSpravnost ? 'not-allowed' : 'pointer',
-                                          accentColor: shouldLockVecnaSpravnost ? '#9ca3af' : '#16a34a'
-                                        }}
-                                      />
-                                      <span style={{ flex: 1 }}>
-                                        Potvrzuji věcnou správnost faktury #{index + 1}
-                                      </span>
-                                      {(faktura.vecna_spravnost_potvrzeno === 1) && (
-                                        <span style={{
-                                          fontSize: '0.75rem',
-                                          color: '#16a34a',
-                                          background: '#dcfce7',
-                                          padding: '0.25rem 0.5rem',
-                                          borderRadius: '4px',
-                                          fontWeight: '600'
-                                        }}>
-                                          ✓ ZKONTROLOVÁNO
-                                        </span>
-                                      )}
-                                    </label>
-                                    
-                                    {/* Info řádek - kdo a kdy potvrdil (POUZE ve fázi ZKONTROLOVANA 8+) */}
-                                    {(() => {
-                                      const isChecked = (isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1));
-                                      const hasRealId = faktura.id && !String(faktura.id).startsWith('temp-');
-                                      const hasTimestamp = faktura.dt_potvrzeni_vecne_spravnosti;
-                                      const isZkontrolovanaPhase = currentPhase >= 8; // Fáze ZKONTROLOVANA a výše
-                                      
-                                      if (!isChecked || !hasRealId || !hasTimestamp || !isZkontrolovanaPhase) return null;
-                                      
-                                      // Určit jméno potvrzujícího
-                                      const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
-                                        ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
-                                        : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : null);
-                                      
-                                      return (
-                                        <div style={{
-                                          marginTop: '0.5rem',
-                                          padding: '0.5rem 0.75rem',
-                                          background: '#f0fdf4',
-                                          border: '1px solid #86efac',
-                                          borderRadius: '4px',
-                                          fontSize: '0.8rem',
-                                          color: '#15803d'
-                                        }}>
-                                          <strong>Potvrdil:</strong> {userName || 'Systém'}
-                                          {' '}<strong>•</strong>{' '}
-                                          <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                            {/* Zamítnout - červené */}
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                if (shouldLockVecnaSpravnost) return;
+                                                
+                                                // Toggle: pokud už je zamítnuto, zruš to (reset na NULL)
+                                                // ✅ ZACHOVAT existující hodnoty polí (umisteni_majetku, poznamka, duvod)
+                                                if (faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA) {
+                                                  const updatedFaktury = formData.faktury.map(f => 
+                                                    f.id === faktura.id 
+                                                      ? { ...f, vecna_spravnost_potvrzeno: null, potvrdil_vecnou_spravnost_id: null, dt_potvrzeni_vecne_spravnosti: null, _isNew: false } 
+                                                      : f
+                                                  );
+                                                  updateFaktury(updatedFaktury);
+                                                  return;
+                                                }
+                                                
+                                                // ✅ NENASTAVOVAT lokálně potvrdil_vecnou_spravnost_id!
+                                                // Backend ho nastaví při uložení, a teprve po reload z DB se pole zamknou
+                                                // ✅ ZACHOVAT existující hodnoty polí (umisteni_majetku, poznamka, duvod)
+                                                let updatedFields = { vecna_spravnost_potvrzeno: VS_STATUS.ZAMITNUTA, _isNew: false };
+                                                const updatedFaktury = formData.faktury.map(f => f.id === faktura.id ? { ...f, ...updatedFields } : f);
+                                                updateFaktury(updatedFaktury);
+                                              }}
+                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                              style={{
+                                                flex: '1 1 auto',
+                                                padding: '0.75rem 1.5rem',
+                                                background: faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : '#f9fafb',
+                                                color: faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA ? 'white' : '#374151',
+                                                border: faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA ? '2px solid #ef4444' : '2px solid #e5e7eb',
+                                                borderRadius: '8px',
+                                                fontWeight: '600',
+                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 'not-allowed' : 'pointer',
+                                                opacity: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 0.5 : 1,
+                                                fontSize: '0.875rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                gap: '0.5rem',
+                                                boxShadow: faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA ? '0 2px 4px rgba(239, 68, 68, 0.2)' : 'none',
+                                                transition: 'all 0.2s ease'
+                                              }}
+                                            >
+                                              <FontAwesomeIcon icon={faTimesCircle} />
+                                              Zamítnout
+                                            </button>
+                                          </div>
+                                          
+                                          {/* Pole pro DŮVOD rozhodnutí - POD tlačítky */}
+                                          <div style={{ marginTop: '1rem' }}>
+                                            <label style={{
+                                              display: 'block',
+                                              marginBottom: '0.5rem',
+                                              fontSize: '0.9rem',
+                                              fontWeight: '600',
+                                              color: '#374151'
+                                            }}>
+                                              Důvod rozhodnutí {faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA && <span style={{ color: '#dc2626' }}>*</span>}
+                                            </label>
+                                            <textarea
+                                              value={faktura.vecna_spravnost_duvod || ''}
+                                              onChange={(e) => {
+                                                const updatedFaktury = formData.faktury.map(f => 
+                                                  f.id === faktura.id ? { ...f, vecna_spravnost_duvod: e.target.value, _isNew: false } : f
+                                                );
+                                                updateFaktury(updatedFaktury);
+                                              }}
+                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                              placeholder={faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA 
+                                                ? "Povinný důvod zamítnutí (min. 5 znaků)..." 
+                                                : "Volitelný důvod potvrzení nebo zamítnutí..."}
+                                              rows={3}
+                                              style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                fontSize: '0.9rem',
+                                                border: (validationErrors[`faktura_${index + 1}_duvod_vs`] || 
+                                                        (faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA && (!faktura.vecna_spravnost_duvod || faktura.vecna_spravnost_duvod.trim().length < 5)))
+                                                  ? '2px solid #ef4444'
+                                                  : '1px solid #d1d5db',
+                                                borderRadius: '6px',
+                                                background: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? '#f9fafb' : 'white',
+                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 'not-allowed' : 'text',
+                                                resize: 'vertical',
+                                                fontFamily: 'inherit'
+                                              }}
+                                            />
+                                            {validationErrors[`faktura_${index + 1}_duvod_vs`] && (
+                                              <div style={{
+                                                marginTop: '0.5rem',
+                                                fontSize: '0.85rem',
+                                                color: '#dc2626',
+                                                fontWeight: '500'
+                                              }}>
+                                                ⚠️ {validationErrors[`faktura_${index + 1}_duvod_vs`]}
+                                              </div>
+                                            )}
+                                            {!validationErrors[`faktura_${index + 1}_duvod_vs`] && faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA && (!faktura.vecna_spravnost_duvod || faktura.vecna_spravnost_duvod.trim().length < 5) && (
+                                              <div style={{
+                                                marginTop: '0.5rem',
+                                                fontSize: '0.85rem',
+                                                color: '#dc2626',
+                                                fontWeight: '500'
+                                              }}>
+                                                ⚠️ Při zamítnutí je povinné uvést důvod (min. 5 znaků)
+                                              </div>
+                                            )}
+                                          </div>
+                                          
+                                          {/* Status badge POD důvodem */}
+                                          {faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA && (
+                                            <div style={{
+                                              marginTop: '1rem',
+                                              padding: '0.75rem',
+                                              background: '#dcfce7',
+                                              border: '1px solid #86efac',
+                                              borderRadius: '6px',
+                                              fontSize: '0.875rem',
+                                              color: '#166534',
+                                              fontWeight: '600'
+                                            }}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                                <FontAwesomeIcon icon={faCheckCircle} style={{ color: '#16a34a' }} />
+                                                ✅ Věcná správnost potvrzena
+                                              </div>
+                                              {faktura.potvrdil_vecnou_spravnost_id && faktura.dt_potvrzeni_vecne_spravnosti && (
+                                                <div style={{ fontSize: '0.8rem', color: '#15803d', fontWeight: '500', marginTop: '0.5rem' }}>
+                                                  <strong>Potvrdil:</strong> {(() => {
+                                                    const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
+                                                      ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
+                                                      : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : 'Systém');
+                                                    return userName;
+                                                  })()}
+                                                  {' '}<strong>•</strong>{' '}
+                                                  <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                          
+                                          {faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA && (
+                                            <div style={{
+                                              marginTop: '1rem',
+                                              padding: '0.75rem',
+                                              background: '#fee2e2',
+                                              border: '1px solid #fecaca',
+                                              borderRadius: '6px',
+                                              fontSize: '0.875rem',
+                                              color: '#991b1b',
+                                              fontWeight: '600'
+                                            }}>
+                                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                                                <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#dc2626' }} />
+                                                ❌ Věcná správnost zamítnuta
+                                              </div>
+                                              {faktura.potvrdil_vecnou_spravnost_id && faktura.dt_potvrzeni_vecne_spravnosti && (
+                                                <div style={{ fontSize: '0.8rem', color: '#991b1b', fontWeight: '500', marginTop: '0.5rem' }}>
+                                                  <strong>Zamítl:</strong> {(() => {
+                                                    const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
+                                                      ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
+                                                      : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : 'Systém');
+                                                    return userName;
+                                                  })()}
+                                                  {' '}<strong>•</strong>{' '}
+                                                  <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                          
+                                          {/* Info řádek - kdo a kdy potvrdil (POUZE ve fázi ZKONTROLOVANA 8+) */}
+                                          {(() => {
+                                            const isChecked = (isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1));
+                                            const hasRealId = faktura.id && !String(faktura.id).startsWith('temp-');
+                                            const hasTimestamp = faktura.dt_potvrzeni_vecne_spravnosti;
+                                            const isZkontrolovanaPhase = currentPhase >= 8;
+                                            
+                                            if (!isChecked || !hasRealId || !hasTimestamp || !isZkontrolovanaPhase) return null;
+                                            
+                                            const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
+                                              ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
+                                              : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : null);
+                                            
+                                            return (
+                                              <div style={{
+                                                marginTop: '0.5rem',
+                                                padding: '0.5rem 0.75rem',
+                                                background: '#f0fdf4',
+                                                border: '1px solid #86efac',
+                                                borderRadius: '4px',
+                                                fontSize: '0.8rem',
+                                                color: '#15803d'
+                                              }}>
+                                                <strong>Potvrdil:</strong> {userName || 'Systém'}
+                                                {' '}<strong>•</strong>{' '}
+                                                <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                              </div>
+                                            );
+                                          })()}
                                         </div>
-                                      );
-                                    })()}
-                                  </div>
-                                  {hasError && (
-                                    <ErrorText style={{ marginTop: '0.5rem' }}>
-                                      {validationErrors[`faktura_${index + 1}_vecna_spravnost`]}
-                                    </ErrorText>
-                                  )}
-                                </>
+                                        
+                                        {hasError && (
+                                          <ErrorText style={{ marginTop: '0.5rem' }}>
+                                            {validationErrors[`faktura_${index + 1}_vecna_spravnost`]}
+                                          </ErrorText>
+                                        )}
+                                      </>
                                     );
                                   })()}
                                 </div>
@@ -26699,7 +26861,8 @@ function OrderForm25() {
                               {/* Konec content wrapper */}
 
                             </div>
-                          )}))}
+                          );
+                        }))}
 
                           {/* ➕ TLAČÍTKO PŘIDAT DALŠÍ FAKTURU - pod seznamem faktur */}
                           {!shouldLockFaktury && (
@@ -26734,6 +26897,7 @@ function OrderForm25() {
                                   _isNew: true,
                                   vecna_spravnost_umisteni_majetku: '',
                                   vecna_spravnost_poznamka: '',
+                                  vecna_spravnost_duvod: '',
                                   vecna_spravnost_potvrzeno: 0
                                 };
                                 const currentFaktury = Array.isArray(formData.faktury) ? formData.faktury : [];
@@ -26753,6 +26917,7 @@ function OrderForm25() {
                                   fa_splatnost: '',
                                   vecna_spravnost_umisteni_majetku: '',
                                   vecna_spravnost_poznamka: '',
+                                  vecna_spravnost_duvod: '',
                                   vecna_spravnost_potvrzeno: 0
                                 });
                               }}

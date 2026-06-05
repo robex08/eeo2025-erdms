@@ -12,7 +12,7 @@ import {
   faFileAlt, faCheckCircle, faExclamationTriangle, faHourglassHalf,
   faDatabase, faCheck, faTimesCircle, faChartBar, faMoneyBill, faIdCard, faFileContract,
   faLock, faEnvelope, faPhone, faClock, faUnlink, faCheckSquare, faSquare, faEyeSlash, faCoins,
-  faBolt
+  faBolt, faCommentAlt
 } from '@fortawesome/free-solid-svg-icons';
 import styled from '@emotion/styled';
 import { prettyDate, formatDateOnly } from '../utils/format';
@@ -31,7 +31,7 @@ import OperatorInput from '../components/OperatorInput';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, restoreInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
 import { getOrderV2 } from '../services/apiOrderV2';
-import { toggleInvoiceCheck, getInvoiceChecks } from '../services/apiInvoiceCheck';
+import { toggleInvoiceCheck, getInvoiceChecks, toggleVecnaSpravnost, VS_STATUS } from '../services/apiInvoiceCheck';
 
 // =============================================================================
 // STYLED COMPONENTS - PŘESNĚ PODLE ORDERS25LIST
@@ -2038,6 +2038,15 @@ const Invoices25List = () => {
   const [slidePanelLoading, setSlidePanelLoading] = useState(false);
   const [slidePanelAttachments, setSlidePanelAttachments] = useState([]);
   
+  // State pro věcnou správnost dialog
+  const [vsDialog, setVsDialog] = useState({
+    isOpen: false,
+    action: null, // 'approve' | 'reject' | 'reset'
+    invoice: null,
+    reason: '',
+    loading: false
+  });
+  
   // State pro attachments tooltip
   const [attachmentsTooltip, setAttachmentsTooltip] = useState(null);
   const [orderAttachmentsTooltip, setOrderAttachmentsTooltip] = useState(null);
@@ -2812,7 +2821,10 @@ const Invoices25List = () => {
         })(),
         potvrdil_vecnou_spravnost_email: invoice.potvrdil_vecnou_spravnost_email || null,
         dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti || null,
-        vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno === 1 || invoice.vecna_spravnost_potvrzeno === true,
+        vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno !== null && invoice.vecna_spravnost_potvrzeno !== undefined 
+          ? parseInt(invoice.vecna_spravnost_potvrzeno, 10) 
+          : null,
+        vecna_spravnost_duvod: invoice.vecna_spravnost_duvod || null,
         vecna_spravnost_poznamka: invoice.vecna_spravnost_poznamka || null,
         vecna_spravnost_umisteni_majetku: invoice.vecna_spravnost_umisteni_majetku || null,
         
@@ -3578,6 +3590,84 @@ const Invoices25List = () => {
       // Zavřít dialog
       setDeleteDialog({ isOpen: false, invoice: null });
       setDeleteType('soft');
+      
+    } finally {
+      hideProgress?.();
+    }
+  };
+
+  // Handler pro věcnou správnost - open dialog
+  const handleVecnaSpravnostAction = (invoice, action) => {
+    setVsDialog({
+      isOpen: true,
+      action, // 'approve' | 'reject' | 'reset'
+      invoice,
+      reason: '',
+      loading: false
+    });
+  };
+
+  // Confirm věcnou správnost
+  const confirmVecnaSpravnost = async () => {
+    const { invoice, action, reason } = vsDialog;
+    
+    if (!invoice || !action) return;
+    
+    // Validace důvodu pro zamítnutí
+    if (action === 'reject' && (!reason || reason.trim().length < 5)) {
+      showToast?.('Pro zamítnutí faktury je povinný důvod (minimálně 5 znaků)', { type: 'error' });
+      return;
+    }
+    
+    try {
+      setVsDialog(prev => ({ ...prev, loading: true }));
+      showProgress?.('Ukládám rozhodnutí...');
+      
+      // Mapování akcí na status
+      const statusMap = {
+        'approve': VS_STATUS.POTVRZENA,
+        'reject': VS_STATUS.ZAMITNUTA,
+        'reset': VS_STATUS.NEPOTVRZENA
+      };
+      
+      const status = statusMap[action];
+      
+      await toggleVecnaSpravnost(invoice.id, status, token, username, reason);
+      
+      const messages = {
+        'approve': '✅ Věcná správnost potvrzena',
+        'reject': '❌ Věcná správnost zamítnuta',
+        'reset': '🔄 Věcná správnost resetována'
+      };
+      
+      showToast?.(messages[action], { type: 'success' });
+      
+      // Zavřít dialog
+      setVsDialog({
+        isOpen: false,
+        action: null,
+        invoice: null,
+        reason: '',
+        loading: false
+      });
+      
+      // Reload data
+      loadData();
+      
+    } catch (err) {
+      console.error('Error changing VS status:', err);
+      
+      // HTTP 423 Locked
+      if (err.message?.includes('uzamčena') || err.message?.includes('Locked')) {
+        showToast?.(
+          err.message || 'Faktura je uzamčena. Požádejte účetní o opravu faktury před novým rozhodnutím.',
+          { type: 'error', duration: 6000 }
+        );
+      } else {
+        showToast?.(err.message || 'Chyba při změně věcné správnosti', { type: 'error' });
+      }
+      
+      setVsDialog(prev => ({ ...prev, loading: false }));
       
     } finally {
       hideProgress?.();
@@ -6220,6 +6310,130 @@ const Invoices25List = () => {
         </ConfirmDialog>
       )}
       
+      {/* Dialog - Věcná správnost (Potvrdit/Zamítnout/Reset) */}
+      {vsDialog.isOpen && (
+        <ConfirmDialog
+          isOpen={vsDialog.isOpen}
+          onClose={() => {
+            setVsDialog({
+              isOpen: false,
+              action: null,
+              invoice: null,
+              reason: '',
+              loading: false
+            });
+          }}
+          onConfirm={confirmVecnaSpravnost}
+          title={
+            vsDialog.action === 'approve' ? '✅ Potvrdit věcnou správnost' :
+            vsDialog.action === 'reject' ? '❌ Zamítnout věcnou správnost' :
+            '🔄 Resetovat věcnou správnost'
+          }
+          confirmText={
+            vsDialog.action === 'approve' ? 'Potvrdit' :
+            vsDialog.action === 'reject' ? 'Zamítnout' :
+            'Resetovat'
+          }
+          cancelText="Zrušit"
+          variant={
+            vsDialog.action === 'approve' ? 'success' :
+            vsDialog.action === 'reject' ? 'danger' :
+            'warning'
+          }
+        >
+          <div style={{ padding: '1rem 0' }}>
+            <p style={{ marginBottom: '1rem', color: '#64748b' }}>
+              {vsDialog.action === 'approve' && (
+                <>Potvrďte, že faktura <strong>{vsDialog.invoice?.cislo_faktury}</strong> je věcně správná.</>
+              )}
+              {vsDialog.action === 'reject' && (
+                <>
+                  Zamítnout fakturu <strong>{vsDialog.invoice?.cislo_faktury}</strong>. 
+                  <br />
+                  <strong style={{ color: '#dc2626' }}>Důvod je POVINNÝ</strong> (min. 5 znaků).
+                </>
+              )}
+              {vsDialog.action === 'reset' && (
+                <>
+                  Resetovat věcnou správnost faktury <strong>{vsDialog.invoice?.cislo_faktury}</strong> na neověřený stav.
+                </>
+              )}
+            </p>
+            
+            {(vsDialog.action === 'reject' || vsDialog.action === 'approve') && (
+              <div style={{ marginTop: '1rem' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '0.5rem', 
+                  fontWeight: '600',
+                  color: vsDialog.action === 'reject' ? '#dc2626' : '#475569'
+                }}>
+                  {vsDialog.action === 'reject' ? 'Důvod zamítnutí *' : 'Poznámka (volitelné)'}
+                </label>
+                <textarea
+                  value={vsDialog.reason}
+                  onChange={(e) => setVsDialog(prev => ({ ...prev, reason: e.target.value }))}
+                  placeholder={
+                    vsDialog.action === 'reject' 
+                      ? 'Uveďte důvod zamítnutí (min. 5 znaků)...' 
+                      : 'Volitelná poznámka k potvrzení...'
+                  }
+                  rows={4}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    border: vsDialog.action === 'reject' && vsDialog.reason.trim().length < 5 
+                      ? '2px solid #dc2626' 
+                      : '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    fontSize: '0.875rem',
+                    fontFamily: 'inherit',
+                    resize: 'vertical',
+                    outline: 'none',
+                    transition: 'border-color 0.2s ease'
+                  }}
+                  onFocus={(e) => {
+                    if (vsDialog.action !== 'reject' || vsDialog.reason.trim().length >= 5) {
+                      e.currentTarget.style.borderColor = '#3b82f6';
+                    }
+                  }}
+                  onBlur={(e) => {
+                    if (vsDialog.action !== 'reject' || vsDialog.reason.trim().length >= 5) {
+                      e.currentTarget.style.borderColor = '#cbd5e1';
+                    }
+                  }}
+                />
+                {vsDialog.action === 'reject' && (
+                  <div style={{
+                    marginTop: '0.5rem',
+                    fontSize: '0.75rem',
+                    color: vsDialog.reason.trim().length < 5 ? '#dc2626' : '#10b981',
+                    fontWeight: '500'
+                  }}>
+                    {vsDialog.reason.trim().length}/5 znaků
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {vsDialog.action === 'reject' && (
+              <div style={{
+                marginTop: '1rem',
+                padding: '0.75rem',
+                background: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '8px',
+                fontSize: '0.875rem',
+                color: '#991b1b'
+              }}>
+                <strong>⚠️ Upozornění:</strong> Zamítnutá faktura bude vyloučena ze všech výpočtů a reportů. 
+                Účetní bude muset fakturu upravit a znovu předat ke kontrole.
+              </div>
+            )}
+          </div>
+        </ConfirmDialog>
+      )}
+      
       {/* Slide Panel - Detail faktury */}
       <SlideInDetailPanel
         isOpen={slidePanelOpen}
@@ -7489,6 +7703,20 @@ const Invoices25List = () => {
                       </InfoRow>
                     )}
 
+                    {slidePanelInvoice.vecna_spravnost_duvod && (
+                      <InfoRowFullWidth>
+                        <InfoIcon>
+                          <FontAwesomeIcon icon={faCommentAlt} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Důvod rozhodnutí</InfoLabel>
+                          <InfoValue style={{ whiteSpace: 'pre-wrap', fontStyle: 'italic' }}>
+                            {slidePanelInvoice.vecna_spravnost_duvod}
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+
                     {slidePanelInvoice.vecna_spravnost_poznamka && (
                       <InfoRowFullWidth>
                         <InfoIcon>
@@ -7528,6 +7756,118 @@ const Invoices25List = () => {
                           Věcná správnost nebyla dosud zkontrolována
                         </InfoValue>
                       </InfoContent>
+                    </InfoRowFullWidth>
+                  )}
+                  
+                  {/* Action tlačítka pro věcnou správnost */}
+                  {canConfirmVecnaKontrola && slidePanelInvoice && (
+                    <InfoRowFullWidth style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem', width: '100%', flexWrap: 'wrap' }}>
+                        {/* Potvrdit */}
+                        {slidePanelInvoice.vecna_spravnost_potvrzeno !== VS_STATUS.POTVRZENA && (
+                          <button
+                            onClick={() => handleVecnaSpravnostAction(slidePanelInvoice, 'approve')}
+                            style={{
+                              flex: '1 1 auto',
+                              padding: '0.75rem 1rem',
+                              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.5rem',
+                              fontSize: '0.875rem',
+                              boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'translateY(-2px)';
+                              e.currentTarget.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faCheck} />
+                            Potvrdit věcnou správnost
+                          </button>
+                        )}
+                        
+                        {/* Zamítnout */}
+                        {slidePanelInvoice.vecna_spravnost_potvrzeno !== VS_STATUS.ZAMITNUTA && (
+                          <button
+                            onClick={() => handleVecnaSpravnostAction(slidePanelInvoice, 'reject')}
+                            style={{
+                              flex: '1 1 auto',
+                              padding: '0.75rem 1rem',
+                              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.5rem',
+                              fontSize: '0.875rem',
+                              boxShadow: '0 2px 4px rgba(239, 68, 68, 0.2)',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'translateY(-2px)';
+                              e.currentTarget.style.boxShadow = '0 4px 8px rgba(239, 68, 68, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.boxShadow = '0 2px 4px rgba(239, 68, 68, 0.2)';
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faTimes} />
+                            Zamítnout věcnou správnost
+                          </button>
+                        )}
+                        
+                        {/* Reset */}
+                        {slidePanelInvoice.vecna_spravnost_potvrzeno !== null && slidePanelInvoice.vecna_spravnost_potvrzeno !== VS_STATUS.NEPOTVRZENA && (
+                          <button
+                            onClick={() => handleVecnaSpravnostAction(slidePanelInvoice, 'reset')}
+                            style={{
+                              flex: '0 1 auto',
+                              padding: '0.75rem 1rem',
+                              background: 'linear-gradient(135deg, #64748b 0%, #475569 100%)',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              fontWeight: '600',
+                              cursor: 'pointer',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              gap: '0.5rem',
+                              fontSize: '0.875rem',
+                              boxShadow: '0 2px 4px rgba(100, 116, 139, 0.2)',
+                              transition: 'all 0.2s ease'
+                            }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.transform = 'translateY(-2px)';
+                              e.currentTarget.style.boxShadow = '0 4px 8px rgba(100, 116, 139, 0.3)';
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.transform = 'translateY(0)';
+                              e.currentTarget.style.boxShadow = '0 2px 4px rgba(100, 116, 139, 0.2)';
+                            }}
+                          >
+                            <FontAwesomeIcon icon={faEraser} />
+                            Reset
+                          </button>
+                        )}
+                      </div>
                     </InfoRowFullWidth>
                   )}
                 </InfoGrid>

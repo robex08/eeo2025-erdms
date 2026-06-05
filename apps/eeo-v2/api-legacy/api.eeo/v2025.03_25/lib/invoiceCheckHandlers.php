@@ -125,8 +125,7 @@ function handle_invoice_toggle_check($input, $config) {
         $status = VS_STATUS_NEPOTVRZENA; // Default
     }
     
-    $vecna_spravnost_poznamka = isset($input['vecna_spravnost_poznamka']) ? trim($input['vecna_spravnost_poznamka']) : '';
-    $vecna_spravnost_poznamka = isset($input['vecna_spravnost_poznamka']) ? trim($input['vecna_spravnost_poznamka']) : '';
+    $vecna_spravnost_duvod = isset($input['vecna_spravnost_duvod']) ? trim($input['vecna_spravnost_duvod']) : '';
     
     // Validace základních parametrů
     if (!$token || !$username) {
@@ -148,8 +147,8 @@ function handle_invoice_toggle_check($input, $config) {
         return;
     }
     
-    // Validace povinné poznámky při zamítnutí
-    if ($status === VS_STATUS_ZAMITNUTA && strlen($vecna_spravnost_poznamka) < 5) {
+    // Validace povinného důvodu při zamítnutí
+    if ($status === VS_STATUS_ZAMITNUTA && strlen($vecna_spravnost_duvod) < 5) {
         http_response_code(400);
         echo json_encode(array('status' => 'error', 'message' => 'Při zamítnutí je povinné uvést důvod (minimálně 5 znaků)'));
         return;
@@ -240,28 +239,52 @@ function handle_invoice_toggle_check($input, $config) {
                         vecna_spravnost_potvrzeno = NULL,
                         potvrdil_vecnou_spravnost_id = NULL,
                         dt_potvrzeni_vecne_spravnosti = NULL,
+                        vecna_spravnost_duvod = NULL,
                         vecna_spravnost_poznamka = NULL,
                         vecna_spravnost_umisteni_majetku = NULL
                     WHERE id = ?
                 ");
                 $stmt_update_vs->execute(array($faktura_id));
                 
-            } else {
-                // Status 1 (potvrzeno) nebo 2 (zamítnuto) - uložit údaje
+            } elseif ($status === VS_STATUS_POTVRZENA) {
+                // Status 1 (potvrzeno) - uložit údaje + nastavit stav faktury na VECNA_SPRAVNOST
                 $stmt_update_vs = $db->prepare("
                     UPDATE " . TBL_FAKTURY . "
                     SET 
                         vecna_spravnost_potvrzeno = ?,
                         potvrdil_vecnou_spravnost_id = ?,
                         dt_potvrzeni_vecne_spravnosti = ?,
-                        vecna_spravnost_poznamka = ?
+                        vecna_spravnost_duvod = ?,
+                        stav = ?
                     WHERE id = ?
                 ");
                 $stmt_update_vs->execute(array(
                     $status,
                     $token_data['id'],
                     $czech_datetime,
-                    $vecna_spravnost_poznamka,
+                    $vecna_spravnost_duvod,
+                    INVOICE_STATUS_VERIFICATION,
+                    $faktura_id
+                ));
+                
+                error_log("✅ Potvrzena VS faktury #$faktura_id - stav změněn na VECNA_SPRAVNOST");
+                
+            } else {
+                // Status 2 (zamítnuto) - uložit údaje (stav faktury se nastaví níže)
+                $stmt_update_vs = $db->prepare("
+                    UPDATE " . TBL_FAKTURY . "
+                    SET 
+                        vecna_spravnost_potvrzeno = ?,
+                        potvrdil_vecnou_spravnost_id = ?,
+                        dt_potvrzeni_vecne_spravnosti = ?,
+                        vecna_spravnost_duvod = ?
+                    WHERE id = ?
+                ");
+                $stmt_update_vs->execute(array(
+                    $status,
+                    $token_data['id'],
+                    $czech_datetime,
+                    $vecna_spravnost_duvod,
                     $faktura_id
                 ));
             }
@@ -289,7 +312,27 @@ function handle_invoice_toggle_check($input, $config) {
             // 9. COMMIT transakce
             $db->commit();
             
-            // 10. Úspěšná odpověď
+            // 🔔 10. NOTIFIKACE podle statusu věcné správnosti
+            try {
+                if ($status === VS_STATUS_POTVRZENA) {
+                    // ✅ POTVRZENO - poslat notifikaci přes organizační hierarchii
+                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $faktura_id, $token_data['id']);
+                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice $faktura_id");
+                } elseif ($status === VS_STATUS_ZAMITNUTA) {
+                    // ❌ ZAMÍTNUTO - poslat notifikaci přes organizační hierarchii
+                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $token_data['id']);
+                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REJECTED for invoice $faktura_id (reason: $vecna_spravnost_duvod)");
+                } elseif ($status === VS_STATUS_NEPOTVRZENA) {
+                    // 🔄 RESET - poslat notifikaci o požadavku na nové ověření
+                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $token_data['id']);
+                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (reset)");
+                }
+            } catch (Exception $notifErr) {
+                // Notifikace nesmí blokovat úspěch operace
+                error_log("⚠️ Chyba při odesílání notifikace pro fakturu #$faktura_id: " . $notifErr->getMessage());
+            }
+            
+            // 11. Úspěšná odpověď
             http_response_code(200);
             echo json_encode(array(
                 'status' => 'success',
@@ -302,7 +345,7 @@ function handle_invoice_toggle_check($input, $config) {
                     'faktura_id' => $faktura_id,
                     'fa_cislo_vema' => $faktura['fa_cislo_vema'],
                     'vecna_spravnost_status' => $status,
-                    'vecna_spravnost_poznamka' => $vecna_spravnost_poznamka,
+                    'vecna_spravnost_duvod' => $vecna_spravnost_duvod,
                     'potvrdil_id' => ($status > 0) ? $token_data['id'] : null,
                     'dt_potvrzeni' => ($status > 0) ? $czech_datetime : null,
                     'lp_cerpani_smazano' => ($status === VS_STATUS_ZAMITNUTA)

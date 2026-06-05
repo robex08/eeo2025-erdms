@@ -1647,7 +1647,7 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_values[] = $faktura['fa_poznamka'];
                         }
                         
-                        // ✅ VĚCNÁ SPRÁVNOST - 5 polí (1:1 DB mapping)
+                        // ✅ VĚCNÁ SPRÁVNOST - 6 polí (1:1 DB mapping)
                         if (isset($faktura['vecna_spravnost_umisteni_majetku'])) {
                             $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
                             $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
@@ -1656,32 +1656,44 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_fields[] = 'vecna_spravnost_poznamka = ?';
                             $update_values[] = $faktura['vecna_spravnost_poznamka'];
                         }
+                        if (isset($faktura['vecna_spravnost_duvod'])) {
+                            $update_fields[] = 'vecna_spravnost_duvod = ?';
+                            $update_values[] = $faktura['vecna_spravnost_duvod'];
+                        }
                         if (isset($faktura['vecna_spravnost_potvrzeno'])) {
+                            $vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
                             $update_fields[] = 'vecna_spravnost_potvrzeno = ?';
-                            $update_values[] = (int)$faktura['vecna_spravnost_potvrzeno'];
-                        }
-                        if (isset($faktura['potvrdil_vecnou_spravnost_id'])) {
-                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
-                            $update_values[] = !empty($faktura['potvrdil_vecnou_spravnost_id']) ? (int)$faktura['potvrdil_vecnou_spravnost_id'] : null;
-                        }
-                        if (isset($faktura['dt_potvrzeni_vecne_spravnosti'])) {
-                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
-                            $update_values[] = $faktura['dt_potvrzeni_vecne_spravnosti'];
+                            $update_values[] = $vs_status;
+
+                            // ✅ VŽDY nastavit potvrdil_vecnou_spravnost_id a dt při status > 0
+                            if ($vs_status > 0) {
+                                $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
+                                $update_values[] = $current_user_id;
+                                $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
+                                $update_values[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+                                error_log("✅ [VECNA SPRAVNOST V2] Nastaveno user_id={$current_user_id} pro fakturu ID={$faktura_id}, status={$vs_status}");
+                            } else {
+                                // Reset při status 0
+                                $update_fields[] = 'potvrdil_vecnou_spravnost_id = NULL';
+                                $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = NULL';
+                                error_log("✅ [VECNA SPRAVNOST V2] Reset ID a dt pro fakturu ID={$faktura_id}");
+                            }
                         }
                         
-                        // ✅ AUTOMATIKA: Potvrzení věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
+                        // ✅ AUTOMATIKA: Potvrzení nebo zamítnutí věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
                         // Stejná logika jako v InvoiceEvidence modulu
-                        if (isset($faktura['vecna_spravnost_potvrzeno']) && (int)$faktura['vecna_spravnost_potvrzeno'] === 1) {
+                        if (isset($faktura['vecna_spravnost_potvrzeno']) && (int)$faktura['vecna_spravnost_potvrzeno'] !== 0) {
                             // Načíst aktuální stav faktury
                             $current_check = $db->prepare("SELECT stav FROM `{$faktury_table}` WHERE id = ?");
                             $current_check->execute(array($faktura_id));
                             $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
                             
                             if ($current_row && $current_row['stav'] === 'ZAEVIDOVANA') {
-                                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST
+                                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST nebo V_RESENI
+                                $newStatus = ((int)$faktura['vecna_spravnost_potvrzeno'] === 1) ? 'VECNA_SPRAVNOST' : 'V_RESENI';
                                 $update_fields[] = 'stav = ?';
-                                $update_values[] = 'VECNA_SPRAVNOST';
-                                error_log("🔄 [OrderV2] Auto změna stavu faktury #{$faktura_id}: ZAEVIDOVANA → VECNA_SPRAVNOST (potvrzena věcná správnost)");
+                                $update_values[] = $newStatus;
+                                error_log("🔄 [OrderV2] Auto změna stavu faktury #{$faktura_id}: ZAEVIDOVANA → {$newStatus} (věcná správnost změněna)");
                             }
                         }
                         

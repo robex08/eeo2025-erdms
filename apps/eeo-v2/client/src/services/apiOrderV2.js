@@ -559,10 +559,26 @@ export async function createOrderV2(orderData, token, username) {
 export async function updateOrderV2(orderId, orderData, token, username) {
   try {
 
+    // 🎯 DEBUG: Ukáž kam se posílá request
+    console.log(`🚀 [API REQUEST] POST /order-v2/${orderId}/update`);
+    console.log(`🔍 [API REQUEST] Faktury v requestu:`, orderData.faktury ? orderData.faktury.length : 'NONE');
+    if (orderData.faktury) {
+      orderData.faktury.forEach((f, i) => {
+        console.log(`   - Faktura #${i}: ID=${f.id}, vecna_spravnost_duvod=${f.vecna_spravnost_duvod ? `'${f.vecna_spravnost_duvod}'` : 'null'}, vecna_spravnost_poznamka=${f.vecna_spravnost_poznamka ? `'${f.vecna_spravnost_poznamka}'` : 'null'}, vecna_spravnost_potvrzeno=${f.vecna_spravnost_potvrzeno}`);
+      });
+    }
 
     // Prepare data - 🔥 isUpdate=true removes undefined/null values
     // ⚠️ prepareDataForAPI() zobrazí vlastní detailní logy transformace
     const prepared = prepareDataForAPI(orderData, true);
+
+    // 🔍 DEBUG: Co prošlo přes prepareDataForAPI?
+    console.log(`🔍 [AFTER prepareDataForAPI] Faktury:`, prepared.faktury ? prepared.faktury.length : 'NONE');
+    if (prepared.faktury) {
+      prepared.faktury.forEach((f, i) => {
+        console.log(`   - Faktura #${i}: ID=${f.id}, vecna_spravnost_duvod=${f.vecna_spravnost_duvod ? `'${f.vecna_spravnost_duvod}'` : 'null'}`);
+      });
+    }
 
     // Validate
     const validationErrors = validateOrderV2Data(prepared);
