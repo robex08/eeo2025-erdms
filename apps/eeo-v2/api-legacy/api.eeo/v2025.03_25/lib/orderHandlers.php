@@ -3008,21 +3008,11 @@ function handle_orders25_update($input, $config, $queries) {
         // - Pokud má faktura id (number) → UPDATE existující faktury
         // - Přílohy se nespravují tady, jen v invoices25/attachments/*
         
-        // 🚨 DEBUG: CO JE V INPUT?
-        error_log("🔍 [DEBUG INPUT] isset(\$input['faktury']) = " . (isset($input['faktury']) ? 'TRUE' : 'FALSE'));
-        error_log("🔍 [DEBUG INPUT] is_array(\$input['faktury']) = " . (isset($input['faktury']) && is_array($input['faktury']) ? 'TRUE' : 'FALSE'));
-        error_log("🔍 [DEBUG INPUT] \$input keys: " . implode(', ', array_keys($input)));
-        if (isset($input['faktury'])) {
-            error_log("🔍 [DEBUG INPUT] faktury type = " . gettype($input['faktury']) . ", value = " . (is_array($input['faktury']) ? count($input['faktury']) . ' items' : json_encode($input['faktury'])));
-        }
-        
         if (isset($input['faktury']) && is_array($input['faktury'])) {
-            error_log("🔍 [DEBUG FAKTURY FULL-UPDATE] Backend dostal " . count($input['faktury']) . " faktur");
             $faktury_table = get_invoices_table_name();
             
-            foreach ($input['faktury'] as $index => $faktura) {
+            foreach ($input['faktury'] as $faktura) {
                 $faktura_id = isset($faktura['id']) ? (int)$faktura['id'] : null;
-                error_log("🔍 [DEBUG FAKTURA #{$index}] ID={$faktura_id}, vecna_spravnost_potvrzeno=" . (isset($faktura['vecna_spravnost_potvrzeno']) ? $faktura['vecna_spravnost_potvrzeno'] : 'NOT SET') . ", vecna_spravnost_duvod=" . (isset($faktura['vecna_spravnost_duvod']) ? "'" . $faktura['vecna_spravnost_duvod'] . "'" : 'NOT SET'));
                 
                 if ($faktura_id === null || $faktura_id === 0) {
                     // ========== CREATE nová faktura ==========
@@ -3200,13 +3190,11 @@ function handle_orders25_update($input, $config, $queries) {
                     if (isset($faktura['vecna_spravnost_duvod'])) {
                         $update_fields[] = 'vecna_spravnost_duvod = ?';
                         $update_values[] = $faktura['vecna_spravnost_duvod'];
-                        error_log("🔍 [DEBUG DUVOD FULL-UPDATE] Ukladam vecna_spravnost_duvod='" . $faktura['vecna_spravnost_duvod'] . "' pro fakturu ID={$faktura_id}");
                     }
                     
                     if (isset($faktura['vecna_spravnost_poznamka'])) {
                         $update_fields[] = 'vecna_spravnost_poznamka = ?';
                         $update_values[] = $faktura['vecna_spravnost_poznamka'];
-                        error_log("🔍 [DEBUG POZNAMKA FULL-UPDATE] Ukladam vecna_spravnost_poznamka='" . $faktura['vecna_spravnost_poznamka'] . "' pro fakturu ID={$faktura_id}");
                     }
                     
                     if (isset($faktura['vecna_spravnost_umisteni_majetku'])) {

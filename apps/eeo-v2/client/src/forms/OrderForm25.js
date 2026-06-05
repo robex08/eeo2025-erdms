@@ -9096,7 +9096,7 @@ function OrderForm25() {
         fa_strediska_kod: JSON.stringify(cleanedStrediska),
         fa_poznamka: fakturaFormData.fa_poznamka || null,
         rozsirujici_data: fakturaFormData.rozsirujici_data || null,
-        // ✅ RESET VĚCNÉ SPRÁVNOSTI: JEN pokud se změnily klíčové údaje (částka, číslo FA, datumy)
+        // ✅ ZRUŠENÍ VĚCNÉ SPRÁVNOSTI: JEN pokud se změnily klíčové údaje (částka, číslo FA, datumy)
         // ⚠️ fa_vema_kod (prefix) se NEKONTROLUJE - není to podstatná změna!
         vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_umisteni_majetku || ''),
         vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_poznamka || ''),
@@ -11419,12 +11419,6 @@ function OrderForm25() {
             vecna_spravnost_potvrzeno: (faktura.vecna_spravnost_potvrzeno === 1) ? 1 
                                      : (faktura.vecna_spravnost_potvrzeno === 2) ? 2 
                                      : 0,
-            // 🔍 DEBUG log před odesláním
-            ...(console.log(`🔍 [DEBUG SEND] Faktura ID=${faktura.id}:`, {
-              duvod: faktura.vecna_spravnost_duvod,
-              poznamka: faktura.vecna_spravnost_poznamka,
-              potvrzeno: faktura.vecna_spravnost_potvrzeno
-            }) || {}),
             // ❌ NEPOSÍLAT potvrdil_vecnou_spravnost_id a dt - backend si je nastaví sám!
             rozsirujici_data: faktura._isPokladna
               ? {
@@ -12735,15 +12729,6 @@ function OrderForm25() {
                 console.error(`❌ [OrderForm25] Chyba při načítání příloh faktury ID=${fakturaFromDB.id}:`, err);
               }
             }
-
-            // 🔍 DEBUG: Co přišlo z DB
-            console.log(`🔍 [DEBUG RELOAD] Faktura ID=${fakturaFromDB.id}:`, {
-              vecna_spravnost_duvod: fakturaFromDB.vecna_spravnost_duvod,
-              vecna_spravnost_poznamka: fakturaFromDB.vecna_spravnost_poznamka,
-              vecna_spravnost_potvrzeno: fakturaFromDB.vecna_spravnost_potvrzeno,
-              potvrdil_vecnou_spravnost_id: fakturaFromDB.potvrdil_vecnou_spravnost_id,
-              dt_potvrzeni_vecne_spravnosti: fakturaFromDB.dt_potvrzeni_vecne_spravnosti
-            });
 
             return {
               ...fakturaFromDB,
