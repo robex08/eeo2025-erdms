@@ -1963,19 +1963,14 @@ export default function InvoiceEvidencePage() {
       const savedSections = localStorage.getItem(`invoiceSections_${user_id}`);
       if (savedSections) {
         const parsed = JSON.parse(savedSections);
-        console.log('📂 INIT sectionStates z LS:', parsed);
         // ⚠️ VYMAZAT materialCorrectness z LS (nesmí se číst)
         if ('materialCorrectness' in parsed) {
-          console.log('   ⚠️ Odstraňuji materialCorrectness z LS při init');
           delete parsed.materialCorrectness;
         }
         const result = { ...defaultStates, ...parsed };
-        console.log('   ✅ Výsledný state:', result);
         return result;
       }
     } catch (e) {}
-
-    console.log('📂 INIT sectionStates: použit defaultStates');
 
     return defaultStates;
   });
@@ -2067,7 +2062,7 @@ export default function InvoiceEvidencePage() {
   // 🚫 Flag pro prevenci localStorage reload po úspěšném UPDATE/CREATE
   const [justCompletedOperation, setJustCompletedOperation] = useState(false);
 
-  // 🆕 Checkbox pro vynucený reset věcné správnosti (pro účetní při aktualizaci)
+  // 🆕 Checkbox pro vynucené zrušení věcné správnosti (pro účetní při aktualizaci)
   const [forceResetVecnaSpravnost, setForceResetVecnaSpravnost] = useState(false);
 
   // Confirm dialog state
@@ -2095,8 +2090,8 @@ export default function InvoiceEvidencePage() {
     progress: 0,
     title: '',
     message: '',
-    vecnaResetInfo: '', // 🆕 Info o resetu věcné správnosti
-    vecnaWasReset: false // 🆕 Flag zda došlo k resetu (pro barvu)
+    vecnaResetInfo: '', // 🆕 Info o zrušení věcné správnosti
+    vecnaWasReset: false // 🆕 Flag zda došlo k zrušení (pro barvu)
   });
 
   // Spisovka Inbox Panel - pouze pro ADMIN
@@ -2736,16 +2731,12 @@ export default function InvoiceEvidencePage() {
   // ⚠️ FORCE OTEVŘENÍ VĚCNÉ SPRÁVNOSTI při načtení faktury
   useEffect(() => {
     if (editingInvoiceId) {
-      console.log('🔓 FORCE materialCorrectness = true pro fakturu:', editingInvoiceId);
-      console.log('   Current sectionStates:', sectionStates);
-      
       // VYČISTIT starý LS klíč (pokud obsahuje materialCorrectness)
       try {
         const savedSections = localStorage.getItem(`invoiceSections_${user_id}`);
         if (savedSections) {
           const parsed = JSON.parse(savedSections);
           if ('materialCorrectness' in parsed) {
-            console.log('   ⚠️ Odstraňuji materialCorrectness z LS');
             delete parsed.materialCorrectness;
             localStorage.setItem(`invoiceSections_${user_id}`, JSON.stringify(parsed));
           }
@@ -2754,7 +2745,6 @@ export default function InvoiceEvidencePage() {
       
       // Force set na true
       if (sectionStates.materialCorrectness !== true) {
-        console.log('   ⚠️ Force setSectionStates materialCorrectness = true');
         setSectionStates(prev => ({ ...prev, materialCorrectness: true }));
       }
     }
@@ -3145,9 +3135,7 @@ export default function InvoiceEvidencePage() {
             setOriginalFormData(loadedFormData);
             
             // ⚠️ KRITICKÉ: Force otevřít věcnou správnost při načtení faktury
-            console.log('📋 loadInvoiceForEdit: Force setSectionStates materialCorrectness = true');
             setSectionStates(prev => {
-              console.log('   prev sectionStates:', prev);
               return {
                 ...prev,
                 materialCorrectness: true
@@ -3161,15 +3149,6 @@ export default function InvoiceEvidencePage() {
             
             // 🆕 NAČÍST LP PŘIŘAZENÍ z odbory_lp tabulky (pokud existuje)
             if (invoiceData.odbory_lp_id && invoiceData.odbory_lp_lp_id) {
-              console.log('🔖 Načítám LP přiřazení z DB:', {
-                odbory_lp_id: invoiceData.odbory_lp_id,
-                lp_id: invoiceData.odbory_lp_lp_id,
-                cislo_lp: invoiceData.odbory_lp_cislo,
-                platne_od: invoiceData.odbory_lp_platne_od,
-                platne_do: invoiceData.odbory_lp_platne_do,
-                limit: invoiceData.odbory_lp_limit
-              });
-              
               // Nastavit selectedLP a selectedType
               setSelectedLP({
                 id: invoiceData.odbory_lp_lp_id,
@@ -4869,8 +4848,8 @@ export default function InvoiceEvidencePage() {
           successTitle = '❌ Věcná správnost zamítnuta';
           successMessage = `Faktura ${faCislo} byla zamítnuta.\n\nDůvod: ${duvod}`;
         } else {
-          successTitle = '🔄 Status resetován';
-          successMessage = `Status věcné správnosti faktury ${faCislo} byl resetován.`;
+          successTitle = '🔄 Status zrušen';
+          successMessage = `Status věcné správnosti faktury ${faCislo} byl zrušen.`;
         }
         
         if (isReadOnlyMode) {
@@ -5120,33 +5099,17 @@ export default function InvoiceEvidencePage() {
       let result;
       
       // 🔍 DETEKCE ZMĚN: Pokud se změnily klíčové údaje faktury,
-      // MUSÍME RESETOVAT věcnou správnost na 0 a vrátit workflow na VECNA_SPRAVNOST
-      // ⚠️ VÝJIMKA: Pole povolená v "rozšířené editaci pro účetní" NERESETUJÍ věcnou správnost
+      // MUSÍME ZRUŠIT věcnou správnost na 0 a vrátit workflow na VECNA_SPRAVNOST
+      // ⚠️ VÝJIMKA: Pole povolená v "rozšířené editaci pro účetní" NEZRUŠÍ věcnou správnost
       let shouldResetVecnaSpravnost = false;
-      
-      console.log('🔍 ZAČÁTEK DETEKCE ZMĚN:', {
-        editingInvoiceId,
-        hasOrderData: !!orderData,
-        hasFaktury: !!(orderData?.faktury),
-        originalFormData_exists: !!originalFormData,
-        originalFormData_vecna: originalFormData?.vecna_spravnost_potvrzeno,
-        formData_vecna: formData.vecna_spravnost_potvrzeno
-      });
       
       if (editingInvoiceId && orderData && orderData.faktury) {
         const originalInvoice = orderData.faktury.find(inv => inv.id === editingInvoiceId);
         
-        console.log('🔍 DETEKCE Z orderData.faktury:', {
-          originalInvoice_exists: !!originalInvoice,
-          originalInvoice_vecna: originalInvoice?.vecna_spravnost_potvrzeno,
-          originalInvoice_castka: originalInvoice?.fa_castka,
-          formData_castka: formData.fa_castka
-        });
-        
         // ✅ OPRAVA: Kontrolovat PŮVODNÍ stav věcné správnosti (originalInvoice), NE aktuální formData!
         if (originalInvoice && originalInvoice.vecna_spravnost_potvrzeno !== 0) {
           // 🔓 Detekce změn pole: POUZE ta která NEJSOU povolena v accountant edit settings
-          // → Pokud je rozšířené nastavení zapnuto + konkrétní pole povoleno → NERESETUJE věcnou
+          // → Pokud je rozšířené nastavení zapnuto + konkrétní pole povoleno → NEZRUŠÍ věcnou
           
           const isAccountantEditEnabled = globalSettings.invoice_accountant_edit_enabled;
           
@@ -5209,10 +5172,9 @@ export default function InvoiceEvidencePage() {
             }
           }
           
-          // Pokud se změnila NĚJAKÁ pole která NEJSOU v accountant edit → RESETOVAT věcnou
+          // Pokud se změnila NĚJAKÁ pole která NEJSOU v accountant edit → ZRUŠIT věcnou
           if (changedFields.length > 0) {
             shouldResetVecnaSpravnost = true;
-            console.log('🔄 Resetování věcné správnosti kvůli změně polí:', changedFields);
           }
         }
       }
@@ -5220,12 +5182,6 @@ export default function InvoiceEvidencePage() {
       // 🆕 FALLBACK: Pokud faktura NENÍ v orderData.faktury (smlouva, samostatná faktura),
       // použij originalFormData jako zdroj původních dat
       if (editingInvoiceId && !shouldResetVecnaSpravnost && originalFormData && originalFormData.vecna_spravnost_potvrzeno !== 0) {
-        console.log('🔍 FALLBACK DETEKCE z originalFormData:', {
-          originalFormData_vecna: originalFormData.vecna_spravnost_potvrzeno,
-          originalFormData_castka: originalFormData.fa_castka,
-          formData_castka: formData.fa_castka,
-          castka_equal: parseFloat(originalFormData.fa_castka) === parseFloat(formData.fa_castka)
-        });
         
         const isAccountantEditEnabled = globalSettings.invoice_accountant_edit_enabled;
         const changedFields = [];
@@ -5288,7 +5244,6 @@ export default function InvoiceEvidencePage() {
         
         if (changedFields.length > 0) {
           shouldResetVecnaSpravnost = true;
-          console.log('🔄 Resetování věcné správnosti kvůli změně polí (fallback z originalFormData):', changedFields);
         }
       }
 
@@ -5313,7 +5268,7 @@ export default function InvoiceEvidencePage() {
           fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null,
           // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
           fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
-          // 🆕 VĚCNÁ SPRÁVNOST - RESETOVAT NA 0 pokud se změnily klíčové údaje faktury
+          // 🆕 VĚCNÁ SPRÁVNOST - ZRUŠIT NA 0 pokud se změnily klíčové údaje faktury
           vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (formData.vecna_spravnost_umisteni_majetku || ''),
           vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (formData.vecna_spravnost_poznamka || ''),
           vecna_spravnost_potvrzeno: shouldResetVecnaSpravnost ? 0 : (formData.vecna_spravnost_potvrzeno || 0),
@@ -5334,7 +5289,7 @@ export default function InvoiceEvidencePage() {
           invoice_id: editingInvoiceId,
           updateData: {
             ...updateData,
-            // 🆕 Vynucený reset věcné správnosti (ignoruje app settings)
+            // 🆕 Vynucené zrušení věcné správnosti (ignoruje app settings)
             force_vecna_reset: forceResetVecnaSpravnost ? 1 : 0
           }
         });
@@ -5575,7 +5530,7 @@ export default function InvoiceEvidencePage() {
       // 🔔 NOTIFIKACE: Změna "Předáno komu"
       // Poslat notifikaci když:
       // 1. Editujeme existující fakturu
-      // 2. Změnilo se "Předáno komu" (fa_predana_zam_id) NEBO se resetovala věcná správnost faktury
+      // 2. Změnilo se "Předáno komu" (fa_predana_zam_id) NEBO se zrušila věcná správnost faktury
       // 3. Je nastaveno datum předání (fa_datum_predani_zam) - POVINNÉ
       // 4. NENÍ nastaveno datum vrácení (fa_datum_vraceni_zam)
       // 5. Faktura je připojena k objednávce NEBO smlouvě
@@ -5596,7 +5551,7 @@ export default function InvoiceEvidencePage() {
         // pošli notifikaci znovu aby zaměstnanec znovu zkontroloval materiál
         const shouldResendNotification = shouldResetVecnaSpravnost && currentPredanoKomu && hasDatePredani && !hasDateVraceni;
         
-        // Pošli notifikaci pokud: (CREATE s fa_predana_zam_id) NEBO (UPDATE a změnilo se) NEBO (reset věcné správnosti)
+        // Pošli notifikaci pokud: (CREATE s fa_predana_zam_id) NEBO (UPDATE a změnilo se) NEBO (zrušení věcné správnosti)
         if ((isCreate || hasChanged || shouldResendNotification) && currentPredanoKomu && hasDatePredani && !hasDateVraceni) {
           try {
             const timestamp = new Date().toLocaleString('cs-CZ');
@@ -5711,29 +5666,19 @@ export default function InvoiceEvidencePage() {
         }
       }
       
-      // 🆕 Detekce resetu věcné správnosti - VŽDY zobrazit u UPDATE
+      // 🆕 Detekce zrušení věcné správnosti - VŽDY zobrazit u UPDATE
       let vecnaResetInfo = '';
       let vecnaWasReset = false;
       if (isUpdate) {
-        // 🔍 DEBUG: Výpis stavu detekce
-        console.log('🔍 DEBUG Detekce resetu věcné správnosti:', {
-          forceResetVecnaSpravnost,
-          shouldResetVecnaSpravnost,
-          originalFormData_vecna: originalFormData?.vecna_spravnost_potvrzeno,
-          formData_vecna: formData.vecna_spravnost_potvrzeno,
-          orderData_exists: !!orderData,
-          orderData_faktury_exists: !!(orderData?.faktury)
-        });
-        
-        // Při UPDATE faktury VŽDY zobrazit info o resetu věcné správnosti
+        // Při UPDATE faktury VŽDY zobrazit info o zrušení věcné správnosti
         if (forceResetVecnaSpravnost) {
-          vecnaResetInfo = 'Věcná správnost byla resetována (vynuceno)';
+          vecnaResetInfo = 'Věcná správnost byla zrušena (vynuceno)';
           vecnaWasReset = true;
         } else if (shouldResetVecnaSpravnost) {
-          vecnaResetInfo = 'Věcná správnost byla resetována (změna klíčových údajů)';
+          vecnaResetInfo = 'Věcná správnost byla zrušena (změna klíčových údajů)';
           vecnaWasReset = true;
         } else {
-          vecnaResetInfo = 'Věcná správnost nebyla resetována';
+          vecnaResetInfo = 'Věcná správnost nebyla zrušena';
           vecnaWasReset = false;
         }
       }
@@ -7931,7 +7876,7 @@ export default function InvoiceEvidencePage() {
             || (isReadOnlyMode && hasChangedVecnaSpravnost && !hasOnlyViewPermission)
             || canSaveVemaKodOnly) && (
           <ButtonGroup style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-            {/* 🆕 Checkbox pro vynucený reset věcné správnosti - VLEVO před tlačítky */}
+            {/* 🆕 Checkbox pro vynucené zrušení věcné správnosti - VLEVO před tlačítky */}
             <div style={{ flex: '0 0 auto' }}>
               {editingInvoiceId && invoiceUserConfirmed && 
                formData.stav !== 'ZAPLACENO' && formData.stav !== 'DOKONCENA' && 
@@ -7957,7 +7902,7 @@ export default function InvoiceEvidencePage() {
                     }}
                   />
                   <span style={{ color: forceResetVecnaSpravnost ? '#dc2626' : '#64748b', fontWeight: forceResetVecnaSpravnost ? 600 : 400 }}>
-                    Resetovat věcnou správnost
+                    Zrušit věcnou správnost
                   </span>
                 </label>
               )}
@@ -9287,7 +9232,7 @@ export default function InvoiceEvidencePage() {
 
             <ProgressMessage>{progressModal.message}</ProgressMessage>
 
-            {/* 🆕 Info o resetu věcné správnosti - pouze při success a pokud existuje */}
+            {/* 🆕 Info o zrušení věcné správnosti - pouze při success a pokud existuje */}
             {progressModal.status === 'success' && progressModal.vecnaResetInfo && (
               <VecnaResetInfo $wasReset={progressModal.vecnaWasReset}>
                 {progressModal.vecnaResetInfo}

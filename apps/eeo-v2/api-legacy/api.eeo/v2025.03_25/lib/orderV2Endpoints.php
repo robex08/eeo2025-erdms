@@ -1671,12 +1671,10 @@ function handle_order_v2_update($input, $config, $queries) {
                                 $update_values[] = $current_user_id;
                                 $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
                                 $update_values[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
-                                error_log("✅ [VECNA SPRAVNOST V2] Nastaveno user_id={$current_user_id} pro fakturu ID={$faktura_id}, status={$vs_status}");
                             } else {
                                 // Reset při status 0
                                 $update_fields[] = 'potvrdil_vecnou_spravnost_id = NULL';
                                 $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = NULL';
-                                error_log("✅ [VECNA SPRAVNOST V2] Reset ID a dt pro fakturu ID={$faktura_id}");
                             }
                         }
                         
