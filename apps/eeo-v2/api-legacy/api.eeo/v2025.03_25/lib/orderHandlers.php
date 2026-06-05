@@ -525,6 +525,9 @@ function loadOrderInvoices($db, $order_id) {
             f.*,
             s.nazev_stavu as fa_typ_nazev,
             s.popis as fa_typ_popis,
+            f.potvrdil_vecnou_spravnost_id,
+            f.dt_potvrzeni_vecne_spravnosti,
+            f.vecna_spravnost_potvrzeno,
             u_vecna.jmeno as potvrdil_vecnou_spravnost_jmeno,
             u_vecna.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
             u_vecna.email as potvrdil_vecnou_spravnost_email,
@@ -551,6 +554,11 @@ function loadOrderInvoices($db, $order_id) {
     ");
     $stmt->execute([$order_id]);
     $invoices = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    // 🔍 DEBUG: Kontrola vecna_spravnost polí po načtení z DB
+    foreach ($invoices as $inv) {
+        error_log("🔍 [DEBUG LOAD] Faktura ID={$inv['id']}: vecna_spravnost_duvod='" . ($inv['vecna_spravnost_duvod'] ?? 'NULL') . "', vecna_spravnost_poznamka='" . ($inv['vecna_spravnost_poznamka'] ?? 'NULL') . "', vecna_spravnost_potvrzeno=" . ($inv['vecna_spravnost_potvrzeno'] ?? 'NULL') . ", potvrdil_vecnou_spravnost_id=" . ($inv['potvrdil_vecnou_spravnost_id'] ?? 'NULL'));
+    }
     
     // 🔍 DEBUG: Kontrola fa_vema_kod
     foreach ($invoices as $inv) {
@@ -3000,11 +3008,21 @@ function handle_orders25_update($input, $config, $queries) {
         // - Pokud má faktura id (number) → UPDATE existující faktury
         // - Přílohy se nespravují tady, jen v invoices25/attachments/*
         
+        // 🚨 DEBUG: CO JE V INPUT?
+        error_log("🔍 [DEBUG INPUT] isset(\$input['faktury']) = " . (isset($input['faktury']) ? 'TRUE' : 'FALSE'));
+        error_log("🔍 [DEBUG INPUT] is_array(\$input['faktury']) = " . (isset($input['faktury']) && is_array($input['faktury']) ? 'TRUE' : 'FALSE'));
+        error_log("🔍 [DEBUG INPUT] \$input keys: " . implode(', ', array_keys($input)));
+        if (isset($input['faktury'])) {
+            error_log("🔍 [DEBUG INPUT] faktury type = " . gettype($input['faktury']) . ", value = " . (is_array($input['faktury']) ? count($input['faktury']) . ' items' : json_encode($input['faktury'])));
+        }
+        
         if (isset($input['faktury']) && is_array($input['faktury'])) {
+            error_log("🔍 [DEBUG FAKTURY FULL-UPDATE] Backend dostal " . count($input['faktury']) . " faktur");
             $faktury_table = get_invoices_table_name();
             
-            foreach ($input['faktury'] as $faktura) {
+            foreach ($input['faktury'] as $index => $faktura) {
                 $faktura_id = isset($faktura['id']) ? (int)$faktura['id'] : null;
+                error_log("🔍 [DEBUG FAKTURA #{$index}] ID={$faktura_id}, vecna_spravnost_potvrzeno=" . (isset($faktura['vecna_spravnost_potvrzeno']) ? $faktura['vecna_spravnost_potvrzeno'] : 'NOT SET') . ", vecna_spravnost_duvod=" . (isset($faktura['vecna_spravnost_duvod']) ? "'" . $faktura['vecna_spravnost_duvod'] . "'" : 'NOT SET'));
                 
                 if ($faktura_id === null || $faktura_id === 0) {
                     // ========== CREATE nová faktura ==========
@@ -3158,6 +3176,44 @@ function handle_orders25_update($input, $config, $queries) {
                         $update_values[] = $faktura['fa_poznamka'];
                     }
                     
+                    // ✅ VĚCNÁ SPRÁVNOST - podpora pro OrderForm25
+                    if (isset($faktura['vecna_spravnost_potvrzeno'])) {
+                        $vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
+                        $update_fields[] = 'vecna_spravnost_potvrzeno = ?';
+                        $update_values[] = $vs_status;
+                        
+                        // ✅ VŽDY nastavit potvrdil_vecnou_spravnost_id a dt při status > 0
+                        if ($vs_status > 0) {
+                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
+                            $update_values[] = $current_user_id;
+                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
+                            $update_values[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+                            error_log("✅ [VECNA SPRAVNOST FULL-UPDATE] Nastaveno user_id={$current_user_id} pro fakturu ID={$faktura_id}, status={$vs_status}");
+                        } else {
+                            // Reset při status 0
+                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = NULL';
+                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = NULL';
+                            error_log("✅ [VECNA SPRAVNOST FULL-UPDATE] Reset ID a dt pro fakturu ID={$faktura_id}");
+                        }
+                    }
+                    
+                    if (isset($faktura['vecna_spravnost_duvod'])) {
+                        $update_fields[] = 'vecna_spravnost_duvod = ?';
+                        $update_values[] = $faktura['vecna_spravnost_duvod'];
+                        error_log("🔍 [DEBUG DUVOD FULL-UPDATE] Ukladam vecna_spravnost_duvod='" . $faktura['vecna_spravnost_duvod'] . "' pro fakturu ID={$faktura_id}");
+                    }
+                    
+                    if (isset($faktura['vecna_spravnost_poznamka'])) {
+                        $update_fields[] = 'vecna_spravnost_poznamka = ?';
+                        $update_values[] = $faktura['vecna_spravnost_poznamka'];
+                        error_log("🔍 [DEBUG POZNAMKA FULL-UPDATE] Ukladam vecna_spravnost_poznamka='" . $faktura['vecna_spravnost_poznamka'] . "' pro fakturu ID={$faktura_id}");
+                    }
+                    
+                    if (isset($faktura['vecna_spravnost_umisteni_majetku'])) {
+                        $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
+                        $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
+                    }
+                    
                     // rozsirujici_data může být array nebo už JSON string
                     // FE posílá: rozsirujici_data: { isdoc: {...}, ... }
                     if (isset($faktura['rozsirujici_data'])) {
@@ -3175,6 +3231,11 @@ function handle_orders25_update($input, $config, $queries) {
                         
                         $sql_update = "UPDATE `$faktury_table` SET " . implode(', ', $update_fields) . " WHERE id = ? AND aktivni = 1";
                         
+                        // 🔍 DEBUG: Log věcné správnosti PŘED UPDATE
+                        error_log("🔍 [PRE-UPDATE FULL] Faktura ID={$faktura_id}: vecna_spravnost_duvod=" . (isset($faktura['vecna_spravnost_duvod']) ? "'{$faktura['vecna_spravnost_duvod']}'" : 'NOT IN INPUT'));
+                        error_log("🔍 [PRE-UPDATE FULL] Faktura ID={$faktura_id}: vecna_spravnost_poznamka=" . (isset($faktura['vecna_spravnost_poznamka']) ? "'{$faktura['vecna_spravnost_poznamka']}'" : 'NOT IN INPUT'));
+                        error_log("🔍 [PRE-UPDATE FULL] Faktura ID={$faktura_id}: vecna_spravnost_potvrzeno=" . (isset($faktura['vecna_spravnost_potvrzeno']) ? $faktura['vecna_spravnost_potvrzeno'] : 'NOT IN INPUT'));
+                        
                         // DEBUG: Log SQL a hodnoty
                         error_log("=== FAKTURA UPDATE DEBUG ===");
                         error_log("SQL: " . $sql_update);
@@ -3189,6 +3250,27 @@ function handle_orders25_update($input, $config, $queries) {
                         
                         if ($affected_rows === 0) {
                             error_log("⚠️ WARNING: Faktura ID=$faktura_id nebyla aktualizována (buď neexistuje nebo není aktivní)");
+                        }
+                        
+                        // 🔔 TRIGGER NOTIFIKACE při změně věcné správnosti
+                        if (isset($faktura['vecna_spravnost_potvrzeno'])) {
+                            try {
+                                require_once __DIR__ . '/notificationHandlers.php';
+                                $vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
+                                
+                                if ($vs_status === VS_STATUS_POTVRZENA) {
+                                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $faktura_id, $current_user_id);
+                                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice $faktura_id");
+                                } elseif ($vs_status === VS_STATUS_ZAMITNUTA) {
+                                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $current_user_id);
+                                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REJECTED for invoice $faktura_id");
+                                } elseif ($vs_status === VS_STATUS_NEPOTVRZENA) {
+                                    triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $current_user_id);
+                                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (reset)");
+                                }
+                            } catch (Exception $notifErr) {
+                                error_log("⚠️ Chyba při odesílání notifikace pro fakturu #$faktura_id: " . $notifErr->getMessage());
+                            }
                         }
                     } else {
                         error_log("⚠️ WARNING: Faktura ID=$faktura_id - žádná pole k updatu!");
@@ -3911,10 +3993,12 @@ function handle_orders25_partial_update($input, $config, $queries) {
         $invoices_updated = false;
         
         if (isset($input['faktury']) && is_array($input['faktury'])) {
+            error_log("🔍 [DEBUG FAKTURY PARTIAL-UPDATE] Backend dostal " . count($input['faktury']) . " faktur");
             $faktury_table = get_invoices_table_name();
             
-            foreach ($input['faktury'] as $faktura) {
+            foreach ($input['faktury'] as $index => $faktura) {
                 $faktura_id = isset($faktura['id']) ? (int)$faktura['id'] : null;
+                error_log("🔍 [DEBUG FAKTURA PARTIAL #{$index}] ID={$faktura_id}, vecna_spravnost_potvrzeno=" . (isset($faktura['vecna_spravnost_potvrzeno']) ? $faktura['vecna_spravnost_potvrzeno'] : 'NOT SET') . ", vecna_spravnost_duvod=" . (isset($faktura['vecna_spravnost_duvod']) ? "'" . $faktura['vecna_spravnost_duvod'] . "'" : 'NOT SET'));
                 
                 if ($faktura_id === null || $faktura_id === 0) {
                     // ========== CREATE nová faktura ==========
@@ -4055,6 +4139,44 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         $update_values[] = $faktura['fa_poznamka'];
                     }
                     
+                    // ✅ VĚCNÁ SPRÁVNOST - podpora pro OrderForm25
+                    if (isset($faktura['vecna_spravnost_potvrzeno'])) {
+                        $vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
+                        $update_fields[] = 'vecna_spravnost_potvrzeno = ?';
+                        $update_values[] = $vs_status;
+                        
+                        // ✅ VŽDY nastavit potvrdil_vecnou_spravnost_id a dt při status > 0
+                        if ($vs_status > 0) {
+                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
+                            $update_values[] = $current_user_id;
+                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
+                            $update_values[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+                            error_log("✅ [VECNA SPRAVNOST PARTIAL-UPDATE] Nastaveno user_id={$current_user_id} pro fakturu ID={$faktura_id}, status={$vs_status}");
+                        } else {
+                            // Reset při status 0
+                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = NULL';
+                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = NULL';
+                            error_log("✅ [VECNA SPRAVNOST PARTIAL-UPDATE] Reset ID a dt pro fakturu ID={$faktura_id}");
+                        }
+                    }
+                    
+                    if (isset($faktura['vecna_spravnost_duvod'])) {
+                        $update_fields[] = 'vecna_spravnost_duvod = ?';
+                        $update_values[] = $faktura['vecna_spravnost_duvod'];
+                        error_log("🔍 [DEBUG DUVOD PARTIAL-UPDATE] Ukladam vecna_spravnost_duvod='" . $faktura['vecna_spravnost_duvod'] . "' pro fakturu ID={$faktura_id}");
+                    }
+                    
+                    if (isset($faktura['vecna_spravnost_poznamka'])) {
+                        $update_fields[] = 'vecna_spravnost_poznamka = ?';
+                        $update_values[] = $faktura['vecna_spravnost_poznamka'];
+                        error_log("🔍 [DEBUG POZNAMKA PARTIAL-UPDATE] Ukladam vecna_spravnost_poznamka='" . $faktura['vecna_spravnost_poznamka'] . "' pro fakturu ID={$faktura_id}");
+                    }
+                    
+                    if (isset($faktura['vecna_spravnost_umisteni_majetku'])) {
+                        $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
+                        $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
+                    }
+                    
                     // rozsirujici_data může být array nebo už JSON string
                     // FE posílá: rozsirujici_data: { isdoc: {...}, ... }
                     if (isset($faktura['rozsirujici_data'])) {
@@ -4089,6 +4211,27 @@ function handle_orders25_partial_update($input, $config, $queries) {
                         } else {
                             $invoices_processed++;
                             $invoices_updated = true;
+                            
+                            // 🔔 TRIGGER NOTIFIKACE při změně věcné správnosti
+                            if (isset($faktura['vecna_spravnost_potvrzeno'])) {
+                                try {
+                                    require_once __DIR__ . '/notificationHandlers.php';
+                                    $vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
+                                    
+                                    if ($vs_status === VS_STATUS_POTVRZENA) {
+                                        triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $faktura_id, $current_user_id);
+                                        error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice $faktura_id");
+                                    } elseif ($vs_status === VS_STATUS_ZAMITNUTA) {
+                                        triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $current_user_id);
+                                        error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REJECTED for invoice $faktura_id");
+                                    } elseif ($vs_status === VS_STATUS_NEPOTVRZENA) {
+                                        triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $current_user_id);
+                                        error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (reset)");
+                                    }
+                                } catch (Exception $notifErr) {
+                                    error_log("⚠️ Chyba při odesílání notifikace pro fakturu #$faktura_id: " . $notifErr->getMessage());
+                                }
+                            }
                         }
                     } else {
                         error_log("⚠️ WARNING: Faktura ID=$faktura_id - žádná pole k updatu!");

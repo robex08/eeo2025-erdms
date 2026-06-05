@@ -325,6 +325,7 @@ function handle_invoices25_create($input, $config, $queries) {
             dt_potvrzeni_vecne_spravnosti,
             vecna_spravnost_umisteni_majetku,
             vecna_spravnost_poznamka,
+            vecna_spravnost_duvod,
             vecna_spravnost_potvrzeno,
             rozsirujici_data,
             stav,
@@ -333,7 +334,7 @@ function handle_invoices25_create($input, $config, $queries) {
             dt_aktualizace,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -396,6 +397,7 @@ function handle_invoices25_create($input, $config, $queries) {
         $dt_potvrzeni_vecne_spravnosti = isset($input['dt_potvrzeni_vecne_spravnosti']) ? $input['dt_potvrzeni_vecne_spravnosti'] : null;
         $vecna_spravnost_umisteni_majetku = isset($input['vecna_spravnost_umisteni_majetku']) ? $input['vecna_spravnost_umisteni_majetku'] : null;
         $vecna_spravnost_poznamka = isset($input['vecna_spravnost_poznamka']) ? $input['vecna_spravnost_poznamka'] : null;
+        $vecna_spravnost_duvod = isset($input['vecna_spravnost_duvod']) ? $input['vecna_spravnost_duvod'] : null;
         $vecna_spravnost_potvrzeno = isset($input['vecna_spravnost_potvrzeno']) ? (int)$input['vecna_spravnost_potvrzeno'] : 0;
         
         $fa_vema_kod = isset($input['fa_vema_kod']) ? trim($input['fa_vema_kod']) : null;
@@ -426,6 +428,7 @@ function handle_invoices25_create($input, $config, $queries) {
             $dt_potvrzeni_vecne_spravnosti,
             $vecna_spravnost_umisteni_majetku,
             $vecna_spravnost_poznamka,
+            $vecna_spravnost_duvod,
             $vecna_spravnost_potvrzeno,
             $rozsirujici_data,
             $stav,
@@ -511,7 +514,13 @@ function handle_invoices25_update($input, $config, $queries) {
 
         // Ověř, že faktura existuje + načti aktuální data pro detekci změn
         $faktury_table = get_invoices_table_name();
-        $check_stmt = $db->prepare("SELECT id, stav, objednavka_id, vecna_spravnost_potvrzeno FROM `$faktury_table` WHERE id = ? AND aktivni = 1");
+        $check_stmt = $db->prepare("
+            SELECT id, stav, objednavka_id, vecna_spravnost_potvrzeno,
+                   fa_castka, fa_datum_vystaveni, fa_datum_splatnosti, fa_datum_doruceni,
+                   fa_cislo_vema, fa_typ, fa_strediska_kod
+            FROM `$faktury_table` 
+            WHERE id = ? AND aktivni = 1
+        ");
         $check_stmt->execute([$faktura_id]);
         $oldInvoiceData = $check_stmt->fetch(PDO::FETCH_ASSOC);
         
@@ -519,6 +528,173 @@ function handle_invoices25_update($input, $config, $queries) {
             http_response_code(404);
             echo json_encode(['err' => 'Faktura nenalezena']);
             return;
+        }
+
+        // ⚠️ DETEKCE ZMĚN pro automatický reset věcné správnosti
+        $resetVecnaSpravnost = false;
+        $wasVecnaConfirmed = (int)$oldInvoiceData['vecna_spravnost_potvrzeno'] !== 0; // 1 = potvrzena, 2 = zamitnuta
+        
+        // 🔍 DEBUG: Co přišlo v $input?
+        error_log("🔍 [INVOICE UPDATE] Faktura ID={$faktura_id}: wasVecnaConfirmed=" . ($wasVecnaConfirmed ? 'TRUE' : 'FALSE'));
+        error_log("🔍 [INVOICE UPDATE] \$input keys: " . implode(', ', array_keys($input)));
+        error_log("🔍 [INVOICE UPDATE] vecna_spravnost_duvod in input = " . (isset($input['vecna_spravnost_duvod']) ? "'{$input['vecna_spravnost_duvod']}'" : 'NOT SET'));
+        error_log("🔍 [INVOICE UPDATE] vecna_spravnost_poznamka in input = " . (isset($input['vecna_spravnost_poznamka']) ? "'{$input['vecna_spravnost_poznamka']}'" : 'NOT SET'));
+        error_log("🔍 [INVOICE UPDATE] vecna_spravnost_potvrzeno in input = " . (isset($input['vecna_spravnost_potvrzeno']) ? $input['vecna_spravnost_potvrzeno'] : 'NOT SET'));
+        
+        // ⚠️ NERESETNOUT pokud uživatel MĚNÍ hodnotu vecna_spravnost_potvrzeno (tj. explicitně toggleuje věcnou správnost)
+        $isExplicitVecnaUpdate = false;
+        if (isset($input['vecna_spravnost_potvrzeno'])) {
+            $newVecnaStatus = (int)$input['vecna_spravnost_potvrzeno'];
+            $oldVecnaStatus = (int)$oldInvoiceData['vecna_spravnost_potvrzeno'];
+            // Je to explicitní update POUZE pokud se hodnota ZMĚNILA
+            if ($newVecnaStatus !== $oldVecnaStatus) {
+                $isExplicitVecnaUpdate = true;
+                error_log("🔍 INVOICE UPDATE: Explicitní změna vecna_spravnost_potvrzeno ($oldVecnaStatus → $newVecnaStatus) - NEPROVÁDÍM reset");
+            }
+        }
+        
+        if ($wasVecnaConfirmed && !$isExplicitVecnaUpdate) {
+            // 🆕 Načíst app settings pro invoice_accountant_edit
+            $appSettings = array();
+            try {
+                $settingsStmt = $db->prepare("SELECT klic, hodnota FROM " . TBL_NASTAVENI_GLOBALNI . " WHERE klic LIKE 'invoice_accountant_edit_%'");
+                $settingsStmt->execute();
+                while ($settingRow = $settingsStmt->fetch(PDO::FETCH_ASSOC)) {
+                    $appSettings[$settingRow['klic']] = $settingRow['hodnota'] === '1';
+                }
+                error_log("📋 APP SETTINGS loaded: " . json_encode($appSettings));
+            } catch (Exception $e) {
+                error_log("⚠️ Chyba při načítání app settings: " . $e->getMessage());
+            }
+            
+            // Zkontroluj zda se změnilo něco důležitého
+            $criticalFieldsChanged = false;
+            
+            // ⚠️ ČÁSTKA FAKTURY - VŽDY resetuje (není v app settings)
+            if (isset($input['fa_castka'])) {
+                $rawAmount = $input['fa_castka'];
+                $moneyError = null;
+                $normalizedAmount = invoices25_normalize_money_to_decimal_string($rawAmount, $moneyError);
+                if ($normalizedAmount !== null) {
+                    $oldAmount = $oldInvoiceData['fa_castka'] ?? '0';
+                    // Porovnat jako desetinná čísla (tolerance 0.01)
+                    if (abs((float)$normalizedAmount - (float)$oldAmount) > 0.01) {
+                        $criticalFieldsChanged = true;
+                        error_log("⚠️ INVOICE UPDATE: fa_castka changed ($oldAmount → $normalizedAmount) - VŽDY resetuje věcnou (není v settings)");
+                    }
+                }
+            }
+            
+            // Datum vystavení - kontrola app settings
+            if (isset($input['fa_datum_vystaveni'])) {
+                $oldDate = $oldInvoiceData['fa_datum_vystaveni'] ?? '';
+                $newDate = ($input['fa_datum_vystaveni'] === '' || $input['fa_datum_vystaveni'] === null) ? '' : $input['fa_datum_vystaveni'];
+                if ($oldDate != $newDate) {
+                    // Zkontroluj zda je povoleno v settings
+                    if (empty($appSettings['invoice_accountant_edit_datum_vystaveni'])) {
+                        $criticalFieldsChanged = true;
+                        error_log("⚠️ INVOICE UPDATE: fa_datum_vystaveni changed ($oldDate → $newDate) - reset (NENÍ v settings)");
+                    } else {
+                        error_log("✅ INVOICE UPDATE: fa_datum_vystaveni changed ale JE povoleno v settings - NO reset");
+                    }
+                }
+            }
+            
+            // Datum splatnosti - kontrola app settings
+            if (isset($input['fa_datum_splatnosti'])) {
+                $oldDate = $oldInvoiceData['fa_datum_splatnosti'] ?? '';
+                $newDate = ($input['fa_datum_splatnosti'] === '' || $input['fa_datum_splatnosti'] === null) ? '' : $input['fa_datum_splatnosti'];
+                if ($oldDate != $newDate) {
+                    if (empty($appSettings['invoice_accountant_edit_datum_splatnosti'])) {
+                        $criticalFieldsChanged = true;
+                        error_log("⚠️ INVOICE UPDATE: fa_datum_splatnosti changed ($oldDate → $newDate) - reset (NENÍ v settings)");
+                    } else {
+                        error_log("✅ INVOICE UPDATE: fa_datum_splatnosti changed ale JE povoleno v settings - NO reset");
+                    }
+                }
+            }
+            
+            // Datum doručení - kontrola app settings
+            if (isset($input['fa_datum_doruceni'])) {
+                $oldDate = $oldInvoiceData['fa_datum_doruceni'] ?? '';
+                $newDate = ($input['fa_datum_doruceni'] === '' || $input['fa_datum_doruceni'] === null) ? '' : $input['fa_datum_doruceni'];
+                if ($oldDate != $newDate) {
+                    if (empty($appSettings['invoice_accountant_edit_datum_doruceni'])) {
+                        $criticalFieldsChanged = true;
+                        error_log("⚠️ INVOICE UPDATE: fa_datum_doruceni changed ($oldDate → $newDate) - reset (NENÍ v settings)");
+                    } else {
+                        error_log("✅ INVOICE UPDATE: fa_datum_doruceni changed ale JE povoleno v settings - NO reset");
+                    }
+                }
+            }
+            
+            // Číslo VEMA (variabilní symbol) - kontrola app settings
+            if (isset($input['fa_cislo_vema'])) {
+                $oldCislo = $oldInvoiceData['fa_cislo_vema'] ?? '';
+                $newCislo = $input['fa_cislo_vema'] ?? '';
+                if ($oldCislo != $newCislo) {
+                    if (empty($appSettings['invoice_accountant_edit_variabilni_symbol'])) {
+                        $criticalFieldsChanged = true;
+                        error_log("⚠️ INVOICE UPDATE: fa_cislo_vema changed ($oldCislo → $newCislo) - reset (NENÍ v settings)");
+                    } else {
+                        error_log("✅ INVOICE UPDATE: fa_cislo_vema changed ale JE povoleno v settings - NO reset");
+                    }
+                }
+            }
+            
+            // Typ faktury - kontrola app settings
+            if (isset($input['fa_typ'])) {
+                $oldTyp = $oldInvoiceData['fa_typ'] ?? '';
+                $newTyp = $input['fa_typ'] ?? '';
+                if ($oldTyp != $newTyp) {
+                    if (empty($appSettings['invoice_accountant_edit_typ_faktury'])) {
+                        $criticalFieldsChanged = true;
+                        error_log("⚠️ INVOICE UPDATE: fa_typ changed ($oldTyp → $newTyp) - reset (NENÍ v settings)");
+                    } else {
+                        error_log("✅ INVOICE UPDATE: fa_typ changed ale JE povoleno v settings - NO reset");
+                    }
+                }
+            }
+            
+            // Střediska - kontrola app settings
+            if (isset($input['fa_strediska_kod'])) {
+                $oldStrediska = json_decode($oldInvoiceData['fa_strediska_kod'] ?? '[]', true);
+                if (!is_array($oldStrediska)) $oldStrediska = array();
+                
+                $newStrediska = array();
+                if (is_array($input['fa_strediska_kod'])) {
+                    $newStrediska = $input['fa_strediska_kod'];
+                } else if (is_string($input['fa_strediska_kod'])) {
+                    $decoded = json_decode($input['fa_strediska_kod'], true);
+                    if (is_array($decoded)) $newStrediska = $decoded;
+                }
+                
+                sort($oldStrediska);
+                sort($newStrediska);
+                if (json_encode($oldStrediska) !== json_encode($newStrediska)) {
+                    if (empty($appSettings['invoice_accountant_edit_strediska'])) {
+                        $criticalFieldsChanged = true;
+                        error_log("⚠️ INVOICE UPDATE: fa_strediska_kod changed - reset (NENÍ v settings)");
+                    } else {
+                        error_log("✅ INVOICE UPDATE: fa_strediska_kod changed ale JE povoleno v settings - NO reset");
+                    }
+                }
+            }
+            
+            if ($criticalFieldsChanged) {
+                $resetVecnaSpravnost = true;
+                error_log("🔄 INVOICE UPDATE: Resetuji věcnou správnost faktury #$faktura_id (důvod: změna kritických polí)");
+            }
+        }
+        
+        // ⚠️ DŮLEŽITÉ: Pokud dojde k resetu věcné správnosti, odstranit tyto pole z $input
+        // aby se nepřepsaly hodnotami z frontendu (duplikace v SQL query)
+        if ($resetVecnaSpravnost) {
+            unset($input['vecna_spravnost_potvrzeno']);
+            unset($input['potvrdil_vecnou_spravnost_id']);
+            unset($input['dt_potvrzeni_vecne_spravnosti']);
+            unset($input['vecna_spravnost_duvod']);
+            error_log("🔒 INVOICE UPDATE: Odstraněna pole věcné správnosti z \$input před sestavením UPDATE (reset aktivní)");
         }
 
         // Sestavení UPDATE dotazu - jen pole která přišla
@@ -650,6 +826,10 @@ function handle_invoices25_update($input, $config, $queries) {
             $fields[] = 'vecna_spravnost_poznamka = ?';
             $values[] = $input['vecna_spravnost_poznamka'];
         }
+        if (isset($input['vecna_spravnost_duvod'])) {
+            $fields[] = 'vecna_spravnost_duvod = ?';
+            $values[] = $input['vecna_spravnost_duvod'];
+        }
         if (isset($input['vecna_spravnost_potvrzeno'])) {
             $fields[] = 'vecna_spravnost_potvrzeno = ?';
             $values[] = (int)$input['vecna_spravnost_potvrzeno'];
@@ -671,19 +851,48 @@ function handle_invoices25_update($input, $config, $queries) {
             }
         }
         
-        // ✅ AUTOMATIKA: Potvrzení věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
-        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+        // ✅ AUTOMATIKA: Potvrzení nebo zamítnutí věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
+        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] !== 0) {
             // Načíst aktuální stav faktury
             $current_check = $db->prepare("SELECT stav FROM `$faktury_table` WHERE id = ?");
             $current_check->execute([$faktura_id]);
             $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
             
             if ($current_row && $current_row['stav'] === INVOICE_STATUS_REGISTERED) {
-                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST
+                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST nebo V_RESENI
+                $newStatus = ((int)$input['vecna_spravnost_potvrzeno'] === 1) ? INVOICE_STATUS_VERIFICATION : INVOICE_STATUS_IN_PROGRESS;
                 $fields[] = 'stav = ?';
-                $values[] = INVOICE_STATUS_VERIFICATION;
-                error_log("🔄 Auto změna stavu: ZAEVIDOVANA → VECNA_SPRAVNOST (potvrzena věcná správnost)");
+                $values[] = $newStatus;
+                $statusName = ((int)$input['vecna_spravnost_potvrzeno'] === 1) ? 'VECNA_SPRAVNOST' : 'V_RESENI';
+                error_log("🔄 Auto změna stavu: ZAEVIDOVANA → $statusName (věcná správnost změněna)");
             }
+        }
+        
+        // ⚠️ AUTOMATIKA: Reset věcné správnosti při změně kritických polí
+        if ($resetVecnaSpravnost) {
+            // Přepsat všechna pole vezna_spravnost_* na výchozí hodnoty
+            // ⚠️ NEMAZAT umisteni_majetku a poznamka - ty zůstávají zachované
+            $fields[] = 'vecna_spravnost_potvrzeno = ?';
+            $values[] = 0;
+            
+            $fields[] = 'potvrdil_vecnou_spravnost_id = ?';
+            $values[] = null;
+            
+            $fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
+            $values[] = null;
+            
+            $fields[] = 'vecna_spravnost_duvod = ?';
+            $values[] = null;
+            
+            // ⚠️ KRITICKÉ: Pokud byla faktura zamítnuta (vecna=2) → měla stav V_RESENI
+            // Při resetu vrátit stav na ZAEVIDOVANA
+            if ((int)$oldInvoiceData['vecna_spravnost_potvrzeno'] === 2) {
+                $fields[] = 'stav = ?';
+                $values[] = INVOICE_STATUS_REGISTERED;
+                error_log("🔄 INVOICE UPDATE: Reset věcné správnosti zamítnuté faktury → stav V_RESENI → ZAEVIDOVANA");
+            }
+            
+            error_log("✅ INVOICE UPDATE: Resetována věcná správnost faktury #$faktura_id (potvrzeno={$oldInvoiceData['vecna_spravnost_potvrzeno']} → 0, duvod → NULL)");
         }
 
         // Vždy aktualizuj dt_aktualizace a aktualizoval_uzivatel_id
@@ -766,8 +975,8 @@ function handle_invoices25_update($input, $config, $queries) {
         // TRIGGER 1: INVOICE_UPDATED - Pouze pokud se nezměnil stav (jinak jsou specifické triggery)
         $stavChanged = isset($input['stav']) && $input['stav'] !== $oldInvoiceData['stav'];
         $vecnaSpravnostChanged = isset($input['vecna_spravnost_potvrzeno']) && 
-                                  (int)$input['vecna_spravnost_potvrzeno'] === 1 && 
-                                  (int)$oldInvoiceData['vecna_spravnost_potvrzeno'] !== 1;
+                                  (int)$input['vecna_spravnost_potvrzeno'] !== 0 && 
+                                  (int)$oldInvoiceData['vecna_spravnost_potvrzeno'] === 0;
         
         if (!$stavChanged && !$vecnaSpravnostChanged) {
             // Standardní update bez změny stavu → INVOICE_UPDATED
@@ -1115,6 +1324,8 @@ function handle_invoices25_by_id($input, $config, $queries) {
         $stmt = $db->prepare("
             SELECT 
                 f.*,
+                f.vecna_spravnost_duvod,
+                f.vecna_spravnost_poznamka,
                 o.cislo_objednavky,
                 sm.cislo_smlouvy,
                 sm.nazev_smlouvy,
@@ -1618,11 +1829,6 @@ function handle_invoices25_list($input, $config, $queries) {
             debug_log("Invoices25 LIST: STANDARD MODE - showing only active invoices (aktivni = 1)");
         }
         $params = array();
-        
-        // � KRITICKÉ: Zamítnuté faktury (vecna_spravnost_potvrzeno = 2) se NIKDY nezobrazují
-        // Toto je globální pravidlo - zamítnuté faktury nejsou nikde započítány
-        $where_conditions[] = '(f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)';
-        debug_log("Invoices25 LIST: Applied global filter - excluding REJECTED invoices (status 2)");
         
         // �🔒 VALIDACE: Faktury s neaktivní objednávkou nebo smlouvou se nebudou zobrazovat
         // - Pokud je faktura navázána na objednávku (objednavka_id IS NOT NULL) → objednávka MUSÍ být aktivní

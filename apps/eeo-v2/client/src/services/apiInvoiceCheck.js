@@ -31,10 +31,10 @@ export const VS_STATUS = {
  * @param {boolean|number} kontrolovanoOrStatus - DEPRECATED: boolean kontrolovano NEBO status (0/1/2)
  * @param {string} token - Auth token
  * @param {string} username - Username
- * @param {string} [poznamka] - Poznámka k věcné správnosti (POVINNÁ pro status 2)
+ * @param {string} [duvod] - Důvod rozhodnutí (POVINNÝ pro status 2, volitelný pro 1)
  * @returns {Promise<Object>} Response s informací o změně
  */
-export async function toggleInvoiceCheck(fakturaId, kontrolovanoOrStatus, token, username, poznamka = '') {
+export async function toggleInvoiceCheck(fakturaId, kontrolovanoOrStatus, token, username, duvod = '') {
   const payload = {
     token,
     username,
@@ -48,8 +48,8 @@ export async function toggleInvoiceCheck(fakturaId, kontrolovanoOrStatus, token,
     // Nový způsob: status 0/1/2
     payload.status = kontrolovanoOrStatus;
     
-    if (poznamka) {
-      payload.vecna_spravnost_poznamka = poznamka;
+    if (duvod) {
+      payload.vecna_spravnost_duvod = duvod;
     }
   }
 
@@ -86,13 +86,13 @@ export async function toggleInvoiceCheck(fakturaId, kontrolovanoOrStatus, token,
  * @param {number} status - 0=neověřeno, 1=potvrzeno, 2=zamítnuto
  * @param {string} token - Auth token
  * @param {string} username - Username
- * @param {string} [poznamka] - Poznámka (POVINNÁ pro status 2, volitelná pro 1)
+ * @param {string} [duvod] - Důvod rozhodnutí (POVINNÝ pro status 2, volitelný pro 1)
  * @returns {Promise<Object>} Response { status, message, data }
- * @throws {Error} Pokud je faktura uzamčena (423) nebo chybí povinná poznámka
+ * @throws {Error} Pokud je faktura uzamčena (423) nebo chybí povinný důvod
  */
-export async function toggleVecnaSpravnost(fakturaId, status, token, username, poznamka = '') {
+export async function toggleVecnaSpravnost(fakturaId, status, token, username, duvod = '') {
   // Validace na FE straně (backend má vlastní validaci)
-  if (status === VS_STATUS.ZAMITNUTA && (!poznamka || poznamka.trim().length < 5)) {
+  if (status === VS_STATUS.ZAMITNUTA && (!duvod || duvod.trim().length < 5)) {
     throw new Error('Pro zamítnutí faktury je povinný důvod (minimálně 5 znaků)');
   }
   
@@ -110,7 +110,7 @@ export async function toggleVecnaSpravnost(fakturaId, status, token, username, p
       username,
       faktura_id: fakturaId,
       status,
-      vecna_spravnost_poznamka: poznamka || undefined
+      vecna_spravnost_duvod: duvod || undefined
     }),
   });
 
