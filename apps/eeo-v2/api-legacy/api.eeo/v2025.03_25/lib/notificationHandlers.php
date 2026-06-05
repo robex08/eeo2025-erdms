@@ -4934,6 +4934,54 @@ function loadUniversalPlaceholders($db, $objectType, $objectId, $triggerUserId =
                     $placeholders['supplier_name'] = '-';
                     $placeholders['supplier_ico'] = '-';
                 }
+                
+                // ✅ PŘIDAT: action_user_name (kdo provádí akci - zamítá/schvaluje)
+                $action_user_name = 'Neznámý';
+                if ($triggerUserId) {
+                    try {
+                        $stmt_user = $db->prepare("SELECT CONCAT(TRIM(CONCAT(COALESCE(titul_pred,''), ' ', COALESCE(jmeno,''), ' ', COALESCE(prijmeni,''), ' ', COALESCE(titul_za,'')))) as full_name FROM " . TBL_UZIVATELE . " WHERE id = ?");
+                        $stmt_user->execute([$triggerUserId]);
+                        $user_row = $stmt_user->fetch(PDO::FETCH_ASSOC);
+                        if ($user_row && !empty(trim($user_row['full_name']))) {
+                            $action_user_name = trim($user_row['full_name']);
+                        }
+                    } catch (Exception $e) {
+                        error_log("[loadUniversalPlaceholders] Error loading action user name: " . $e->getMessage());
+                    }
+                }
+                
+                $placeholders['action_user_name'] = $action_user_name;  // Kdo provádí akci
+                $placeholders['trigger_user_name'] = $action_user_name;  // Alias
+                $placeholders['action_performed_by'] = $action_user_name;  // Alias
+                $placeholders['rejected_by_name'] = $action_user_name;    // ✅ Alias pro šablonu (zamítnutí VS)
+                $placeholders['approved_by_name'] = $action_user_name;    // ✅ Alias pro šablonu (schválení VS)
+                
+                // ✅ PŘIDAT: dt_action_formatted (čas provádění akce)
+                $placeholders['dt_action_formatted'] = TimezoneHelper::getCzechDateTime();  // Aktuální čas
+                $placeholders['dt_action'] = $placeholders['dt_action_formatted'];  // Alias
+                $placeholders['rejected_at'] = $placeholders['dt_action_formatted'];  // ✅ Alias pro šablonu
+                $placeholders['approved_at'] = $placeholders['dt_action_formatted'];  // ✅ Alias pro šablonu
+
+                // ✅ PŘIDAT: vecna_spravnost_duvod (důvod zamítnutí) - čteme z NOVÉHO sloupce DB
+                $duvod = '-';
+                if (!empty($data['vecna_spravnost_duvod'])) {
+                    $duvod = $data['vecna_spravnost_duvod'];
+                } elseif (!empty($data['vecna_spravnost_poznamka'])) {
+                    // Fallback na starý sloupec (poznámka)
+                    $duvod = $data['vecna_spravnost_poznamka'];
+                }
+                $placeholders['vecna_spravnost_duvod'] = $duvod;
+                $placeholders['rejection_reason'] = $duvod;  // ✅ Alias pro šablonu 137
+                $placeholders['reason'] = $duvod;            // ✅ Alias
+
+                // ✅ PŘIDAT: organization_name = supplier_name (alias pro šablonu 137)
+                $placeholders['organization_name'] = $placeholders['supplier_name'] ?? '-';
+
+                // ✅ PŘIDAT: detail_url (CTA tlačítko v emailu)
+                $apiBaseUrl = $_ENV['FRONTEND_BASE_URL'] ?? '';
+                $placeholders['frontend_base_url'] = $apiBaseUrl;
+                $placeholders['detail_url'] = $apiBaseUrl ? rtrim($apiBaseUrl, '/') . '/invoice-evidence?editInvoiceId=' . $objectId : '#';
+                $placeholders['invoice_detail_url'] = $placeholders['detail_url'];  // ✅ Alias
             }
         }
         

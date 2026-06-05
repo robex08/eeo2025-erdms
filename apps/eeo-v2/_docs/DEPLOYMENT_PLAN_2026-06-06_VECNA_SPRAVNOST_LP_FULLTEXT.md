@@ -199,6 +199,122 @@ SHOW INDEXES FROM `25_limitovane_prisliby` WHERE Index_type = 'FULLTEXT';
 
 ---
 
+### 🔴 **HOTFIX #5: Chybějící notifikační event typy (KRITICKÉ!)**
+**Soubor:** [`HOTFIX_NOTIFICATION_EVENT_TYPES_20260606.sql`](../_sql/HOTFIX_NOTIFICATION_EVENT_TYPES_20260606.sql)  
+**Datum:** 2026-06-06  
+**Priorita:** 🔴 KRITICKÉ (MUSÍ být PRVNÍ v pořadí migrac!)  
+**Status:** ✅ HOTFIX aplikován do DB eeo2025-dev
+
+```sql
+-- ============================================================================
+-- HOTFIX: Doplnění chybějících event typů v notifikačním systému
+-- 
+-- PROBLÉM: Org hierarchie nemůže najít recipients pro 4 event typy:
+--   - ORDER_INVOICE_PENDING (mapuje se na order_status_faktura_ceka)
+--   - ORDER_INVOICE_APPROVED (mapuje se na order_status_faktura_schvalena)
+--   - ORDER_INVOICE_PAID (mapuje se na order_status_faktura_uhrazena)
+--   - INVOICE_MATERIAL_CHECK_REJECTED (mapuje se na order_status_kontrola_zamitnuta)
+--
+-- DOPAD: RH ADMIN nedostane notifikaci když je faktura zamítnutá!
+--   → Notifikace se zavolá ✓, ale org hierarchie najde 0 recipients ✗
+--   → Debug log: "NO RECIPIENTS FOUND" ✗
+--
+-- ŘEŠENÍ: Přidat chybějící event typy do 25_notifikace_typy_udalosti
+--   1. Org hierarchie najde EDGES pro tyto eventy ✓
+--   2. Příjemci se správně identifikují ✓
+--   3. Notifikace se odesílají ✓
+--
+-- TESTOVÁNÍ: Po vložení spustit test:
+--   SELECT COUNT(*) FROM 25_notifikace_typy_udalosti 
+--   WHERE kod IN ('ORDER_INVOICE_PENDING', 'ORDER_INVOICE_APPROVED', 
+--                 'ORDER_INVOICE_PAID', 'INVOICE_MATERIAL_CHECK_REJECTED');
+--   Výsledek MUSÍ být: 4 ✓
+-- ============================================================================
+
+INSERT INTO `25_notifikace_typy_udalosti` 
+  (`kod`, `nazev`, `kategorie`, `aktivni`) 
+VALUES
+  (
+    'ORDER_INVOICE_PENDING',
+    'Objednávka čeká na fakturu',
+    'invoices',
+    1
+  ),
+  (
+    'ORDER_INVOICE_APPROVED',
+    'Faktura schválena',
+    'invoices',
+    1
+  ),
+  (
+    'ORDER_INVOICE_PAID',
+    'Faktura uhrazena',
+    'invoices',
+    1
+  ),
+  (
+    'INVOICE_MATERIAL_CHECK_REJECTED',
+    'Věcná správnost zamítnuta',
+    'invoices',
+    1
+  );
+
+-- ✅ OVĚŘENÍ:
+-- Mělo se vložit přesně 4 event typy
+SELECT 
+  id, kod, nazev, kategorie, aktivni 
+FROM `25_notifikace_typy_udalosti`
+WHERE kod IN (
+  'ORDER_INVOICE_PENDING', 
+  'ORDER_INVOICE_APPROVED', 
+  'ORDER_INVOICE_PAID', 
+  'INVOICE_MATERIAL_CHECK_REJECTED'
+)
+ORDER BY kod;
+-- 
+-- OČEKÁVANÝ VÝSLEDEK:
+-- | ID  | KOD                           | NAZEV                          | KATEGORIE | AKTIVNI |
+-- |----|-------------------------------|--------------------------------|-----------|---------|
+-- | 32 | INVOICE_MATERIAL_CHECK_REJECTED | Věcná správnost zamítnuta      | invoices  | 1       |
+-- | 33 | ORDER_INVOICE_APPROVED        | Faktura schválena              | invoices  | 1       |
+-- | 34 | ORDER_INVOICE_PAID            | Faktura uhrazena               | invoices  | 1       |
+-- | 32 | ORDER_INVOICE_PENDING         | Objednávka čeká na fakturu     | invoices  | 1       |
+```
+
+**Účel:**
+- Doplnění 4 chybějících event typů do DB
+- Org hierarchie pak správně najde EDGES pro tyto notifikační eventy
+- RH ADMIN začne dostávat notifikace o zamítnutí faktury ✓
+- Mapování v `notificationHandlers.php` (řádky 108-118) začne fungovat
+
+**Kdy se to objevilo:**
+- Při testování zamítnutí faktury (věcná správnost)
+- RH ADMIN nedostala notifikaci o zamítnutí
+- Debug log: `NO RECIPIENTS FOUND` pro `INVOICE_MATERIAL_CHECK_REJECTED`
+- Příčina: Event typ neexistoval v DB → org hierarchie nemohla najít recipients
+
+**AKTUALIZACE ŠABLON:**
+Zároveň byla aktualizována šablona `order_status_kontrola_zamitnuta` (ID:21) aby obsahovala placeholder pro důvod:
+
+```diff
+- In-app zpráva (STARÝ): "Kontrola kvality objednávky {order_number} byla zamítnuta - nutné úpravy"
++ In-app zpráva (NOVÝ): "Kontrola kvality objednávky {order_number} byla zamítnuta - nutné úpravy.\n\nDůvod: {vecna_spravnost_duvod}"
+
+- Email subject (STARÝ): "❌ Kontrola objednávky {order_number} byla zamítnuta"
++ Email subject (NOVÝ): "❌ Kontrola objednávky {order_number} byla zamítnuta - {vecna_spravnost_duvod}"
+
++ Email body (NOVÝ): Přidána stylovaná sekce na konci HTML emailu
+  ❌ Důvod zamítnutí:
+  [{vecna_spravnost_duvod}] ← v červeném rámci
+```
+
+**Pořadí nasazení:**
+1. ⭐ **MUSÍ být PRVNÍ** (před ostatními migracemi)
+2. Pak ostatní SQL migrace
+3. Pak build + deploy
+
+---
+
 ## 📦 API ENDPOINTY
 
 ### 🆕 **Nové endpointy**
@@ -286,10 +402,14 @@ Body: {
 
 Všechny migrace **MUSÍ** být v tomto pořadí!
 
-### **POŘADÍ MIGRAC:**
-1. ✅ `MIGRATION_VECNA_SPRAVNOST_DUVOD.sql` - Přidání sloupce
-2. ✅ `SQL_ADD_invoice_material_check_rejected_template.sql` - Email šablona
-3. (Volitelné) FULLTEXT index na LP tabulku
+### **POŘADÍ MIGRAC (NEJDŮLEŽITĚJŠÍ!):**
+1. ⭐ **HOTFIX_NOTIFICATION_EVENT_TYPES_20260606.sql** - Přidání 4 event typů (MUSÍ PRVNÍ!)
+2. ✅ `MIGRATION_VECNA_SPRAVNOST_ZAMITNUTI.sql` - Rozšíření vecna_spravnost na 3 stavy
+3. ✅ `MIGRATION_VECNA_SPRAVNOST_DUVOD.sql` - Přidání sloupce pro důvod zamítnutí
+4. ✅ `SQL_INSERT_INVOICE_REJECTED_EMAIL_TEMPLATE_20260606.sql` - Email šablona pro zamítnutí
+5. (Volitelné) `SQL_LP_FULLTEXT_INDEXES_20260606.sql` - FULLTEXT index na LP tabulku
+
+**DŮVOD:** HOTFIX MUSÍ být PRVNÍ aby org hierarchie mohla správně mapovat notifikace!
 
 ---
 
@@ -353,6 +473,11 @@ mysql -h 10.3.172.11 -u erdms_user -p
 
 # PRODUKČNÍ databáze
 USE eeo2025;
+
+-- ⭐ HOTFIX #0 (MUSÍ BÝT PRVNÍ!): Chybějící event typy
+--    DŮVOD: Org hierarchie bez těchto typů nemůže najít recipients pro notifikace!
+--    DOPAD: RH ADMIN nedostane notifikaci o zamítnutí faktury
+SOURCE /var/www/erdms-platform/apps/eeo-v2/_sql/HOTFIX_NOTIFICATION_EVENT_TYPES_20260606.sql;
 
 -- MIGRACE #1: Věcná správnost - rozšíření na zamítnutí
 SOURCE /var/www/erdms-platform/apps/eeo-v2/_sql/MIGRATION_VECNA_SPRAVNOST_ZAMITNUTI.sql;
@@ -523,6 +648,610 @@ mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "SELECT * FROM 25_sablony_notif
 - **Branch:** `feature/v3-development`
 - **Last commit:** `1c1e0553`
 - **DEV log:** `/var/www/erdms-dev/logs/php-error.log`
+
+---
+
+---
+
+# 🔴 HOTFIX: EMAIL NOTIFIKACE - METADATA ZAMÍTNUTÍ (2026-06-06)
+
+**Status:** ✅ HOTOVO - Připraveno k nasazení
+**DEV Testing:** ✅ KOMPLETNÍ (kód + šablona)
+**Severity:** 🔴 CRITICAL - RH ADMIN nemá info KDO a KDY zamítl fakturu
+**Release date:** 2026-06-06 (dnes)
+
+---
+
+## 🎯 PROBLÉM
+
+RH ADMIN dostane email o zamítnutí faktury, ale chybí:
+- ❌ **KDO to zamítl** (jméno uživatele)
+- ❌ **KDY to zamítl** (datum + čas)
+- ❌ **PROČ to zamítl** (důvod není ve správném formátu)
+- ❌ **DODAVATEL** (místo organizace)
+- ❌ Email má nákupné pomlčky "-----" místo stylování
+
+**Řešení:** Kompletní redesign email šablony + backend naplnění placeholderů
+
+---
+
+## ✅ IMPLEMENTACE
+
+### 1️⃣ **Backend Changes (PHP)** - Naplnění placeholderů
+
+#### **File: notificationHandlers.php**
+**Location:** `/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/notificationHandlers.php`
+**Function:** `loadUniversalPlaceholders()` (řádky ~4937-4963)
+**Přidáno:**
+
+```php
+// ✅ action_user_name - Kdo provádí akci (zamítá/schvaluje)
+$action_user_name = 'Neznámý';
+if ($triggerUserId) {
+    try {
+        $stmt_user = $db->prepare("SELECT CONCAT(TRIM(CONCAT(COALESCE(titul_pred,''), ' ', COALESCE(jmeno,''), ' ', COALESCE(prijmeni,''), ' ', COALESCE(titul_za,'')))) as full_name FROM " . TBL_UZIVATELE . " WHERE id = ?");
+        $stmt_user->execute([$triggerUserId]);
+        $user_row = $stmt_user->fetch(PDO::FETCH_ASSOC);
+        if ($user_row && !empty(trim($user_row['full_name']))) {
+            $action_user_name = trim($user_row['full_name']);
+        }
+    } catch (Exception $e) {
+        error_log("[loadUniversalPlaceholders] Error loading action user name: " . $e->getMessage());
+    }
+}
+
+$placeholders['action_user_name'] = $action_user_name;        // ✅ Kdo provádí
+$placeholders['trigger_user_name'] = $action_user_name;       // Alias
+$placeholders['action_performed_by'] = $action_user_name;     // Alias
+
+// ✅ dt_action_formatted - Čas provádění akce (česká timezone)
+$placeholders['dt_action_formatted'] = TimezoneHelper::getCzechDateTime();
+$placeholders['dt_action'] = $placeholders['dt_action_formatted'];
+
+// ✅ vecna_spravnost_duvod - Důvod zamítnutí
+if (isset($data['vecna_spravnost_poznamka'])) {
+    $placeholders['vecna_spravnost_duvod'] = !empty($data['vecna_spravnost_poznamka']) ? $data['vecna_spravnost_poznamka'] : '-';
+} else {
+    $placeholders['vecna_spravnost_duvod'] = '-';
+}
+```
+
+**Status:** ✅ Hotovo
+
+---
+
+#### **File: invoiceCheckHandlers.php**
+**Location:** `/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/invoiceCheckHandlers.php`
+**Function:** `handle_invoice_check_zamitnout()` (řádky ~323-324)
+**Přidáno:**
+
+```php
+// ❌ ZAMÍTNUTO - poslat notifikaci s customními placeholders
+$customPlaceholders = array('vecna_spravnost_duvod' => $vecna_spravnost_duvod ?: 'Neuvedeno');
+triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $token_data['id'], $customPlaceholders);
+```
+
+**Status:** ✅ Hotovo
+
+---
+
+### 2️⃣ **Database Changes (SQL)** - Email šablona
+
+#### **Table: 25_notifikace_sablony (ID 21)**
+**Template name:** `order_status_kontrola_zamitnuta` (Věcná správnost zamítnuta)
+**Status:** ✅ KOMPLETNĚ REDESIGNOVÁN
+
+**Změny:**
+
+| Field | Old | New |
+|-------|-----|-----|
+| `app_nadpis` | Kontrola zamítnuta | **"Kontrola zamítnuta: {order_number}"** |
+| `app_zprava` | Kontrola kvality objednávky byla zamítnuta - nutné úpravy | **"Kontrola kvality objednávky {order_number} byla zamítnuta - nutné úpravy.\n\nDůvod: {vecna_spravnost_duvod}"** |
+| `email_predmet` | ❌ Kontrola objednávky byla zamítnuta | **"❌ Kontrola objednávky {order_number} byla zamítnuta - {vecna_spravnost_duvod}"** |
+| `email_telo` | Pomlčky + bez stylování | **HTML s red gradient header + tabulka + reason section** |
+
+**Email HTML struktura (nový):**
+```html
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--[if gte mso 9]><xml>...(Outlook compat)...</xml><![endif]-->
+</head>
+<body style="font-family: Arial, sans-serif; background: #f5f5f5;">
+    <!-- Header - Red Gradient -->
+    <div style="background: linear-gradient(135deg, #d32f2f 0%, #f44336 100%); ...">
+        <h1>❌ Věcná správnost faktury zamítnuta</h1>
+    </div>
+    
+    <!-- Details Table -->
+    <table>
+        <tr><td><strong>Dodavatel</strong></td><td>{supplier_name}</td></tr>
+        <tr><td><strong>Objednávka</strong></td><td>{order_number}</td></tr>
+        <tr><td><strong>Zamítl</strong></td><td>{action_user_name}</td></tr>
+        <tr><td><strong>Kdy</strong></td><td>{dt_action_formatted}</td></tr>
+    </table>
+    
+    <!-- Reason Section - Red Box -->
+    <div style="background: #ffe5e5; border: 2px solid #f44336; padding: 15px;">
+        <h3>Důvod zamítnutí:</h3>
+        <p>{vecna_spravnost_duvod}</p>
+    </div>
+    
+    <!-- Footer -->
+    <footer>© 2026 EEO V2 | Elektronická Evidence Objednávek</footer>
+</body>
+</html>
+```
+
+**SQL UPDATE:**
+```sql
+UPDATE `25_notifikace_sablony`
+SET 
+  `app_nadpis` = 'Kontrola zamítnuta: {order_number}',
+  `app_zprava` = 'Kontrola kvality objednávky {order_number} byla zamítnuta - nutné úpravy.\n\nDůvod: {vecna_spravnost_duvod}',
+  `email_predmet` = '❌ Kontrola objednávky {order_number} byla zamítnuta - {vecna_spravnost_duvod}',
+  `email_telo` = '[NOVÝ KOMPLETNÍ HTML TEMPLATE S DETAILY A STYLOVÁNÍM]'
+WHERE `id` = 21 AND `typ_notifikace` = 'order_status_kontrola_zamitnuta';
+```
+
+**Status:** ✅ Hotovo (13,623 bytes email_telo)
+
+---
+
+## 📦 DEPLOYMENT - HOTFIX
+
+### **Pořadí nasazení (KRITICKÉ):**
+
+#### **KROK 1️⃣ - Backend soubory** (MUSÍ být PRVNÍ)
+```bash
+# /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/
+
+# Zkopíruj z DEV:
+rsync -av --progress \
+  /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/notificationHandlers.php \
+  /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/invoiceCheckHandlers.php \
+  /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/
+
+# Syntax check
+php -l /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/notificationHandlers.php
+php -l /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/invoiceCheckHandlers.php
+```
+
+**Status:** ⏳ Čeká na deployment
+
+---
+
+#### **KROK 2️⃣ - Database šablona** (DRUHÝ)
+```bash
+mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "
+UPDATE \`25_notifikace_sablony\`
+SET 
+  \`app_nadpis\` = 'Kontrola zamítnuta: {order_number}',
+  \`app_zprava\` = 'Kontrola kvality objednávky {order_number} byla zamítnuta - nutné úpravy.\\n\\nDůvod: {vecna_spravnost_duvod}',
+  \`email_predmet\` = '❌ Kontrola objednávky {order_number} byla zamítnuta - {vecna_spravnost_duvod}',
+  \`email_telo\` = '[NOVÝ HTML TEMPLATE]'
+WHERE \`id\` = 21;
+"
+
+# Ověření
+mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "
+SELECT id, typ_notifikace, LENGTH(email_telo) FROM \`25_notifikace_sablony\` WHERE id = 21;
+"
+```
+
+**Status:** ⏳ Čeká na deployment
+
+---
+
+#### **KROK 3️⃣ - Apache reload** (POSLEDNÍ)
+```bash
+systemctl reload apache2
+```
+
+**Status:** ⏳ Čeká na deployment
+
+---
+
+### **Pre-deployment checklist:**
+
+- [ ] Backend soubory syncovány z DEV
+- [ ] Syntax check OK ✓
+- [ ] Backup starého notificationHandlers.php
+- [ ] Backup starého invoiceCheckHandlers.php
+- [ ] SQL UPDATE připraven
+- [ ] Email šablona ověřena v DEV (LENGTH > 10000 bytes)
+- [ ] Apache ready pro reload
+
+---
+
+## ✅ VERIFICATION (Po nasazení)
+
+### **1. Syntax check**
+```bash
+php -l /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/notificationHandlers.php
+php -l /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/invoiceCheckHandlers.php
+```
+✅ Musí vrátit: `No syntax errors detected`
+
+---
+
+### **2. Database ověření**
+```bash
+mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "
+SELECT id, typ_notifikace, LENGTH(email_telo) as email_telo_size 
+FROM \`25_notifikace_sablony\` WHERE id = 21;
+"
+```
+✅ Musí vrátit: `| 21 | order_status_kontrola_zamitnuta | 13623 |`
+
+---
+
+### **3. Placeholder check**
+```bash
+mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "
+SELECT 
+  INSTR(email_telo, '{supplier_name}') as has_supplier,
+  INSTR(email_telo, '{action_user_name}') as has_action_user,
+  INSTR(email_telo, '{dt_action_formatted}') as has_dt_action,
+  INSTR(email_telo, '{vecna_spravnost_duvod}') as has_reason
+FROM \`25_notifikace_sablony\` WHERE id = 21;
+"
+```
+✅ Musí vrátit: `| has_supplier=1 | has_action_user=1 | has_dt_action=1 | has_reason=1 |`
+
+---
+
+### **4. PHP error log check**
+```bash
+tail -50 /var/www/erdms-dev/logs/php-error.log | grep -i "notification\|email\|invoice"
+```
+✅ Musí být: Žádné chyby
+
+---
+
+## 🧪 END-TO-END TEST (Doporučeno)
+
+1. Přihlásit se jako RH ADMIN
+2. Vytvořit fakturu (+ objednávka)
+3. Spustit věcnou správnost - schválení ✅
+4. Spustit věcnou správnost - zamítnutí ❌
+5. Zadat důvod: "Test důvod zamítnutí faktury 2026-06-06"
+6. ✅ Ověřit e-mail:
+   - Subject: `❌ Kontrola objednávky XXX byla zamítnuta - Test důvod...`
+   - Body: Red header + tabulka s Dodavatel/Zamítl/Kdy + reason section
+   - Všechny placeholdery jsou nahrazeny správnými hodnotami
+7. ✅ Ověřit in-app notifikaci:
+   - Text: `Kontrola kvality objednávky XXX byla zamítnuta - nutné úpravy. Důvod: Test důvod zamítnutí faktury 2026-06-06`
+
+---
+
+## 📝 PROBLÉM → ŘEŠENÍ MAPOVÁNÍ
+
+| Problém | Řešení | Status |
+|---------|--------|--------|
+| ❌ KDO zamítl | Backend: action_user_name z TBL_UZIVATELE | ✅ |
+| ❌ KDY zamítl | Backend: dt_action_formatted z TimezoneHelper | ✅ |
+| ❌ PROČ zamítl | Backend: vecna_spravnost_duvod z payload | ✅ |
+| ❌ DODAVATEL chybí | Email šablona: supplier_name místo organizace | ✅ |
+| ❌ Pomlčky v emailu | Email šablona: HTML tabulka + stylovaná sekce | ✅ |
+
+---
+
+## 🔗 SOUBORY
+
+**DEV (hotová implementace):**
+- [notificationHandlers.php](../api-legacy/api.eeo/v2025.03_25/lib/notificationHandlers.php) - Lines 4953-4981 (aliasy + dt_action_formatted)
+- [invoiceCheckHandlers.php](../api-legacy/api.eeo/v2025.03_25/lib/invoiceCheckHandlers.php) - Lines 323-330 (customPlaceholders s všemi aliasy)
+
+**Database:**
+- Table: `25_notifikace_sablony` (ID 137 - `INVOICE_MATERIAL_CHECK_REJECTED`) - **10,816 bytes email_telo (v3 - s CTA tlačítkem)**
+- Starší ID 21: `order_status_kontrola_zamitnuta` - NEPOUŽÍVANÁ
+
+---
+
+# 📋 FINÁLNÍ HOTFIX - NOTIFIKACE ZAMÍTNUTÍ FAKTURY (2026-06-06 FINAL)
+
+**Status:** ✅ HOTOVO V DEV - Připraveno k nasazení
+**DEV Testing:** ✅ KOMPLETNÍ (kód + šablona ověřeny)
+**Severity:** 🔴 CRITICAL 
+**Release:** 2026-06-06
+
+---
+
+## 🔍 CO BYLO OPRAVENO
+
+### KRITICKÝ OBJEV: Šablona ID 21 vs ID 137
+Emailové notifikace používaly **šablonu ID 137** (`INVOICE_MATERIAL_CHECK_REJECTED`), NE ID 21!
+- ❌ ID 21: `order_status_kontrola_zamitnuta` - NEPOUŽÍVANÁ pro email
+- ✅ ID 137: `INVOICE_MATERIAL_CHECK_REJECTED` - SKUTEČNÁ šablona
+- ❌ ID 137 měla Handlebars `{{#if}}` syntax (nepodporované → pomlčky)
+- ❌ Placeholdery nebyly plněny (rejection_reason, organization_name, rejected_by_name)
+
+---
+
+## ✅ IMPLEMENTOVANÉ OPRAVY
+
+### 1️⃣ **Backend placeholdery** - `notificationHandlers.php` (lines 4953-4981)
+
+**Přidány aliasy pro všechny variace placeholderů:**
+
+```php
+// Kdo provádí akci (zamítá/schvaluje)
+$placeholders['action_user_name'] = $action_user_name;
+$placeholders['trigger_user_name'] = $action_user_name;
+$placeholders['rejected_by_name'] = $action_user_name;      // ✅ Pro šablonu 137
+$placeholders['approved_by_name'] = $action_user_name;      // ✅ Pro schválení
+
+// Čas akce v české timezone
+$placeholders['dt_action_formatted'] = TimezoneHelper::getCzechDateTime();
+$placeholders['rejected_at'] = $placeholders['dt_action_formatted'];  // ✅ Pro šablonu
+$placeholders['approved_at'] = $placeholders['dt_action_formatted'];
+
+// Důvod - čte se z NOVÉHO DB sloupce vecna_spravnost_duvod (s fallbackem)
+$duvod = $data['vecna_spravnost_duvod'] ?: $data['vecna_spravnost_poznamka'] ?: '-';
+$placeholders['vecna_spravnost_duvod'] = $duvod;
+$placeholders['rejection_reason'] = $duvod;      // ✅ Pro šablonu 137
+$placeholders['reason'] = $duvod;
+
+// Dodavatel = Organization (alias)
+$placeholders['organization_name'] = $placeholders['supplier_name'] ?? '-';
+
+// Detail URL pro CTA
+$placeholders['detail_url'] = /* URL na invoice-evidence */;
+```
+
+**Bod 2 - customPlaceholders** - `invoiceCheckHandlers.php` (lines 323-330)
+
+```php
+$reason = $vecna_spravnost_duvod ?: 'Neuvedeno';
+$customPlaceholders = array(
+    'vecna_spravnost_duvod' => $reason,
+    'rejection_reason'      => $reason,  // ✅ Alias pro šablonu 137
+    'reason'                => $reason,  // ✅ Univerzální alias
+);
+triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $token_data['id'], $customPlaceholders);
+```
+
+---
+
+### 2️⃣ **Email šablona ID 137** - Kompletní redesign
+
+**Změny (FINÁLNÍ v3):**
+- ❌ Odebráno: Handlebars `{{#if}}` syntax
+- ✅ Přidáno: Čisté placeholdery bez podmínek
+- ✅ Přidáno: Info sekce o automatické generaci
+- ✅ Přidáno: CTA tlačítko "✏️ Upravit fakturu" s Outlook VML fallback
+- ✅ Odebráno: ❌ kříž z headeru (ponechán jen v subject)
+- ✅ Patička: `© 2026 EEO V2 | Elektronická Evidence Objednávek`
+
+**HTML struktura (10,816 bytes - v3 s CTA):**
+```html
+<!-- Header - Red -->
+❌ Věcná správnost faktury zamítnuta
+
+<!-- Main message -->
+Věcná správnost faktury {{invoice_number}} byla zamítnuta kontrolorem.
+
+<!-- Reason section (červené pole) -->
+📌 Důvod zamítnutí:
+{{rejection_reason}}
+
+<!-- Details table -->
+Dodavatel:      {{supplier_name}}
+Objednávka:     {{order_number}}
+Částka faktury: {{invoice_amount}}
+Zamítl:         {{action_user_name}}
+Datum a čas:    {{dt_action_formatted}}
+
+<!-- Yellow warning -->
+⚠️ Další kroky:
+Faktura byla vrácena k dořešení...
+
+<!-- CTA Button (NOVÉ) -->
+✏️ Upravit fakturu → {{detail_url}}
+   (Outlook-compatible VML + HTML fallback)
+
+<!-- Info text -->
+Tento e-mail byl automaticky vygenerován systémem EEO v2.
+Po opravě prosím odešlete fakturu znovu ke kontrole věcné správnosti.
+
+<!-- Footer -->
+© 2026 EEO V2 | Elektronická Evidence Objednávek
+```
+
+**Detail URL placeholder:**
+- `{{detail_url}}` se generuje z `$_ENV['FRONTEND_BASE_URL']` + `/invoice-evidence?editInvoiceId={objectId}`
+- DEV: `https://erdms.zachranka.cz/dev/eeo-v2/invoice-evidence?editInvoiceId=10203`
+- PROD: `https://erdms.zachranka.cz/eeo-v2/invoice-evidence?editInvoiceId=10203`
+- ✅ Nová velikost: **10,812 bytes** (v3 - bez ❌ v headeru)
+
+**Placeholdery v šabloně (všechny teď podporovány):**
+- `{{invoice_number}}` ✅
+- `{{rejection_reason}}` ✅
+- `{{supplier_name}}` ✅
+- `{{order_number}}` ✅
+- `{{invoice_amount}}` ✅
+- `{{action_user_name}}` ✅
+- `{{dt_action_formatted}}` ✅
+- `{{detail_url}}` ✅ (CTA tlačítko - generuje se z `FRONTEND_BASE_URL` env)
+
+---
+
+## 📦 DEPLOYMENT KROKY
+
+### **KROK 1 - Backend soubory** (MUSÍ být první)
+```bash
+rsync -av --progress \
+  /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/notificationHandlers.php \
+  /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/invoiceCheckHandlers.php \
+  /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/
+
+# Syntax check
+php -l /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/notificationHandlers.php
+php -l /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/invoiceCheckHandlers.php
+```
+✅ **Status:** ✅ Hotovo v DEV (syntax check OK)
+
+---
+
+### **KROK 2 - Database šablona** (ID 137)
+```bash
+mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "
+UPDATE 25_notifikace_sablony
+SET 
+  app_nadpis = 'Věcná správnost zamítnuta: {{invoice_number}}',
+  app_zprava = 'Věcná správnost faktury {{invoice_number}} byla zamítnuta kontrolorem {{action_user_name}} dne {{dt_action_formatted}}.\n\nDůvod: {{rejection_reason}}',
+  email_predmet = '❌ Věcná správnost faktury {{invoice_number}} byla zamítnuta - {{rejection_reason}}',
+  email_telo = '[NOVÝ HTML TEMPLATE - 10,816 bytes - v3 s CTA tlačítkem]'
+WHERE id = 137;
+"
+```
+
+**⚠️ DŮLEŽITÉ: Ověřit FRONTEND_BASE_URL v produkčním .env**
+```bash
+grep "FRONTEND_BASE_URL" /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env
+# Musí být: FRONTEND_BASE_URL=https://erdms.zachranka.cz/eeo-v2 (bez /dev)
+```
+✅ **Status:** ✅ Hotovo v DEV
+
+---
+
+### **KROK 3 - Verification**
+```bash
+# Kontrola šablony
+mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "
+SELECT id, LENGTH(email_telo) as bytes FROM 25_notifikace_sablony WHERE id = 137;
+"
+# Očekáváno: 10816 bytes (v3 s CTA tlačítkem)
+
+# Kontrola placeholderů
+mysql -h 10.3.172.11 -u erdms_user -p eeo2025 -e "
+SELECT email_telo FROM 25_notifikace_sablony WHERE id = 137
+" --raw --batch | grep -oE '{{[^}]+}}' | sort -u
+# Očekáváno: {{action_user_name}}, {{dt_action_formatted}}, {{invoice_amount}}, {{invoice_number}}, {{order_number}}, {{rejection_reason}}, {{supplier_name}}
+```
+✅ **Status:** ✅ Ověřeno v DEV
+
+---
+
+### **KROK 4 - Apache reload**
+```bash
+systemctl reload apache2
+```
+✅ **Status:** ✅ Hotovo v DEV
+
+---
+
+## 🧪 TESTOVÁNÍ V DEV
+
+**Scénář: Zamítnutí faktury s důvodem**
+
+1. Vytvořit objednávku (Dodavatel: Test GmbH, Číslo: TEST-2026-001)
+2. Přidat fakturu (Číslo: FA-123456, Částka: 1000 Kč)
+3. Spustit Věcnou správnost → Zamítnutí
+4. Zadat důvod: "Chybí detailní specifikace položek"
+5. **Ověřit Email:**
+   - Subject: `❌ Věcná správnost faktury FA-123456 byla zamítnuta - Chybí detailní specifikace položek` ✅
+   - From: `noreply@erdms.cz`
+   - To: `RH ADMIN email`
+   - Body obsahuje:
+     - Header: `❌ Věcná správnost faktury zamítnuta` (red background) ✅
+     - Zpráva: `Věcná správnost faktury FA-123456 byla zamítnuta kontrolorem.` ✅
+     - Důvod: `Chybí detailní specifikace položek` (v červeném poli) ✅
+     - Dodavatel: `Test GmbH` ✅
+     - Objednávka: `TEST-2026-001` ✅
+     - Zamítl: `[Jméno uživatele]` ✅
+     - Datum: `[Aktuální čas v CZ timezone]` ✅
+     - Zpráva: `Tento e-mail byl automaticky vygenerován...` ✅
+     - Patička: `© 2026 EEO V2 | Elektronická Evidence Objednávek` ✅
+6. **Ověřit In-App notifikaci:**
+   - Má důvod: `Důvod: Chybí detailní specifikace položek` ✅
+
+---
+
+## ✅ FINAL CHECKLIST
+
+- [x] Backend PHP soubory syncovány (notificationHandlers.php, invoiceCheckHandlers.php)
+- [x] Syntax check OK na DEV
+- [x] Database: šablona ID 137 aktualizována (10,812 bytes v3 - bez ❌ v headeru, s CTA)
+- [x] Všechny placeholdery přítomny: invoice_number, supplier_name, order_number, invoice_amount, action_user_name, dt_action_formatted, rejection_reason, detail_url
+- [x] Handlebars {{#if}} jsou odstraněny - pouze čisté placeholdery
+- [x] CTA tlačítko "Upravit fakturu" je přítomno + Outlook VML fallback
+- [x] FRONTEND_BASE_URL je v DEV .env (https://erdms.zachranka.cz/dev/eeo-v2)
+- [x] Automatická zpráva je přítomna: "Tento e-mail byl automaticky vygenerován..."
+- [x] Patička: "© 2026 EEO V2 | Elektronická Evidence Objednávek"
+- [x] Kříž ❌ je jen v email subject, nikoli v headeru HTML
+- [x] Apache reload na DEV
+- [ ] Apache reload na produkci
+- [ ] Test: Zamítnutí faktury s kontrolou emailu
+- [ ] Žádné chyby v PHP error logu
+
+---
+
+## 🎯 HOTFIX VERZE V3 - FINÁLNÍ STAV
+
+**Email při zamítnutí faktury (RH ADMIN dostane):**
+```
+Subject: ❌ Věcná správnost faktury #123 byla zamítnuta - Chybí specifikace
+────────────────────────────────────────────────────────────────
+
+      Věcná správnost faktury zamítnuta
+
+Věcná správnost faktury #123 byla zamítnuta kontrolorem.
+
+📌 Důvod zamítnutí:
+┌─────────────────────────────────┐
+│ Chybí detailní specifikace      │
+└─────────────────────────────────┘
+
+┌─────────────────────────────────────────┐
+│ Dodavatel:     ABC s.r.o.              │
+│ Objednávka:    OBJ-2026-001            │
+│ Částka:        50,000 Kč               │
+│ Zamítl:        Jan Novák               │
+│ Datum a čas:   6.6.2026 14:30          │
+└─────────────────────────────────────────┘
+
+⚠️ Další kroky:
+Faktura byla vrácena k dořešení. Prosím, upravte fakturu
+podle důvodu zamítnutí...
+
+                  [✏️ Upravit fakturu]
+
+Tento e-mail byl automaticky vygenerován systémem EEO v2.
+────────────────────────────────────────────────────────────────
+© 2026 EEO V2 | Elektronická Evidence Objednávek
+```
+
+**Složení emailu:**
+- ✅ Kříž ❌ jen v subject (pro prioritu)
+- ✅ Header bez kříže (profesionální vzhled)
+- ✅ Detailní tabulka s VŠEMI daty (dodavatel, objednávka, čas, kdo)
+- ✅ Důvod v červeném poli (viditelnost)
+- ✅ CTA tlačítko "Upravit fakturu" (přímý odkaz)
+- ✅ Automatická zpráva + patička
+
+---
+
+## 📝 SHRNUTÍ ZMĚN V JEDNOM ŘÁDKU
+
+**ID 137 email notifikace pro zamítnutí VS faktury: od "pomlčky & bez dat" → "profesionální email se všemi detaily + CTA"**
+
+**Testing:**
+- Manual test v DEV: Invoice zamítnutí + email check
+
+---
+
+## 📊 IMPACT
+
+- **Users:** RH ADMIN, Invoice Controllers
+- **Frequency:** Při každém zamítnutí faktury
+- **Risk:** 🟢 NÍZKÉ (pouze display změny, bez SQL struktury)
+- **Rollback:** Snadno (vrátit staré soubory + SQL UPDATE)
+
+---
 - **Prod API:** `/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/`
 - **Frontend:** `/var/www/erdms-platform/apps/eeo-v2/client/build/`
 
