@@ -1895,7 +1895,7 @@ const VecnaSpravnostCell = ({ invoice }) => {
 
   // Získat barvu podle stavu
   const getStatusColor = (status) => {
-    if (status === 1) return '#16a34a'; // Schváleno - zelená
+    if (status === 1) return '#16a34a'; // Potvrzena - zelená
     if (status === 2) return '#dc2626'; // Zamítnuto - červená
     return '#cbd5e1'; // Nepotvrzeno - šedá
   };
@@ -1922,7 +1922,7 @@ const VecnaSpravnostCell = ({ invoice }) => {
 
   // Získat text pro status
   const getStatusText = (status) => {
-    if (status === 1) return 'Schváleno';
+    if (status === 1) return 'Potvrzena';
     if (status === 2) return 'Zamítnuto';
     return 'Nepotvrzeno';
   };
@@ -1967,7 +1967,7 @@ const VecnaSpravnostCell = ({ invoice }) => {
           )}
 
           {/* Tooltip s detaily */}
-          {status && (
+          {status ? (
             <TooltipPortal targetRef={containerRef} isVisible={isHovered}>
               <TooltipContent $isVisible={isHovered}>
                 <TooltipTitle style={{ color: statusColor }}>
@@ -2025,22 +2025,8 @@ const VecnaSpravnostCell = ({ invoice }) => {
                 </TooltipTable>
               </TooltipContent>
             </TooltipPortal>
-          )}
+          ) : null}
         </div>
-
-        {/* Zkrácený text důvodu pod ikonou */}
-        {invoice.vecna_spravnost_duvod && (
-          <TruncatedText 
-            style={{ 
-              fontSize: '0.7rem', 
-              color: status === 2 ? '#dc2626' : '#16a34a',
-              fontWeight: 500
-            }}
-            title={invoice.vecna_spravnost_duvod}
-          >
-            {invoice.vecna_spravnost_duvod}
-          </TruncatedText>
-        )}
       </div>
     </span>
   );
@@ -3000,12 +2986,14 @@ const Invoices25List = () => {
         apiParams.filter_ma_prilohy = 2; // Pouze ze spisovky
       }
       
-      // Věcná kontrola - filtr
+      // Věcná kontrola - filtr podle stavu (vecna_spravnost_potvrzeno)
       const vecnaKontrolaValue = typeof debouncedColumnFilters.vecna_kontrola === 'object' ? debouncedColumnFilters.vecna_kontrola?.value : debouncedColumnFilters.vecna_kontrola;
-      if (vecnaKontrolaValue === 'yes') {
-        apiParams.filter_vecna_kontrola = 1; // Pouze provedena
-      } else if (vecnaKontrolaValue === 'no') {
-        apiParams.filter_vecna_kontrola = 0; // Pouze neprovedena
+      if (vecnaKontrolaValue === '1') {
+        apiParams.filter_vecna_spravnost_status = 1; // Pouze schváleno
+      } else if (vecnaKontrolaValue === '2') {
+        apiParams.filter_vecna_spravnost_status = 2; // Pouze zamítnuto
+      } else if (vecnaKontrolaValue === '0') {
+        apiParams.filter_vecna_spravnost_status = 0; // Pouze nepotvrzeno
       }
       // Jinak (prázdný string nebo '') neposílej nic
       
@@ -3444,8 +3432,9 @@ const Invoices25List = () => {
   
   const vecnaKontrolaOptions = useMemo(() => [
     { value: '', label: 'Vše' },
-    { value: 'yes', label: 'Provedena' },
-    { value: 'no', label: 'Neprovedena' },
+    { value: '1', label: 'Potvrzena' },
+    { value: '2', label: 'Zamítnuto' },
+    { value: '0', label: 'Nepotvrzeno' },
   ], []);
 
   // Reset na první stránku při změně filtrů
@@ -5733,6 +5722,19 @@ const Invoices25List = () => {
                                   {formatDateOnly(invoice.dt_potvrzeni_vecne_spravnosti)}
                                 </span>
                               </div>
+                            )}
+                            {invoice.vecna_spravnost_duvod && (
+                              <TruncatedText 
+                                style={{ 
+                                  fontSize: '0.7rem', 
+                                  color: invoice.vecna_spravnost_potvrzeno === 2 ? '#dc2626' : '#16a34a',
+                                  fontWeight: 500,
+                                  marginTop: '0.25rem'
+                                }}
+                                title={invoice.vecna_spravnost_duvod}
+                              >
+                                {invoice.vecna_spravnost_duvod}
+                              </TruncatedText>
                             )}
                           </div>
                         ) : (
