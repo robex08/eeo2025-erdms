@@ -1619,7 +1619,12 @@ function handle_invoices25_list($input, $config, $queries) {
         }
         $params = array();
         
-        // 🔒 VALIDACE: Faktury s neaktivní objednávkou nebo smlouvou se nebudou zobrazovat
+        // � KRITICKÉ: Zamítnuté faktury (vecna_spravnost_potvrzeno = 2) se NIKDY nezobrazují
+        // Toto je globální pravidlo - zamítnuté faktury nejsou nikde započítány
+        $where_conditions[] = '(f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)';
+        debug_log("Invoices25 LIST: Applied global filter - excluding REJECTED invoices (status 2)");
+        
+        // �🔒 VALIDACE: Faktury s neaktivní objednávkou nebo smlouvou se nebudou zobrazovat
         // - Pokud je faktura navázána na objednávku (objednavka_id IS NOT NULL) → objednávka MUSÍ být aktivní
         // - Pokud je faktura navázána na smlouvu (smlouva_id IS NOT NULL) → smlouva MUSÍ být aktivní
         // - Faktury bez přiřazení (objednavka_id/smlouva_id = NULL) → zobrazit normálně

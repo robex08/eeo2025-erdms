@@ -179,6 +179,15 @@ define('INVOICE_STATUS_TO_PAY', 'K_ZAPLACENI');           // Předáno HÚ k úh
 define('INVOICE_STATUS_PAID', 'ZAPLACENO');               // Uhrazeno
 define('INVOICE_STATUS_CANCELLED', 'STORNO');             // Stažena dodavatelem
 
+// VĚCNÁ SPRÁVNOST FAKTUR - STAVY (hodnoty pro vecna_spravnost_potvrzeno)
+define('VS_STATUS_NEPOTVRZENA', 0);                       // Neověřeno (faktura předána ke kontrole)
+define('VS_STATUS_POTVRZENA', 1);                         // Potvrzeno (poznámka volitelná)
+define('VS_STATUS_ZAMITNUTA', 2);                         // Zamítnuto (poznámka POVINNÁ = důvod)
+
+// SQL HELPER - Filtr pro ignorování zamítnutých faktur (použít v WHERE klauzulích)
+// Zamítnuté faktury (status 2) se NEPOČÍTAJÍ do čerpání/reportů/přehledů
+define('SQL_VS_NOT_REJECTED', '(f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != ' . VS_STATUS_ZAMITNUTA . ')');
+
 // DATABASE TABLE NAMES - AUTORIZACE & ROLE
 define('TBL_PRAVA', '25_prava');
 define('TBL_ROLE', '25_role');

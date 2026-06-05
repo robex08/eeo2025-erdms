@@ -440,10 +440,12 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
             END) AS cerpano_dokoncene_user,
             SUM(CASE
                 WHEN f.stav NOT IN ('ZAPLACENO','DOKONCENA','STORNO')
+                 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)
                 THEN f.fa_castka ELSE 0
             END) AS cerpano_v_procesu_fa,
             SUM(CASE
                 WHEN f.stav NOT IN ('ZAPLACENO','DOKONCENA','STORNO')
+                 AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno != 2)
                  AND (
                      (f.objednavka_id IS NULL
                       AND (f.vytvoril_uzivatel_id = ? OR f.potvrdil_vecnou_spravnost_id = ?))
