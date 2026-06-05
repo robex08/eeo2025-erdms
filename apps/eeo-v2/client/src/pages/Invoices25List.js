@@ -5329,7 +5329,7 @@ const Invoices25List = () => {
                     </TableCell>
                     <TableCell className="center">
                       <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
-                        {invoice.vecna_spravnost_potvrzeno ? (
+                        {invoice.vecna_spravnost_potvrzeno === 1 ? (
                           <div style={{
                             display: 'inline-flex',
                             alignItems: 'center',
@@ -5339,11 +5339,24 @@ const Invoices25List = () => {
                             borderRadius: '50%',
                             backgroundColor: '#16a34a',
                             fontSize: '0.6rem'
-                        }} title="Věcná správnost provedena">
+                        }} title="Věcná správnost potvrzena">
                           <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
                         </div>
+                      ) : invoice.vecna_spravnost_potvrzeno === 2 ? (
+                        <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '16px',
+                            height: '16px',
+                            borderRadius: '50%',
+                            backgroundColor: '#dc2626',
+                            fontSize: '0.6rem'
+                        }} title="Věcná správnost zamítnuta">
+                          <FontAwesomeIcon icon={faTimes} style={{ color: 'white' }} />
+                        </div>
                       ) : (
-                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '0.9rem' }} title="Věcná správnost neprovedena" />
+                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '0.9rem' }} title="Věcná správnost nepotvrzena" />
                       )}
                       </span>
                     </TableCell>
@@ -7397,6 +7410,26 @@ const Invoices25List = () => {
                               style={{ fontSize: '0.875rem', fontWeight: '700' }}
                             >
                               ✅ POTVRZENO
+                            </Badge>
+                          </InfoValue>
+                        </InfoContent>
+                      </InfoRowFullWidth>
+                    )}
+                    
+                    {slidePanelInvoice.vecna_spravnost_potvrzeno === 2 && (
+                      <InfoRowFullWidth>
+                        <InfoIcon style={{ background: '#fee2e2', color: '#dc2626' }}>
+                          <FontAwesomeIcon icon={faTimesCircle} />
+                        </InfoIcon>
+                        <InfoContent>
+                          <InfoLabel>Stav věcné správnosti</InfoLabel>
+                          <InfoValue>
+                            <Badge 
+                              $color="#fee2e2"
+                              $textColor="#991b1b"
+                              style={{ fontSize: '0.875rem', fontWeight: '700' }}
+                            >
+                              ❌ ZAMÍTNUTO
                             </Badge>
                           </InfoValue>
                         </InfoContent>
