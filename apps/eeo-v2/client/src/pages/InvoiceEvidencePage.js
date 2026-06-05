@@ -47,7 +47,8 @@ import {
   faPhone,
   faClock,
   faExternalLinkAlt,
-  faCalculator
+  faCalculator,
+  faArrowRight
 } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../context/AuthContext';
 import { ToastContext } from '../context/ToastContext';
@@ -6292,6 +6293,85 @@ export default function InvoiceEvidencePage() {
               : 'Zaevidovat fakturu'
             }
           </div>
+          
+          {/* Tlačítko na údaje faktury - pokud je editace */}
+          {editingInvoiceId && invoiceUserConfirmed && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const invoiceSection = document.querySelector('[data-section="invoice-data"]');
+                if (invoiceSection) {
+                  invoiceSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  if (!sectionStates.invoiceData) {
+                    setSectionStates(prev => ({ ...prev, invoiceData: true }));
+                  }
+                }
+              }}
+              style={{
+                background: '#3b82f6',
+                color: '#ffffff',
+                border: 'none',
+                padding: '0.5rem 1rem',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#1d4ed8';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#3b82f6';
+              }}
+              title="Přejít na údaje faktury"
+            >
+              <FontAwesomeIcon icon={faArrowRight} /> Údaje faktury
+            </button>
+          )}
+          
+          {/* Tlačítko na věcnou správnost - pokud je editace (věcná sekce existuje) */}
+          {editingInvoiceId && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                const vecnaSection = document.querySelector('[data-section="material-correctness"]');
+                if (vecnaSection) {
+                  vecnaSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  if (!sectionStates.materialCorrectness) {
+                    setSectionStates(prev => ({ ...prev, materialCorrectness: true }));
+                  }
+                }
+              }}
+              style={{
+                background: '#86efac',
+                color: '#166534',
+                border: 'none',
+                padding: '0.5rem 1rem',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.9rem',
+                fontWeight: '600',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                transition: 'all 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#4ade80';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#86efac';
+              }}
+              title="Přejít na věcnou správnost"
+            >
+              <FontAwesomeIcon icon={faArrowRight} /> Věcná správnost
+            </button>
+          )}
+          
           {/* Tlačítko pro odemčení faktury - pouze pokud je zamčená a uživatel má práva */}
           {editingInvoiceId && 
            !isReadOnlyMode && 
@@ -6411,7 +6491,7 @@ export default function InvoiceEvidencePage() {
           {/* Scrollable content area */}
           <FormColumnContent>
             {/* 🆕 SEKCE 1: ÚDAJE FAKTURY - collapsible */}
-            <CollapsibleSection>
+            <CollapsibleSection data-section="invoice-data">
             <CollapsibleHeader onClick={() => toggleSection('invoiceData')}>
               <HeaderLeft>
                 <FontAwesomeIcon icon={faCreditCard} />
@@ -6602,6 +6682,7 @@ export default function InvoiceEvidencePage() {
                     <FontAwesomeIcon icon={faTimes} /> Zrušit úpravu
                   </button>
                 )}
+                
                 <CollapseButton $collapsed={!sectionStates.invoiceData}>
                   <FontAwesomeIcon icon={faChevronDown} />
                 </CollapseButton>
@@ -7986,7 +8067,7 @@ export default function InvoiceEvidencePage() {
           {/* Zobrazit JEN pokud editujeme existující fakturu (editingInvoiceId) */}
           {editingInvoiceId && (
           <CollapsibleSection data-section="material-correctness">
-            <CollapsibleHeader style={{ cursor: 'default' }}>
+            <CollapsibleHeader onClick={() => setSectionStates(prev => ({ ...prev, materialCorrectness: !prev.materialCorrectness }))}>
               <HeaderLeft>
                 <FontAwesomeIcon icon={faClipboardCheck} />
                 Věcná správnost k faktuře
@@ -8007,9 +8088,12 @@ export default function InvoiceEvidencePage() {
                     VÁŠ ÚKOL
                   </span>
                 )}
+                <CollapseButton $collapsed={!sectionStates.materialCorrectness}>
+                  <FontAwesomeIcon icon={faChevronDown} />
+                </CollapseButton>
               </HeaderRight>
             </CollapsibleHeader>
-            <SectionContent>
+            <SectionContent $collapsed={!sectionStates.materialCorrectness}>
               <FakturaCard>
                 {/* Informace - Objednávka je dokončena */}
                 {isOrderCompleted && (
@@ -8694,9 +8778,32 @@ export default function InvoiceEvidencePage() {
                   )}
                 </SectionTitle>
                 {orderData && selectedType === 'order' && (
-                  <span style={{ fontWeight: 700, color: '#1e40af', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>
-                    {orderData.cislo_objednavky || `#${orderData.id}`}
-                  </span>
+                  <button
+                    onClick={() => navigate(`/order-form-25?edit=${orderData.id}`)}
+                    style={{
+                      fontWeight: 700,
+                      color: '#1e40af',
+                      fontSize: '1.05rem',
+                      whiteSpace: 'nowrap',
+                      background: 'transparent',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '4px',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(30, 64, 175, 0.1)';
+                      e.currentTarget.style.color = '#1e3a8a';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = '#1e40af';
+                    }}
+                    title="Otevřít objednávku"
+                  >
+                    {orderData.cislo_objednavky || `#${orderData.id}`} →
+                  </button>
                 )}
                 {smlouvaData && selectedType === 'smlouva' && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, color: isExpiredSelectedContract ? '#b91c1c' : '#059669', fontSize: '1.05rem', whiteSpace: 'nowrap' }}>

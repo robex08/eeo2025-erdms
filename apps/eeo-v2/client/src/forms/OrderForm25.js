@@ -25686,7 +25686,41 @@ function OrderForm25() {
                                 letterSpacing: '0.5px',
                                 textTransform: 'uppercase'
                               }}>
-                                <div style={{display: 'flex', alignItems: 'center', gap: '0.75rem'}}>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    const isInvoicePersisted = !!faktura.id && !String(faktura.id).startsWith('temp-');
+                                    if (isInvoicePersisted) {
+                                      navigate('/invoice-evidence', {
+                                        state: {
+                                          editInvoiceId: faktura.id,
+                                          orderIdForLoad: formData.id || null,
+                                          returnTo: location.pathname
+                                        }
+                                      });
+                                    }
+                                  }}
+                                  disabled={!faktura.id || String(faktura.id).startsWith('temp-')}
+                                  style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '0.75rem',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: 'white',
+                                    padding: 0,
+                                    cursor: (faktura.id && !String(faktura.id).startsWith('temp-')) ? 'pointer' : 'not-allowed',
+                                    textAlign: 'left',
+                                    transition: 'all 0.2s ease',
+                                    opacity: (faktura.id && !String(faktura.id).startsWith('temp-')) ? 1 : 0.7,
+                                    font: 'inherit',
+                                    fontSize: '1.1rem',
+                                    fontWeight: '700',
+                                    letterSpacing: '0.5px',
+                                    textTransform: 'uppercase'
+                                  }}
+                                  title={faktura.id && !String(faktura.id).startsWith('temp-') ? 'Kliknout pro editaci faktury' : 'Faktura zatím není uložena'}
+                                >
                                   <FontAwesomeIcon icon={faCreditCard} style={{ fontSize: '1.2rem' }} />
                                   <span>
                                     Faktura
@@ -25919,7 +25953,7 @@ function OrderForm25() {
                                       </FakturaTooltipRow>
                                     </FakturaTooltipBubble>
                                   </FakturaInfoIconWrapper>
-                                </div>
+                                </button>
                                 <div style={{display: 'flex', gap: '0.5rem'}}>
                                   {/* Tlačítko smazat fakturu */}
                                   <button
