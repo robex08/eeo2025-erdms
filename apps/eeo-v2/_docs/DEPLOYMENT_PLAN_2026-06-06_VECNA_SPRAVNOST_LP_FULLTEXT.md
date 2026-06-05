@@ -1062,9 +1062,10 @@ Po opravě prosím odešlete fakturu znovu ke kontrole věcné správnosti.
 ```
 
 **Detail URL placeholder:**
-- `{{detail_url}}` se generuje z `$_ENV['FRONTEND_BASE_URL']` + `/invoice-evidence?editInvoiceId={objectId}`
-- DEV: `https://erdms.zachranka.cz/dev/eeo-v2/invoice-evidence?editInvoiceId=10203`
-- PROD: `https://erdms.zachranka.cz/eeo-v2/invoice-evidence?editInvoiceId=10203`
+- `{{detail_url}}` se generuje z `$_ENV['FRONTEND_BASE_URL']` + `/invoice-evidence?edit={invoiceId}`
+- DEV: `https://erdms.zachranka.cz/dev/eeo-v2/invoice-evidence?edit=2490`
+- PROD: `https://erdms.zachranka.cz/eeo-v2/invoice-evidence?edit=2490`
+- ✅ **PARAMETR:** `edit=` (NE `editInvoiceId=`)
 - ✅ Nová velikost: **10,812 bytes** (v3 - bez ❌ v headeru)
 
 **Placeholdery v šabloně (všechny teď podporovány):**
@@ -1179,11 +1180,13 @@ systemctl reload apache2
 - [x] Všechny placeholdery přítomny: invoice_number, supplier_name, order_number, invoice_amount, action_user_name, dt_action_formatted, rejection_reason, detail_url
 - [x] Handlebars {{#if}} jsou odstraněny - pouze čisté placeholdery
 - [x] CTA tlačítko "Upravit fakturu" je přítomno + Outlook VML fallback
-- [x] FRONTEND_BASE_URL je v DEV .env (https://erdms.zachranka.cz/dev/eeo-v2)
+- [x] Detail URL parametr: `?edit=` (ne editInvoiceId)
+- [x] FRONTEND_BASE_URL je v DEV .env
 - [x] Automatická zpráva je přítomna: "Tento e-mail byl automaticky vygenerován..."
 - [x] Patička: "© 2026 EEO V2 | Elektronická Evidence Objednávek"
 - [x] Kříž ❌ je jen v email subject, nikoli v headeru HTML
 - [x] Apache reload na DEV
+- [x] Git commit s finálními změnami URL
 - [ ] Apache reload na produkci
 - [ ] Test: Zamítnutí faktury s kontrolou emailu
 - [ ] Žádné chyby v PHP error logu
