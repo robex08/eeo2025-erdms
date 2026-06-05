@@ -1724,6 +1724,329 @@ const AttachmentAction = styled.div`
 `;
 
 // =============================================================================
+// TOOLTIP KOMPONENTY (podle LimitovanePrislibyManager.js)
+// =============================================================================
+
+// Tooltip Portal komponenta - vykresluje tooltip mimo DOM hierarchii s viewport detection
+const TooltipPortal = ({ children, targetRef, isVisible }) => {
+  const [position, setPosition] = React.useState({ top: 0, left: 0, adjustX: 0, adjustY: 0 });
+  const tooltipRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!targetRef.current || !isVisible) return;
+
+    const updatePosition = () => {
+      const rect = targetRef.current.getBoundingClientRect();
+      // Fixed position - relativní k viewportu, ne k dokumentu (bez scrollY/scrollX)
+      const baseLeft = rect.left + rect.width / 2;
+      const baseTop = rect.top;
+      
+      let adjustX = 0;
+      let adjustY = 0;
+      
+      // Detekce viewport boundaries po renderování
+      if (tooltipRef.current) {
+        const tooltipRect = tooltipRef.current.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        
+        // Kontrola horizontální hranice
+        if (tooltipRect.right > viewportWidth - 10) {
+          adjustX = -(tooltipRect.right - viewportWidth + 20);
+        } else if (tooltipRect.left < 10) {
+          adjustX = 10 - tooltipRect.left + 20;
+        }
+        
+        // Kontrola vertikální hranice - pokud by zmizel nahoře, zobraz pod prvkem
+        if (tooltipRect.top < 10) {
+          adjustY = rect.height + tooltipRect.height + 24;
+        }
+      }
+      
+      setPosition({
+        top: baseTop,
+        left: baseLeft,
+        adjustX,
+        adjustY,
+      });
+    };
+
+    updatePosition();
+    // Další update pro adjustování po renderování
+    const timer = setTimeout(updatePosition, 0);
+    
+    window.addEventListener('scroll', updatePosition, true);
+    window.addEventListener('resize', updatePosition);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.removeEventListener('resize', updatePosition);
+    };
+  }, [targetRef, isVisible]);
+
+  if (!isVisible) return null;
+
+  return ReactDOM.createPortal(
+    <div 
+      ref={tooltipRef}
+      style={{
+        position: 'fixed',
+        top: `${position.top}px`,
+        left: `${position.left}px`,
+        zIndex: 99999,
+        pointerEvents: 'none',
+      }}>
+      <div style={{ transform: `translate(${position.adjustX}px, ${position.adjustY}px)` }}>
+        {children}
+      </div>
+    </div>,
+    document.body
+  );
+};
+
+// Tooltip komponenty
+const TooltipContent = styled.div`
+  position: relative;
+  transform: translate(-50%, calc(-100% - 16px));
+  padding: 1rem;
+  background: #1f2937;
+  color: white;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  min-width: 280px;
+  max-width: 400px;
+  opacity: ${props => props.$isVisible ? 1 : 0};
+  visibility: ${props => props.$isVisible ? 'visible' : 'hidden'};
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+  white-space: normal;
+  
+  &::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 8px solid transparent;
+    border-top-color: #1f2937;
+  }
+`;
+
+const TooltipTitle = styled.div`
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+`;
+
+const TooltipTable = styled.table`
+  width: 100%;
+  font-size: 0.875rem;
+  border-collapse: collapse;
+  
+  tr {
+    &:not(:last-child) td {
+      padding-bottom: 0.375rem;
+    }
+    
+    &.divider td {
+      padding-top: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-top: 1px solid rgba(255,255,255,0.15);
+    }
+  }
+  
+  td {
+    padding: 0.25rem 0;
+    vertical-align: top;
+    
+    &:first-of-type {
+      color: rgba(255,255,255,0.65);
+      padding-right: 1rem;
+      font-weight: 500;
+    }
+    
+    &:last-child {
+      text-align: right;
+      font-weight: 600;
+      color: white;
+    }
+  }
+`;
+
+// Truncate komponenta pro zkrácení textu s "..."
+const TruncatedText = styled.div`
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+`;
+
+// =============================================================================
+// HELPER KOMPONENTY
+// =============================================================================
+
+// VecnaSpravnostCell - zobrazuje ikonu věcné správnosti s tooltipem a důvodem
+const VecnaSpravnostCell = ({ invoice }) => {
+  const [isHovered, setIsHovered] = React.useState(false);
+  const containerRef = React.useRef(null);
+
+  // Získat barvu podle stavu
+  const getStatusColor = (status) => {
+    if (status === 1) return '#16a34a'; // Schváleno - zelená
+    if (status === 2) return '#dc2626'; // Zamítnuto - červená
+    return '#cbd5e1'; // Nepotvrzeno - šedá
+  };
+
+  const status = invoice.vecna_spravnost_potvrzeno;
+  const statusColor = getStatusColor(status);
+
+  // Formátovat datum
+  const formatDateTime = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleString('cs-CZ', { 
+        day: 'numeric', 
+        month: 'long', 
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (e) {
+      return dateStr;
+    }
+  };
+
+  // Získat text pro status
+  const getStatusText = (status) => {
+    if (status === 1) return 'Schváleno';
+    if (status === 2) return 'Zamítnuto';
+    return 'Nepotvrzeno';
+  };
+
+  return (
+    <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.25rem' }}>
+        <div 
+          ref={containerRef}
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          style={{ cursor: status ? 'pointer' : 'default' }}
+        >
+          {status === 1 ? (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '16px',
+              height: '16px',
+              borderRadius: '50%',
+              backgroundColor: statusColor,
+              fontSize: '0.6rem'
+            }}>
+              <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
+            </div>
+          ) : status === 2 ? (
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '16px',
+              height: '16px',
+              borderRadius: '50%',
+              backgroundColor: statusColor,
+              fontSize: '0.6rem'
+            }}>
+              <FontAwesomeIcon icon={faTimes} style={{ color: 'white' }} />
+            </div>
+          ) : (
+            <FontAwesomeIcon icon={faTimesCircle} style={{ color: statusColor, fontSize: '0.9rem' }} />
+          )}
+
+          {/* Tooltip s detaily */}
+          {status && (
+            <TooltipPortal targetRef={containerRef} isVisible={isHovered}>
+              <TooltipContent $isVisible={isHovered}>
+                <TooltipTitle style={{ color: statusColor }}>
+                  Věcná správnost: {getStatusText(status)}
+                </TooltipTitle>
+                <TooltipTable>
+                  <tbody>
+                    {invoice.potvrdil_vecnou_spravnost_jmeno && (
+                      <tr>
+                        <td>Potvrdil:</td>
+                        <td style={{ color: 'white' }}>{invoice.potvrdil_vecnou_spravnost_jmeno}</td>
+                      </tr>
+                    )}
+                    {invoice.dt_potvrzeni_vecne_spravnosti && (
+                      <tr>
+                        <td>Datum:</td>
+                        <td style={{ color: 'rgba(255,255,255,0.85)' }}>
+                          {formatDateTime(invoice.dt_potvrzeni_vecne_spravnosti)}
+                        </td>
+                      </tr>
+                    )}
+                    {invoice.vecna_spravnost_duvod && (
+                      <tr className="divider">
+                        <td>Důvod:</td>
+                        <td style={{ 
+                          color: status === 2 ? '#fca5a5' : '#86efac',
+                          whiteSpace: 'normal',
+                          textAlign: 'left'
+                        }}>
+                          {invoice.vecna_spravnost_duvod}
+                        </td>
+                      </tr>
+                    )}
+                    {invoice.vecna_spravnost_poznamka && (
+                      <tr>
+                        <td>Poznámka:</td>
+                        <td style={{ 
+                          color: 'rgba(255,255,255,0.75)',
+                          whiteSpace: 'normal',
+                          textAlign: 'left'
+                        }}>
+                          {invoice.vecna_spravnost_poznamka}
+                        </td>
+                      </tr>
+                    )}
+                    {invoice.vecna_spravnost_umisteni_majetku && (
+                      <tr>
+                        <td>Umístění:</td>
+                        <td style={{ color: 'rgba(255,255,255,0.75)' }}>
+                          {invoice.vecna_spravnost_umisteni_majetku}
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </TooltipTable>
+              </TooltipContent>
+            </TooltipPortal>
+          )}
+        </div>
+
+        {/* Zkrácený text důvodu pod ikonou */}
+        {invoice.vecna_spravnost_duvod && (
+          <TruncatedText 
+            style={{ 
+              fontSize: '0.7rem', 
+              color: status === 2 ? '#dc2626' : '#16a34a',
+              fontWeight: 500
+            }}
+            title={invoice.vecna_spravnost_duvod}
+          >
+            {invoice.vecna_spravnost_duvod}
+          </TruncatedText>
+        )}
+      </div>
+    </span>
+  );
+};
+
+// =============================================================================
 // MAIN COMPONENT
 // =============================================================================
 
@@ -5418,37 +5741,7 @@ const Invoices25List = () => {
                       </span>
                     </TableCell>
                     <TableCell className="center">
-                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
-                        {invoice.vecna_spravnost_potvrzeno === 1 ? (
-                          <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '16px',
-                            height: '16px',
-                            borderRadius: '50%',
-                            backgroundColor: '#16a34a',
-                            fontSize: '0.6rem'
-                        }} title="Věcná správnost potvrzena">
-                          <FontAwesomeIcon icon={faCheck} style={{ color: 'white' }} />
-                        </div>
-                      ) : invoice.vecna_spravnost_potvrzeno === 2 ? (
-                        <div style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            width: '16px',
-                            height: '16px',
-                            borderRadius: '50%',
-                            backgroundColor: '#dc2626',
-                            fontSize: '0.6rem'
-                        }} title="Věcná správnost zamítnuta">
-                          <FontAwesomeIcon icon={faTimes} style={{ color: 'white' }} />
-                        </div>
-                      ) : (
-                        <FontAwesomeIcon icon={faTimesCircle} style={{ color: '#cbd5e1', fontSize: '0.9rem' }} title="Věcná správnost nepotvrzena" />
-                      )}
-                      </span>
+                      <VecnaSpravnostCell invoice={invoice} />
                     </TableCell>
                     <TableCell className="center">
                       <div 
