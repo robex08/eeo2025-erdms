@@ -1,0 +1,51 @@
+# 🚫 BUILD OUTPUTS - vždy ignorovat
+client/build/
+client/build-dev/
+client/build-prod/
+client/.webpack-cache/
+client/tmp/
+api-legacy/api.eeo/cache/
+
+# 📦 NODE MODULES - obsahují tisíce souborů
+client/node_modules/
+node_modules/
+
+# 🔐 PRODUCTION CREDENTIALS - bezpečnost
+**/​.env.production
+**/​.env.production.*
+.env.production
+.env.production.example
+
+# 🐛 DEBUG/TEST SOUBORY - nejsou potřebné pro kód
+api-legacy/api.eeo/test*.php
+api-legacy/api.eeo/test*.sql
+api-legacy/test*.php
+_tests/
+_tests/**
+
+# 📚 DOKUMENTACE (nepovinné - ale velké)
+# Pokud chceš zahrnout pro analýzu, zakomentuj:
+_docs/
+_docs/**
+_sql/
+_sql/**
+podklady/
+podklady/**
+mobilni_app_doc/
+mobilni_app_doc/**
+manualy/
+manualy/**
+
+# 🗂️ CACHE A BACKUP
+backup/
+backup/**
+*.backup
+*.backup-*
+build-*.log
+*.log
+
+# 🏗️ STARÉ SOUBORY
+old_*/
+*_old
+api-legacy/api.eeo/*.backup_*
+api-legacy/api.eeo/api.php.backup_*
