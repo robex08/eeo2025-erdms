@@ -7247,7 +7247,33 @@ switch ($endpoint) {
             }
             break;
         }
-        
+
+        // POST /api.eeo/limitovane-prisliby/fulltext-search - komplexní fulltext vyhledávání
+        // Hledá v LP, objednávkách, fakturách (cislo, predmet, dodavatel, příkazce, atd.)
+        if ($endpoint === 'limitovane-prisliby/fulltext-search') {
+            if ($request_method === 'POST') {
+                require_once __DIR__ . '/v2025.03_25/lib/lpFulltextHandlers.php';
+                handle_lp_fulltext_search($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+
+        // POST /api.eeo/limitovane-prisliby/filter-by-druh-objednavky
+        // Vrátí matching_lp_ids a matched_orders_by_lp pro daný seznam druh_objednavky_kod
+        if ($endpoint === 'limitovane-prisliby/filter-by-druh-objednavky') {
+            if ($request_method === 'POST') {
+                require_once __DIR__ . '/v2025.03_25/lib/lpFilterHandlers.php';
+                handle_lp_filter_by_druh_objednavky($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
+            }
+            break;
+        }
+
         // ============================================
         // SMLOUVY MODULE - 7 endpoints
         // ============================================

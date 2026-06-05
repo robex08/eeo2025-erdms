@@ -294,42 +294,40 @@ class LPCalculationService {
             $limityIndex[$limit['cislo_lp']] = $limit;
         }
         
-        // 4. Spojit čerpání s limity - zobrazit jen LP které mají limit
+        // 4. Spojit čerpání s limity - zobrazit VŠECHNO čerpání, včetně LP bez limitů
         $result = [];
         foreach ($cerpani as $item) {
             $lpKod = $item['lp_kod'];
             $limit = $limityIndex[$lpKod] ?? null;
             
-            // Přeskočit LP kódy které nejsou v limits (nemají záznam v číselníku)
-            if (!$limit) {
-                continue;
-            }
+            // Přidat LP i když nemá záznam v limitech (LP bez limitů nebo nové LP)
+            $celkovy_limit = $limit ? floatval($limit['celkovy_limit']) : 0;
+            $cerpano = floatval($item['celkem_vydano']);
+            $zbyva = $celkovy_limit - $cerpano;
+            $procento = $celkovy_limit > 0 ? round(($cerpano / $celkovy_limit) * 100, 2) : 0;
             
             $result[] = [
-                'id' => intval($limit['id']),
+                'id' => $limit ? intval($limit['id']) : -1,  // -1 pro LP bez limitů
                 'lp_kod' => $lpKod,
-                'cerpano_pokladna' => floatval($item['celkem_vydano']),
+                'cerpano_pokladna' => $cerpano,
                 'pocet_dokladu' => intval($item['pocet_dokladu']),
                 'pocet_polozek' => intval($item['pocet_polozek']),
                 'pocet_knih' => intval($item['pocet_knih']),
                 'prvni_datum' => $item['prvni_datum'],
                 'posledni_datum' => $item['posledni_datum'],
                 
-                // Data z číselníku
-                'celkovy_limit' => $limit ? floatval($limit['celkovy_limit']) : null,
+                // Data z číselníku (nebo null)
+                'celkovy_limit' => $celkovy_limit > 0 ? $celkovy_limit : null,
                 'skutecne_cerpano_celkem' => $limit ? floatval($limit['skutecne_cerpano']) : null,
-                'zbyva' => $limit ? floatval($limit['zbyva_skutecne']) : null,
+                'zbyva' => $celkovy_limit > 0 ? $zbyva : null,
                 'nazev_uctu' => $limit['nazev_uctu'] ?? null,
                 'spravce_jmeno' => isset($limit['jmeno']) ? $limit['jmeno'] : null,
                 'spravce_prijmeni' => isset($limit['prijmeni']) ? $limit['prijmeni'] : null,
                 
                 // Výpočty
-                'procento_cerpani' => $limit && $limit['celkovy_limit'] > 0 
-                    ? round((floatval($item['celkem_vydano']) / floatval($limit['celkovy_limit'])) * 100, 2)
-                    : null,
-                'prekroceni' => $limit && $limit['celkovy_limit'] > 0 
-                    ? floatval($item['celkem_vydano']) > floatval($limit['celkovy_limit'])
-                    : false
+                'procento_cerpani' => $celkovy_limit > 0 ? $procento : null,
+                'prekroceni' => $celkovy_limit > 0 ? $cerpano > $celkovy_limit : false,
+                'ma_limit' => $limit ? true : false  // Ukazatel: má či nemá záznam v limitech
             ];
         }
         
