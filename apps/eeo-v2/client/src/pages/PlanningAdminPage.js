@@ -2478,7 +2478,7 @@ const PlanningAdminPage = () => {
                 </ToggleLabel>
                 <ClearAllButton onClick={handleClearFilters}>
                   <FontAwesomeIcon icon={faEraser} />
-                  Vymazat filtry
+                  Zrušit filtr
                 </ClearAllButton>
               </div>
             </SearchPanelHeader>

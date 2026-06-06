@@ -3020,7 +3020,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
 
           <ActionButton $variant="danger" onClick={handleResetFilters}>
             <FontAwesomeIcon icon={faTimes} />
-            Vymazat filtry
+            Zrušit filtr
           </ActionButton>
 
           {!readOnly && (

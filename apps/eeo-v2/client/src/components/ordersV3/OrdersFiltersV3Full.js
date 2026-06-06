@@ -1019,7 +1019,7 @@ const OrdersFiltersV3Full = ({
           <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
             <ActionButton onClick={onClearAll} style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' }}>
               <FontAwesomeIcon icon={faEraser} />
-              Vymazat filtry
+              Zrušit filtr
             </ActionButton>
           </SmartTooltip>
 
@@ -1083,7 +1083,7 @@ const OrdersFiltersV3Full = ({
                 type="button"
                 visible={filters.objednatel?.length > 0}
                 onClick={() => clearFilter('objednatel')}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <FontAwesomeIcon icon={faTimes} />
               </FilterClearButton>
@@ -1112,7 +1112,7 @@ const OrdersFiltersV3Full = ({
                 type="button"
                 visible={filters.garant?.length > 0}
                 onClick={() => clearFilter('garant')}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <FontAwesomeIcon icon={faTimes} />
               </FilterClearButton>
@@ -1141,7 +1141,7 @@ const OrdersFiltersV3Full = ({
                 type="button"
                 visible={filters.prikazce?.length > 0}
                 onClick={() => clearFilter('prikazce')}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <FontAwesomeIcon icon={faTimes} />
               </FilterClearButton>
@@ -1170,7 +1170,7 @@ const OrdersFiltersV3Full = ({
                 type="button"
                 visible={filters.schvalovatel?.length > 0}
                 onClick={() => clearFilter('schvalovatel')}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <FontAwesomeIcon icon={faTimes} />
               </FilterClearButton>
@@ -1199,7 +1199,7 @@ const OrdersFiltersV3Full = ({
                 type="button"
                 visible={filters.stav?.length > 0}
                 onClick={() => clearFilter('stav')}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <FontAwesomeIcon icon={faTimes} />
               </FilterClearButton>
@@ -1394,7 +1394,7 @@ const OrdersFiltersV3Full = ({
                 type="button"
                 visible={filters.lp_kody?.length > 0}
                 onClick={() => clearFilter('lp_kody')}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <FontAwesomeIcon icon={faTimes} />
               </FilterClearButton>

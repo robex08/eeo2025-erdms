@@ -5164,7 +5164,7 @@ const Invoices25List = () => {
               )}
               <ClearAllButton onClick={handleClearAllFilters} title="Vymazat všechny filtry">
                 <FontAwesomeIcon icon={faEraser} />
-                Vymazat filtry
+                Zrušit filtr
               </ClearAllButton>
             </div>
           </SearchPanelHeader>

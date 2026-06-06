@@ -78,7 +78,7 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
         $hasValue={!!(number && number.trim())}
       />
       {number && number.trim() && clearButton && onClear && (
-        <ClearButton onClick={onClear} title="Vymazat filtr">
+        <ClearButton onClick={onClear} title="Zrušit filtr">
           <FontAwesomeIcon icon={faTimes} style={{ width: '10px', height: '10px' }} />
         </ClearButton>
       )}

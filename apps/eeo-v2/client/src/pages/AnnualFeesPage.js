@@ -3832,7 +3832,7 @@ function AnnualFeesPage() {
           title="Zrušit všechny filtry a vyhledávání"
         >
           <FontAwesomeIcon icon={faEraser} />
-          Vymazat filtry
+          Zrušit filtr
         </ClearAllButton>
       </FiltersBar>
       

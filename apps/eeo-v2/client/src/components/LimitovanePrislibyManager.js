@@ -4680,7 +4680,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                   setFilterDruhObjednavky([]);
                 }}
               >
-                <X size={13} /> Smazat filtry
+                <X size={13} /> Zrušit filtr
               </ClearFiltersButton>
             </FulltextInputRow>
           </FulltextRow>
@@ -4705,7 +4705,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                     console.error('Chyba při ukládání roku do localStorage:', err);
                   }
                 }}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <X size={12} />
               </FilterClearButton>
@@ -4756,7 +4756,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 type="button"
                 $visible={filterUsek.length > 0}
                 onClick={() => setFilterUsek([])}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <X size={12} />
               </FilterClearButton>
@@ -4799,7 +4799,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 type="button"
                 $visible={filterUser.length > 0}
                 onClick={() => setFilterUser([])}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <X size={12} />
               </FilterClearButton>
@@ -4842,7 +4842,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 type="button"
                 $visible={filterDruhObjednavky.length > 0}
                 onClick={() => setFilterDruhObjednavky([])}
-                title="Vymazat filtr"
+                title="Zrušit filtr"
               >
                 <X size={12} />
               </FilterClearButton>
