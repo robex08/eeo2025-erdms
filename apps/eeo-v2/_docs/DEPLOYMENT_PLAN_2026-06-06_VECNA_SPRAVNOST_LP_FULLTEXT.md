@@ -3,7 +3,7 @@
 ## 📋 Přehled změn
 **Datum přípravy:** 5. - 6. iunie 2026  
 **Datum nasazení:** 6. június 2026+  
-**Verze:** v2.58  
+**Verze:** v2.60  
 **Branch:** `feature/v3-development`  
 **Rozsah:** Věcná správnost (zamítnutí), LP fulltext search + filtrování  
 **Poslední commit:** `1c1e0553` - LP fulltext search a filtrování
