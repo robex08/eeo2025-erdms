@@ -147,6 +147,7 @@ export function useOrdersV3({
     smazana: 0,
     archivovano: 0,
     withInvoices: 0,
+    withPaidInvoices: 0,
     withAttachments: 0,
     mimoradneUdalosti: 0,
     mojeObjednavky: 0,

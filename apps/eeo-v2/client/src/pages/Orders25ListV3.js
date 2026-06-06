@@ -162,10 +162,13 @@ const ActionBar = styled.div`
   gap: 0.75rem;
   align-items: center;
   flex-wrap: wrap;
-  justify-content: flex-end;
   padding-bottom: 1rem;
   margin-bottom: 1.5rem;
   border-bottom: 3px solid #e5e7eb;
+  
+  > :first-child {
+    margin-right: auto;
+  }
 `;
 
 // Minimal fulltext search (fallback když jsou rozšířené filtry skryté)
@@ -1132,6 +1135,8 @@ function Orders25ListV3() {
         filters.mimoradne_udalosti = true;
       } else if (statusKey === 's_fakturou') {
         filters.s_fakturou = true;
+      } else if (statusKey === 'se_zaplacenou_fakturou') {
+        filters.se_zaplacenou_fakturou = true;
       } else if (statusKey === 's_prilohami') {
         filters.s_prilohami = true;
         // Vzájemně se vylučující filtr
@@ -2486,6 +2491,22 @@ function Orders25ListV3() {
 
       {/* Action Bar - toggles a konfigurace */}
       <ActionBar>
+        {/* Nová objednávka - na začátek řádku */}
+        <SmartTooltip text="Vytvořit novou objednávku" icon="success" preferredPosition="bottom">
+          <ToggleButton
+            onClick={handleCreateNewOrder}
+            style={{
+              background: '#166534',
+              borderColor: '#166534',
+              color: 'white',
+              fontWeight: 700
+            }}
+          >
+            <FontAwesomeIcon icon={faPlus} />
+            Nová objednávka
+          </ToggleButton>
+        </SmartTooltip>
+
         {/* 🔎 Fulltext nahoře NEukazovat jako výchozí, pokud uživatel skryl filtry.
             Zobrazí se jen když je fulltext opravdu zadaný (user-defined). */}
         {!showFilters && !!globalFilter?.trim?.() && (
@@ -2509,33 +2530,20 @@ function Orders25ListV3() {
           </QuickSearch>
         )}
 
-        <SmartTooltip text="Vytvořit novou objednávku" icon="success" preferredPosition="bottom">
+        {/* Zrušit filtry - vždy první v řadě těchto tlačítek */}
+        <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
           <ToggleButton
-            onClick={handleCreateNewOrder}
+            onClick={handleClearFilters}
             style={{
-              background: '#166534',
-              borderColor: '#166534',
-              color: 'white',
-              fontWeight: 700
+              background: '#dc2626',
+              borderColor: '#dc2626',
+              color: 'white'
             }}
           >
-            <FontAwesomeIcon icon={faPlus} />
-            Nová objednávka
+            <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
+            Zrušit filtr
           </ToggleButton>
         </SmartTooltip>
-
-        {/* Toggle Dashboard - zobrazit POUZE když je skrytý */}
-        {!showDashboard && (
-          <SmartTooltip text="Zobrazit dashboard s přehledem statistik" icon="info" preferredPosition="bottom">
-            <ToggleButton
-              $active={false}
-              onClick={() => updatePreferences({ showDashboard: true })}
-            >
-              <FontAwesomeIcon icon={faChartBar} />
-              Dashboard
-            </ToggleButton>
-          </SmartTooltip>
-        )}
 
         {/* Toggle Filtry - zobrazit POUZE když jsou skryté */}
         {!showFilters && (
@@ -2550,20 +2558,18 @@ function Orders25ListV3() {
           </SmartTooltip>
         )}
 
-        {/* Zrušit filtry - vždy v ActionBar */}
-        <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
-          <ToggleButton
-            onClick={handleClearFilters}
-            style={{
-              background: '#dc2626',
-              borderColor: '#dc2626',
-              color: 'white'
-            }}
-          >
-            <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
-            Zrušit filtr
-          </ToggleButton>
-        </SmartTooltip>
+        {/* Toggle Dashboard - zobrazit POUZE když je skrytý */}
+        {!showDashboard && (
+          <SmartTooltip text="Zobrazit dashboard s přehledem statistik" icon="info" preferredPosition="bottom">
+            <ToggleButton
+              $active={false}
+              onClick={() => updatePreferences({ showDashboard: true })}
+            >
+              <FontAwesomeIcon icon={faChartBar} />
+              Dashboard
+            </ToggleButton>
+          </SmartTooltip>
+        )}
 
         {/* Toggle Podbarvení řádků */}
         <SmartTooltip text={showRowColoring ? 'Vypnout podbarvení řádků' : 'Zapnout podbarvení řádků'} icon="info" preferredPosition="bottom">
@@ -2579,7 +2585,6 @@ function Orders25ListV3() {
         <SmartTooltip text="Export aktuálně načtených objednávek do CSV" icon="success" preferredPosition="bottom">
           <ToggleButton onClick={handleExportList}>
             <FontAwesomeIcon icon={faFileExport} />
-            Export
           </ToggleButton>
         </SmartTooltip>
 
