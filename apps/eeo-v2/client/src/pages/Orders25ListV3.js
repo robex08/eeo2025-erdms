@@ -1135,6 +1135,8 @@ function Orders25ListV3() {
         filters.mimoradne_udalosti = true;
       } else if (statusKey === 's_fakturou') {
         filters.s_fakturou = true;
+      } else if (statusKey === 's_nezaplacenymi_fakturami') {
+        filters.s_nezaplacenymi_fakturami = true;
       } else if (statusKey === 'se_zaplacenou_fakturou') {
         filters.se_zaplacenou_fakturou = true;
       } else if (statusKey === 's_prilohami') {

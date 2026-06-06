@@ -423,7 +423,6 @@ function OrdersColumnConfigV3({
       {/* Tlačítko pro otevření konfigurace */}
       <ConfigButton onClick={() => setIsOpen(true)} title="Konfigurace sloupců">
         <FontAwesomeIcon icon={faCog} />
-        Sloupce
       </ConfigButton>
 
       {/* Modal s konfigurací */}
