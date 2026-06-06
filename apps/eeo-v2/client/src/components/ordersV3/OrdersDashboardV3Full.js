@@ -303,6 +303,7 @@ const STATUS_COLORS = {
   SMAZANA: { light: '#e5e7eb', dark: '#6b7280', bg: '#f9fafb' },
   ARCHIVOVANO: { light: '#e5e7eb', dark: '#6b7280', bg: '#f9fafb' },
   WITH_INVOICES: { light: '#e0e7ff', dark: '#6366f1', bg: '#eef2ff' },
+  WITH_PAID_INVOICES: { light: '#dcfce7', dark: '#16a34a', bg: '#f0fdf4' },
   WITH_ATTACHMENTS: { light: '#ddd6fe', dark: '#8b5cf6', bg: '#f5f3ff' },
   WITHOUT_OBJ_ATTACHMENTS: { light: '#fef3c7', dark: '#f59e0b', bg: '#fffbeb' },
   WITH_COMMENTS: { light: '#bfdbfe', dark: '#3b82f6', bg: '#dbeafe' },
@@ -1041,6 +1042,23 @@ const OrdersDashboardV3Full = ({
               </StatIcon>
             </StatHeader>
             <StatLabel>S fakturou</StatLabel>
+          </StatCard>
+        )}
+
+        {shouldShowTile(stats.withPaidInvoices || 0) && (
+          <StatCard
+            $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}
+            $clickable
+            $isActive={activeStatus === 'se_zaplacenou_fakturou'}
+            onClick={() => onStatusClick?.('se_zaplacenou_fakturou')}
+          >
+            <StatHeader>
+              <StatValue>{stats.withPaidInvoices || 0}</StatValue>
+              <StatIcon $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}>
+                <FontAwesomeIcon icon={faFileInvoice} />
+              </StatIcon>
+            </StatHeader>
+            <StatLabel>Se zaplacenou fakturou</StatLabel>
           </StatCard>
         )}
 

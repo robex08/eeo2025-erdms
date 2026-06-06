@@ -3184,6 +3184,16 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 ) THEN 1 
                 ELSE 0 
             END) as withInvoices,
+            -- SE ZAPLACENÝMI FAKTURAMI
+            SUM(CASE 
+                WHEN EXISTS (
+                    SELECT 1 FROM " . TBL_FAKTURY . " f 
+                    WHERE f.objednavka_id = o.id 
+                      AND f.aktivni = 1
+                      AND (f.stav IN ('ZAPLACENO', 'DOKONCENA') OR f.fa_zaplacena = 1)
+                ) THEN 1 
+                ELSE 0 
+            END) as withPaidInvoices,
             -- S PŘÍLOHAMI (všechny typy příloh)
             SUM(CASE 
                 WHEN EXISTS (
