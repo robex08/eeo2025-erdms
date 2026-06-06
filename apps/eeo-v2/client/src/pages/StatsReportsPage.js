@@ -15565,7 +15565,7 @@ export default function StatsReportsPage() {
                             title="Zrušit všechny filtry (zachová období)"
                           >
                             <FontAwesomeIcon icon={faXmark} style={{ fontSize: '0.9rem' }} />
-                            Vymazat filtry
+                            Zrušit filtr
                           </ClearFiltersBtn>
                         </div>
 

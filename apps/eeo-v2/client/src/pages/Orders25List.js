@@ -17110,7 +17110,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
             <SmartTooltip text="Vymazat všechny filtry a zobrazit všechny objednávky" icon="warning" preferredPosition="bottom">
               <ActionButton onClick={clearFilters} style={{ backgroundColor: '#dc2626', borderColor: '#dc2626', color: 'white' }}>
                 <FontAwesomeIcon icon={faEraser} />
-                Vymazat filtry
+                Zrušit filtr
               </ActionButton>
             </SmartTooltip>
 
@@ -17247,7 +17247,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   type="button"
                   visible={selectedObjednatel.length > 0}
                   onClick={clearObjednatelFilter}
-                  title="Vymazat filtr"
+                  title="Zrušit filtr"
                 >
                   <FontAwesomeIcon icon={faTimes} />
                 </FilterClearButton>
@@ -17274,7 +17274,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   type="button"
                   visible={selectedGarant.length > 0}
                   onClick={clearGarantFilter}
-                  title="Vymazat filtr"
+                  title="Zrušit filtr"
                 >
                   <FontAwesomeIcon icon={faTimes} />
                 </FilterClearButton>
@@ -17301,7 +17301,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   type="button"
                   visible={selectedPrikazce.length > 0}
                   onClick={clearPrikazceFilter}
-                  title="Vymazat filtr"
+                  title="Zrušit filtr"
                 >
                   <FontAwesomeIcon icon={faTimes} />
                 </FilterClearButton>
@@ -17328,7 +17328,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   type="button"
                   visible={selectedSchvalovatel.length > 0}
                   onClick={clearSchvalovatelFilter}
-                  title="Vymazat filtr"
+                  title="Zrušit filtr"
                 >
                   <FontAwesomeIcon icon={faTimes} />
                 </FilterClearButton>
@@ -17355,7 +17355,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   type="button"
                   visible={statusFilter.length > 0}
                   onClick={clearStatusFilter}
-                  title="Vymazat filtr"
+                  title="Zrušit filtr"
                 >
                   <FontAwesomeIcon icon={faTimes} />
                 </FilterClearButton>
@@ -17383,7 +17383,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   type="button"
                   visible={dateFromFilter || dateToFilter}
                   onClick={clearDateFilter}
-                  title="Vymazat filtr"
+                  title="Zrušit filtr"
                 >
                   <FontAwesomeIcon icon={faTimes} />
                 </FilterClearButton>
@@ -17419,7 +17419,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                   type="button"
                   visible={amountFromFilter || amountToFilter}
                   onClick={clearPriceFilter}
-                  title="Vymazat filtr"
+                  title="Zrušit filtr"
                 >
                   <FontAwesomeIcon icon={faTimes} />
                 </FilterClearButton>
@@ -17764,7 +17764,7 @@ Nearchivované: ${apiTestData.nonArchivedInFiltered || 0}`}</DebugValue>
                       {/* Defaultní akce - vždy zobrazené */}
                       <FilterActionButton
                         onClick={clearColumnFilters}
-                        title="Vymazat filtry sloupců"
+                        title="Zrušit filtry sloupců"
                       >
                         <FontAwesomeIcon icon={faEraser} />
                       </FilterActionButton>
@@ -20121,7 +20121,7 @@ ${orderToEdit ? `   Objednávku: ${orderToEdit.cislo_objednavky || orderToEdit.p
                           })()}
                           <FilterActionButton
                             onClick={clearColumnFilters}
-                            title="Vymazat filtry sloupců"
+                            title="Zrušit filtry sloupců"
                           >
                             <FontAwesomeIcon icon={faEraser} />
                           </FilterActionButton>

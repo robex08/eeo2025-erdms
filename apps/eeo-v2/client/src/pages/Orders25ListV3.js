@@ -2550,7 +2550,7 @@ function Orders25ListV3() {
           </SmartTooltip>
         )}
 
-        {/* Vymazat filtry - vždy v ActionBar */}
+        {/* Zrušit filtry - vždy v ActionBar */}
         <SmartTooltip text="Vymaže všechny aktivní filtry včetně fulltext searche" icon="warning" preferredPosition="bottom">
           <ToggleButton
             onClick={handleClearFilters}
@@ -2561,7 +2561,7 @@ function Orders25ListV3() {
             }}
           >
             <FontAwesomeIcon icon={faEraser} style={{ color: 'white' }} />
-            Vymazat filtry
+            Zrušit filtr
           </ToggleButton>
         </SmartTooltip>
 

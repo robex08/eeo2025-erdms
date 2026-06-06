@@ -5414,7 +5414,7 @@ const Layout = ({ children }) => {
                         style={{flex:1, background:'#111', color:'#f1f5f9', border:'1px solid #334155', borderRadius:4, padding:'0.25rem .45rem', fontSize:debugFont-2}}
                       />
                       {debugFilter && (
-                        <SmallIconBtn type="button" onClick={()=>setDebugFilter('')} title="Vymazat filtr">×</SmallIconBtn>
+                        <SmallIconBtn type="button" onClick={()=>setDebugFilter('')} title="Zrušit filtr">×</SmallIconBtn>
                       )}
                       {normalizedFilter && (
                         <span style={{fontSize:'0.55rem', opacity:.65, letterSpacing:'1px', whiteSpace:'nowrap'}}>{filteredLogEntries.length}/{logEntries.length}</span>

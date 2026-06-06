@@ -3478,7 +3478,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
               <SmartTooltip text="Vymazat všechny filtry a zobrazit všechny uživatele" icon="warning" preferredPosition="bottom">
                 <ClearFiltersButton onClick={handleClearFilters}>
                   <FontAwesomeIcon icon={faEraser} />
-                  Vymazat filtry
+                  Zrušit filtr
                 </ClearFiltersButton>
               </SmartTooltip>
               <SmartTooltip
@@ -3661,7 +3661,7 @@ ${JSON.stringify(ordersCount, null, 2)}`}</DebugValue>
                     }}>
                       <FilterActionButton
                         onClick={clearColumnFilters}
-                        title="Vymazat filtry sloupců"
+                        title="Zrušit filtry sloupců"
                       >
                         <FontAwesomeIcon icon={faEraser} />
                       </FilterActionButton>
