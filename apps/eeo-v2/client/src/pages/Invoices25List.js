@@ -451,14 +451,18 @@ const ClearAllButton = styled.button`
   background: #ef4444;
   color: white;
   border: none;
-  padding: 0.4rem 0.75rem;
+  padding: 0.5rem 1rem;
   border-radius: 6px;
-  font-size: 0.75rem;
+  font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
+  height: 40px;
+  min-height: 40px;
+  line-height: 1.2;
   transition: all 0.2s ease;
   
   &:hover {
@@ -2954,6 +2958,11 @@ const Invoices25List = () => {
         apiParams.filter_status = filters.filter_status;
       }
       
+      // 🎯 Speciální filtr pro věcnou správnost - stav ZAMÍTNUTÁ (2)
+      if (filters.filter_status === 'vecna_spravnost_zamitnuty') {
+        apiParams.filter_vecna_spravnost_status = 2;
+      }
+      
       // 📋 Sloupcové filtry - OPRAVENÉ!
       
       // Datum doručení (přesná shoda)
@@ -3237,6 +3246,7 @@ const Invoices25List = () => {
           withinDue: response.statistiky.pocet_ve_splatnosti || 0,
           storno: response.statistiky.pocet_storno || 0,
           vecnaSpravnost: response.statistiky.pocet_vecna_spravnost || 0,
+          vecnaSpravnostZamitnuty: response.statistiky.pocet_vecna_spravnost_zamitnuty || 0,
           totalAmount: parseFloat(response.statistiky.celkem_castka) || 0,
           paidAmount: parseFloat(response.statistiky.celkem_zaplaceno) || 0,
           unpaidAmount: parseFloat(response.statistiky.celkem_nezaplaceno) || 0,
@@ -5097,6 +5107,22 @@ const Invoices25List = () => {
               </StatHeader>
               <StatValue>{stats.kontrolovano}</StatValue>
               <StatLabel>Zkontrolováno</StatLabel>
+            </DashboardCard>
+
+            {/* Zamítnuté věcné správnosti */}
+            <DashboardCard 
+              onClick={() => handleDashboardCardClick('vecna_spravnost_zamitnuty')}
+              $isActive={activeFilterStatus === 'vecna_spravnost_zamitnuty'}
+              $color="#ef4444"
+            >
+              <StatHeader>
+                <StatLabel>Věcná správnost</StatLabel>
+                <StatIcon $color="#ef4444">
+                  <FontAwesomeIcon icon={faTimesCircle} />
+                </StatIcon>
+              </StatHeader>
+              <StatValue>{stats.vecnaSpravnostZamitnuty}</StatValue>
+              <StatLabel>Zamítnutá</StatLabel>
             </DashboardCard>
 
             {/* Moje faktury - pouze pro admin/invoice_manage */}
