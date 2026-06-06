@@ -147,6 +147,7 @@ export function useOrdersV3({
     smazana: 0,
     archivovano: 0,
     withInvoices: 0,
+    withUnpaidInvoices: 0,
     withPaidInvoices: 0,
     withAttachments: 0,
     mimoradneUdalosti: 0,
@@ -396,6 +397,10 @@ export function useOrdersV3({
         activeFilters.mimoradne_udalosti = true;
       } else if (statusKey === 's_fakturou') {
         activeFilters.s_fakturou = true;
+      } else if (statusKey === 's_nezaplacenymi_fakturami') {
+        activeFilters.s_nezaplacenymi_fakturami = true;
+      } else if (statusKey === 'se_zaplacenou_fakturou') {
+        activeFilters.se_zaplacenou_fakturou = true;
       } else if (statusKey === 's_prilohami') {
         activeFilters.s_prilohami = true;
       } else if (statusKey === 'bez_obj_priloh') {

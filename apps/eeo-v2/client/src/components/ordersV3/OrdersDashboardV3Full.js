@@ -303,6 +303,7 @@ const STATUS_COLORS = {
   SMAZANA: { light: '#e5e7eb', dark: '#6b7280', bg: '#f9fafb' },
   ARCHIVOVANO: { light: '#e5e7eb', dark: '#6b7280', bg: '#f9fafb' },
   WITH_INVOICES: { light: '#e0e7ff', dark: '#6366f1', bg: '#eef2ff' },
+  WITH_UNPAID_INVOICES: { light: '#fef3c7', dark: '#f59e0b', bg: '#fffbeb' },
   WITH_PAID_INVOICES: { light: '#dcfce7', dark: '#16a34a', bg: '#f0fdf4' },
   WITH_ATTACHMENTS: { light: '#ddd6fe', dark: '#8b5cf6', bg: '#f5f3ff' },
   WITHOUT_OBJ_ATTACHMENTS: { light: '#fef3c7', dark: '#f59e0b', bg: '#fffbeb' },
@@ -392,6 +393,7 @@ const OrdersDashboardV3Full = ({
   const shouldShowTile = (count) => {
     if (dashboardMode === 'full') return true;
     if (dashboardMode === 'dynamic') return count > 0;
+    if (dashboardMode === 'compact') return count > 0;
     return false;
   };
 
@@ -588,6 +590,57 @@ const OrdersDashboardV3Full = ({
                 </StatIcon>
               </StatHeader>
               <StatLabel>Dokončená</StatLabel>
+            </StatCard>
+          )}
+
+          {(stats.withInvoices || 0) > 0 && (
+            <StatCard
+              $color={STATUS_COLORS.WITH_INVOICES.dark}
+              $clickable
+              $isActive={activeStatus === 's_fakturou'}
+              onClick={() => onStatusClick?.('s_fakturou')}
+            >
+              <StatHeader>
+                <StatValue>{stats.withInvoices || 0}</StatValue>
+                <StatIcon $color={STATUS_COLORS.WITH_INVOICES.dark}>
+                  <FontAwesomeIcon icon={faFileInvoice} />
+                </StatIcon>
+              </StatHeader>
+              <StatLabel>S fakturou</StatLabel>
+            </StatCard>
+          )}
+
+          {(stats.withUnpaidInvoices || 0) > 0 && (
+            <StatCard
+              $color={STATUS_COLORS.WITH_UNPAID_INVOICES.dark}
+              $clickable
+              $isActive={activeStatus === 's_nezaplacenymi_fakturami'}
+              onClick={() => onStatusClick?.('s_nezaplacenymi_fakturami')}
+            >
+              <StatHeader>
+                <StatValue>{stats.withUnpaidInvoices || 0}</StatValue>
+                <StatIcon $color={STATUS_COLORS.WITH_UNPAID_INVOICES.dark}>
+                  <FontAwesomeIcon icon={faFileInvoice} />
+                </StatIcon>
+              </StatHeader>
+              <StatLabel>S nezaplacenou fakturou</StatLabel>
+            </StatCard>
+          )}
+
+          {(stats.withPaidInvoices || 0) > 0 && (
+            <StatCard
+              $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}
+              $clickable
+              $isActive={activeStatus === 'se_zaplacenou_fakturou'}
+              onClick={() => onStatusClick?.('se_zaplacenou_fakturou')}
+            >
+              <StatHeader>
+                <StatValue>{stats.withPaidInvoices || 0}</StatValue>
+                <StatIcon $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}>
+                  <FontAwesomeIcon icon={faFileInvoice} />
+                </StatIcon>
+              </StatHeader>
+              <StatLabel>Se zaplacenou fakturou</StatLabel>
             </StatCard>
           )}
           </SmallCardsGrid>
@@ -1045,7 +1098,24 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.withPaidInvoices || 0) && (
+        {shouldShowTile(displayStats.withUnpaidInvoices || 0) && (
+          <StatCard
+            $color={STATUS_COLORS.WITH_UNPAID_INVOICES.dark}
+            $clickable
+            $isActive={activeStatus === 's_nezaplacenymi_fakturami'}
+            onClick={() => onStatusClick?.('s_nezaplacenymi_fakturami')}
+          >
+            <StatHeader>
+              <StatValue>{displayStats.withUnpaidInvoices || 0}</StatValue>
+              <StatIcon $color={STATUS_COLORS.WITH_UNPAID_INVOICES.dark}>
+                <FontAwesomeIcon icon={faFileInvoice} />
+              </StatIcon>
+            </StatHeader>
+            <StatLabel>S nezaplacenou fakturou</StatLabel>
+          </StatCard>
+        )}
+
+        {shouldShowTile(displayStats.withPaidInvoices || 0) && (
           <StatCard
             $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}
             $clickable
@@ -1053,7 +1123,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('se_zaplacenou_fakturou')}
           >
             <StatHeader>
-              <StatValue>{stats.withPaidInvoices || 0}</StatValue>
+              <StatValue>{displayStats.withPaidInvoices || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}>
                 <FontAwesomeIcon icon={faFileInvoice} />
               </StatIcon>
@@ -1062,7 +1132,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.withAttachments || 0) && (
+        {shouldShowTile(displayStats.withAttachments || 0) && (
           <StatCard
             $color={STATUS_COLORS.WITH_ATTACHMENTS.dark}
             $clickable
@@ -1070,7 +1140,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('s_prilohami')}
           >
             <StatHeader>
-              <StatValue>{stats.withAttachments || 0}</StatValue>
+              <StatValue>{displayStats.withAttachments || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.WITH_ATTACHMENTS.dark}>
                 <FontAwesomeIcon icon={faPaperclip} />
               </StatIcon>
@@ -1079,7 +1149,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.withoutObjAttachments || 0) && (
+        {shouldShowTile(displayStats.withoutObjAttachments || 0) && (
           <StatCard
             $color={STATUS_COLORS.WITHOUT_OBJ_ATTACHMENTS.dark}
             $clickable
@@ -1087,7 +1157,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('bez_obj_priloh')}
           >
             <StatHeader>
-              <StatValue>{stats.withoutObjAttachments || 0}</StatValue>
+              <StatValue>{displayStats.withoutObjAttachments || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.WITHOUT_OBJ_ATTACHMENTS.dark}>
                 <FontAwesomeIcon icon={faPaperclip} style={{ opacity: 0.3 }} />
               </StatIcon>
@@ -1096,7 +1166,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.mimoradneUdalosti || 0) && (
+        {shouldShowTile(displayStats.mimoradneUdalosti || 0) && (
           <StatCard
             $color="#dc2626"
             $clickable
@@ -1104,7 +1174,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('mimoradne_udalosti')}
           >
             <StatHeader>
-              <StatValue>{stats.mimoradneUdalosti || 0}</StatValue>
+              <StatValue>{displayStats.mimoradneUdalosti || 0}</StatValue>
               <StatIcon $color="#dc2626">
                 <FontAwesomeIcon icon={faBoltLightning} />
               </StatIcon>
@@ -1113,7 +1183,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.mojeObjednavky || 0) && (
+        {shouldShowTile(displayStats.mojeObjednavky || 0) && (
           <StatCard
             $color="#7c3aed"
             $clickable
@@ -1121,7 +1191,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('moje_objednavky')}
           >
             <StatHeader>
-              <StatValue>{stats.mojeObjednavky || 0}</StatValue>
+              <StatValue>{displayStats.mojeObjednavky || 0}</StatValue>
               <StatIcon $color="#7c3aed">
                 <FontAwesomeIcon icon={faUser} />
               </StatIcon>

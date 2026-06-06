@@ -1832,6 +1832,23 @@ function handle_order_v3_list($input, $config, $queries) {
             $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1)";
         }
         
+        // Filtr pro objednávky s nezaplacenými fakturami
+        if (!empty($filters['s_nezaplacenymi_fakturami']) && $filters['s_nezaplacenymi_fakturami'] === true) {
+            $where_conditions[] = "EXISTS (SELECT 1 FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(f.stav, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ů', 'u')) NOT IN ('zaplaceno', 'dokoncena'))";
+        }
+        
+        // Filtr pro objednávky se zaplacenými fakturami
+        // Logika: stejná jako u badge "✓ zaplaceno" v UI - VŠECHNY faktury musí být ZAPLACENO/DOKONCENA
+        if (!empty($filters['se_zaplacenou_fakturou']) && $filters['se_zaplacenou_fakturou'] === true) {
+            $where_conditions[] = "(
+                (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                AND (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f 
+                     WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                     AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(f.stav, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ů', 'u')) NOT IN ('zaplaceno', 'dokoncena')
+                ) = 0
+            )";
+        }
+        
         // Filtr pro objednávky s přílohami / bez příloh (vzájemně se vylučují)
         // Priorita: bez_obj_priloh > s_prilohami
         if (!empty($filters['bez_obj_priloh']) && $filters['bez_obj_priloh'] === true) {
@@ -3184,14 +3201,23 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
                 ) THEN 1 
                 ELSE 0 
             END) as withInvoices,
-            -- SE ZAPLACENÝMI FAKTURAMI
+            -- S NEZAPLACENÝMI FAKTURAMI (alespoň jedna faktura není v stavu ZAPLACENO/DOKONCENA)
             SUM(CASE 
                 WHEN EXISTS (
                     SELECT 1 FROM " . TBL_FAKTURY . " f 
-                    WHERE f.objednavka_id = o.id 
-                      AND f.aktivni = 1
-                      AND (f.stav IN ('ZAPLACENO', 'DOKONCENA') OR f.fa_zaplacena = 1)
+                    WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                    AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(f.stav, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ů', 'u')) NOT IN ('zaplaceno', 'dokoncena')
                 ) THEN 1 
+                ELSE 0 
+            END) as withUnpaidInvoices,
+            -- SE ZAPLACENÝMI FAKTURAMI (VŠECHNY faktury musí být ZAPLACENO/DOKONCENA - stejně jako badge v UI)
+            SUM(CASE 
+                WHEN (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) > 0
+                  AND (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f 
+                       WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                       AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(f.stav, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ů', 'u')) NOT IN ('zaplaceno', 'dokoncena')
+                  ) = 0
+                THEN 1 
                 ELSE 0 
             END) as withPaidInvoices,
             -- S PŘÍLOHAMI (všechny typy příloh)
@@ -3347,7 +3373,7 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
         'total', 'nove', 'ke_schvaleni', 'schvalena', 'zamitnuta', 'rozpracovana',
         'odeslana', 'potvrzena', 'k_uverejneni_do_registru', 'uverejnena',
         'fakturace', 'vecna_spravnost', 'fakturace_prodleni', 'zkontrolovana', 'dokoncena', 'zrusena',
-        'smazana', 'withInvoices', 'withAttachments', 'withoutObjAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
+        'smazana', 'withInvoices', 'withUnpaidInvoices', 'withPaidInvoices', 'withAttachments', 'withoutObjAttachments', 'mimoradneUdalosti', 'mojeObjednavky',
         'withComments', 'withMyComments'
     );
     foreach ($counter_fields as $field) {
