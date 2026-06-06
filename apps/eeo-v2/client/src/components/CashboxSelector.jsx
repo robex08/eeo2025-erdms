@@ -23,18 +23,72 @@ const Row = styled.div`
   gap: 1rem;
 `;
 
-const PeriodSelect = styled.select`
-  padding: 0.5rem;
+const PeriodSelect = styled.button`
+  padding: 0.5rem 1rem;
   border: 1px solid #ced4da;
   border-radius: 4px;
   font-size: 1rem;
   background: white;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 180px;
+  color: #212529;
+  font-weight: 500;
+
+  &:hover {
+    border-color: #adb5bd;
+    background: #f8f9fa;
+  }
 
   &:focus {
     outline: none;
     border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
   }
+`;
+
+const PeriodSelectMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  background: white;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  min-width: 180px;
+  z-index: 1000;
+  max-height: 250px;
+  overflow-y: auto;
+`;
+
+const PeriodSelectItem = styled.div`
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  color: #212529;
+
+  &:hover {
+    background: #e7f3ff;
+    color: #007bff;
+  }
+
+  &:first-of-type {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+  }
+
+  &:last-of-type {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+  }
+`;
+
+const PeriodSelectContainer = styled.div`
+  position: relative;
+  width: auto;
 `;
 
 const Label = styled.label`
@@ -229,6 +283,8 @@ const CashboxSelector = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isPeriodMonthOpen, setIsPeriodMonthOpen] = useState(false);
+  const [isPeriodYearOpen, setIsPeriodYearOpen] = useState(false);
   const dropdownRef = useRef(null);
   const searchInputRef = useRef(null);
 
@@ -408,30 +464,51 @@ const CashboxSelector = ({
           <Label>
             📅 Období:
           </Label>
-          <PeriodSelect
-            value={currentMonth}
-            onChange={(e) => onPeriodChange(currentYear, parseInt(e.target.value))}
-          >
-            {availableMonths.map(m => (
-              <option key={m.value} value={m.value}>{m.label}</option>
-            ))}
-          </PeriodSelect>
-          <PeriodSelect
-            value={currentYear}
-            onChange={(e) => {
-              const newYear = parseInt(e.target.value);
-              // ✅ Pokud je vybraný aktuální rok a měsíc je v budoucnosti, upravit na aktuální měsíc
-              let newMonth = currentMonth;
-              if (newYear === currentYearNow && currentMonth > currentMonthNow) {
-                newMonth = currentMonthNow;
-              }
-              onPeriodChange(newYear, newMonth);
-            }}
-          >
-            {years.map(y => (
-              <option key={y} value={y}>{y}</option>
-            ))}
-          </PeriodSelect>
+          <PeriodSelectContainer>
+            <PeriodSelect onClick={() => setIsPeriodMonthOpen(!isPeriodMonthOpen)}>
+              <span>{availableMonths.find(m => m.value === currentMonth)?.label || currentMonth}</span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: isPeriodMonthOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                <path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </PeriodSelect>
+            {isPeriodMonthOpen && (
+              <PeriodSelectMenu>
+                {availableMonths.map(m => (
+                  <PeriodSelectItem key={m.value} onClick={() => { onPeriodChange(currentYear, m.value); setIsPeriodMonthOpen(false); }}>
+                    {m.label}
+                  </PeriodSelectItem>
+                ))}
+              </PeriodSelectMenu>
+            )}
+          </PeriodSelectContainer>
+          <PeriodSelectContainer>
+            <PeriodSelect onClick={() => setIsPeriodYearOpen(!isPeriodYearOpen)}>
+              <span>{currentYear}</span>
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ transform: isPeriodYearOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                <path d="M3 5L7 9L11 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </PeriodSelect>
+            {isPeriodYearOpen && (
+              <PeriodSelectMenu>
+                {years.map(y => (
+                  <PeriodSelectItem 
+                    key={y} 
+                    onClick={() => {
+                      const newYear = y;
+                      let newMonth = currentMonth;
+                      if (newYear === currentYearNow && currentMonth > currentMonthNow) {
+                        newMonth = currentMonthNow;
+                      }
+                      onPeriodChange(newYear, newMonth);
+                      setIsPeriodYearOpen(false);
+                    }}
+                  >
+                    {y}
+                  </PeriodSelectItem>
+                ))}
+              </PeriodSelectMenu>
+            )}
+          </PeriodSelectContainer>
           <span style={{ fontSize: '0.875rem', color: '#6c757d' }}>
             {availableCashboxes.length} {availableCashboxes.length === 1 ? 'pokladna' :
              availableCashboxes.length < 5 ? 'pokladny' : 'pokladen'} v tomto období

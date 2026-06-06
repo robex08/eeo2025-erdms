@@ -102,9 +102,6 @@ export const AuthProvider = ({ children }) => {
         localStorage.removeItem('impersonation_started_at');
         setImpersonationActive(false);
         setOriginalAdminUser(null);
-        if (process.env.NODE_ENV === 'development') {
-          console.log('🧹 Login: Vyčištěn starý impersonation state');
-        }
       } catch (error) {
         console.warn('⚠️ Chyba při čištění impersonation state při login:', error);
       }

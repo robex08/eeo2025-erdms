@@ -9391,7 +9391,7 @@ export default function DashboardPage() {
       <PageWrapper>
         <PageHeader>
           <PageTitle>
-            <FontAwesomeIcon icon={faHome} /> Domovská stránka <BetaBadge>BETA</BetaBadge>
+            <FontAwesomeIcon icon={faHome} /> Domovská stránka
           </PageTitle>
         </PageHeader>
         <DashGrid>
@@ -9405,7 +9405,7 @@ export default function DashboardPage() {
     return (
       <PageWrapper>
         <PageHeader>
-          <PageTitle><FontAwesomeIcon icon={faHome} /> Domovská stránka <BetaBadge>BETA</BetaBadge></PageTitle>
+          <PageTitle><FontAwesomeIcon icon={faHome} /> Domovská stránka</PageTitle>
         </PageHeader>
         <WidgetCard $accent="#dc2626">
           <WidgetHeader>
@@ -9429,7 +9429,7 @@ export default function DashboardPage() {
     <PageWrapper>
       <PageHeader>
         <PageTitle>
-          <FontAwesomeIcon icon={faHome} /> Domovská stránka <BetaBadge>BETA</BetaBadge>
+          <FontAwesomeIcon icon={faHome} /> Domovská stránka
         </PageTitle>
         
         {/* 🎯 RYCHLÉ ROLE-BASED DLAZDICE + MODULE SHORTCUTS */}

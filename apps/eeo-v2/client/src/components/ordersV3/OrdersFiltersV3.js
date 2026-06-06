@@ -136,9 +136,9 @@ const FilterInput = styled.input`
   }
 `;
 
-const FilterSelect = styled.select`
+const FilterSelect = styled.button`
   width: 100%;
-  padding: 0.625rem 0.875rem;
+  padding: 0.625rem 1rem;
   border: 2px solid ${props => props.$active ? '#f59e0b' : '#e2e8f0'};
   border-radius: 6px;
   font-size: 0.875rem;
@@ -149,12 +149,77 @@ const FilterSelect = styled.select`
   cursor: pointer;
   transition: all 0.2s ease;
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 
   &:focus {
     outline: none;
     border-color: #3b82f6;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
   }
+
+  &:hover {
+    border-color: ${props => props.$active ? '#f59e0b' : '#cbd5e0'};
+  }
+`;
+
+const FilterSelectMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  right: 0;
+  background: white;
+  border: 2px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 250px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 3px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 3px;
+  }
+`;
+
+const FilterSelectItem = styled.div`
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  color: #1e293b;
+  font-size: 0.875rem;
+
+  &:hover {
+    background: #f1f5f9;
+    border-left: 2px solid #3b82f6;
+    padding-left: calc(1rem - 2px);
+  }
+
+  &:first-of-type {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+  }
+
+  &:last-of-type {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+  }
+`;
+
+const FilterSelectContainer = styled.div`
+  position: relative;
+  width: 100%;
 `;
 
 const FilterInputWrapper = styled.div`

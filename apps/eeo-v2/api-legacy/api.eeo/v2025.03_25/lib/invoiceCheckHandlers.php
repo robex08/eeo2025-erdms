@@ -321,9 +321,12 @@ function handle_invoice_toggle_check($input, $config) {
                 } elseif ($status === VS_STATUS_ZAMITNUTA) {
                     // ❌ ZAMÍTNUTO - poslat notifikaci přes organizační hierarchii s důvodem
                     $reason = $vecna_spravnost_duvod ?: 'Neuvedeno';
+                    
+                    // ✅ Placeholdery se automaticky generují v loadUniversalPlaceholders
+                    // Obsahují vecna_spravnost_datum_potvrzeni (již formátovaný z DB)
                     $customPlaceholders = array(
                         'vecna_spravnost_duvod' => $reason,
-                        'rejection_reason'      => $reason,  // ✅ Alias pro šablonu 137
+                        'rejection_reason'      => $reason,  // ✅ Alias pro šablonu
                         'reason'                => $reason,  // ✅ Univerzální alias
                     );
                     triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $token_data['id'], $customPlaceholders);

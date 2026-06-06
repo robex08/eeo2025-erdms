@@ -2411,6 +2411,22 @@ function handle_order_v3_list($input, $config, $queries) {
                 (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as pocet_faktur,
                 (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as faktury_celkova_castka_s_dph,
                 
+                -- 🔍 Indikátor: 1 = všechny faktury jsou ZAPLACENO/DOKONCENA, 0 = jinak
+                (
+                  CASE 
+                    WHEN (
+                      SELECT COUNT(*) FROM " . TBL_FAKTURY . " f 
+                      WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                    ) = 0 THEN 0
+                    WHEN (
+                      SELECT COUNT(*) FROM " . TBL_FAKTURY . " f 
+                      WHERE f.objednavka_id = o.id AND f.aktivni = 1
+                      AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(f.stav, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ů', 'u')) NOT IN ('zaplaceno', 'dokoncena')
+                    ) = 0 THEN 1
+                    ELSE 0
+                  END
+                ) as faktury_vs_zaplaceno,
+                
                 -- Střediska (JSON array kódů)
                 o.strediska_kod,
                 
