@@ -835,6 +835,31 @@ const FilterDirtyBadge = styled.div`
   margin-top: 0.6rem;
 `;
 
+const ClearFiltersBtn = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 1rem;
+  border: 2px solid #dc2626;
+  background: #fff;
+  color: #dc2626;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+  
+  &:hover {
+    background: #fef2f2;
+    border-color: #b91c1c;
+  }
+  
+  &:active {
+    background: #fee2e2;
+  }
+`;
+
 const Section = styled.div`
   display: flex;
   flex-direction: column;
@@ -15487,7 +15512,7 @@ export default function StatsReportsPage() {
                                 setCashbookEntriesPage(1);
                                 try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_filters`, JSON.stringify(next)); } catch (_) {}
                               }}
-                              style={{ padding: '0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', cursor: 'pointer' }}
+                              style={{ padding: '0.4rem 3rem 0.4rem 0.75rem', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.875rem', cursor: 'pointer' }}
                             >
                               <option value="all">Celý rok {cashbookFilters.rok}</option>
                               {Array.from({ length: 12 }, (_, i) => i + 1).map(m => {
@@ -15528,7 +15553,7 @@ export default function StatsReportsPage() {
                           </div>
 
                           {/* Tlačítko vymazat filtry */}
-                          <button
+                          <ClearFiltersBtn
                             onClick={() => {
                               const next = { pokladny: [], lp_kody: [], typ: 'all' };
                               setCashbookEntriesFilters(next);
@@ -15537,28 +15562,11 @@ export default function StatsReportsPage() {
                               setCashbookEntriesPage(1);
                               try { localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_entries_filters`, JSON.stringify(next)); } catch (_) {}
                             }}
-                            style={{ 
-                              padding: '0.5rem 1rem', 
-                              borderRadius: '6px', 
-                              border: '2px solid #dc2626', 
-                              background: '#fff', 
-                              color: '#dc2626', 
-                              fontSize: '0.875rem', 
-                              fontWeight: '600',
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: '0.4rem',
-                              transition: 'all 0.15s'
-                            }}
-                            onMouseEnter={(e) => { e.target.style.background = '#fef2f2'; e.target.style.borderColor = '#b91c1c'; }}
-                            onMouseLeave={(e) => { e.target.style.background = '#fff'; e.target.style.borderColor = '#dc2626'; }}
                             title="Zrušit všechny filtry (zachová období)"
                           >
                             <FontAwesomeIcon icon={faXmark} style={{ fontSize: '0.9rem' }} />
                             Vymazat filtry
-                          </button>
+                          </ClearFiltersBtn>
                         </div>
 
                         {/* Řádek 2: Pokladny + LP kódy + Typ */}

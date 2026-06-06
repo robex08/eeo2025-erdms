@@ -303,7 +303,7 @@ const PeriodFilterLabel = styled.label`
   gap: 0.5rem;
 `;
 
-const PeriodFilterSelect = styled.select`
+const PeriodFilterSelect = styled.button`
   padding: 0.75rem 1rem;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-radius: 6px;
@@ -314,6 +314,17 @@ const PeriodFilterSelect = styled.select`
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(8px);
+  width: auto;
+  min-width: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+
+  &:hover {
+    border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.25);
+  }
 
   &:focus {
     outline: none;
@@ -321,12 +332,62 @@ const PeriodFilterSelect = styled.select`
     background: rgba(255, 255, 255, 0.25);
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
   }
+`;
 
-  option {
-    background: #1e40af;
-    color: white;
-    padding: 0.5rem;
+const PeriodFilterMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  background: rgba(30, 64, 175, 0.98);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 240px;
+  z-index: 10001;
+  max-height: 300px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 8px;
   }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(30, 64, 175, 0.3);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.8);
+    border-radius: 4px;
+  }
+`;
+
+const PeriodFilterMenuItem = styled.div`
+  padding: 0.75rem 1rem;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  &:first-of-type {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+  }
+
+  &:last-of-type {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+  }
+`;
+
+const PeriodFilterDropdownContainer = styled.div`
+  position: relative;
+  width: auto;
 `;
 
 const RefreshIconButton = styled.button`
@@ -1977,7 +2038,7 @@ const VecnaSpravnostCell = ({ invoice }) => {
                   <tbody>
                     {invoice.potvrdil_vecnou_spravnost_jmeno && (
                       <tr>
-                        <td>Potvrdil:</td>
+                        <td>{status === 1 ? 'Potvrdil:' : 'Zamítl:' }</td>
                         <td style={{ color: 'white' }}>{invoice.potvrdil_vecnou_spravnost_jmeno}</td>
                       </tr>
                     )}
@@ -2153,6 +2214,7 @@ const Invoices25List = () => {
   // ⚠️ DEPRECATED: Tento stav se již nepoužívá - check_status je přímo v invoice objektu z BE
   // Ponecháno pro kompatibilitu s toggle funkcionalitou
   const [selectedPeriod, setSelectedPeriod] = useState(savedState?.selectedPeriod || 'current-year');
+  const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
   const [columnFilters, setColumnFilters] = useState(savedState?.columnFilters || {});
   const [debouncedColumnFilters, setDebouncedColumnFilters] = useState(savedState?.columnFilters || {});
   
@@ -3590,8 +3652,19 @@ const Invoices25List = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handlePeriodChange = (e) => {
-    setSelectedPeriod(e.target.value);
+  const getPeriodLabel = (value) => {
+    const labels = {
+      'all': 'Vše (bez omezení)',
+      'current-year': 'Aktuální rok',
+      'current-month': 'Aktuální měsíc',
+      'last-month': 'Poslední měsíc',
+      'last-quarter': 'Poslední kvartál'
+    };
+    return labels[value] || value;
+  };
+
+  const handlePeriodChange = (value) => {
+    setSelectedPeriod(value);
   };
 
   const handleViewInvoice = async (invoice) => {
@@ -4680,13 +4753,34 @@ const Invoices25List = () => {
               <FontAwesomeIcon icon={faCalendarAlt} />
               Období:
             </PeriodFilterLabel>
-            <PeriodFilterSelect value={selectedPeriod} onChange={handlePeriodChange}>
-              <option value="current-year">Aktuální rok</option>
-              <option value="current-month">Aktuální měsíc</option>
-              <option value="last-month">Poslední měsíc</option>
-              <option value="last-quarter">Poslední kvartál</option>
-              <option value="all">Vše (bez omezení)</option>
-            </PeriodFilterSelect>
+            <PeriodFilterDropdownContainer>
+              <PeriodFilterSelect onClick={() => setIsPeriodDropdownOpen(!isPeriodDropdownOpen)}>
+                <span>{getPeriodLabel(selectedPeriod)}</span>
+                <FontAwesomeIcon 
+                  icon={faChevronDown}
+                  style={{ transform: isPeriodDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                />
+              </PeriodFilterSelect>
+              {isPeriodDropdownOpen && (
+                <PeriodFilterMenu>
+                  <PeriodFilterMenuItem onClick={() => { handlePeriodChange('current-year'); setIsPeriodDropdownOpen(false); }}>
+                    Aktuální rok
+                  </PeriodFilterMenuItem>
+                  <PeriodFilterMenuItem onClick={() => { handlePeriodChange('current-month'); setIsPeriodDropdownOpen(false); }}>
+                    Aktuální měsíc
+                  </PeriodFilterMenuItem>
+                  <PeriodFilterMenuItem onClick={() => { handlePeriodChange('last-month'); setIsPeriodDropdownOpen(false); }}>
+                    Poslední měsíc
+                  </PeriodFilterMenuItem>
+                  <PeriodFilterMenuItem onClick={() => { handlePeriodChange('last-quarter'); setIsPeriodDropdownOpen(false); }}>
+                    Poslední kvartál
+                  </PeriodFilterMenuItem>
+                  <PeriodFilterMenuItem onClick={() => { handlePeriodChange('all'); setIsPeriodDropdownOpen(false); }}>
+                    Vše (bez omezení)
+                  </PeriodFilterMenuItem>
+                </PeriodFilterMenu>
+              )}
+            </PeriodFilterDropdownContainer>
             <TooltipWrapper text="Obnovit data" preferredPosition="bottom">
               <RefreshIconButton onClick={handleRefresh}>
                 <FontAwesomeIcon icon={faSyncAlt} />
@@ -5570,7 +5664,9 @@ const Invoices25List = () => {
                       <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>{invoice.datum_splatnosti ? formatDateOnly(invoice.datum_splatnosti) : '—'}</span>
                     </TableCell>
                     <TableCell className="amount-column">
-                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}><strong>{formatCurrency(invoice.castka)}</strong></span>
+                      <span className={`storno-content ${!invoice.aktivni ? 'inactive-content' : ''}`}>
+                        <strong>{formatCurrency(invoice.castka)}</strong>
+                      </span>
                     </TableCell>
                     <TableCell className="center">
                       <InvoiceStatusSelect 
@@ -5724,17 +5820,31 @@ const Invoices25List = () => {
                               </div>
                             )}
                             {invoice.vecna_spravnost_duvod && (
-                              <TruncatedText 
-                                style={{ 
-                                  fontSize: '0.7rem', 
-                                  color: invoice.vecna_spravnost_potvrzeno === 2 ? '#dc2626' : '#16a34a',
-                                  fontWeight: 500,
-                                  marginTop: '0.25rem'
-                                }}
-                                title={invoice.vecna_spravnost_duvod}
+                              <TooltipWrapper
+                                content={
+                                  <div style={{
+                                    whiteSpace: 'pre-wrap',
+                                    maxWidth: '320px',
+                                    lineHeight: '1.5'
+                                  }}>
+                                    {invoice.vecna_spravnost_duvod}
+                                  </div>
+                                }
+                                position="top"
+                                showDelay={200}
                               >
+                                <TruncatedText 
+                                  style={{ 
+                                    fontSize: '0.7rem', 
+                                    color: invoice.vecna_spravnost_potvrzeno === 2 ? '#dc2626' : '#16a34a',
+                                    fontWeight: 500,
+                                    marginTop: '0.25rem'
+                                  }}
+                                  title={invoice.vecna_spravnost_duvod}
+                                >
                                 {invoice.vecna_spravnost_duvod}
                               </TruncatedText>
+                              </TooltipWrapper>
                             )}
                           </div>
                         ) : (

@@ -1290,6 +1290,22 @@ const StatusBadge = styled.div`
   }};
 `;
 
+const PaidBadge = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 3px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  background: rgba(209, 250, 229, 0.6);
+  color: #059669;
+  border: 1px solid #059669;
+  text-transform: lowercase;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+`;
+
 const ActionMenu = styled.div`
   display: flex;
   gap: 0.10rem;
@@ -4326,9 +4342,9 @@ const OrdersTableV3 = ({
             </div>
           );
         },
-        size: 205,
-        minSize: 200,
-        maxSize: 240,
+        size: 170,
+        minSize: 160,
+        maxSize: 220,
         enableSorting: true,
       },
       {
@@ -4665,7 +4681,8 @@ const OrdersTableV3 = ({
           const valueB = getRegistrValue(rowB.original);
           return valueA - valueB;
         },
-        size: 110,
+        size: 150,
+        minSize: 140,
         enableSorting: true,
       },
       {
@@ -4731,8 +4748,12 @@ const OrdersTableV3 = ({
           const maxPrice = parseFloat(order.max_cena_s_dph || 0);
           const isOverLimit = price > 0 && maxPrice > 0 && price > maxPrice;
           
+          // Jednoduše: 1 = zaplaceno, 0 = ne
+          const allPaidOrDone = order.faktury_vs_zaplaceno === 1;
+          
           return (
             <div style={{
+              position: 'relative',
               textAlign: 'right',
               fontWeight: 600,
               fontFamily: 'monospace',
@@ -4742,6 +4763,17 @@ const OrdersTableV3 = ({
               {!isNaN(price) && price > 0 
                 ? `${price.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč` 
                 : '---'}
+              {allPaidOrDone && (
+                <div style={{
+                  position: 'absolute',
+                  top: '100%',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  marginTop: '6px'
+                }}>
+                  <PaidBadge>✓ zaplaceno</PaidBadge>
+                </div>
+              )}
             </div>
           );
         },

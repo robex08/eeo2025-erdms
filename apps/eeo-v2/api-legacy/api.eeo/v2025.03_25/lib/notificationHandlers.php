@@ -2029,6 +2029,14 @@ function handle_notifications_event_types_list($input, $config, $queries) {
                 'recipientRoles' => array('INFO', 'APPROVAL')
             ),
             array(
+                'code' => 'INVOICE_MATERIAL_CHECK_REJECTED',
+                'nazev' => 'Věcná správnost zamítnuta',
+                'kategorie' => 'invoices',
+                'description' => 'Věcná správnost faktury byla zamítnuta',
+                'urgencyLevel' => 'EXCEPTIONAL',
+                'recipientRoles' => array('APPROVAL', 'INFO')
+            ),
+            array(
                 'code' => 'INVOICE_DUE_SOON',
                 'nazev' => 'Faktura brzy po splatnosti',
                 'kategorie' => 'invoices',

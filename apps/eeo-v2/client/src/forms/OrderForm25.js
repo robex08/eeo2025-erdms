@@ -6114,12 +6114,8 @@ function OrderForm25() {
 
         // 🔒 CONFLICT DETECTION: Nastavit server timestamp při načtení objednávky z DB
         // Používáme loadedData.dt_aktualizace (čerstvá DB hodnota), ne finalData (může být z draftu)
-        console.warn(`🔒 [ConflictDetect] handleDataLoaded BEFORE ref set: loadedData.id=${loadedData?.id}, loadedData.dt_aktualizace=${loadedData?.dt_aktualizace}, finalData.dt_aktualizace=${finalData?.dt_aktualizace}, ref CURRENT=${serverDtAktualizaceRef.current}`);
         if (loadedData?.id && loadedData?.dt_aktualizace) {
           serverDtAktualizaceRef.current = loadedData.dt_aktualizace;
-          console.warn(`🔒 [ConflictDetect] handleDataLoaded: ref NASTAVEN na: ${loadedData.dt_aktualizace}`);
-        } else {
-          console.warn(`🔒 [ConflictDetect] handleDataLoaded: ref NEBYL NASTAVEN! loadedData.id=${loadedData?.id}, dt_aktualizace=${loadedData?.dt_aktualizace}`);
         }
 
         // 🔒 Uložit _enriched financovani data (lp_info + smlouva_info s ke_schvaleni) do separátního state
@@ -6896,7 +6892,6 @@ function OrderForm25() {
             // 🔒 CONFLICT DETECTION: Nastavit ref na aktuální DB timestamp po DB sync
             if (syncCheck.dbTimestamp) {
               serverDtAktualizaceRef.current = syncCheck.dbTimestamp;
-              console.warn(`🔒 [ConflictDetect] loadDraftData/dbSync: ref nastaven na DB timestamp: ${syncCheck.dbTimestamp}`);
             }
             return;
           }
@@ -6993,15 +6988,12 @@ function OrderForm25() {
             const freshTs = await getOrderTimestampV2(ordIdForTs, token, username);
             if (freshTs?.dt_aktualizace) {
               serverDtAktualizaceRef.current = freshTs.dt_aktualizace;
-              console.warn(`🔒 [ConflictDetect] loadDraftData/draft: ref nastaven na DB timestamp: ${freshTs.dt_aktualizace}`);
             } else if (draftData.formData.dt_aktualizace) {
               serverDtAktualizaceRef.current = draftData.formData.dt_aktualizace;
-              console.warn(`🔒 [ConflictDetect] loadDraftData/draft: ref nastaven na DRAFT timestamp (fallback): ${draftData.formData.dt_aktualizace}`);
             }
           } catch (tsErr) {
             if (draftData.formData.dt_aktualizace) {
               serverDtAktualizaceRef.current = draftData.formData.dt_aktualizace;
-              console.warn(`🔒 [ConflictDetect] loadDraftData/draft: ref nastaven na DRAFT timestamp (error fallback): ${draftData.formData.dt_aktualizace}`);
             }
           }
         }
@@ -12234,7 +12226,7 @@ function OrderForm25() {
           try {
             const serverTs = await getOrderTimestampV2(formData.id, token, username);
             const dbDt = serverTs?.dt_aktualizace;
-            console.warn(`🔒 [ConflictDetect] SAVE CHECK: ref=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
+
             addDebugLog('info', 'SAVE-V2', 'conflict-check', `ref=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
             if (dbDt) {
               if (serverDtAktualizaceRef.current === null) {
@@ -12242,7 +12234,7 @@ function OrderForm25() {
                 const fallbackRef = formData.dt_aktualizace;
                 if (fallbackRef && dbDt !== fallbackRef) {
                   // formData timestamp se liší od DB - CONFLICT!
-                  console.warn(`🔒 [ConflictDetect] ❌ KONFLIKT (fallback)! formData.dt=${fallbackRef} !== DB=${dbDt}`);
+
                   addDebugLog('warning', 'SAVE-V2', 'conflict-detected-fallback',
                     `Konflikt (fallback): formData.dt=${fallbackRef}, DB=${dbDt}`);
                   setShowConflictDialog(true);
@@ -12251,22 +12243,22 @@ function OrderForm25() {
                 }
                 // Inicializuj ref pro příští save
                 serverDtAktualizaceRef.current = dbDt;
-                console.warn(`🔒 [ConflictDetect] ref byl null, inicializuji na DB=${dbDt}, pokračuji v save`);
+
               } else if (dbDt !== serverDtAktualizaceRef.current) {
                 // DB timestamp se liší od toho co jsme načetli - CONFLICT!
-                console.warn(`🔒 [ConflictDetect] ❌ KONFLIKT! ref=${serverDtAktualizaceRef.current} !== DB=${dbDt}`);
+
                 addDebugLog('warning', 'SAVE-V2', 'conflict-detected',
                   `Konflikt: načteno=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
                 setShowConflictDialog(true);
                 setIsSaving(false);
                 return; // Přerušit save - čekáme na rozhodnutí uživatele
               } else {
-                console.warn(`🔒 [ConflictDetect] ✅ OK - timestamps se shodují`);
+
               }
             }
           } catch (tsErr) {
             // Chyba při kontrole timestampu - loguj ale pokračuj v save (neblokuj uživatele)
-            console.warn(`🔒 [ConflictDetect] ⚠️ Chyba při kontrole: ${tsErr.message}`);
+
             addDebugLog('warning', 'SAVE-V2', 'conflict-check-failed', `Nepodařilo se zkontrolovat timestamp: ${tsErr.message}`);
           }
         }
@@ -12295,12 +12287,8 @@ function OrderForm25() {
         });
 
         // 🔐 CONFLICT DETECTION: Aktualizovat server timestamp po úspěšném uložení
-        console.warn(`🔒 [ConflictDetect] POST-SAVE: result.dt_aktualizace=${result?.dt_aktualizace}, result dt_ keys=${result ? Object.keys(result).filter(k => k.includes('dt_')).join(',') : 'null'}`);
         if (result.dt_aktualizace) {
           serverDtAktualizaceRef.current = result.dt_aktualizace;
-          console.warn(`🔒 [ConflictDetect] POST-SAVE: ref AKTUALIZOVÁN na: ${result.dt_aktualizace}`);
-        } else {
-          console.warn(`🔒 [ConflictDetect] POST-SAVE: ⚠️ result NEMÁ dt_aktualizace! ref zůstává: ${serverDtAktualizaceRef.current}`);
         }
 
         // �🔍 DEBUG: Zkontroluj co backend vrací v dodavatel_zpusob_potvrzeni
@@ -25740,7 +25728,7 @@ function OrderForm25() {
                                       fontWeight: '700',
                                       textTransform: 'none'
                                     }}>
-                                      VS: {faktura.fa_cislo_vema}{faktura.fa_vema_kod ? ` / ${faktura.fa_vema_kod}` : ''}
+                                      VS: {faktura.fa_cislo_vema}{faktura.fa_vema_kod ? ` / ${faktura.fa_vema_kod}` : ''} →
                                     </span>
                                   )}
                                   {invoiceStatusLabel && (
@@ -29867,7 +29855,7 @@ function OrderForm25() {
                   // Aktualizovat server timestamp
                   if (freshData.dt_aktualizace) {
                     serverDtAktualizaceRef.current = freshData.dt_aktualizace;
-                    console.warn(`🔒 [ConflictDetect] Ref aktualizován po reload: ${freshData.dt_aktualizace}`);
+
                   }
                   showToast && showToast('Objednávka byla znovu načtena z databáze. Zkontrolujte data a uložte znovu.', { type: 'info' });
                 }

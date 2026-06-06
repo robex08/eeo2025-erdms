@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar, faSort, faSortUp, faSortDown, faPaperclip, faExternalLinkAlt, faFile, faFilePdf, faFileWord, faFileExcel, faFileImage, faFileArchive, faFileAlt, faCalendarAlt } from '@fortawesome/free-solid-svg-icons';
+import { faList, faSync, faFilter, faLayerGroup, faGripVertical, faXmark, faPlus, faMinus, faSearch, faChartBar, faSort, faSortUp, faSortDown, faPaperclip, faExternalLinkAlt, faFile, faFilePdf, faFileWord, faFileExcel, faFileImage, faFileArchive, faFileAlt, faCalendarAlt, faChevronDown } from '@fortawesome/free-solid-svg-icons';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Tooltip, Legend } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
@@ -376,20 +376,27 @@ const PeriodLabel = styled.label`
   white-space: nowrap;
 `;
 
-const PeriodSelector = styled.select`
+const PeriodSelector = styled.button`
   padding: 0.75rem 1rem;
   background: rgba(255, 255, 255, 0.15);
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
+  border-radius: 6px;
   font-size: 1rem;
   font-weight: 600;
   color: white;
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(8px);
+  width: auto;
+  min-width: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 
   &:hover {
     border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.25);
   }
 
   &:focus {
@@ -398,11 +405,62 @@ const PeriodSelector = styled.select`
     background: rgba(255, 255, 255, 0.25);
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
   }
+`;
 
-  option {
-    background: #1e40af;
-    color: white;
+const PeriodDropdownMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  background: rgba(30, 64, 175, 0.98);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 240px;
+  z-index: 10001;
+  max-height: 300px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 8px;
   }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(30, 64, 175, 0.3);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.8);
+    border-radius: 4px;
+  }
+`;
+
+const PeriodDropdownItem = styled.div`
+  padding: 0.75rem 1rem;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  &:first-of-type {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+  }
+
+  &:last-of-type {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+  }
+`;
+
+const PeriodDropdownContainer = styled.div`
+  position: relative;
+  width: auto;
 `;
 
 const ClickableOrderNumber = styled.span`
@@ -950,6 +1008,7 @@ export default function MajetekOverviewPage() {
     total_pages: 0
   }));
   const [period, setPeriod] = useState(() => getUserStorage('majetek_period', 'all'));
+  const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
   const [invoiceFilter, setInvoiceFilter] = useState(() => getUserStorage('majetek_invoice_filter', { withInvoice: true, withoutInvoice: true }));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -2095,11 +2154,27 @@ export default function MajetekOverviewPage() {
                 <FontAwesomeIcon icon={faCalendarAlt} />
                 Období:
               </PeriodLabel>
-              <PeriodSelector value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading}>
-                {periodOptions.map(option => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </PeriodSelector>
+              <PeriodDropdownContainer>
+                <PeriodSelector onClick={() => setIsPeriodDropdownOpen(!isPeriodDropdownOpen)} disabled={loading}>
+                  <span>{periodOptions.find(opt => opt.value === period)?.label || period}</span>
+                  <FontAwesomeIcon 
+                    icon={faChevronDown}
+                    style={{ transform: isPeriodDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                  />
+                </PeriodSelector>
+                {isPeriodDropdownOpen && (
+                  <PeriodDropdownMenu>
+                    {periodOptions.map(option => (
+                      <PeriodDropdownItem 
+                        key={option.value} 
+                        onClick={() => { setPeriod(option.value); setIsPeriodDropdownOpen(false); }}
+                      >
+                        {option.label}
+                      </PeriodDropdownItem>
+                    ))}
+                  </PeriodDropdownMenu>
+                )}
+              </PeriodDropdownContainer>
             </PeriodWrapper>
             <ReloadButton
               onClick={() => fetchData(1)}

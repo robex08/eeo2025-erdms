@@ -95,6 +95,7 @@ function getNotificationTypeLabel(englishCode) {
     'INVOICE_CREATED': 'Nová faktura',
     'INVOICE_MATERIAL_CHECK_REQUESTED': 'Čeká věcná kontrola',
     'INVOICE_MATERIAL_CHECK_APPROVED': 'Věcná správnost OK',
+    'INVOICE_MATERIAL_CHECK_REJECTED': 'Věcná správnost zamítnuta',
     'INVOICE_APPROVED': 'Faktura schválena',
     'INVOICE_PAID': 'Faktura uhrazena',
     
@@ -212,6 +213,7 @@ function getNotificationTypeIcon(typ) {
     'INVOICE_CREATED':                { icon: faPlay,               color: '#10b981' },
     'INVOICE_MATERIAL_CHECK_REQUESTED': { icon: faSearch,           color: '#f59e0b' },
     'INVOICE_MATERIAL_CHECK_APPROVED':  { icon: faCheckCircle,      color: '#10b981' },
+    'INVOICE_MATERIAL_CHECK_REJECTED':  { icon: faTimesCircle,      color: '#ef4444' },
     'INVOICE_APPROVED':               { icon: faCheckDouble,        color: '#059669' },
     'INVOICE_PAID':                   { icon: faCheckDouble,        color: '#047857' },
     'ORDER_COMMENT_ADDED':            { icon: faComment,            color: '#6366f1' },

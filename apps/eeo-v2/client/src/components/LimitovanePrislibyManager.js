@@ -519,6 +519,35 @@ const FulltextClearButton = styled.button`
   }
 `;
 
+const ClearFiltersButton = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 2px solid #ef4444;
+  border-radius: 6px;
+  background: #ef4444;
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  
+  &:hover {
+    background: #dc2626;
+    border-color: #b91c1c;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+  }
+  
+  &:active {
+    background: #b91c1c;
+    transform: none;
+  }
+`;
+
 const CashbookYearSelect = styled.select`
   padding: 0.6rem 1rem;
   border: 2px solid #f59e0b;
@@ -4641,7 +4670,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                   <X size={16} />
                 </FulltextClearButton>
               </FulltextInputContainer>
-              <button
+              <ClearFiltersButton
                 type="button"
                 onClick={() => {
                   setFullTextSearch('');
@@ -4650,25 +4679,9 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                   setFilterUser([]);
                   setFilterDruhObjednavky([]);
                 }}
-                style={{
-                  padding: '0.45rem 0.9rem',
-                  background: '#fee2e2',
-                  color: '#dc2626',
-                  border: '1px solid #fca5a5',
-                  borderRadius: '6px',
-                  cursor: 'pointer',
-                  fontSize: '0.8rem',
-                  fontWeight: 600,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.3rem',
-                  whiteSpace: 'nowrap',
-                  transition: 'all 0.2s ease',
-                  flexShrink: 0
-                }}
               >
                 <X size={13} /> Smazat filtry
-              </button>
+              </ClearFiltersButton>
             </FulltextInputRow>
           </FulltextRow>
 

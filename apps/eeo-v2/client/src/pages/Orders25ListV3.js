@@ -47,6 +47,7 @@ import {
   faCalendarAlt,
   faTrash,
   faCheckCircle,
+  faChevronDown,
 } from '@fortawesome/free-solid-svg-icons';
 
 // Status colors
@@ -251,7 +252,7 @@ const PeriodLabel = styled.label`
   white-space: nowrap;
 `;
 
-const PeriodSelector = styled.select`
+const PeriodSelectorButton = styled.button`
   padding: 0.75rem 1rem;
   background: rgba(255, 255, 255, 0.15);
   border: 2px solid rgba(255, 255, 255, 0.3);
@@ -262,9 +263,16 @@ const PeriodSelector = styled.select`
   cursor: pointer;
   transition: all 0.2s ease;
   backdrop-filter: blur(8px);
+  width: auto;
+  min-width: 240px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 
   &:hover {
     border-color: rgba(255, 255, 255, 0.5);
+    background: rgba(255, 255, 255, 0.25);
   }
 
   &:focus {
@@ -273,11 +281,62 @@ const PeriodSelector = styled.select`
     background: rgba(255, 255, 255, 0.25);
     box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.2);
   }
+`;
 
-  option {
-    background: #1e40af;
-    color: white;
+const PeriodMenu = styled.div`
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 0;
+  background: rgba(30, 64, 175, 0.98);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  min-width: 240px;
+  z-index: 10001;
+  max-height: 300px;
+  overflow-y: auto;
+
+  &::-webkit-scrollbar {
+    width: 8px;
   }
+
+  &::-webkit-scrollbar-track {
+    background: rgba(30, 64, 175, 0.3);
+    border-radius: 4px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(59, 130, 246, 0.8);
+    border-radius: 4px;
+  }
+`;
+
+const PeriodMenuItem = styled.div`
+  padding: 0.75rem 1rem;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  &:first-of-type {
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+  }
+
+  &:last-of-type {
+    border-bottom-left-radius: 4px;
+    border-bottom-right-radius: 4px;
+  }
+`;
+
+const PeriodDropdownContainer = styled.div`
+  position: relative;
+  width: auto;
 `;
 
 const ReloadButton = styled.button`
@@ -880,6 +939,9 @@ function Orders25ListV3() {
   // State pro dialogy
   const [docxModalOpen, setDocxModalOpen] = useState(false);
   const [docxModalOrder, setDocxModalOrder] = useState(null);
+  
+  // 📋 Period dropdown state
+  const [isPeriodDropdownOpen, setIsPeriodDropdownOpen] = useState(false);
   
   // 🆕 State pro kontextové menu
   const [contextMenu, setContextMenu] = useState(null); // { x, y, order, selectedData, selectedText }
@@ -2354,17 +2416,37 @@ function Orders25ListV3() {
               <FontAwesomeIcon icon={faCalendarAlt} />
               Období:
             </PeriodLabel>
-            <PeriodSelector
-              value={selectedPeriod}
-              onChange={(e) => setSelectedPeriod(e.target.value)}
-              disabled={loading}
-            >
-              <option value="current-year">Aktuální rok</option>
-              <option value="current-month">Aktuální měsíc</option>
-              <option value="last-month">Poslední měsíc</option>
-              <option value="last-quarter">Poslední kvartál</option>
-              <option value="all">Vše (bez omezení)</option>
-            </PeriodSelector>
+            <PeriodDropdownContainer>
+              <PeriodSelectorButton
+                onClick={() => setIsPeriodDropdownOpen(!isPeriodDropdownOpen)}
+                disabled={loading}
+              >
+                <span>{getPeriodLabel(selectedPeriod)}</span>
+                <FontAwesomeIcon 
+                  icon={isPeriodDropdownOpen ? faChevronDown : faChevronDown}
+                  style={{ transform: isPeriodDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}
+                />
+              </PeriodSelectorButton>
+              {isPeriodDropdownOpen && (
+                <PeriodMenu>
+                  <PeriodMenuItem onClick={() => { setSelectedPeriod('current-year'); setIsPeriodDropdownOpen(false); }}>
+                    Aktuální rok
+                  </PeriodMenuItem>
+                  <PeriodMenuItem onClick={() => { setSelectedPeriod('current-month'); setIsPeriodDropdownOpen(false); }}>
+                    Aktuální měsíc
+                  </PeriodMenuItem>
+                  <PeriodMenuItem onClick={() => { setSelectedPeriod('last-month'); setIsPeriodDropdownOpen(false); }}>
+                    Poslední měsíc
+                  </PeriodMenuItem>
+                  <PeriodMenuItem onClick={() => { setSelectedPeriod('last-quarter'); setIsPeriodDropdownOpen(false); }}>
+                    Poslední kvartál
+                  </PeriodMenuItem>
+                  <PeriodMenuItem onClick={() => { setSelectedPeriod('all'); setIsPeriodDropdownOpen(false); }}>
+                    Vše (bez omezení)
+                  </PeriodMenuItem>
+                </PeriodMenu>
+              )}
+            </PeriodDropdownContainer>
           </PeriodWrapper>
 
           {/* ✨ Reload tlačítko */}
