@@ -8296,3 +8296,189 @@ function handle_user_activity_history($input, $config, $queries) {
         echo json_encode(['status' => 'error', 'message' => 'Chyba serveru']);
     }
 }
+
+/**
+ * Extrahuje autentizační údaje z HTTP requestu
+ * Podporuje:
+ * 1. Basic Auth header (pro Excel, Postman, atd.)
+ * 2. Bearer token header
+ * 3. Fallback na body parametry (zpětná kompatibilita)
+ * 
+ * @param array $input Parsovaný input (z JSON nebo form-data)
+ * @return array ['username' => string, 'token' => string, 'password' => string|null, 'source' => string]
+ */
+function extract_auth_from_request($input) {
+    $result = array(
+        'username' => '',
+        'token' => '',
+        'password' => null,
+        'source' => 'none'
+    );
+    
+    // 1. Zkus Basic Auth header
+    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+        $auth_header = $_SERVER['HTTP_AUTHORIZATION'];
+        
+        // Basic Auth: "Basic base64(username:password)"
+        if (preg_match('/^Basic\s+(.+)$/i', $auth_header, $matches)) {
+            $decoded = base64_decode($matches[1]);
+            if ($decoded && strpos($decoded, ':') !== false) {
+                list($username, $password) = explode(':', $decoded, 2);
+                $result['username'] = $username;
+                $result['password'] = $password;
+                $result['source'] = 'basic_auth';
+                error_log("🔐 Auth extracted from Basic Auth header: username=" . $username);
+                return $result;
+            }
+        }
+        
+        // Bearer Token: "Bearer token_value"
+        if (preg_match('/^Bearer\s+(.+)$/i', $auth_header, $matches)) {
+            $result['token'] = trim($matches[1]);
+            $result['source'] = 'bearer_token';
+            // Username musí být v body nebo v tokenu
+            if (isset($input['username'])) {
+                $result['username'] = $input['username'];
+            }
+            error_log("🔐 Auth extracted from Bearer token header");
+            return $result;
+        }
+    }
+    
+    // 2. Fallback - čti z body (zpětná kompatibilita)
+    if (isset($input['token']) && isset($input['username'])) {
+        $result['username'] = $input['username'];
+        $result['token'] = $input['token'];
+        $result['source'] = 'body';
+        return $result;
+    }
+    
+    // 3. Jen username v body (pro některé GET endpointy)
+    if (isset($input['username'])) {
+        $result['username'] = $input['username'];
+        $result['source'] = 'body_partial';
+    }
+    
+    return $result;
+}
+
+/**
+ * Ověří Basic Auth credentials (username + password) proti databázi
+ * Podporuje bcrypt, MD5 a plaintext (s automatickou migrací na bcrypt)
+ * 
+ * @param string $username Uživatelské jméno
+ * @param string $password Heslo (plain text)
+ * @param PDO $db Databázové připojení
+ * @return array|false Token data pokud úspěšné, false pokud selhalo
+ */
+function verify_basic_auth($username, $password, $db) {
+    if (!$username || !$password || !$db) {
+        error_log("❌ verify_basic_auth: Missing required parameters");
+        return false;
+    }
+    
+    try {
+        // Najdi uživatele v DB
+        $stmt = $db->prepare("
+            SELECT u.id, u.username, u.heslo_bcrypt, u.heslo_md5, u.plaintext, u.aktivni
+            FROM " . TBL_UZIVATELE . " u
+            WHERE u.username = :username
+            LIMIT 1
+        ");
+        $stmt->execute(['username' => $username]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            error_log("❌ verify_basic_auth: User not found: " . $username);
+            return false;
+        }
+        
+        if ($user['aktivni'] != 1) {
+            error_log("❌ verify_basic_auth: User inactive: " . $username);
+            return false;
+        }
+        
+        $password_valid = false;
+        $rehash_needed = false;
+        
+        // 1. Zkus bcrypt (preferovaný)
+        if (!empty($user['heslo_bcrypt'])) {
+            if (password_verify($password, $user['heslo_bcrypt'])) {
+                $password_valid = true;
+                // Zkontroluj jestli nepotřebuje rehash (vylepšení algoritmu)
+                if (password_needs_rehash($user['heslo_bcrypt'], PASSWORD_BCRYPT)) {
+                    $rehash_needed = true;
+                }
+            }
+        }
+        // 2. Fallback na MD5 (legacy)
+        elseif (!empty($user['heslo_md5']) && $user['heslo_md5'] === md5($password)) {
+            $password_valid = true;
+            $rehash_needed = true; // Migrace z MD5 na bcrypt
+        }
+        // 3. Fallback na plaintext (velmi legacy)
+        elseif (!empty($user['plaintext']) && $user['plaintext'] === $password) {
+            $password_valid = true;
+            $rehash_needed = true; // Migrace z plaintext na bcrypt
+        }
+        
+        if (!$password_valid) {
+            error_log("❌ verify_basic_auth: Invalid password for user: " . $username);
+            return false;
+        }
+        
+        // Automatická migrace na bcrypt
+        if ($rehash_needed) {
+            $new_hash = password_hash($password, PASSWORD_BCRYPT);
+            $update_stmt = $db->prepare("
+                UPDATE " . TBL_UZIVATELE . "
+                SET heslo_bcrypt = :hash,
+                    heslo_md5 = NULL,
+                    plaintext = NULL
+                WHERE id = :user_id
+            ");
+            $update_stmt->execute([
+                'hash' => $new_hash,
+                'user_id' => $user['id']
+            ]);
+            error_log("✅ verify_basic_auth: Password migrated to bcrypt for user: " . $username);
+        }
+        
+        // Vygeneruj token (stejný formát jako handle_login)
+        $timestamp = time();
+        $token = base64_encode($username . '|' . $timestamp);
+        
+        // Ulož token do sessions tabulky (pokud existuje)
+        try {
+            $insert_stmt = $db->prepare("
+                INSERT INTO " . TBL_SESSIONS . " 
+                (username, token, created_at, last_activity, ip_address, user_agent)
+                VALUES (:username, :token, FROM_UNIXTIME(:timestamp), FROM_UNIXTIME(:timestamp), :ip, :ua)
+            ");
+            $insert_stmt->execute([
+                'username' => $username,
+                'token' => $token,
+                'timestamp' => $timestamp,
+                'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+                'ua' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown'
+            ]);
+        } catch (Exception $e) {
+            // Sessions tabulka možná neexistuje, ale to není kritické
+            error_log("⚠️ verify_basic_auth: Could not insert session (table may not exist): " . $e->getMessage());
+        }
+        
+        error_log("✅ verify_basic_auth: Authentication successful for user: " . $username);
+        
+        return array(
+            'username' => $username,
+            'user_id' => $user['id'],
+            'token' => $token,
+            'timestamp' => $timestamp,
+            'aktivni' => $user['aktivni']
+        );
+        
+    } catch (Exception $e) {
+        error_log("❌ verify_basic_auth exception: " . $e->getMessage());
+        return false;
+    }
+}
