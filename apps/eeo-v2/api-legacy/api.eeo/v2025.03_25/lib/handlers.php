@@ -8528,3 +8528,112 @@ function verify_basic_auth($username, $password, $db) {
         return false;
     }
 }
+
+/**
+ * Ověří EntraID Bearer Token přes Microsoft Graph API
+ * 
+ * @param string $bearer_token Bearer token z Authorization header
+ * @param PDO $db Database connection
+ * @return array|false User data pokud úspěšné, false pokud selhalo
+ */
+function verify_entra_bearer_token($bearer_token, $db) {
+    if (!$bearer_token || !$db) {
+        error_log("❌ verify_entra_bearer_token: Missing required parameters");
+        return false;
+    }
+    
+    try {
+        // Ověř token přes Microsoft Graph API
+        $ch = curl_init('https://graph.microsoft.com/v1.0/me');
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $bearer_token,
+                'Content-Type: application/json'
+            ],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+            CURLOPT_SSL_VERIFYPEER => true
+        ]);
+        
+        $response = curl_exec($ch);
+        $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        
+        if ($http_code !== 200) {
+            error_log("❌ verify_entra_bearer_token: Microsoft Graph API returned " . $http_code);
+            return false;
+        }
+        
+        $user_info = json_decode($response, true);
+        if (!$user_info || !isset($user_info['id'])) {
+            error_log("❌ verify_entra_bearer_token: Invalid response from Microsoft Graph API");
+            return false;
+        }
+        
+        // Extrahuj EntraID info
+        $entra_id = $user_info['id'];
+        $upn = $user_info['userPrincipalName'] ?? '';
+        $email = $user_info['mail'] ?? $upn;
+        
+        error_log("🔍 verify_entra_bearer_token: EntraID user - ID: " . $entra_id . ", UPN: " . $upn);
+        
+        // Najdi uživatele v DB podle entra_id nebo upn
+        $stmt = $db->prepare("
+            SELECT u.id, u.username, u.aktivni, u.entra_id, u.upn, u.auth_mode, u.auth_source
+            FROM " . TBL_UZIVATELE . " u
+            WHERE (u.entra_id = :entra_id OR u.upn = :upn OR u.email = :email)
+            AND u.aktivni = 1
+            AND (u.auth_mode IN ('entra', 'both') OR u.auth_source IN ('entra_id', 'hybrid'))
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'entra_id' => $entra_id,
+            'upn' => $upn,
+            'email' => $email
+        ]);
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$user) {
+            error_log("❌ verify_entra_bearer_token: User not found in DB - EntraID: " . $entra_id . ", UPN: " . $upn);
+            return false;
+        }
+        
+        // Aktualizuj entra_id a upn pokud chybí
+        if (empty($user['entra_id']) || empty($user['upn'])) {
+            $update_stmt = $db->prepare("
+                UPDATE " . TBL_UZIVATELE . "
+                SET entra_id = COALESCE(entra_id, :entra_id),
+                    upn = COALESCE(upn, :upn),
+                    entra_sync_at = CURRENT_TIMESTAMP
+                WHERE id = :user_id
+            ");
+            $update_stmt->execute([
+                'entra_id' => $entra_id,
+                'upn' => $upn,
+                'user_id' => $user['id']
+            ]);
+            error_log("✅ verify_entra_bearer_token: Updated EntraID info for user: " . $user['username']);
+        }
+        
+        // Vygeneruj token pro session
+        $timestamp = time();
+        $token = base64_encode($user['username'] . '|' . $timestamp . '|entra');
+        
+        error_log("✅ verify_entra_bearer_token: Authentication successful for user: " . $user['username'] . " (EntraID: " . $entra_id . ")");
+        
+        return array(
+            'username' => $user['username'],
+            'user_id' => $user['id'],
+            'token' => $token,
+            'timestamp' => $timestamp,
+            'aktivni' => $user['aktivni'],
+            'auth_method' => 'entra_id',
+            'entra_id' => $entra_id,
+            'upn' => $upn
+        );
+        
+    } catch (Exception $e) {
+        error_log("❌ verify_entra_bearer_token exception: " . $e->getMessage());
+        return false;
+    }
+}

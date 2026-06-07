@@ -2568,6 +2568,17 @@ switch ($endpoint) {
         }
         break;
     
+    // GET/POST /api.eeo/order-v3/export - Export ALL orders without pagination (for Excel Power Query)
+    // Auth: EntraID Bearer Token (preferred) or query string (username+password)
+    case 'order-v3/export':
+        if ($request_method === 'POST' || $request_method === 'GET') {
+            handle_order_v3_export($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST nebo GET metoda'));
+        }
+        break;
+    
     // POST /api.eeo/order-v3/stats - Statistics only (lightweight for dashboard)
     case 'order-v3/stats':
         if ($request_method === 'POST') {
