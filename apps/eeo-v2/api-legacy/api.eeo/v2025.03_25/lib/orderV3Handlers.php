@@ -2639,6 +2639,240 @@ function handle_order_v3_list($input, $config, $queries) {
 }
 
 /**
+ * Export všech objednávek bez pagingu - pro Excel Power Query
+ * GET nebo POST /order-v3/export
+ * 
+ * Autentizace:
+ * 1. Bearer Token (EntraID) - preferovaná metoda
+ * 2. Query string (username + password) - fallback
+ * 
+ * Parametry:
+ * - period: např. "2026" nebo "2026-Q1"
+ * - stav[]: pole workflow stavů
+ * 
+ * Response format - přímo array objednávek:
+ * [
+ *   { id, cislo_objednavky, predmet, ... },
+ *   ...
+ * ]
+ * 
+ * ⚠️ Pozor: Vrací VŠECHNY záznamy najednou (bez LIMIT)!
+ */
+function handle_order_v3_export($input, $config, $queries) {
+    // 1. SUPPORT pro GET i POST
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $input = array_merge($input, $_GET);
+    } elseif ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze GET nebo POST metoda'));
+        return;
+    }
+    
+    // 2. DB CONNECTION (potřebujeme před auth)
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Database connection failed');
+        }
+        TimezoneHelper::setMysqlTimezone($db);
+    } catch (Exception $e) {
+        error_log("[OrderV3Export] DB connection failed: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba serveru - nelze se připojit k databázi'));
+        return;
+    }
+    
+    // 3. AUTENTIZACE - MULTI-METODA
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+    $password = isset($input['password']) ? $input['password'] : '';
+    $bearer_token = '';
+    
+    // 3a. Zkus Bearer Token (EntraID) - PRIORITA!
+    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+        $auth_header = $_SERVER['HTTP_AUTHORIZATION'];
+        if (preg_match('/^Bearer\s+(.+)$/i', $auth_header, $matches)) {
+            $bearer_token = $matches[1];
+            error_log("[OrderV3Export] Bearer Token detected - attempting EntraID auth");
+        }
+    }
+    
+    if ($bearer_token) {
+        $token_data = verify_entra_bearer_token($bearer_token, $db);
+        if ($token_data) {
+            $username = $token_data['username'];
+            $user_id = $token_data['user_id'];
+            $token = $token_data['token'];
+            error_log("[OrderV3Export] ✅ EntraID Bearer Token auth successful for user: " . $username);
+        } else {
+            error_log("[OrderV3Export] ❌ EntraID Bearer Token auth failed");
+            http_response_code(401);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Neplatný EntraID token',
+                'auth_method' => 'bearer_token_failed'
+            ));
+            return;
+        }
+    }
+    // 3b. Zkus Basic Auth (heslo z query string nebo body)
+    elseif (!empty($username) && !empty($password)) {
+        error_log("[OrderV3Export] Basic Auth attempt for user: " . $username);
+        $token_data = verify_basic_auth($username, $password, $db);
+        if ($token_data) {
+            $token = $token_data['token'];
+            $user_id = $token_data['user_id'];
+            error_log("[OrderV3Export] ✅ Basic Auth successful for user: " . $username);
+        } else {
+            error_log("[OrderV3Export] ❌ Basic Auth failed for user: " . $username);
+            http_response_code(401);
+            echo json_encode(array('status' => 'error', 'message' => 'Neplatné přihlašovací údaje'));
+            return;
+        }
+    }
+    // 3c. Žádné credentials → 401
+    else {
+        http_response_code(401);
+        header('WWW-Authenticate: Bearer realm="ERDMS API", charset="UTF-8"');
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Vyžaduje autentizaci',
+            'auth_methods' => [
+                'bearer_token' => 'Authorization: Bearer <EntraID_Token> (doporučeno)',
+                'query_string' => '?username=xxx&password=xxx (fallback)'
+            ]
+        ));
+        return;
+    }
+    
+    // 3d. Ověř token (pokud nemáme EntraID)
+    if (!isset($user_id) && $token && $username) {
+        $token_data = verify_token_v2($username, $token);
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+            return;
+        }
+        $user_id = isset($token_data['id']) ? (int)$token_data['id'] : 0;
+    }
+
+    try {
+        // 4. Parametry filtru (BEZ PAGINGU!)
+        error_log("[OrderV3Export] ⚠️ EXPORT mode - no pagination, returning ALL records");
+        
+        // 5. Období pro filtrování
+        $period = isset($input['period']) ? $input['period'] : null;
+        $period_year = null;
+        $period_quarter = null;
+        
+        if ($period) {
+            if (preg_match('/^(\d{4})-Q([1-4])$/', $period, $matches)) {
+                $period_year = (int)$matches[1];
+                $period_quarter = (int)$matches[2];
+                error_log("[OrderV3Export] Period filter: Year $period_year, Quarter $period_quarter");
+            } elseif (preg_match('/^\d{4}$/', $period)) {
+                $period_year = (int)$period;
+                error_log("[OrderV3Export] Period filter: Year $period_year (whole year)");
+            } else {
+                http_response_code(400);
+                echo json_encode(array('status' => 'error', 'message' => 'Neplatný formát období - použij např. "2026" nebo "2026-Q1"'));
+                return;
+            }
+        }
+        
+        // 6. Workflow stavy
+        $stav_filter = isset($input['stav']) && is_array($input['stav']) ? $input['stav'] : array();
+        
+        // 7. Build WHERE conditions
+        $where_conditions = array();
+        $where_params = array();
+        
+        if ($period_year) {
+            if ($period_quarter) {
+                $quarter_start = sprintf('%04d-%02d-01', $period_year, ($period_quarter - 1) * 3 + 1);
+                $quarter_end_month = $period_quarter * 3;
+                $quarter_end_day = ($quarter_end_month == 12) ? 31 : ((in_array($quarter_end_month, [4, 6, 9, 11])) ? 30 : 31);
+                $quarter_end = sprintf('%04d-%02d-%02d', $period_year, $quarter_end_month, $quarter_end_day);
+                
+                $where_conditions[] = "obj.dt_vytvoreni >= :quarter_start";
+                $where_conditions[] = "obj.dt_vytvoreni <= :quarter_end";
+                $where_params['quarter_start'] = $quarter_start;
+                $where_params['quarter_end'] = $quarter_end . ' 23:59:59';
+            } else {
+                $where_conditions[] = "YEAR(obj.dt_vytvoreni) = :period_year";
+                $where_params['period_year'] = $period_year;
+            }
+        }
+        
+        if (!empty($stav_filter)) {
+            $placeholders = array();
+            foreach ($stav_filter as $idx => $stav_val) {
+                $param_key = 'stav_' . $idx;
+                $placeholders[] = ':' . $param_key;
+                $where_params[$param_key] = $stav_val;
+            }
+            $where_conditions[] = "obj.stav IN (" . implode(', ', $placeholders) . ")";
+        }
+        
+        $where_clause = !empty($where_conditions) ? 'WHERE ' . implode(' AND ', $where_conditions) : '';
+        
+        // 8. Hlavní query (STEJNÁ JAKO LIST, ale BEZ LIMIT!)
+        $sql_orders = "
+            SELECT 
+                obj.id,
+                obj.cislo_objednavky,
+                obj.predmet,
+                obj.poznamka,
+                obj.dt_objednavky,
+                obj.dt_vytvoreni,
+                obj.dt_aktualizace,
+                obj.dt_schvaleni,
+                obj.stav,
+                obj.druh_obj,
+                obj.dodavatel_nazev,
+                obj.dodavatel_ico,
+                obj.odpovedna_osoba,
+                obj.cislo_smlouvy,
+                uzivatel.jmeno AS uzivatel_jmeno,
+                uzivatel.prijmeni AS uzivatel_prijmeni,
+                usek.nazev AS usek_nazev
+            FROM " . TBL_OBJEDNAVKY . " obj
+            LEFT JOIN " . TBL_UZIVATELE . " uzivatel ON obj.uzivatel_id = uzivatel.id
+            LEFT JOIN " . TBL_USEKY . " usek ON obj.usek_id = usek.id
+            $where_clause
+            ORDER BY obj.dt_vytvoreni DESC
+        ";
+        
+        $stmt = $db->prepare($sql_orders);
+        $stmt->execute($where_params);
+        $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        $total_count = count($orders);
+        error_log("[OrderV3Export] ✅ Loaded " . $total_count . " orders (NO PAGINATION)");
+        
+        // 9. Obohacení dat (stejné jako v list)
+        $orders = enrich_orders_with_invoice_info($orders, $db);
+        $orders = enrich_orders_with_contract_dates($orders, $db);
+        $orders = enrich_orders_with_financing($orders, $db);
+        $orders = enrich_orders_with_lp_info($orders, $db);
+        $orders = enrich_orders_with_strediska($orders, $db);
+        
+        // 10. RESPONSE - JEDNODUCHÝ FORMÁT (přímo array)
+        http_response_code(200);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode($orders, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+
+    } catch (Exception $e) {
+        error_log("[OrderV3Export] Exception: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při exportu objednávek: ' . $e->getMessage()
+        ));
+    }
+}
+
+/**
  * Načte přehled majetku (rozšířený majetek + faktury s umístěním)
  * POST /order-v3/majetek-list
  *
