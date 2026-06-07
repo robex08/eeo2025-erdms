@@ -8315,10 +8315,31 @@ function extract_auth_from_request($input) {
         'source' => 'none'
     );
     
-    // 1. Zkus Basic Auth header
+    // 0. Zkus PHP nativní $_SERVER['PHP_AUTH_USER'] (Apache mod_php)
+    if (!empty($_SERVER['PHP_AUTH_USER'])) {
+        $result['username'] = $_SERVER['PHP_AUTH_USER'];
+        $result['password'] = isset($_SERVER['PHP_AUTH_PW']) ? $_SERVER['PHP_AUTH_PW'] : '';
+        $result['source'] = 'basic_auth';
+        return $result;
+    }
+    
+    // 1. Zkus Basic Auth / Bearer header z různých zdrojů
+    $auth_header = '';
+    
     if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
         $auth_header = $_SERVER['HTTP_AUTHORIZATION'];
-        
+    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+        $auth_header = $_SERVER['REDIRECT_HTTP_AUTHORIZATION'];
+    } elseif (function_exists('apache_request_headers')) {
+        $headers = apache_request_headers();
+        if (isset($headers['Authorization'])) {
+            $auth_header = $headers['Authorization'];
+        } elseif (isset($headers['authorization'])) {
+            $auth_header = $headers['authorization'];
+        }
+    }
+    
+    if ($auth_header) {
         // Basic Auth: "Basic base64(username:password)"
         if (preg_match('/^Basic\s+(.+)$/i', $auth_header, $matches)) {
             $decoded = base64_decode($matches[1]);
@@ -8327,7 +8348,7 @@ function extract_auth_from_request($input) {
                 $result['username'] = $username;
                 $result['password'] = $password;
                 $result['source'] = 'basic_auth';
-                error_log("🔐 Auth extracted from Basic Auth header: username=" . $username);
+                error_log("🔐 Auth extracted from Authorization header (Basic): username=" . $username);
                 return $result;
             }
         }
@@ -8336,16 +8357,23 @@ function extract_auth_from_request($input) {
         if (preg_match('/^Bearer\s+(.+)$/i', $auth_header, $matches)) {
             $result['token'] = trim($matches[1]);
             $result['source'] = 'bearer_token';
-            // Username musí být v body nebo v tokenu
             if (isset($input['username'])) {
                 $result['username'] = $input['username'];
             }
-            error_log("🔐 Auth extracted from Bearer token header");
             return $result;
         }
     }
     
-    // 2. Fallback - čti z body (zpětná kompatibilita)
+    // 2. Query string fallback - username a password z GET parametrů
+    // Toto funguje pro Excel Power Query bez Apache konfigurací!
+    if (isset($_GET['username']) && isset($_GET['password'])) {
+        $result['username'] = $_GET['username'];
+        $result['password'] = $_GET['password'];
+        $result['source'] = 'query_string';
+        return $result;
+    }
+    
+    // 3. Fallback - čti z body (zpětná kompatibilita)
     if (isset($input['token']) && isset($input['username'])) {
         $result['username'] = $input['username'];
         $result['token'] = $input['token'];
@@ -8353,7 +8381,7 @@ function extract_auth_from_request($input) {
         return $result;
     }
     
-    // 3. Jen username v body (pro některé GET endpointy)
+    // 4. Jen username v body (pro některé GET endpointy)
     if (isset($input['username'])) {
         $result['username'] = $input['username'];
         $result['source'] = 'body_partial';
@@ -8380,7 +8408,7 @@ function verify_basic_auth($username, $password, $db) {
     try {
         // Najdi uživatele v DB
         $stmt = $db->prepare("
-            SELECT u.id, u.username, u.heslo_bcrypt, u.heslo_md5, u.plaintext, u.aktivni
+            SELECT u.id, u.username, u.password_hash, u.aktivni
             FROM " . TBL_UZIVATELE . " u
             WHERE u.username = :username
             LIMIT 1
@@ -8395,6 +8423,24 @@ function verify_basic_auth($username, $password, $db) {
         
         if ($user['aktivni'] != 1) {
             error_log("❌ verify_basic_auth: User inactive: " . $username);
+            return false;
+        }
+        
+        // ✅ Ověř heslo
+        if (password_verify($password, $user['password_hash'])) {
+            error_log("[Auth] Basic Auth verified for user: " . $username);
+            
+            // Vygeneruj token a vrať
+            $token = base64_encode($username . '|' . time());
+            return [
+                'username' => $username,
+                'user_id' => $user['id'],
+                'token' => $token,
+                'timestamp' => time(),
+                'aktivni' => $user['aktivni']
+            ];
+        } else {
+            error_log("[Auth] Invalid password for user: " . $username);
             return false;
         }
         
