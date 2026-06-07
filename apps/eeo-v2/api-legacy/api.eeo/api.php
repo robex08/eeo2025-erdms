@@ -652,6 +652,43 @@ try {
     $pdo = null;
 }
 
+// === BASIC AUTH EXTRACTION ===
+// Extrahuj autentizační údaje z HTTP headers nebo body
+// Toto funguje pro VŠECHNY endpointy automaticky!
+$auth = extract_auth_from_request($input);
+
+if ($auth['source'] === 'basic_auth' && $auth['password']) {
+    // Basic Auth detekován -> ověř heslo a vygeneruj token
+    $auth_result = verify_basic_auth($auth['username'], $auth['password'], $pdo);
+    
+    if ($auth_result) {
+        // Úspěšná autentizace -> vlož do $input pro handlery
+        $input['username'] = $auth_result['username'];
+        $input['token'] = $auth_result['token'];
+        error_log("✅ Basic Auth successful, injected into \$input: username=" . $auth_result['username']);
+    } else {
+        // Neplatné credentials
+        http_response_code(401);
+        header('WWW-Authenticate: Basic realm="ERDMS API"');
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Neplatné přihlašovací údaje'
+        ));
+        exit;
+    }
+} elseif ($auth['source'] === 'bearer_token') {
+    // Bearer token -> jen vlož do $input
+    if ($auth['token']) {
+        $input['token'] = $auth['token'];
+    }
+    if ($auth['username']) {
+        $input['username'] = $auth['username'];
+    }
+} elseif ($auth['source'] === 'body') {
+    // Token už je v $input z body - nic nedělat (zpětná kompatibilita)
+    // Handlery si token ověří samy pomocí verify_token_v2()
+}
+
 // Routing podle endpointu
 switch ($endpoint) {
     // === TEST LOGGING ENDPOINT - POUZE PRO DEV ===
