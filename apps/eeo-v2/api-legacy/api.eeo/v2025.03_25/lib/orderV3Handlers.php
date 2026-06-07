@@ -1424,19 +1424,14 @@ function handle_order_v3_list($input, $config, $queries) {
         error_log("[OrderV3 AUTH] PHP_AUTH_USER: " . ($_SERVER['PHP_AUTH_USER'] ?? 'NOT SET'));
         
         // ⚠️ PROBLÉM: Nginx/FastCGI nedává Authorization header do PHP!
-        // ŘEŠENÍ: Vrátit error s query string instrukcí
         http_response_code(401);
         header('WWW-Authenticate: Basic realm="ERDMS API"');
         header('Content-Type: application/json; charset=utf-8');
         
-        // Přidej instrukci pro Excela - jak zaslat credentials v URL
         echo json_encode(array(
             'status' => 'error',
             'message' => 'Autentizace selhala',
-            'auth_required' => true,
-            'auth_method' => 'Basic',
-            'note' => 'Pokud Power Query nepodporuje Basic Auth dialog, použij query string v URL',
-            'fallback_url' => 'https://erdms.zachranka.cz/dev/api.eeo/order-v3/list?username=admin&password=TVOJE_HESLO'
+            'auth_required' => true
         ));
         return;
     }
@@ -2673,26 +2668,17 @@ function handle_order_v3_export($input, $config, $queries) {
         $auth_header = $_SERVER['HTTP_AUTHORIZATION'];
         if (preg_match('/^Bearer\s+(.+)$/i', $auth_header, $matches)) {
             $bearer_token = $matches[1];
-            error_log("[OrderV3Export] Bearer Token detected");
         }
     }
     
     // 🚨 POKUD CHYBÍ VŠECHNY CREDENTIALS - VRÁTIT 401 HNED!
     if (empty($bearer_token) && empty($username) && empty($password) && empty($token)) {
-        error_log("[OrderV3Export] NO CREDENTIALS");
-        
         http_response_code(401);
         header('WWW-Authenticate: Bearer realm="ERDMS API"');
         header('Content-Type: application/json; charset=utf-8');
         echo json_encode(array(
             'status' => 'error',
-            'message' => 'Autentizace selhala',
-            'auth_required' => true,
-            'auth_methods' => [
-                'bearer_token' => 'Authorization: Bearer <EntraID_Token>',
-                'query_string' => '?username=admin&password=HESLO'
-            ],
-            'fallback_url' => 'https://erdms.zachranka.cz/dev/api.eeo/order-v3/export?username=admin&password=TVOJE_HESLO'
+            'message' => 'Autentizace selhala'
         ));
         return;
     }
@@ -2716,15 +2702,12 @@ function handle_order_v3_export($input, $config, $queries) {
     
     // 3a. Zkus Bearer Token (EntraID) - PRIORITA
     if ($bearer_token) {
-        error_log("[OrderV3Export] Attempting EntraID Bearer Token auth");
         $token_data = verify_entra_bearer_token($bearer_token, $db);
         if ($token_data) {
             $username = $token_data['username'];
             $user_id = $token_data['user_id'];
             $token = $token_data['token'];
-            error_log("[OrderV3Export] ✅ EntraID Bearer Token auth successful for user: " . $username);
         } else {
-            error_log("[OrderV3Export] ❌ EntraID Bearer Token auth failed");
             http_response_code(401);
             echo json_encode(array('status' => 'error', 'message' => 'Neplatný EntraID token'));
             return;
@@ -2732,14 +2715,11 @@ function handle_order_v3_export($input, $config, $queries) {
     }
     // 3b. Zkus Basic Auth (heslo z query string nebo body)
     elseif (!empty($username) && !empty($password)) {
-        error_log("[OrderV3Export] Basic Auth attempt for user: " . $username);
         $token_data = verify_basic_auth($username, $password, $db);
         if ($token_data) {
             $token = $token_data['token'];
             $user_id = $token_data['user_id'];
-            error_log("[OrderV3Export] ✅ Basic Auth successful for user: " . $username);
         } else {
-            error_log("[OrderV3Export] ❌ Basic Auth failed for user: " . $username);
             http_response_code(401);
             echo json_encode(array('status' => 'error', 'message' => 'Neplatné přihlašovací údaje'));
             return;
@@ -2765,7 +2745,6 @@ function handle_order_v3_export($input, $config, $queries) {
 
     try {
         // ⚠️ EXPORT MODE: BEZ PAGINGU! Vrací všechny záznamy najednou.
-        error_log("[OrderV3Export] EXPORT MODE - loading ALL records (no pagination)");
         
         // Parametry zůstávají stejné jako v list (pro filtrování)
         $period = isset($input['period']) ? $input['period'] : null;
@@ -2856,7 +2835,7 @@ function handle_order_v3_export($input, $config, $queries) {
         $stmt->execute();
         $orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
-        error_log("[OrderV3Export] ✅ Loaded " . count($orders) . " orders (NO PAGINATION)");
+
         
         // EXPORT RESPONSE - Vrátit přímo pole bez pagination wrapperu!
         http_response_code(200);
@@ -2864,7 +2843,6 @@ function handle_order_v3_export($input, $config, $queries) {
         echo json_encode($orders, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 
     } catch (Exception $e) {
-        error_log("[OrderV3Export] Exception: " . $e->getMessage());
         http_response_code(500);
         echo json_encode(array(
             'status' => 'error',

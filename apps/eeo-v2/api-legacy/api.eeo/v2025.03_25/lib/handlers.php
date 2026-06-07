@@ -8428,8 +8428,6 @@ function verify_basic_auth($username, $password, $db) {
         
         // ✅ Ověř heslo
         if (password_verify($password, $user['password_hash'])) {
-            error_log("[Auth] Basic Auth verified for user: " . $username);
-            
             // Vygeneruj token a vrať
             $token = base64_encode($username . '|' . time());
             return [
@@ -8440,7 +8438,6 @@ function verify_basic_auth($username, $password, $db) {
                 'aktivni' => $user['aktivni']
             ];
         } else {
-            error_log("[Auth] Invalid password for user: " . $username);
             return false;
         }
         
