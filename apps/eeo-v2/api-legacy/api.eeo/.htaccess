@@ -5,6 +5,18 @@ RewriteEngine On
 
 ## DirectoryIndex api.php
 
+# ⚡ FIX: Apache filtruje Authorization header - musíme ho explicitně předat do PHP
+# Bez tohoto Basic Auth a Bearer tokeny nefungují!
+<IfModule mod_rewrite.c>
+    RewriteCond %{HTTP:Authorization} ^(.+)$
+    RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+</IfModule>
+
+# Alternativní způsob přes SetEnvIf
+<IfModule mod_setenvif.c>
+    SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+
 # CORS Headers - musí být PŘED RewriteCond/RewriteRule
 <IfModule mod_headers.c>
     # Always set CORS headers for all requests including OPTIONS

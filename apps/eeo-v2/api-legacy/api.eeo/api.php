@@ -657,15 +657,15 @@ try {
 // Toto funguje pro VŠECHNY endpointy automaticky!
 $auth = extract_auth_from_request($input);
 
-if ($auth['source'] === 'basic_auth' && $auth['password']) {
-    // Basic Auth detekován -> ověř heslo a vygeneruj token
+if (($auth['source'] === 'basic_auth' || $auth['source'] === 'query_string') && $auth['password']) {
+    // Basic Auth nebo query string detekován -> ověř heslo a vygeneruj token
     $auth_result = verify_basic_auth($auth['username'], $auth['password'], $pdo);
     
     if ($auth_result) {
         // Úspěšná autentizace -> vlož do $input pro handlery
         $input['username'] = $auth_result['username'];
         $input['token'] = $auth_result['token'];
-        error_log("✅ Basic Auth successful, injected into \$input: username=" . $auth_result['username']);
+        error_log("✅ Auth successful via " . $auth['source'] . ", injected into \$input: username=" . $auth_result['username']);
     } else {
         // Neplatné credentials
         http_response_code(401);

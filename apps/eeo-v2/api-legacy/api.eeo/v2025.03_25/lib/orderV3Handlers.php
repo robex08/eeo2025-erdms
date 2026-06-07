@@ -1398,23 +1398,84 @@ function enrichOrdersV3Batch($db, &$orders) {
 }
 
 function handle_order_v3_list($input, $config, $queries) {
-    // 1. Validace požadavku
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    // 1. Validace požadavku - podporuj POST i GET
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST' && $_SERVER['REQUEST_METHOD'] !== 'GET') {
         http_response_code(405);
-        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST nebo GET metoda'));
         return;
     }
 
-    // 2. Autentizace
+    // Merge GET parametry do $input (pro Excel Power Query kompatibilitu)
+    if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+        $input = array_merge($input, $_GET);
+    }
+
+    // 2. KONTROLA AUTENTIZACE - MUSÍ BÝT EXPLICITNĚ POVINNÁ
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
+    $password = isset($input['password']) ? $input['password'] : '';
     
-    // DEBUG: Log celý input
-    error_log("[OrderV3 DEBUG] Full input: " . json_encode($input));
+    // 🚨 POKUD CHYBÍ VŠECHNY CREDENTIALS - VRÁTIT 401 HNED!
+    if (empty($username) && empty($password) && empty($token)) {
+        // DEBUG: Log co Excel posílá
+        error_log("[OrderV3 AUTH] NO CREDENTIALS - Logging request details:");
+        error_log("[OrderV3 AUTH] METHOD: " . $_SERVER['REQUEST_METHOD']);
+        error_log("[OrderV3 AUTH] HTTP_AUTHORIZATION: " . ($_SERVER['HTTP_AUTHORIZATION'] ?? 'NOT SET'));
+        error_log("[OrderV3 AUTH] PHP_AUTH_USER: " . ($_SERVER['PHP_AUTH_USER'] ?? 'NOT SET'));
+        
+        // ⚠️ PROBLÉM: Nginx/FastCGI nedává Authorization header do PHP!
+        // ŘEŠENÍ: Vrátit error s query string instrukcí
+        http_response_code(401);
+        header('WWW-Authenticate: Basic realm="ERDMS API"');
+        header('Content-Type: application/json; charset=utf-8');
+        
+        // Přidej instrukci pro Excela - jak zaslat credentials v URL
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Autentizace selhala',
+            'auth_required' => true,
+            'auth_method' => 'Basic',
+            'note' => 'Pokud Power Query nepodporuje Basic Auth dialog, použij query string v URL',
+            'fallback_url' => 'https://erdms.zachranka.cz/dev/api.eeo/order-v3/list?username=admin&password=TVOJE_HESLO'
+        ));
+        return;
+    }
+
+    // 🚀 EARLY DB CONNECTION - Potřebujeme $db pro ověření hesla
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+        TimezoneHelper::setMysqlTimezone($db);
+    } catch (Exception $e) {
+        error_log("[OrderV3] DB connection failed: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba serveru - nelze se připojit k databázi'));
+        return;
+    }
     
+    // 3. OVĚŘENÍ CREDENTIALS
+    // Pokud je heslo → ověř heslo a vygeneruj token
+    if (!empty($username) && !empty($password)) {
+        error_log("[OrderV3] Basic Auth attempt for user: " . $username);
+        $token_data = verify_basic_auth($username, $password, $db);
+        if ($token_data) {
+            $token = $token_data['token'];
+            error_log("[OrderV3] ✅ Basic Auth successful for user: " . $username);
+        } else {
+            error_log("[OrderV3] ❌ Basic Auth failed for user: " . $username);
+            http_response_code(401);
+            echo json_encode(array('status' => 'error', 'message' => 'Neplatné přihlašovací údaje'));
+            return;
+        }
+    }
+    
+    // Pokud máme token, ověř ho
     if (!$token || !$username) {
-        http_response_code(400);
-        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
+        http_response_code(401);
+        header('WWW-Authenticate: Basic realm="ERDMS API"');
+        echo json_encode(array('status' => 'error', 'message' => 'Vyžaduje autentizaci'));
         return;
     }
 
@@ -1428,15 +1489,7 @@ function handle_order_v3_list($input, $config, $queries) {
     $user_id = isset($token_data['id']) ? (int)$token_data['id'] : 0;
 
     try {
-        // 3. Připojení k DB
-        $db = get_db($config);
-        if (!$db) {
-            throw new Exception('Chyba připojení k databázi');
-        }
-        
-        TimezoneHelper::setMysqlTimezone($db);
-
-        // 4. Parametry paginace
+        // 3. Parametry paginace
         $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
         $per_page = isset($input['per_page']) ? max(1, min(500, (int)$input['per_page'])) : 50;
         $offset = ($page - 1) * $per_page;
