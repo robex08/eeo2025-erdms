@@ -2558,13 +2558,13 @@ switch ($endpoint) {
 
     // === ORDER V3 - OPTIMIZED API FOR REACT FRONTEND ===
     
-    // POST /api.eeo/order-v3/list - Optimized listing with pagination and stats
+    // POST/GET /api.eeo/order-v3/list - Optimized listing with pagination and stats
     case 'order-v3/list':
-        if ($request_method === 'POST') {
+        if ($request_method === 'POST' || $request_method === 'GET') {
             handle_order_v3_list($input, $config, $queries);
         } else {
             http_response_code(405);
-            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST nebo GET metoda'));
         }
         break;
     
