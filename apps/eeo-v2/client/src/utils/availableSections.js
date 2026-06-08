@@ -119,7 +119,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
     hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
     hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
-    hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE')
+    hasPermission('STATS_SPENDING_VIEW') || hasPermission('STATS_SPENDING_EDIT') || hasPermission('STATS_SPENDING_MANAGE')
   ))) {
     sections.push({ value: 'stats-reports', label: 'Statistika a reporty' });
   }
@@ -129,7 +129,8 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('SPENDING_MANAGE') || hasPermission('LP_MANAGE') || hasPermission('CONTRACT_MANAGE') ||
     hasPermission('SPEDNIG_MANAGE') || hasPermission('SPNDING_MANAGE') ||
     hasPermission('SPEDNIG_VIEW_ALL') || hasPermission('SPNDING_VIEW_ALL') ||
-    hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') ||
+    hasPermission('SPENDING_CONTRACT_VIEW_ALL') || hasPermission('SPENDING_CONTRACT_VIEW_OWN') ||
+    hasPermission('SPENDING_LP_VIEW_ALL') || hasPermission('SPENDING_LP_VIEW_OWN') ||
     hasPermission('LP_VIEW_ALL') || hasPermission('LP_VIEW_OWN') ||
     hasPermission('CONTRACT_VIEW_ALL') || hasPermission('CONTRACT_VIEW_OWN')
   ));

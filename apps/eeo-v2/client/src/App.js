@@ -533,9 +533,11 @@ function App() {
     }
 
     const hasGlobalViewAll =
-      hasPerm('SPEDNIG_VIEW_ALL') || hasPerm('SPNDING_VIEW_ALL') || hasPerm('SPEDNING_VIEW_ALL') || hasPerm('SPENDING_VIEW_ALL') || hasPerm('CERPANI_VIEW_ALL');
+      hasPerm('SPEDNIG_VIEW_ALL') || hasPerm('SPNDING_VIEW_ALL') || hasPerm('SPEDNING_VIEW_ALL') || 
+      hasPerm('SPENDING_CONTRACT_VIEW_ALL') || hasPerm('SPENDING_LP_VIEW_ALL') || hasPerm('CERPANI_VIEW_ALL');
     const hasGlobalViewOwn =
-      hasPerm('SPEDNIG_VIEW_OWN') || hasPerm('SPNDING_VIEW_OWN') || hasPerm('SPEDNING_VIEW_OWN') || hasPerm('SPENDING_VIEW_OWN') || hasPerm('CERPANI_VIEW_OWN');
+      hasPerm('SPEDNIG_VIEW_OWN') || hasPerm('SPNDING_VIEW_OWN') || hasPerm('SPEDNING_VIEW_OWN') || 
+      hasPerm('SPENDING_CONTRACT_VIEW_OWN') || hasPerm('SPENDING_LP_VIEW_OWN') || hasPerm('CERPANI_VIEW_OWN');
 
     const hasContractViewAll =
       hasPerm('CONTRACT_VIEW_ALL') ||
@@ -1168,7 +1170,7 @@ function App() {
                       hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
                       hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
                       hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
-                      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE') ||
+                      hasPermission('STATS_SPENDING_VIEW') || hasPermission('STATS_SPENDING_EDIT') || hasPermission('STATS_SPENDING_MANAGE') ||
                       hasPermission('CASHBOOK_REPORTS_VIEW') || hasPermission('CASHBOOK_REPORTS_MANAGE') || hasPermission('CASHBOOK_REPORTS_EXPORT') ||
                       hasPermission('DEFERRALS_VIEW') || hasPermission('DEFERRALS_EDIT') || hasPermission('DEFERRALS_MANAGE')
                     ))

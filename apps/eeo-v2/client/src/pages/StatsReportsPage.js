@@ -2827,13 +2827,14 @@ export default function StatsReportsPage() {
   const canChangeUsekFilter = useMemo(() => {
     if (isAdminUser) return true;
     if (typeof hasPermission === 'function') {
-      if (hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') || hasPermission('SPENDING_VIEW_ALL')) return true;
+      if (hasPermission('ORDER_READ_ALL') || hasPermission('ORDER_VIEW_ALL') || 
+          hasPermission('SPENDING_CONTRACT_VIEW_ALL') || hasPermission('SPENDING_LP_VIEW_ALL')) return true;
     }
     // Pokud userPermissions ještě nejsou načtené, vrátíme null
     if (!Array.isArray(userPermissions) || userPermissions.length === 0) return null;
     if (!hasBasePermission) return false;
     return hasBasePermission('ORDER_READ_ALL') || hasBasePermission('ORDER_VIEW_ALL') ||
-      hasBasePermission('SPENDING_VIEW_ALL');
+      hasBasePermission('SPENDING_CONTRACT_VIEW_ALL') || hasBasePermission('SPENDING_LP_VIEW_ALL');
   }, [isAdminUser, hasPermission, hasBasePermission, userPermissions]);
   const visibleTabs = useMemo(() => {
     if (isAdminUser) return PAGE_TABS;
@@ -2845,7 +2846,7 @@ export default function StatsReportsPage() {
         case 'vzdel':
           return hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') || hasPermission('EDUCATION_VIEW_ALL');
         case 'spend':
-          return hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE');
+          return hasPermission('STATS_SPENDING_VIEW') || hasPermission('STATS_SPENDING_EDIT') || hasPermission('STATS_SPENDING_MANAGE');
         case 'reports':
           return hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE');
         case 'stats':
