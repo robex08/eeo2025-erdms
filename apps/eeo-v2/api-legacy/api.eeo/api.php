@@ -193,7 +193,7 @@ define('TBL_PRAVA', '25_prava');
 define('TBL_ROLE', '25_role');
 define('TBL_ROLE_PRAVA', '25_role_prava');
 define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
-define('TBL_UZIVATELE_PRAVA', '25_uzivatele_prava');
+// TBL_UZIVATELE_PRAVA - TABULKA NEEXISTUJE, práva jsou v TBL_ROLE_PRAVA
 define('TBL_USER_GROUPS_MEMBERS', '25_user_groups_members');
 
 // STICKY POZNÁMKY (nová funkce)
