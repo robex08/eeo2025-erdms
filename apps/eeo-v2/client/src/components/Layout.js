@@ -2169,7 +2169,7 @@ const Layout = ({ children }) => {
       hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') ||
       hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE') ||
       hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
-      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE') ||
+      hasPermission('STATS_SPENDING_VIEW') || hasPermission('STATS_SPENDING_EDIT') || hasPermission('STATS_SPENDING_MANAGE') ||
       hasPermission('CASHBOOK_REPORTS_VIEW') || hasPermission('CASHBOOK_REPORTS_MANAGE') || hasPermission('CASHBOOK_REPORTS_EXPORT') ||
       hasPermission('DEFERRALS_VIEW') || hasPermission('DEFERRALS_EDIT') || hasPermission('DEFERRALS_MANAGE')
     );
@@ -2280,18 +2280,21 @@ const Layout = ({ children }) => {
       const isViewScope = perm.endsWith('_VIEW_ALL') || perm.endsWith('_VIEW_OWN') || perm.endsWith('_VIEW');
       if (!isViewScope) return false;
       return (
+        // Správná SPENDING práva (existují v databázi)
+        perm === 'SPENDING_CONTRACT_VIEW_ALL' ||
+        perm === 'SPENDING_CONTRACT_VIEW_OWN' ||
+        perm === 'SPENDING_LP_VIEW_ALL' ||
+        perm === 'SPENDING_LP_VIEW_OWN' ||
+        // Legacy překlepy (pro zpětnou kompatibilitu)
         perm === 'SPEDNIG_VIEW_ALL' ||
         perm === 'SPNDING_VIEW_ALL' ||
         perm === 'SPEDNING_VIEW_ALL' ||
-        perm === 'SPENDING_VIEW_ALL' ||
         perm === 'SPEDNIG_VIEW_OWN' ||
         perm === 'SPNDING_VIEW_OWN' ||
         perm === 'SPEDNING_VIEW_OWN' ||
-        perm === 'SPENDING_VIEW_OWN' ||
         perm === 'SPEDNIG_VIEW' ||
         perm === 'SPNDING_VIEW' ||
         perm === 'SPEDNING_VIEW' ||
-        perm === 'SPENDING_VIEW' ||
         perm === 'CERPANI_VIEW_ALL' ||
         perm === 'CERPANI_VIEW_OWN' ||
         perm === 'CERPANI_VIEW' ||
@@ -4260,7 +4263,7 @@ const Layout = ({ children }) => {
                       hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
                       hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
                       hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
-                      hasPermission('SPENDING_VIEW_ALL') || hasPermission('SPENDING_VIEW_OWN') || hasPermission('SPENDING_MANAGE') ||
+                      hasPermission('STATS_SPENDING_VIEW') || hasPermission('STATS_SPENDING_EDIT') || hasPermission('STATS_SPENDING_MANAGE') ||
                       hasPermission('CASHBOOK_REPORTS_VIEW') || hasPermission('CASHBOOK_REPORTS_MANAGE') || hasPermission('CASHBOOK_REPORTS_EXPORT') ||
                       hasPermission('DEFERRALS_VIEW') || hasPermission('DEFERRALS_EDIT') || hasPermission('DEFERRALS_MANAGE')
                     )) && moduleSettings.module_stats_reports_visible && (
