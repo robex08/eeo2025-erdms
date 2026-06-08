@@ -1862,6 +1862,17 @@ export default function InvoiceEvidencePage() {
     return userDetail.roles.some(role => role.kod_role === 'KONTROLOR_FAKTUR');
   }, [userDetail]);
 
+  // 🔐 Helper: Kontrola Admin a Superadmin rolí
+  const isSuperAdmin = useMemo(() => {
+    if (!userDetail?.roles || !Array.isArray(userDetail.roles)) return false;
+    return userDetail.roles.some(role => role.kod_role === 'SUPERADMIN');
+  }, [userDetail]);
+
+  const isAdmin = useMemo(() => {
+    if (!userDetail?.roles || !Array.isArray(userDetail.roles)) return false;
+    return userDetail.roles.some(role => role.kod_role === 'ADMINISTRATOR');
+  }, [userDetail]);
+
   // Kontrola oprávnění - uživatelé s MANAGE právy nebo ADMIN role vidí všechny objednávky
   // hasPermission('ADMIN') kontroluje SUPERADMIN NEBO ADMINISTRATOR (speciální alias v AuthContext)
   const canViewAllOrders = hasPermission('INVOICE_MANAGE') || 
@@ -2616,36 +2627,100 @@ export default function InvoiceEvidencePage() {
   // 🔥 DŮLEŽITÉ: Kontrolujeme PŮVODNÍ stav z DB, ne aktuální formData!
   //             Změny se projeví až po uložení do DB a reload
   const isVecnaSpravnostEditable = useMemo(() => {
-    // Musí mít alespoň jedno z těchto oprávnění:
-    // - INVOICE_MANAGE (plný přístup k fakturám)
-    // - INVOICE_MATERIAL_CORRECTNESS (pouze věcná správnost)
-    // - INVOICE_VIEW (pouze zobrazení, ne editace)
-    const hasAnyPermission = hasPermission('INVOICE_MANAGE') || 
-                             hasPermission('INVOICE_MATERIAL_CORRECTNESS') ||
-                             hasPermission('INVOICE_VIEW');
-    if (!hasAnyPermission) {
-      return false; // Bez permission vůbec nemůže zobrazit
+    // ✅ ROZŠÍŘENÁ KONTROLA OPRÁVNĚNÍ (2026-06-08)
+    // Musí splňovat alespoň jednu z těchto podmínek:
+    // 1. Admin/Superadmin - vždy může
+    // 2. INVOICE_MANAGE permission - plný přístup k fakturám
+    // 3. INVOICE_MATERIAL_CORRECTNESS permission - pouze věcná správnost
+    // 4. Garant objednávky (pokud má objednávku)
+    // 5. Autor objednávky (pokud má objednávku)
+    // 6. Příkazce objednávky (pokud má objednávku)
+    // 7. Autor faktury
+    // 8. Uživatel komu byla faktura předána (fa_predana_zam_id)
+    // 9. Backend kontroluje také: kolegy z úseku a uživatele z úseku smlouvy
+    
+    // Admin/Superadmin - vždy může
+    if (isSuperAdmin || isAdmin) {
+      return true;
     }
     
-    // 🔒 Pokud má pouze INVOICE_VIEW (bez MANAGE nebo MATERIAL_CORRECTNESS), nemůže editovat
-    if (hasOnlyViewPermission) {
-      return false; // Pouze readonly režim
+    // Kontrola práv INVOICE_MANAGE nebo INVOICE_MATERIAL_CORRECTNESS
+    const hasInvoiceManagePermission = hasPermission('INVOICE_MANAGE');
+    const hasMaterialCorrectnessPermission = hasPermission('INVOICE_MATERIAL_CORRECTNESS');
+    
+    if (hasInvoiceManagePermission || hasMaterialCorrectnessPermission) {
+      // 🔥 Pokud už JE potvrzena (1) nebo zamítnuta (2) věcná správnost V DATABÁZI → ZAMČENO (kromě INVOICE_MANAGE_ALL)
+      const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
+      const vecnaZamitnutaVDB = originalFormData?.vecna_spravnost_potvrzeno === 2;
+      if ((vecnaPotvrzenaVDB || vecnaZamitnutaVDB) && !hasPermission('INVOICE_MANAGE_ALL')) {
+        return false;
+      }
+      
+      // Pokud je objednávka dokončená → ZAMČENO
+      if (isOrderCompleted) return false;
+      
+      return true;
     }
     
-    // 🔥 KLÍČOVÁ ZMĚNA: Kontrolujeme PŮVODNÍ stav z DB, ne aktuální formData
-    // Pokud už JE potvrzena (1) nebo zamítnuta (2) věcná správnost V DATABÁZI → ZAMČENO (kromě INVOICE_MANAGE_ALL)
-    const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
-    const vecnaZamitnutaVDB = originalFormData?.vecna_spravnost_potvrzeno === 2;
-    if ((vecnaPotvrzenaVDB || vecnaZamitnutaVDB) && !hasPermission('INVOICE_MANAGE_ALL')) {
-      return false;
+    // Kontrola vztahu k objednávce (pokud má faktura objednávku)
+    // Uživatel může upravovat VS, pokud je:
+    // - Garant objednávky
+    // - Autor objednávky
+    // - Příkazce objednávky
+    if (orderData) {
+      if (orderData.garant_uzivatel_id === user_id ||
+          orderData.uzivatel_id === user_id ||
+          orderData.prikazce_id === user_id) {
+        // 🔥 Pokud už JE potvrzena (1) nebo zamítnuta (2) věcná správnost V DATABÁZI → ZAMČENO
+        const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
+        const vecnaZamitnutaVDB = originalFormData?.vecna_spravnost_potvrzeno === 2;
+        if (vecnaPotvrzenaVDB || vecnaZamitnutaVDB) {
+          return false;
+        }
+        
+        // Pokud je objednávka dokončená → ZAMČENO
+        if (isOrderCompleted) return false;
+        
+        return true;
+      }
     }
     
-    // Pokud je objednávka dokončená → ZAMČENO
-    if (isOrderCompleted) return false;
+    // Kontrola autora faktury
+    if (originalFormData?.vytvoril_uzivatel_id === user_id) {
+      // 🔥 Pokud už JE potvrzena (1) nebo zamítnuta (2) věcná správnost V DATABÁZI → ZAMČENO
+      const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
+      const vecnaZamitnutaVDB = originalFormData?.vecna_spravnost_potvrzeno === 2;
+      if (vecnaPotvrzenaVDB || vecnaZamitnutaVDB) {
+        return false;
+      }
+      
+      // Pokud je objednávka dokončená → ZAMČENO
+      if (isOrderCompleted) return false;
+      
+      return true;
+    }
     
-    // Jinak ODEMČENO
-    return true;
-  }, [originalFormData, isOrderCompleted, hasPermission, hasOnlyViewPermission]);
+    // Kontrola fa_predana_zam_id - uživatel komu byla faktura předána
+    if (originalFormData?.fa_predana_zam_id === user_id) {
+      // 🔥 Pokud už JE potvrzena (1) nebo zamítnuta (2) věcná správnost V DATABÁZI → ZAMČENO
+      const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
+      const vecnaZamitnutaVDB = originalFormData?.vecna_spravnost_potvrzeno === 2;
+      if (vecnaPotvrzenaVDB || vecnaZamitnutaVDB) {
+        return false;
+      }
+      
+      // Pokud je objednávka dokončená → ZAMČENO
+      if (isOrderCompleted) return false;
+      
+      return true;
+    }
+    
+    // Nemá žádné oprávnění → ZAMČENO
+    // ⚠️ POZNÁMKA: Backend navíc kontroluje kolegy z úseku a uživatele z úseku smlouvy,
+    // což frontend nemůže kontrolovat (nemá přístup k těmto datům).
+    // Backend je primární kontrola oprávnění.
+    return false;
+  }, [originalFormData, isOrderCompleted, hasPermission, isSuperAdmin, isAdmin, orderData, user_id]);
 
   // 🧾 Upozornění pro věcnou správnost: faktura je předána jinému zaměstnanci
   const vecnaSpravnostAssignedEmployee = useMemo(() => {

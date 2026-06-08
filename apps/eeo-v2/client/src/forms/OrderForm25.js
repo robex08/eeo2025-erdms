@@ -7519,6 +7519,59 @@ function OrderForm25() {
   const isZkontrolovana = hasWorkflowState(formData.stav_workflow_kod, 'ZKONTROLOVANA');
   const shouldLockVecnaSpravnost = currentPhase < 7 || currentPhase >= 8 || isZkontrolovana || shouldLockAllSections || isArchived;
 
+  // ✅ NOVÉ: Helper funkce pro kontrolu oprávnění na manipulaci s věcnou správností faktury
+  // 🔐 Oprávnění mají (2026-06-08):
+  // 1. Admin/Superadmin - vždy
+  // 2. Uživatel s právy INVOICE_MANAGE (kontrolor faktur)
+  // 3. Garant objednávky
+  // 4. Autor objednávky
+  // 5. Příkazce objednávky
+  // 6. Autor faktury
+  // 7. Uživatel komu byla faktura předána (fa_predana_zam_id)
+  // 8. Backend navíc kontroluje: kolegy z úseku a uživatele z úseku smlouvy
+  const canEditVecnaSpravnostFaktury = useCallback((faktura) => {
+    // ✅ Admin/Superadmin - vždy mohou
+    if (isSuperAdmin || isAdmin) {
+      return true;
+    }
+
+    // ✅ Uživatel s právy INVOICE_MANAGE (kontrolor faktur)
+    if (canManageInvoices) {
+      return true;
+    }
+
+    // ✅ Garant objednávky
+    if (formData.garant_uzivatel_id && parseInt(formData.garant_uzivatel_id, 10) === user_id) {
+      return true;
+    }
+
+    // ✅ Autor objednávky
+    if (formData.uzivatel_id && parseInt(formData.uzivatel_id, 10) === user_id) {
+      return true;
+    }
+
+    // ✅ Příkazce objednávky
+    if (formData.prikazce_id && parseInt(formData.prikazce_id, 10) === user_id) {
+      return true;
+    }
+
+    // ✅ Autor faktury
+    if (faktura && faktura.vytvoril_uzivatel_id && parseInt(faktura.vytvoril_uzivatel_id, 10) === user_id) {
+      return true;
+    }
+
+    // ✅ Uživatel komu byla faktura předána (fa_predana_zam_id)
+    if (faktura && faktura.fa_predana_zam_id && parseInt(faktura.fa_predana_zam_id, 10) === user_id) {
+      return true;
+    }
+
+    // ❌ Ostatní uživatelé nemají právo
+    // ⚠️ POZNÁMKA: Backend navíc kontroluje kolegy z úseku a uživatele z úseku smlouvy,
+    // což frontend nemůže kontrolovat (nemá přístup k těmto datům).
+    // Backend je primární kontrola oprávnění.
+    return false;
+  }, [isSuperAdmin, isAdmin, canManageInvoices, formData.garant_uzivatel_id, formData.uzivatel_id, formData.prikazce_id, user_id]);
+
   // Helper proměnné pro workflow stavy (používají se v jiných částech kódu)
   const isOrderSent = hasWorkflowState(formData.stav_workflow_kod, 'ODESLANA');
   const isOrderCancelled = hasWorkflowState(formData.stav_workflow_kod, 'ZRUSENA');
@@ -26434,7 +26487,7 @@ function OrderForm25() {
                                       <Label>Umístění majetku</Label>
                                       <Input
                                         value={faktura.vecna_spravnost_umisteni_majetku || ''}
-                                        disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                        disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
                                         onChange={(e) => {
                                           const updatedFaktury = formData.faktury.map(f =>
                                             f.id === faktura.id
@@ -26457,7 +26510,7 @@ function OrderForm25() {
                                       })()}
                                       <TextArea
                                         value={faktura.vecna_spravnost_poznamka || ''}
-                                        disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                        disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
                                         hasError={!!validationErrors[`faktura_${index + 1}_poznamka_vs`]}
                                         onChange={(e) => {
                                           const updatedFaktury = formData.faktury.map(f =>
@@ -26499,7 +26552,7 @@ function OrderForm25() {
                                             <button
                                               type="button"
                                               onClick={() => {
-                                                if (shouldLockVecnaSpravnost) return;
+                                                if (shouldLockVecnaSpravnost || !canEditVecnaSpravnostFaktury(faktura)) return;
                                                 
                                                 // Toggle: pokud už je potvrzeno, zruš to (reset na NULL)
                                                 // ✅ ZACHOVAT existující hodnoty polí (umisteni_majetku, poznamka, duvod)
@@ -26576,7 +26629,7 @@ function OrderForm25() {
                                                 const updatedFaktury = formData.faktury.map(f => f.id === faktura.id ? { ...f, ...updatedFields } : f);
                                                 updateFaktury(updatedFaktury);
                                               }}
-                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
                                               style={{
                                                 flex: '1 1 auto',
                                                 padding: '0.75rem 1.5rem',
@@ -26585,8 +26638,8 @@ function OrderForm25() {
                                                 border: faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA ? '2px solid #10b981' : '2px solid #e5e7eb',
                                                 borderRadius: '8px',
                                                 fontWeight: '600',
-                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 'not-allowed' : 'pointer',
-                                                opacity: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 0.5 : 1,
+                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? 'not-allowed' : 'pointer',
+                                                opacity: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? 0.5 : 1,
                                                 fontSize: '0.875rem',
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -26604,7 +26657,7 @@ function OrderForm25() {
                                             <button
                                               type="button"
                                               onClick={() => {
-                                                if (shouldLockVecnaSpravnost) return;
+                                                if (shouldLockVecnaSpravnost || !canEditVecnaSpravnostFaktury(faktura)) return;
                                                 
                                                 // Toggle: pokud už je zamítnuto, zruš to (reset na NULL)
                                                 // ✅ ZACHOVAT existující hodnoty polí (umisteni_majetku, poznamka, duvod)
@@ -26625,7 +26678,7 @@ function OrderForm25() {
                                                 const updatedFaktury = formData.faktury.map(f => f.id === faktura.id ? { ...f, ...updatedFields } : f);
                                                 updateFaktury(updatedFaktury);
                                               }}
-                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
                                               style={{
                                                 flex: '1 1 auto',
                                                 padding: '0.75rem 1.5rem',
@@ -26634,8 +26687,8 @@ function OrderForm25() {
                                                 border: faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA ? '2px solid #ef4444' : '2px solid #e5e7eb',
                                                 borderRadius: '8px',
                                                 fontWeight: '600',
-                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 'not-allowed' : 'pointer',
-                                                opacity: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 0.5 : 1,
+                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? 'not-allowed' : 'pointer',
+                                                opacity: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? 0.5 : 1,
                                                 fontSize: '0.875rem',
                                                 display: 'flex',
                                                 alignItems: 'center',
@@ -26669,7 +26722,7 @@ function OrderForm25() {
                                                 );
                                                 updateFaktury(updatedFaktury);
                                               }}
-                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id}
+                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
                                               placeholder={faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA 
                                                 ? "Povinný důvod zamítnutí (min. 5 znaků)..." 
                                                 : "Volitelný důvod potvrzení nebo zamítnutí..."}
@@ -26683,8 +26736,8 @@ function OrderForm25() {
                                                   ? '2px solid #ef4444'
                                                   : '1px solid #d1d5db',
                                                 borderRadius: '6px',
-                                                background: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? '#f9fafb' : 'white',
-                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id) ? 'not-allowed' : 'text',
+                                                background: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? '#f9fafb' : 'white',
+                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? 'not-allowed' : 'text',
                                                 resize: 'vertical',
                                                 fontFamily: 'inherit'
                                               }}

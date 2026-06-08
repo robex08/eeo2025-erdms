@@ -34,7 +34,7 @@ if (!defined('TBL_PRAVA')) define('TBL_PRAVA', '25_prava');
 if (!defined('TBL_ROLE')) define('TBL_ROLE', '25_role');
 if (!defined('TBL_ROLE_PRAVA')) define('TBL_ROLE_PRAVA', '25_role_prava');
 if (!defined('TBL_UZIVATELE_ROLE')) define('TBL_UZIVATELE_ROLE', '25_uzivatele_role');
-if (!defined('TBL_UZIVATELE_PRAVA')) define('TBL_UZIVATELE_PRAVA', '25_uzivatele_prava');
+// TBL_UZIVATELE_PRAVA - TABULKA NEEXISTUJE, práva jsou v TBL_ROLE_PRAVA
 if (!defined('TBL_USER_GROUPS_MEMBERS')) define('TBL_USER_GROUPS_MEMBERS', '25_user_groups_members');
 
 // UŽIVATELÉ (EXTENDED)
@@ -1592,13 +1592,14 @@ $queries['approval_get_user_permissions'] = "
     WHERE p.kod_prava LIKE 'ORDER_APPROVE%'
     AND (
         p.id IN (
-            -- Přímá práva
-            SELECT up.pravo_id FROM " . TBL_UZIVATELE_PRAVA . " up WHERE up.uzivatel_id = :user_id
+            -- Přímá práva (user_id != -1, role_id = -1)
+            SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
+            WHERE rp.user_id = :user_id AND rp.role_id = -1
         ) OR p.id IN (
-            -- Práva z rolí
+            -- Práva z rolí (user_id = -1, role_id = X)
             SELECT rp.pravo_id 
             FROM " . TBL_UZIVATELE_ROLE . " ur
-            JOIN 25_role_prava rp ON ur.role_id = rp.role_id
+            JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
             WHERE ur.uzivatel_id = :user_id
         ) OR EXISTS (
             -- Zastupování - práva zastupovaného
@@ -1608,11 +1609,16 @@ $queries['approval_get_user_permissions'] = "
             AND CURDATE() BETWEEN z.dt_od AND z.dt_do
             AND z.typ_zastupovani IN ('full', 'orders_only')
             AND (
-                p.id IN (SELECT up2.pravo_id FROM " . TBL_UZIVATELE_PRAVA . " up2 WHERE up2.uzivatel_id = z.zastupovany_id)
+                p.id IN (
+                    -- Přímá práva zastupovaného
+                    SELECT rp2.pravo_id FROM " . TBL_ROLE_PRAVA . " rp2 
+                    WHERE rp2.user_id = z.zastupovany_id AND rp2.role_id = -1
+                )
                 OR p.id IN (
+                    -- Práva z rolí zastupovaného
                     SELECT rp2.pravo_id 
                     FROM " . TBL_UZIVATELE_ROLE . " ur2
-                    JOIN 25_role_prava rp2 ON ur2.role_id = rp2.role_id
+                    JOIN " . TBL_ROLE_PRAVA . " rp2 ON ur2.role_id = rp2.role_id AND rp2.user_id = -1
                     WHERE ur2.uzivatel_id = z.zastupovany_id
                 )
             )

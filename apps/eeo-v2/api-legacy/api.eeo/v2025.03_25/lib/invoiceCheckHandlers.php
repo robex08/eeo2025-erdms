@@ -171,38 +171,28 @@ function handle_invoice_toggle_check($input, $config) {
         // Nastavit timezone
         TimezoneHelper::setMysqlTimezone($db);
 
-        // 4. Kontrola role KONTROLOR_FAKTUR nebo SUPERADMIN nebo ADMINISTRATOR
-        $stmt_role = $db->prepare("
-            SELECT COUNT(*) as has_role 
-            FROM " . TBL_UZIVATELE_ROLE . " ur
-            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
-            WHERE ur.uzivatel_id = ? 
-            AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR', 'KONTROLOR_FAKTUR')
-        ");
-        $stmt_role->execute(array($token_data['id']));
-        $role_check = $stmt_role->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$role_check || $role_check['has_role'] == 0) {
-            http_response_code(403);
-            echo json_encode(array(
-                'status' => 'error', 
-                'message' => 'Nemáte oprávnění pro kontrolu faktur. Vyžadována role KONTROLOR_FAKTUR, SUPERADMIN nebo ADMINISTRATOR.'
-            ));
-            return;
-        }
-
-        // 5. Načtení aktuálního stavu faktury (s dt_aktualizace pro lock check)
+        // 4. Načtení aktuálního stavu faktury 
+        // (s dt_aktualizace pro lock check + objednávka/smlouva pro kontrolu oprávnění)
         $stmt_faktura = $db->prepare("
             SELECT 
-                id, 
-                fa_cislo_vema,
-                objednavka_id,
-                vecna_spravnost_potvrzeno,
-                dt_potvrzeni_vecne_spravnosti,
-                dt_aktualizace,
-                rozsirujici_data 
-            FROM " . TBL_FAKTURY . " 
-            WHERE id = ? AND aktivni = 1
+                f.id, 
+                f.fa_cislo_vema,
+                f.objednavka_id,
+                f.smlouva_id,
+                f.fa_predana_zam_id,
+                f.vytvoril_uzivatel_id as faktura_vytvoril_id,
+                f.vecna_spravnost_potvrzeno,
+                f.dt_potvrzeni_vecne_spravnosti,
+                f.dt_aktualizace,
+                f.rozsirujici_data,
+                o.garant_uzivatel_id,
+                o.uzivatel_id as objednavka_vytvoril_id,
+                o.prikazce_id,
+                sm.usek_id as smlouva_usek_id
+            FROM " . TBL_FAKTURY . " f
+            LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
+            LEFT JOIN " . TBL_SMLOUVY . " sm ON f.smlouva_id = sm.id
+            WHERE f.id = ? AND f.aktivni = 1
         ");
         $stmt_faktura->execute(array($faktura_id));
         $faktura = $stmt_faktura->fetch(PDO::FETCH_ASSOC);
@@ -210,6 +200,144 @@ function handle_invoice_toggle_check($input, $config) {
         if (!$faktura) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nenalezena'));
+            return;
+        }
+
+        // 5. ✅ ROZŠÍŘENÁ KONTROLA OPRÁVNĚNÍ (2026-06-08)
+        // Mohou potvrzovat/zamítat věcnou správnost:
+        // 1. Admin/Superadmin/Kontrolor faktur - globální právo
+        // 2. Uživatel s právy INVOICE_MANAGE
+        // === Pro faktury s OBJEDNÁVKOU: ===
+        // 3. Garant objednávky
+        // 4. Autor objednávky
+        // 5. Příkazce objednávky
+        // === Pro faktury se SMLOUVOU (bez objednávky): ===
+        // 6. Uživatel z úseku smlouvy
+        // === Pro VŠECHNY faktury: ===
+        // 7. Autor faktury
+        // 8. Uživatel komu byla faktura předána (fa_predana_zam_id)
+        // 9. Kolegové z úseku uživatele komu byla faktura předána
+        
+        $user_id = $token_data['id'];
+        $has_permission = false;
+        
+        // Načíst úsek aktuálního uživatele
+        $stmt_user_usek = $db->prepare("
+            SELECT u.usek_id 
+            FROM " . TBL_UZIVATELE . " u 
+            WHERE u.id = ?
+        ");
+        $stmt_user_usek->execute(array($user_id));
+        $user_usek_data = $stmt_user_usek->fetch(PDO::FETCH_ASSOC);
+        $user_usek_id = $user_usek_data ? (int)$user_usek_data['usek_id'] : null;
+        
+        // 5a. Kontrola globálních rolí (SUPERADMIN, ADMINISTRATOR, KONTROLOR_FAKTUR)
+        $stmt_role = $db->prepare("
+            SELECT COUNT(*) as has_role 
+            FROM " . TBL_UZIVATELE_ROLE . " ur
+            INNER JOIN " . TBL_ROLE . " r ON ur.role_id = r.id
+            WHERE ur.uzivatel_id = ? 
+            AND r.kod_role IN ('SUPERADMIN', 'ADMINISTRATOR', 'KONTROLOR_FAKTUR')
+        ");
+        $stmt_role->execute(array($user_id));
+        $role_check = $stmt_role->fetch(PDO::FETCH_ASSOC);
+        
+        if ($role_check && $role_check['has_role'] > 0) {
+            $has_permission = true;
+            error_log("✅ VS oprávnění: Uživatel #{$user_id} má globální roli (Admin/Kontrolor)");
+        }
+        
+        // 5b. Kontrola práva INVOICE_MANAGE
+        // OPRAVENO 2026-06-08: Použití správné struktury práv přes TBL_ROLE_PRAVA
+        if (!$has_permission) {
+            $stmt_pravo = $db->prepare("
+                SELECT COUNT(*) as has_pravo
+                FROM " . TBL_PRAVA . " p
+                WHERE p.kod_prava = 'INVOICE_MANAGE'
+                AND p.id IN (
+                    -- Přímá práva (user_id != -1, role_id = -1)
+                    SELECT rp.pravo_id FROM " . TBL_ROLE_PRAVA . " rp 
+                    WHERE rp.user_id = ? AND rp.role_id = -1
+                    
+                    UNION
+                    
+                    -- Práva z rolí (user_id = -1, role_id = X)
+                    SELECT rp.pravo_id 
+                    FROM " . TBL_UZIVATELE_ROLE . " ur
+                    JOIN " . TBL_ROLE_PRAVA . " rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                    WHERE ur.uzivatel_id = ?
+                )
+            ");
+            $stmt_pravo->execute(array($user_id, $user_id));
+            $pravo_check = $stmt_pravo->fetch(PDO::FETCH_ASSOC);
+            
+            if ($pravo_check && $pravo_check['has_pravo'] > 0) {
+                $has_permission = true;
+                error_log("✅ VS oprávnění: Uživatel #{$user_id} má právo INVOICE_MANAGE");
+            }
+        }
+        
+        // 5c. Kontrola vztahu k OBJEDNÁVCE (pokud má faktura objednávku)
+        if (!$has_permission && $faktura['objednavka_id']) {
+            if ($faktura['garant_uzivatel_id'] == $user_id) {
+                $has_permission = true;
+                error_log("✅ VS oprávnění: Uživatel #{$user_id} je garant objednávky #{$faktura['objednavka_id']}");
+            } elseif ($faktura['objednavka_vytvoril_id'] == $user_id) {
+                $has_permission = true;
+                error_log("✅ VS oprávnění: Uživatel #{$user_id} je autor objednávky #{$faktura['objednavka_id']}");
+            } elseif ($faktura['prikazce_id'] == $user_id) {
+                $has_permission = true;
+                error_log("✅ VS oprávnění: Uživatel #{$user_id} je příkazce objednávky #{$faktura['objednavka_id']}");
+            }
+        }
+        
+        // 5d. Kontrola vztahu ke SMLOUVĚ (pokud má faktura smlouvu bez objednávky)
+        if (!$has_permission && $faktura['smlouva_id'] && !$faktura['objednavka_id']) {
+            // Uživatel z úseku smlouvy může schválit věcnou správnost
+            if ($faktura['smlouva_usek_id'] && $user_usek_id && $faktura['smlouva_usek_id'] == $user_usek_id) {
+                $has_permission = true;
+                error_log("✅ VS oprávnění: Uživatel #{$user_id} je z úseku smlouvy #{$faktura['smlouva_id']} (úsek #{$user_usek_id})");
+            }
+        }
+        
+        // 5e. Kontrola autora faktury
+        if (!$has_permission && $faktura['faktura_vytvoril_id'] == $user_id) {
+            $has_permission = true;
+            error_log("✅ VS oprávnění: Uživatel #{$user_id} je autor faktury #{$faktura_id}");
+        }
+        
+        // 5f. Kontrola fa_predana_zam_id - uživatel komu byla faktura předána
+        if (!$has_permission && $faktura['fa_predana_zam_id']) {
+            if ($faktura['fa_predana_zam_id'] == $user_id) {
+                $has_permission = true;
+                error_log("✅ VS oprávnění: Uživatel #{$user_id} je uživatel komu byla faktura předána (fa_predana_zam_id)");
+            } else {
+                // Kontrola kolegů z úseku uživatele komu byla faktura předána
+                $stmt_predany_usek = $db->prepare("
+                    SELECT u.usek_id 
+                    FROM " . TBL_UZIVATELE . " u 
+                    WHERE u.id = ?
+                ");
+                $stmt_predany_usek->execute(array($faktura['fa_predana_zam_id']));
+                $predany_usek_data = $stmt_predany_usek->fetch(PDO::FETCH_ASSOC);
+                $predany_usek_id = $predany_usek_data ? (int)$predany_usek_data['usek_id'] : null;
+                
+                // Pokud je aktuální uživatel ze stejného úseku jako uživatel komu byla faktura předána
+                if ($predany_usek_id && $user_usek_id && $predany_usek_id == $user_usek_id) {
+                    $has_permission = true;
+                    error_log("✅ VS oprávnění: Uživatel #{$user_id} je kolega z úseku #{$user_usek_id} uživatele #{$faktura['fa_predana_zam_id']} komu byla faktura předána");
+                }
+            }
+        }
+        
+        // 5g. Pokud nemá žádné oprávnění, vrátit 403
+        if (!$has_permission) {
+            error_log("❌ VS oprávnění ZAMÍTNUTO: Uživatel #{$user_id} nemá oprávnění k faktuře #{$faktura_id}");
+            http_response_code(403);
+            echo json_encode(array(
+                'status' => 'error', 
+                'message' => 'Nemáte oprávnění pro potvrzení/zamítnutí věcné správnosti této faktury. Musíte být garant, autor nebo příkazce objednávky, autor faktury, nebo mít příslušná práva.'
+            ));
             return;
         }
         
