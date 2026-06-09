@@ -493,19 +493,46 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
         : formatUserName(order.dodavatel_potvrdil_jmeno, order.dodavatel_potvrdil_prijmeni, order.dodavatel_potvrdil_titul_pred, order.dodavatel_potvrdil_titul_za),
       fallbackAction: order.dt_zverejneni ? 'Zveřejnil' : 'Potvrdil'
     },
-    VECNA_SPRAVNOST: {
-      date: order.dt_potvrzeni_vecne_spravnosti,
-      user: formatUserName(order.potvrdil_vecnou_spravnost_jmeno, order.potvrdil_vecnou_spravnost_prijmeni, order.potvrdil_vecnou_spravnost_titul_pred, order.potvrdil_vecnou_spravnost_titul_za),
-      label: 'Věcná správnost',
-      // Fallback: PŘEDCHOZÍ WORKFLOW KROK = FAKTURACE (kdo přidal fakturu)
-      fallbackDate: order.dt_faktura_pridana || (order.faktury && order.faktury[0] ? order.faktury[0].dt_vytvoreni : null),
-      fallbackUser: (order.fakturant_jmeno || order.fakturant_prijmeni)
-        ? formatUserName(order.fakturant_jmeno, order.fakturant_prijmeni, order.fakturant_titul_pred, order.fakturant_titul_za)
-        : (order.faktury && order.faktury[0] && order.faktury[0].vytvoril_uzivatel_jmeno)
-          ? formatUserName(order.faktury[0].vytvoril_uzivatel_jmeno, order.faktury[0].vytvoril_uzivatel_prijmeni, order.faktury[0].vytvoril_uzivatel_titul_pred, order.faktury[0].vytvoril_uzivatel_titul_za)
-          : null,
-      fallbackAction: 'Přidal fakturu'
-    },
+    VECNA_SPRAVNOST: (() => {
+      // 🔍 Kontrola zamítnuté věcné správnosti (z backend polí - MySQL vrací 1/0)
+      const isRejected = !!order.faktury_vecna_spravnost_zamitnuta;
+      const rejectedCount = order.faktury_vecna_spravnost_zamitnuto_count || 0;
+      const rejectionReason = order.faktury_vecna_spravnost_duvod || null;
+      const rejectionNote = order.faktury_vecna_spravnost_poznamka || null;
+      
+      // ✅ Pro potvrzenou věcnou správnost zobraz poznámku (pokud existuje)
+      const confirmedInvoice = !isRejected && order.faktury && order.faktury.length > 0
+        ? order.faktury.find(f => f.vecna_spravnost_potvrzeno === 1)
+        : null;
+      const confirmedNote = confirmedInvoice?.vecna_spravnost_poznamka || null;
+      
+      // 🔍 Sestavit extra text - VŽDY mít hodnotu pro zamítnuté
+      let extraText = null;
+      if (isRejected) {
+        // Pro zamítnuté VŽDY zobraz něco
+        extraText = rejectionReason?.trim() || rejectionNote?.trim() || 'Zamítnuto bez uvedení důvodu';
+      } else if (confirmedNote) {
+        extraText = confirmedNote;
+      }
+      
+      return {
+        date: order.dt_potvrzeni_vecne_spravnosti,
+        user: formatUserName(order.potvrdil_vecnou_spravnost_jmeno, order.potvrdil_vecnou_spravnost_prijmeni, order.potvrdil_vecnou_spravnost_titul_pred, order.potvrdil_vecnou_spravnost_titul_za),
+        label: isRejected ? 'Věcná správnost - zamítnuta' : 'Věcná správnost',
+        isRejected: isRejected,
+        isConfirmed: !!confirmedInvoice,
+        rejectedCount: rejectedCount,
+        extra: extraText,
+        // Fallback: PŘEDCHOZÍ WORKFLOW KROK = FAKTURACE (kdo přidal fakturu)
+        fallbackDate: order.dt_faktura_pridana || (order.faktury && order.faktury[0] ? order.faktury[0].dt_vytvoreni : null),
+        fallbackUser: (order.fakturant_jmeno || order.fakturant_prijmeni)
+          ? formatUserName(order.fakturant_jmeno, order.fakturant_prijmeni, order.fakturant_titul_pred, order.fakturant_titul_za)
+          : (order.faktury && order.faktury[0] && order.faktury[0].vytvoril_uzivatel_jmeno)
+            ? formatUserName(order.faktury[0].vytvoril_uzivatel_jmeno, order.faktury[0].vytvoril_uzivatel_prijmeni, order.faktury[0].vytvoril_uzivatel_titul_pred, order.faktury[0].vytvoril_uzivatel_titul_za)
+            : null,
+        fallbackAction: 'Přidal fakturu'
+      };
+    })(),
     ZKONTROLOVANA: {
       date: order.dt_potvrzeni_vecne_spravnosti,
       user: formatUserName(order.potvrdil_vecnou_spravnost_jmeno, order.potvrdil_vecnou_spravnost_prijmeni, order.potvrdil_vecnou_spravnost_titul_pred, order.potvrdil_vecnou_spravnost_titul_za),
@@ -612,7 +639,7 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
              statusCode === 'UVEREJNENA' || statusCode === 'K_UVEREJNENI_DO_REGISTRU' ? 'Zveřejnil:' :
              statusCode === 'ODESLANA' || statusCode === 'ODESLANA_KE_SCHVALENI' ? 'Odeslal:' :
              statusCode === 'FAKTURACE' ? 'Přidal fakturu:' :
-             statusCode === 'VECNA_SPRAVNOST' || statusCode === 'ZKONTROLOVANA' ? 'Potvrdil věcnou správnost:' :
+             (statusCode === 'VECNA_SPRAVNOST' || statusCode === 'ZKONTROLOVANA') ? (info.isRejected ? 'Zamítl:' : 'Potvrdil věcnou správnost:') :
              statusCode === 'NOVA' ? 'Vytvořil:' :
              statusCode === 'ZAMITNUTA' ? 'Zamítl:' :
              statusCode === 'CEKA_SE' ? 'Odložil:' :
@@ -635,8 +662,25 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
       {/* ✅ EXTRA KOMENTÁŘ: důvod zamítnutí / odložení / zrušení */}
       {info.extra && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', marginTop: '0.25rem' }}>
+          {/* Počet zamítnutých faktur (pokud je jich víc než 1) */}
+          {info.isRejected && info.rejectedCount > 1 && (
+            <div style={{ 
+              color: '#f87171', 
+              fontSize: '0.75rem', 
+              fontWeight: 600,
+              paddingLeft: '0.5rem',
+              paddingBottom: '0.25rem',
+              borderLeft: '2px solid #ef4444'
+            }}>
+              ⚠️ Zamítnuto {info.rejectedCount} faktur
+            </div>
+          )}
+          
           <div style={{ color: '#94a3b8', fontSize: '0.75rem' }}>
-            {statusCode === 'ZRUSENA' ? 'Důvod zrušení:' : 'Komentář:'}
+            {statusCode === 'ZRUSENA' ? 'Důvod zrušení:' : 
+             info.isRejected ? (info.rejectedCount > 1 ? 'Důvod z první faktury:' : 'Důvod zamítnutí:') :
+             (statusCode === 'VECNA_SPRAVNOST' || statusCode === 'ZKONTROLOVANA') ? 'Poznámka k věcné správnosti:' :
+             'Komentář:'}
           </div>
           <div style={{
             color: '#fcd34d',
@@ -662,8 +706,8 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
         </div>
       )}
       
-      {/* Pokud nemáme ani datum ani uživatele, zobraz aspoň info že je to aktuální stav */}
-      {!info.date && (!info.user || info.user === '---') && (
+      {/* Pokud nemáme ani datum ani uživatele ANI extra komentář, zobraz aspoň info že je to aktuální stav */}
+      {!info.date && (!info.user || info.user === '---') && !info.extra && (
         <div style={{ color: '#94a3b8', fontSize: '0.75rem', fontStyle: 'italic' }}>
           Aktuální stav objednávky (bez dalších detailů)
         </div>
@@ -4548,11 +4592,18 @@ const OrdersTableV3 = ({
           // Vytvoř tooltip obsah
           const tooltipContent = formatWorkflowStateTooltip(order, displayStatus, statusCode);
           
+          // 🔍 Detekce zamítnuté věcné správnosti (z backend pole - MySQL vrací 1/0)
+          const hasRejectedInvoice = statusCode === 'VECNA_SPRAVNOST' && !!order.faktury_vecna_spravnost_zamitnuta;
+          const effectiveStatusCode = hasRejectedInvoice ? 'ZAMITNUTA' : statusCode;
+          
           // Badge s ikonou
           const badge = (
-            <StatusBadge $status={statusCode}>
+            <StatusBadge $status={effectiveStatusCode}>
               <FontAwesomeIcon icon={iconMap[statusCode] || faCircleNotch} style={{ fontSize: '12px' }} />
-              <span>{displayStatus}</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', lineHeight: '1.2' }}>
+                <span>{displayStatus}</span>
+                {hasRejectedInvoice && <span style={{ fontSize: '0.65rem', textTransform: 'lowercase', fontWeight: 700, color: '#dc2626' }}>zamítnuta</span>}
+              </div>
             </StatusBadge>
           );
           

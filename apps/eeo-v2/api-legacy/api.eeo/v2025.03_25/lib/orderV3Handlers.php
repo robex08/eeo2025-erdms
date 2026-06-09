@@ -2492,6 +2492,44 @@ function handle_order_v3_list($input, $config, $queries) {
                   END
                 ) as faktury_vs_zaplaceno,
                 
+                -- 🔍 Indikátor: 1 = alespoň jedna faktura má zamítnutou věcnou správnost (vecna_spravnost_potvrzeno = 2)
+                (
+                  SELECT COUNT(*) 
+                  FROM " . TBL_FAKTURY . " f 
+                  WHERE f.objednavka_id = o.id 
+                    AND f.aktivni = 1 
+                    AND f.vecna_spravnost_potvrzeno = 2
+                ) > 0 as faktury_vecna_spravnost_zamitnuta,
+                
+                -- 🔍 Počet zamítnutých faktur
+                (
+                  SELECT COUNT(*) 
+                  FROM " . TBL_FAKTURY . " f 
+                  WHERE f.objednavka_id = o.id 
+                    AND f.aktivni = 1 
+                    AND f.vecna_spravnost_potvrzeno = 2
+                ) as faktury_vecna_spravnost_zamitnuto_count,
+                
+                -- 🔍 Důvod zamítnutí věcné správnosti (z první zamítnuté faktury)
+                (
+                  SELECT f.vecna_spravnost_duvod
+                  FROM " . TBL_FAKTURY . " f 
+                  WHERE f.objednavka_id = o.id 
+                    AND f.aktivni = 1 
+                    AND f.vecna_spravnost_potvrzeno = 2
+                  LIMIT 1
+                ) as faktury_vecna_spravnost_duvod,
+                
+                -- 🔍 Poznámka k zamítnutí věcné správnosti (z první zamítnuté faktury)
+                (
+                  SELECT f.vecna_spravnost_poznamka
+                  FROM " . TBL_FAKTURY . " f 
+                  WHERE f.objednavka_id = o.id 
+                    AND f.aktivni = 1 
+                    AND f.vecna_spravnost_potvrzeno = 2
+                  LIMIT 1
+                ) as faktury_vecna_spravnost_poznamka,
+                
                 -- Střediska (JSON array kódů)
                 o.strediska_kod,
                 
