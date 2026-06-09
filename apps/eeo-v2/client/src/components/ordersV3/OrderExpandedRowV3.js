@@ -2467,12 +2467,19 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                         </div>
                         
                         {/* Věcná správnost */}
-                        {faktura.dt_potvrzeni_vecne_spravnosti && (
+                        {(faktura.dt_potvrzeni_vecne_spravnosti || faktura.vecna_spravnost_potvrzeno === 2) && (
                           <div style={{ marginTop: '0.5rem' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
-                              <div style={{ fontSize: '0.75rem', color: '#0891b2', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                <span>✓</span>
-                                <span>Věcná správnost</span>
+                              <div style={{ 
+                                fontSize: '0.75rem', 
+                                color: faktura.vecna_spravnost_potvrzeno === 2 ? '#dc2626' : '#0891b2', 
+                                fontWeight: 600, 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                gap: '0.25rem' 
+                              }}>
+                                <span>{faktura.vecna_spravnost_potvrzeno === 2 ? '✗' : '✓'}</span>
+                                <span>Věcná správnost{faktura.vecna_spravnost_potvrzeno === 2 ? ' - zamítnuta' : ''}</span>
                               </div>
                               <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
                                 {faktura.potvrdil_vecnou_spravnost_jmeno && faktura.potvrdil_vecnou_spravnost_prijmeni
@@ -2486,6 +2493,18 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                                 {renderSmartDateInline(faktura.dt_potvrzeni_vecne_spravnosti)}
                               </div>
                               <div></div>
+                              
+                              {/* Důvod zamítnutí */}
+                              {faktura.vecna_spravnost_potvrzeno === 2 && (faktura.vecna_spravnost_duvod || faktura.vecna_spravnost_poznamka) && (
+                                <>
+                                  <div style={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>
+                                    Důvod zamítnutí:
+                                  </div>
+                                  <div style={{ fontSize: '0.85rem', color: '#dc2626', fontStyle: 'italic' }}>
+                                    {faktura.vecna_spravnost_duvod || faktura.vecna_spravnost_poznamka}
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
                         )}
@@ -2890,12 +2909,38 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                       </InvoiceDetail>
                     )}
                     
-                    {invoice.dt_potvrzeni_vecne_spravnosti && (
+                    {(invoice.dt_potvrzeni_vecne_spravnosti || invoice.vecna_spravnost_potvrzeno === 2) && (
                       <InvoiceDetail>
-                        <span style={{ fontFamily: "'Roboto', sans-serif", color: '#0891b2', fontWeight: 600 }}>Věcná správnost:</span> <span style={{ fontFamily: "'Roboto', sans-serif", color: '#64748b' }}>{formatDateTime(invoice.dt_potvrzeni_vecne_spravnosti)}</span>
-                        {(invoice.potvrdil_vecnou_spravnost_jmeno || invoice.potvrdil_vecnou_spravnost_prijmeni) && (
-                          <span style={{ fontFamily: "'Roboto', sans-serif", color: '#0891b2', fontWeight: 500 }}> - {formatUserName(invoice.potvrdil_vecnou_spravnost_jmeno, invoice.potvrdil_vecnou_spravnost_prijmeni, invoice.potvrdil_vecnou_spravnost_titul_pred, invoice.potvrdil_vecnou_spravnost_titul_za)}</span>
+                        <span style={{ 
+                          fontFamily: "'Roboto', sans-serif", 
+                          color: invoice.vecna_spravnost_potvrzeno === 2 ? '#dc2626' : '#0891b2', 
+                          fontWeight: 600 
+                        }}>
+                          Věcná správnost{invoice.vecna_spravnost_potvrzeno === 2 ? ' - ZAMÍTNUTO' : ''}:{' '}
+                        </span> 
+                        {invoice.dt_potvrzeni_vecne_spravnosti && (
+                          <span style={{ fontFamily: "'Roboto', sans-serif", color: invoice.vecna_spravnost_potvrzeno === 2 ? '#dc2626' : '#64748b' }}>{formatDateTime(invoice.dt_potvrzeni_vecne_spravnosti)}</span>
                         )}
+                        {(invoice.potvrdil_vecnou_spravnost_jmeno || invoice.potvrdil_vecnou_spravnost_prijmeni) && (
+                          <span style={{ fontFamily: "'Roboto', sans-serif", color: invoice.vecna_spravnost_potvrzeno === 2 ? '#dc2626' : '#0891b2', fontWeight: 500 }}> - {formatUserName(invoice.potvrdil_vecnou_spravnost_jmeno, invoice.potvrdil_vecnou_spravnost_prijmeni, invoice.potvrdil_vecnou_spravnost_titul_pred, invoice.potvrdil_vecnou_spravnost_titul_za)}</span>
+                        )}
+                      </InvoiceDetail>
+                    )}
+                    {/* Důvod zamítnutí - oddělený blok */}
+                    {invoice.vecna_spravnost_potvrzeno === 2 && (invoice.vecna_spravnost_duvod || invoice.vecna_spravnost_poznamka) && (
+                      <InvoiceDetail style={{ 
+                        marginTop: '0.5rem',
+                        padding: '0.5rem',
+                        backgroundColor: '#fef2f2',
+                        borderLeft: '3px solid #dc2626',
+                        borderRadius: '0.25rem'
+                      }}>
+                        <div style={{ fontFamily: "'Roboto', sans-serif", color: '#6b7280', fontWeight: 600, fontSize: '0.75rem', marginBottom: '0.25rem' }}>
+                          Důvod zamítnutí:
+                        </div>
+                        <div style={{ fontFamily: "'Roboto', sans-serif", color: '#dc2626', fontStyle: 'italic', lineHeight: '1.5' }}>
+                          {invoice.vecna_spravnost_duvod || invoice.vecna_spravnost_poznamka}
+                        </div>
                       </InvoiceDetail>
                     )}
                     {invoice.vecna_spravnost_poznamka && (
