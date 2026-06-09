@@ -30,7 +30,7 @@ Rozšíření systému o možnost platit schválené objednávky (s čerpáním 
 | **Databáze** | Přidat `objednavka_id INT(11) NULL` do `25a_pokladni_polozky` |
 | **Workflow stav** | `POKLADNA` (přidá se až při přiřazení) |
 | **Podmínka** | Pouze objednávky ≥ `SCHVALENA` |
-| **Blokovací stavy** | `VECNA_SPRAVNOST`, `ZKONTROKOVANA` → nelze k pokladně |
+| **Blokovací stavy** | `VECNA_SPRAVNOST`, `ZKONTROLOVANA` → nelze k pokladně |
 | **Oprávnění** | Pokladník + účastník (objednatel/garant/příkazce) |
 | **Částky** | Nižší OK, vyšší → upozornění + povolit |
 | **Částečné platby** | NE - vždy celá částka |
@@ -162,7 +162,7 @@ Uložit položku s vazbou na objednávku.
 4. ✅ Nemá fakturu
 5. ✅ Obsahuje LP FINKP
 6. ✅ Workflow ≥ SCHVALENA
-7. ✅ Nemá blokovací stavy (`VECNA_SPRAVNOST`, `ZKONTROKOVANA`, `FAKTURACE_CEKA`, `FAKTURA_PRIRAZENA`)
+7. ✅ Nemá blokovací stavy (`VECNA_SPRAVNOST`, `ZKONTROLOVANA`, `FAKTURACE_CEKA`, `FAKTURA_PRIRAZENA`)
 8. ✅ Kontrola částky (vyšší → varování)
 
 **Akce při úspěchu:**
@@ -484,7 +484,7 @@ const validateOrderBeforeInvoice = async (orderId) => {
 - [ ] Pokladník může přiřadit schválenou objednávku k pokladní položce
 - [ ] Systém automaticky přidá stav `POKLADNA` k objednávce
 - [ ] K objednávce v pokladně NELZE přiřadit fakturu (error 400)
-- [ ] Objednávky ve stavech `VECNA_SPRAVNOST`/`ZKONTROKOVANA` NELZE přiřadit
+- [ ] Objednávky ve stavech `VECNA_SPRAVNOST`/`ZKONTROLOVANA` NELZE přiřadit
 - [ ] Pokladní položky se započítávají do čerpání LP
 - [ ] Smazání objednávky automaticky smaže pokladní položku
 - [ ] Smazání pokladní položky automaticky uvolní objednávku

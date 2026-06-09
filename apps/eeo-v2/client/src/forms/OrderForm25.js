@@ -9022,14 +9022,15 @@ function OrderForm25() {
         const fakturaCastka = parseFloat(faCastkaRaw) || 0;
         const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
         
-        // Pokud je jen 1 LP a validní částka → auto-fill
+        // Pokud je jen 1 LP a validní částka → auto-fill s validním LP ID
         if (selectedLpValues.length === 1 && faCastkaValid) {
-          lpRows = [{
-            lp_cislo: selectedLpValues[0],
-            lp_id: null,
-            castka: fakturaCastka,
-            poznamka: ''
-          }];
+          const autoRows = buildZeroLpRowsFromSelection([selectedLpValues[0]]);
+          if (autoRows.length > 0) {
+            lpRows = autoRows.map(row => ({
+              ...row,
+              castka: fakturaCastka  // Přepsat částku z 0 na fakturu částku
+            }));
+          }
         } else {
           // Fallback pro 0 Kč faktury s více LP
           const allowZeroLpAmount = Math.abs(fakturaCastka) < 0.00001;
@@ -10527,7 +10528,14 @@ function OrderForm25() {
     const jeCheckboxZaskrtnut = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
     const jeUzDokoncena = workflowManager?.hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA') || false;
     
-    if (jeCheckboxZaskrtnut && !jeUzDokoncena && !financialControlConfirmed && !skipFinancialControlModal) {
+    // ⚠️ KRITICKÉ: Pokud uživatel PRÁVĚ ZAMÍTL věcnou správnost, NEPOUŠTĚT modal pro dokončení
+    // Backend automaticky resetuje checkbox dokončení, takže po reloadu už modal nebude
+    const hasVecnaSpravnostRejection = (formData.faktury || []).some(faktura => {
+      // Faktura byla zamítnuta nebo resetována (2 nebo 0)
+      return faktura.vecna_spravnost_potvrzeno === 2 || faktura.vecna_spravnost_potvrzeno === 0;
+    });
+    
+    if (jeCheckboxZaskrtnut && !jeUzDokoncena && !financialControlConfirmed && !skipFinancialControlModal && !hasVecnaSpravnostRejection) {
       // 🛑 STOP - NEPOKRAČOVAT v normálním save!
       // ✅ Otevřít modal pro potvrzení finanční kontroly
       setShowFinancialControlConfirmation(true);
@@ -11131,14 +11139,18 @@ function OrderForm25() {
         addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handleInvoiceChange(hasInvoices=${hasRealInvoices}, isPokladna=${isPokladna})`);
       }
 
-      // 8.5. ZKONTROLOVANA - ✅ CENTRALIZOVÁNO v WorkflowManageru
-      const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
-        (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
+      // 8.5. ZKONTROLOVANA - ❌ ODSTRANĚNO - workflow se řídí POUZE backendem
+      // Frontend nemá aktuální stav věcné správnosti faktur (může být zastaralý z cache)
+      // ZKONTROLOVANA se přidává/odebírá automaticky v invoiceCheckHandlers.php
+      // při potvrzení/zamítnutí věcné správnosti faktury
       
-      workflowStates = workflowManager.handleQualityConfirmation(workflowStates, allFakturyVecneSpravny);
-      if (allFakturyVecneSpravny) {
-        addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handleQualityConfirmation(true) - všechny faktury (${formData.faktury.length}x) potvrzeny`);
-      }
+      // ⚠️ DEPRECATED FRONTEND LOGIC - způsobovala race conditions:
+      // const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
+      //   (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
+      // workflowStates = workflowManager.handleQualityConfirmation(workflowStates, allFakturyVecneSpravny);
+      
+      // Backend má authoritative stav - frontend jen ZOBRAZUJE
+      addDebugLog('info', 'SAVE', 'workflow', '⚠️ ZKONTROLOVANA workflow managed by BACKEND only (invoiceCheckHandlers.php)');
 
       // 9. DOKONCENA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const jeDokonceniPotvrzeno = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
@@ -12926,6 +12938,10 @@ function OrderForm25() {
             jmeno: updatedFormDataImmediate.jmeno || parsedUpdateData.jmeno,
             email: updatedFormDataImmediate.email || parsedUpdateData.email,
             telefon: updatedFormDataImmediate.telefon || parsedUpdateData.telefon,
+            // ✅ KRITICKÉ: Workflow pole MUSÍ být z backendu (backend řídí workflow)
+            potvrzeni_dokonceni_objednavky: parsedUpdateData.potvrzeni_dokonceni_objednavky,
+            dokoncil_id: parsedUpdateData.dokoncil_id,
+            dt_dokonceni: parsedUpdateData.dt_dokonceni,
             // ✅ KRITICKÉ: EXPLICITNĚ zachovat dynamická pole financování Z PŮVODNÍHO formData
             // Backend při UPDATE nemusí vracet všechna pole financování → použij PŮVODNÍ hodnoty z formData
             zpusob_financovani: parsedUpdateData.zpusob_financovani || formData.zpusob_financovani || updatedFormDataImmediate.zpusob_financovani,
@@ -26532,6 +26548,8 @@ function OrderForm25() {
                                   {/* ✅ VĚCNÁ SPRÁVNOST - 3 TLAČÍTKA + DŮVOD POD TLAČÍTKY */}
                                   {(() => {
                                     const hasError = !!validationErrors[`faktura_${index + 1}_vecna_spravnost`];
+                                    const isButtonDisabled = shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura);
+                                    
                                     return (
                                       <>
                                         <div style={{
@@ -26541,7 +26559,8 @@ function OrderForm25() {
                                           border: hasError ? '2px solid #ef4444' : '1px solid #d1d5db',
                                           borderRadius: '6px'
                                         }}>
-                                          {/* 3 tlačítka pro výběr statusu */}
+                                          {/* 3 tlačítka - SKRYTÁ když disabled */}
+                                          {!isButtonDisabled && (
                                           <div style={{
                                             display: 'flex',
                                             gap: '0.75rem',
@@ -26629,7 +26648,6 @@ function OrderForm25() {
                                                 const updatedFaktury = formData.faktury.map(f => f.id === faktura.id ? { ...f, ...updatedFields } : f);
                                                 updateFaktury(updatedFaktury);
                                               }}
-                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
                                               style={{
                                                 flex: '1 1 auto',
                                                 padding: '0.75rem 1.5rem',
@@ -26678,7 +26696,6 @@ function OrderForm25() {
                                                 const updatedFaktury = formData.faktury.map(f => f.id === faktura.id ? { ...f, ...updatedFields } : f);
                                                 updateFaktury(updatedFaktury);
                                               }}
-                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
                                               style={{
                                                 flex: '1 1 auto',
                                                 padding: '0.75rem 1.5rem',
@@ -26702,8 +26719,9 @@ function OrderForm25() {
                                               Zamítnout
                                             </button>
                                           </div>
+                                          )}
                                           
-                                          {/* Pole pro DŮVOD rozhodnutí - POD tlačítky */}
+                                          {/* Pole pro DŮVOD - viditelné vždy, jen disabled */}
                                           <div style={{ marginTop: '1rem' }}>
                                             <label style={{
                                               display: 'block',
@@ -26722,7 +26740,7 @@ function OrderForm25() {
                                                 );
                                                 updateFaktury(updatedFaktury);
                                               }}
-                                              disabled={shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)}
+                                              disabled={isButtonDisabled}
                                               placeholder={faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA 
                                                 ? "Povinný důvod zamítnutí (min. 5 znaků)..." 
                                                 : "Volitelný důvod potvrzení nebo zamítnutí..."}
@@ -26736,8 +26754,8 @@ function OrderForm25() {
                                                   ? '2px solid #ef4444'
                                                   : '1px solid #d1d5db',
                                                 borderRadius: '6px',
-                                                background: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? '#f9fafb' : 'white',
-                                                cursor: (shouldLockVecnaSpravnost || !!faktura.potvrdil_vecnou_spravnost_id || !canEditVecnaSpravnostFaktury(faktura)) ? 'not-allowed' : 'text',
+                                                background: isButtonDisabled ? '#f9fafb' : 'white',
+                                                cursor: isButtonDisabled ? 'not-allowed' : 'text',
                                                 resize: 'vertical',
                                                 fontFamily: 'inherit'
                                               }}
@@ -26764,7 +26782,7 @@ function OrderForm25() {
                                             )}
                                           </div>
                                           
-                                          {/* Status badge POD důvodem */}
+                                          {/* Status badge - zobrazuje se vždy když je status nastaven */}
                                           {faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA && (
                                             <div style={{
                                               marginTop: '1rem',
@@ -26790,6 +26808,17 @@ function OrderForm25() {
                                                   })()}
                                                   {' '}<strong>•</strong>{' '}
                                                   <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                                </div>
+                                              )}
+                                              {faktura.vecna_spravnost_duvod && (
+                                                <div style={{ 
+                                                  fontSize: '0.8rem', 
+                                                  color: '#15803d', 
+                                                  fontWeight: '400', 
+                                                  marginTop: '0.5rem',
+                                                  fontStyle: 'italic'
+                                                }}>
+                                                  <strong>Důvod:</strong> {faktura.vecna_spravnost_duvod}
                                                 </div>
                                               )}
                                             </div>
@@ -26820,6 +26849,17 @@ function OrderForm25() {
                                                   })()}
                                                   {' '}<strong>•</strong>{' '}
                                                   <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
+                                                </div>
+                                              )}
+                                              {faktura.vecna_spravnost_duvod && (
+                                                <div style={{ 
+                                                  fontSize: '0.8rem', 
+                                                  color: '#991b1b', 
+                                                  fontWeight: '400', 
+                                                  marginTop: '0.5rem',
+                                                  fontStyle: 'italic'
+                                                }}>
+                                                  <strong>Důvod:</strong> {faktura.vecna_spravnost_duvod}
                                                 </div>
                                               )}
                                             </div>
