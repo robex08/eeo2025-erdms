@@ -20,6 +20,7 @@ node_modules/
 api-legacy/api.eeo/test*.php
 api-legacy/api.eeo/test*.sql
 api-legacy/test*.php
+api-legacy/*.sql
 _tests/
 _tests/**
 
@@ -39,6 +40,8 @@ manualy/**
 # 🗂️ CACHE A BACKUP
 backup/
 backup/**
+client/backup/
+client/backup/**
 *.backup
 *.backup-*
 build-*.log

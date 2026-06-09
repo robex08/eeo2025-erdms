@@ -26825,8 +26825,8 @@ function OrderForm25() {
                                             </div>
                                           )}
                                           
-                                          {/* Info řádek - kdo a kdy potvrdil (POUZE ve fázi ZKONTROLOVANA 8+) */}
-                                          {(() => {
+                                          {/* //REM/ Info řádek - kdo a kdy potvrdil - DUPLICITNÍ, již zobrazeno v badge výše */}
+                                          {/* {(() => {
                                             const isChecked = (isEditing ? (currentData.vecna_spravnost_potvrzeno === 1) : (faktura.vecna_spravnost_potvrzeno === 1));
                                             const hasRealId = faktura.id && !String(faktura.id).startsWith('temp-');
                                             const hasTimestamp = faktura.dt_potvrzeni_vecne_spravnosti;
@@ -26853,7 +26853,7 @@ function OrderForm25() {
                                                 <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
                                               </div>
                                             );
-                                          })()}
+                                          })()} */}
                                         </div>
                                         
                                         {hasError && (
@@ -26909,10 +26909,10 @@ function OrderForm25() {
                                   justifyContent: 'space-between'
                                 }}>
                                   <div>
-                                    <strong>Vytvořil:</strong> {faktura.vytvoril_jmeno || getUserNameById(faktura.vytvoril_uzivatel_id)}
+                                    <strong>Zaevidoval FA:</strong> {faktura.vytvoril_jmeno || getUserNameById(faktura.vytvoril_uzivatel_id)}
                                   </div>
                                   <div>
-                                    <strong>Vytvořeno:</strong> {prettyDate(faktura.dt_vytvoreni)}
+                                    <strong>Datum:</strong> {prettyDate(faktura.dt_vytvoreni)}
                                   </div>
                                 </div>
                               )}

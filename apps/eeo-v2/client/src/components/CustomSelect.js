@@ -366,8 +366,12 @@ const CustomSelect = ({
     return option.nazev || option.label || option.nazev_stavu || option.name || option.value || String(option);
   }
 }) => {
-  const isOpen = selectStates?.[field] || false;
-  const searchTerm = searchStates?.[field] || '';
+  // 🔥 FALLBACK: Lokální state pro isOpen a searchTerm pokud nejsou poskytnuty (musí být PRVNÍ!)
+  const [localIsOpen, setLocalIsOpen] = useState(false);
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
+
+  const isOpen = selectStates?.[field] ?? localIsOpen ?? false;
+  const searchTerm = searchStates?.[field] ?? localSearchTerm ?? '';
   const dropdownRef = useRef(null);
   const buttonRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -381,10 +385,28 @@ const CustomSelect = ({
 
   // 🔥 OPRAVA: Fallback pro toggleSelect pokud není poskytnut
   const safeToggleSelect = toggleSelect || ((fieldName) => {
-    if (setSelectStates) {
-      setSelectStates(prev => ({ ...prev, [fieldName]: !prev[fieldName] }));
-    }
+    actualSetSelectStates(prev => ({ ...prev, [fieldName]: !prev[fieldName] }));
   });
+
+
+  // 🔥 WRAPPER: Fallback settery která fungují s oběma globálním a lokálním state
+  const actualSetSelectStates = (fn) => {
+    if (setSelectStates) {
+      setSelectStates(fn);
+    } else {
+      const newState = fn({ [field]: isOpen });
+      setLocalIsOpen(newState[field] ?? false);
+    }
+  };
+
+  const actualSetSearchStates = (fn) => {
+    if (setSearchStates) {
+      setSearchStates(fn);
+    } else {
+      const newState = fn({ [field]: searchTerm });
+      setLocalSearchTerm(newState[field] ?? '');
+    }
+  };
 
   const filteredOptions = filterOptions(options, searchTerm, field);
   
@@ -426,37 +448,45 @@ const CustomSelect = ({
   const selectedOption = multiple
     ? null // Pro multiselect nepoužíváme selectedOption
     : options.find(opt => {
+      // Normalizuj field name - odstraň _edit suffix (pro inline edity)
+      const baseField = field.replace(/_edit$/, '');
+
       // Pro stav objednávky porovnávej podle kod_stavu/kod
-      if (field === 'statusFilter') {
+      if (baseField === 'statusFilter') {
         return (opt.kod_stavu || opt.kod) === value || opt === value;
       }
       // Pro pageSize porovnávej podle value
-      if (field === 'pageSize') {
+      if (baseField === 'pageSize') {
         return (opt.value || opt.id) === value || opt === value;
       }
       // Pro financování porovnávej podle kodu
-      if (field === 'zpusob_financovani') {
+      if (baseField === 'zpusob_financovani') {
         return (opt.kod || opt.id) === value || opt === value;
       }
       // Pro LP kódy porovnávej podle ID (field může být 'lp_kod' nebo 'lp_kod_row_123')
-      if (field === 'lp_kod' || field.startsWith('lp_kod_')) {
+      if (baseField === 'lp_kod' || baseField.startsWith('lp_kod_')) {
         return (opt.id || opt.kod) === value || String(opt.id) === String(value) || opt === value;
       }
       // Pro druhy objednávky porovnávej podle value (kod_stavu)
-      if (field === 'druh_objednavky_kod') {
+      if (baseField === 'druh_objednavky_kod') {
         return (opt.value || opt.kod || opt.id) === value || opt === value;
       }
       // Pro filtry faktur porovnávej podle value
-      if (field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' || field === 'ma_prilohy' ||
-          field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola' || field === 'ma_prilohy_floating') {
+      if (baseField === 'fa_typ' || baseField === 'stav' || baseField === 'vecna_kontrola' || baseField === 'ma_prilohy' ||
+          baseField === 'floating_fa_typ' || baseField === 'floating_stav' || baseField === 'floating_vecna_kontrola' || baseField === 'ma_prilohy_floating') {
         return (opt.value || opt.id) === value || opt === value;
       }
       // Pro rok, období a sekci (ProfilePage) porovnávej podle value
-      if (field === 'vychozi_rok' || field === 'vychozi_obdobi' || field === 'vychozi_sekce_po_prihlaseni') {
+      if (baseField === 'vychozi_rok' || baseField === 'vychozi_obdobi' || baseField === 'vychozi_sekce_po_prihlaseni') {
         return opt.value === value || opt === value;
       }
       // 🆕 Pro garanta a příkazce (ProfilePage) porovnávej podle value (může být string nebo number)
-      if (field === 'vychozi_garant_id' || field === 'vychozi_prikazce_id') {
+      if (baseField === 'vychozi_garant_id' || baseField === 'vychozi_prikazce_id') {
+        return opt.value == value || opt === value; // == pro porovnání string vs number
+      }
+      // 🆕 Pro možnosti zastupování porovnávej podle value (může být string nebo number)
+      if (baseField === 'zastupovany_id' || baseField === 'zastupce_user_id' || baseField === 'zastupce_role_id' || 
+          baseField === 'zastupce_usek_id' || baseField === 'zastupce_lokalita_id') {
         return opt.value == value || opt === value; // == pro porovnání string vs number
       }
       // Pro ostatní podle ID
@@ -528,14 +558,14 @@ const CustomSelect = ({
     const handleClickOutside = (event) => {
       if (buttonRef.current && !buttonRef.current.contains(event.target) &&
           dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setSelectStates(prev => ({ ...prev, [field]: false }));
-        setSearchStates(prev => ({ ...prev, [field]: '' }));
+        actualSetSelectStates(prev => ({ ...prev, [field]: false }));
+        actualSetSearchStates(prev => ({ ...prev, [field]: '' }));
       }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isOpen, field, setSelectStates, setSearchStates]);
+  }, [isOpen, field, actualSetSelectStates, actualSetSearchStates]);
 
   // Reset highlighted indexu při otevření/zavření dropdownu
   useEffect(() => {
@@ -557,6 +587,9 @@ const CustomSelect = ({
           return (opt.value || opt.kod || opt.id) === value || opt === value;
         } else if (field === 'fa_typ') {
           return opt.id === value || opt === value;
+        } else if (field === 'zastupovany_id' || field === 'zastupce_user_id' || field === 'zastupce_role_id' || 
+                   field === 'zastupce_usek_id' || field === 'zastupce_lokalita_id') {
+          return opt.value == value || opt === value;
         } else {
           return (opt.id || opt.user_id || opt.uzivatel_id) === value || opt === value;
         }
@@ -643,8 +676,8 @@ const CustomSelect = ({
       // Pro faktury - vracíme PŘÍMO hodnotu (string), respektujeme prázdný string pro "Vše"
       optionValue = 'value' in option ? option.value : (option.id !== undefined ? option.id : option);
       onChange(optionValue); // PŘÍMO hodnota, ne event wrapper
-      setSelectStates(prev => ({ ...prev, [field]: false }));
-      setSearchStates(prev => ({ ...prev, [field]: '' }));
+      actualSetSelectStates(prev => ({ ...prev, [field]: false }));
+      actualSetSearchStates(prev => ({ ...prev, [field]: '' }));
       if (setTouchedSelectFields && typeof setTouchedSelectFields === 'function') {
         setTouchedSelectFields(prev => ({ ...prev, [field]: true }));
       }
@@ -655,13 +688,17 @@ const CustomSelect = ({
     } else if (field === 'vychozi_garant_id' || field === 'vychozi_prikazce_id') {
       // 🆕 Pro garanta a příkazce (ProfilePage) ukládej value
       optionValue = option.value || option.id || option.user_id || option;
+    } else if (field === 'zastupovany_id' || field === 'zastupce_user_id' || field === 'zastupce_role_id' || 
+               field === 'zastupce_usek_id' || field === 'zastupce_lokalita_id') {
+      // 🆕 Pro možnosti zastupování ukládej value
+      optionValue = option.value || option.id || option;
     } else {
       optionValue = option.id || option.user_id || option.uzivatel_id || option;
     }
 
     onChange({ target: { value: optionValue } });
-    setSelectStates(prev => ({ ...prev, [field]: false }));
-    setSearchStates(prev => ({ ...prev, [field]: '' }));
+    actualSetSelectStates(prev => ({ ...prev, [field]: false }));
+    actualSetSearchStates(prev => ({ ...prev, [field]: '' }));
 
     // Označ pole jako touched při výběru hodnoty
     if (setTouchedSelectFields && typeof setTouchedSelectFields === 'function') {
@@ -683,6 +720,9 @@ const CustomSelect = ({
     // Pro LP kódy ukládej ID LP záznamu
     if (field === 'lp_kod' || field.startsWith('lp_kod_')) {
       optionValue = option.id || option.kod || option;
+    } else if (field === 'zastupovany_id' || field === 'zastupce_user_id' || field === 'zastupce_role_id' || 
+               field === 'zastupce_usek_id' || field === 'zastupce_lokalita_id') {
+      optionValue = option.value || option.id || option;
     } else {
       optionValue = option.id || option.user_id || option.value || option;
     }
@@ -780,8 +820,8 @@ const CustomSelect = ({
 
               case 'Escape':
                 e.preventDefault();
-                setSelectStates(prev => ({ ...prev, [field]: false }));
-                setSearchStates(prev => ({ ...prev, [field]: '' }));
+                actualSetSelectStates(prev => ({ ...prev, [field]: false }));
+                actualSetSearchStates(prev => ({ ...prev, [field]: '' }));
                 buttonRef.current?.focus();
                 break;
 
@@ -796,8 +836,8 @@ const CustomSelect = ({
                 }
 
                 // Zavři dropdown
-                setSelectStates(prev => ({ ...prev, [field]: false }));
-                setSearchStates(prev => ({ ...prev, [field]: '' }));
+                actualSetSelectStates(prev => ({ ...prev, [field]: false }));
+                actualSetSearchStates(prev => ({ ...prev, [field]: '' }));
 
                 // Po zavření vrať focus na button a simuluj Tab pro přeskok na další pole
                 setTimeout(() => {
@@ -922,7 +962,7 @@ const CustomSelect = ({
                 type="text"
                 placeholder="Vyhledat..."
                 value={searchTerm}
-                onChange={(e) => setSearchStates(prev => ({
+                onChange={(e) => actualSetSearchStates(prev => ({
                   ...prev,
                   [field]: e.target.value
                 }))}
@@ -1018,20 +1058,21 @@ const CustomSelect = ({
 
               const isSelected = multiple
                 ? (Array.isArray(value) ? value.some(v => v == (option.id || option.user_id || option.value || option.kod || option)) : false)
-                : field === 'statusFilter'
-                ? ((option.kod_stavu || option.kod) === value || option === value)
-                : field === 'pageSize'
-                ? ((option.value || option.id) === value || option === value)
-                : field === 'zpusob_financovani'
-                ? ((option.kod || option.id) === value || option === value)
-                : (field === 'lp_kod' || field.startsWith('lp_kod_'))
-                ? ((option.id || option.kod) === value || String(option.id) === String(value) || option === value)
-                : field === 'druh_objednavky_kod'
-                ? ((option.value || option.kod || option.id) === value || option === value)
-                : field === 'fa_typ' || field === 'stav' || field === 'vecna_kontrola' || field === 'ma_prilohy' ||
-                  field === 'floating_fa_typ' || field === 'floating_stav' || field === 'floating_vecna_kontrola' || field === 'ma_prilohy_floating'
-                ? ((option.value || option.id) === value || option === value)
-                : ((option.id || option.user_id || option.uzivatel_id) === value || option === value);
+                : (() => {
+                  const baseField = field.replace(/_edit$/, '');
+                  if (baseField === 'statusFilter') return (option.kod_stavu || option.kod) === value || option === value;
+                  if (baseField === 'pageSize') return (option.value || option.id) === value || option === value;
+                  if (baseField === 'zpusob_financovani') return (option.kod || option.id) === value || option === value;
+                  if (baseField === 'lp_kod' || baseField.startsWith('lp_kod_')) return (option.id || option.kod) === value || String(option.id) === String(value) || option === value;
+                  if (baseField === 'druh_objednavky_kod') return (option.value || option.kod || option.id) === value || option === value;
+                  if (baseField === 'fa_typ' || baseField === 'stav' || baseField === 'vecna_kontrola' || baseField === 'ma_prilohy' ||
+                      baseField === 'floating_fa_typ' || baseField === 'floating_stav' || baseField === 'floating_vecna_kontrola' || baseField === 'ma_prilohy_floating') 
+                    return (option.value || option.id) === value || option === value;
+                  if (baseField === 'zastupovany_id' || baseField === 'zastupce_user_id' || baseField === 'zastupce_role_id' || 
+                      baseField === 'zastupce_usek_id' || baseField === 'zastupce_lokalita_id') 
+                    return option.value == value || option === value;
+                  return (option.id || option.user_id || option.uzivatel_id) === value || option === value;
+                })();
 
               const isHighlighted = highlightedIndex === index;
 

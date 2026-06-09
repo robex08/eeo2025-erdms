@@ -909,6 +909,51 @@ function handle_substitution_manageable_users($data, $pdo) {
 }
 
 /**
+ * POST substitution/all-users-for-admin
+ * Admin – seznam VŠECH aktivních uživatelů pro konfiguraci "Možnosti zastupování"
+ * (bez filtrů na práva - admini definují kdo může koho zastupovat)
+ */
+function handle_substitution_all_users_for_admin($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    try {
+        $current_user_id = (int)$token_data['id'];
+        $stmt = $pdo->prepare($queries['substitution_all_users_for_admin']);
+        $stmt->bindParam(':current_user_id', $current_user_id, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $users = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $titul_pred = trim($row['titul_pred'] . ' ');
+            $titul_za   = trim(' ' . $row['titul_za']);
+            $users[] = array(
+                'id'         => (int)$row['id'],
+                'username'   => $row['username'],
+                'jmeno'      => $row['jmeno'],
+                'prijmeni'   => $row['prijmeni'],
+                'cele_jmeno' => trim($titul_pred . $row['jmeno'] . ' ' . $row['prijmeni'] . $titul_za),
+                'email'      => $row['email'],
+            );
+        }
+
+        return array('status' => 'ok', 'data' => $users, 'count' => count($users));
+
+    } catch (PDOException $e) {
+        error_log("substitution_all_users_for_admin DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání všech uživatelů');
+    }
+}
+
+/**
  * Helper: založí záznam do audit logu zastupování
  */
 function log_zastupovani_akce($pdo, $zastupovani_id, $zastupce_id, $zastupovany_id, $akce_typ, $objekt_typ, $objekt_id, $popis_akce = null) {
@@ -1200,6 +1245,369 @@ function log_substitution_action($pdo, $zastupovani_id, $zastupce_id, $zastupova
     } catch (PDOException $e) {
         error_log("❌ SUBSTITUTION AUDIT ERROR: " . $e->getMessage());
         return false;
+    }
+}
+
+// ============ MOŽNOSTI ZASTUPOVÁNÍ (VAZEBNÍ TABULKA) ============
+
+/**
+ * POST moznosti-zastupovani/list
+ * Načtení seznamu možností zastupování pro uživatele
+ */
+function handle_moznosti_zastupovani_list($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    $zastupovany_id = isset($data['zastupovany_id']) ? (int)$data['zastupovany_id'] : 0;
+    $current_user_id = (int)$token_data['id'];
+
+    // Validace: uživatel může načíst pouze své vlastní nebo musí být admin
+    if ($zastupovany_id !== $current_user_id && !$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut - můžete načíst pouze své vlastní možnosti');
+    }
+
+    // Pokud není specifikováno zastupovany_id, načti pro current user
+    if ($zastupovany_id === 0) {
+        $zastupovany_id = $current_user_id;
+    }
+
+    try {
+        $stmt = $pdo->prepare($queries['moznosti_zastupovani_list']);
+        $stmt->bindParam(':zastupovany_id', $zastupovany_id, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rules = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $rule = array(
+                'id' => (int)$row['id'],
+                'zastupovany_id' => (int)$row['zastupovany_id'],
+                'typ_zastupce' => $row['typ_zastupce'],
+                'poznamka' => $row['poznamka'],
+                'aktivni' => (int)$row['aktivni'],
+                'dt_vytvoreni' => $row['dt_vytvoreni'],
+                'dt_aktualizace' => $row['dt_aktualizace'],
+            );
+
+            // Přidání detailů podle typu
+            switch ($row['typ_zastupce']) {
+                case 'user':
+                    $rule['zastupce_user_id'] = (int)$row['zastupce_user_id'];
+                    $rule['zastupce_display'] = trim($row['zastupce_user_jmeno'] . ' ' . $row['zastupce_user_prijmeni']) . ' (' . $row['zastupce_user_username'] . ')';
+                    break;
+                case 'role':
+                    $rule['zastupce_role_id'] = (int)$row['zastupce_role_id'];
+                    $rule['zastupce_display'] = $row['zastupce_role_nazev'] . ' (' . $row['zastupce_role_kod'] . ')';
+                    break;
+                case 'usek':
+                    $rule['zastupce_usek_id'] = (int)$row['zastupce_usek_id'];
+                    $rule['zastupce_display'] = $row['zastupce_usek_nazev'] . ' (' . $row['zastupce_usek_zkr'] . ')';
+                    break;
+                case 'lokalita':
+                    $rule['zastupce_lokalita_id'] = (int)$row['zastupce_lokalita_id'];
+                    $rule['zastupce_display'] = $row['zastupce_lokalita_nazev'] . ' (' . $row['zastupce_lokalita_kod'] . ')';
+                    break;
+            }
+
+            $rules[] = $rule;
+        }
+
+        return array('status' => 'ok', 'data' => $rules, 'count' => count($rules));
+
+    } catch (PDOException $e) {
+        error_log("moznosti_zastupovani_list DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání možností zastupování');
+    }
+}
+
+/**
+ * POST moznosti-zastupovani/create
+ * Vytvoření nové možnosti zastupování
+ */
+function handle_moznosti_zastupovani_create($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    // Pouze admin může vytvářet pravidla
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    $zastupovany_id = isset($data['zastupovany_id']) ? (int)$data['zastupovany_id'] : 0;
+    $typ_zastupce = isset($data['typ_zastupce']) ? trim($data['typ_zastupce']) : '';
+    // Prázdný string, null, 0, nebo "0" se konvertuje na NULL pro skupiny
+    $zastupce_user_id = !empty($data['zastupce_user_id']) ? (int)$data['zastupce_user_id'] : null;
+    $zastupce_role_id = !empty($data['zastupce_role_id']) ? (int)$data['zastupce_role_id'] : null;
+    $zastupce_usek_id = !empty($data['zastupce_usek_id']) ? (int)$data['zastupce_usek_id'] : null;
+    $zastupce_lokalita_id = !empty($data['zastupce_lokalita_id']) ? (int)$data['zastupce_lokalita_id'] : null;
+    $poznamka = isset($data['poznamka']) ? trim($data['poznamka']) : '';
+    $vytvoril_user_id = (int)$token_data['id'];
+
+    // Validace
+    if ($zastupovany_id <= 0) {
+        return array('status' => 'error', 'message' => 'Neplatné zastupovany_id');
+    }
+
+    if (!in_array($typ_zastupce, ['user', 'role', 'usek', 'lokalita'])) {
+        return array('status' => 'error', 'message' => 'Neplatný typ_zastupce');
+    }
+
+    // Kontrola, že odpovídající ID je vyplněné/správné
+    $valid_target = false;
+    // Pro 'user' musí být konkrétní ID > 0
+    if ($typ_zastupce === 'user' && $zastupce_user_id > 0) {
+        $valid_target = true;
+    }
+    // Pro skupiny (role, usek, lokalita) je OK i NULL (znamená "Všechny")
+    elseif (in_array($typ_zastupce, ['role', 'usek', 'lokalita'])) {
+        $valid_target = true;
+    }
+
+    if (!$valid_target) {
+        return array('status' => 'error', 'message' => 'Pro uživatele musí být vybrán konkrétní zástupce');
+    }
+
+    try {
+        // Kontrola duplikátu
+        $stmt_dup = $pdo->prepare($queries['moznosti_zastupovani_check_duplicate']);
+        $stmt_dup->execute([
+            ':zastupovany_id' => $zastupovany_id,
+            ':typ_zastupce' => $typ_zastupce,
+            ':zastupce_user_id' => $zastupce_user_id,
+            ':zastupce_role_id' => $zastupce_role_id,
+            ':zastupce_usek_id' => $zastupce_usek_id,
+            ':zastupce_lokalita_id' => $zastupce_lokalita_id,
+            ':exclude_id' => 0, // při create nechceme nic vyloučit
+        ]);
+        $dup_result = $stmt_dup->fetch(PDO::FETCH_ASSOC);
+
+        if ($dup_result && (int)$dup_result['cnt'] > 0) {
+            return array('status' => 'error', 'message' => 'Toto pravidlo již existuje');
+        }
+
+        // Vytvoření pravidla
+        $stmt = $pdo->prepare($queries['moznosti_zastupovani_create']);
+        $stmt->execute([
+            ':zastupovany_id' => $zastupovany_id,
+            ':typ_zastupce' => $typ_zastupce,
+            ':zastupce_user_id' => $zastupce_user_id,
+            ':zastupce_role_id' => $zastupce_role_id,
+            ':zastupce_usek_id' => $zastupce_usek_id,
+            ':zastupce_lokalita_id' => $zastupce_lokalita_id,
+            ':poznamka' => $poznamka,
+            ':vytvoril_user_id' => $vytvoril_user_id,
+        ]);
+
+        $new_id = (int)$pdo->lastInsertId();
+
+        error_log("✅ MOŽNOST ZASTUPOVÁNÍ VYTVOŘENA: ID=$new_id, zastupovany=$zastupovany_id, typ=$typ_zastupce, vytvoril=$vytvoril_user_id");
+
+        return array('status' => 'ok', 'message' => 'Možnost zastupování vytvořena', 'id' => $new_id);
+
+    } catch (PDOException $e) {
+        error_log("moznosti_zastupovani_create DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při vytváření možnosti zastupování: ' . $e->getMessage());
+    }
+}
+
+/**
+ * POST moznosti-zastupovani/delete
+ * Smazání (deaktivace) možnosti zastupování
+ */
+function handle_moznosti_zastupovani_delete($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    // Pouze admin může mazat pravidla
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    $id = isset($data['id']) ? (int)$data['id'] : 0;
+
+    if ($id <= 0) {
+        return array('status' => 'error', 'message' => 'Neplatné ID');
+    }
+
+    try {
+        $stmt = $pdo->prepare($queries['moznosti_zastupovani_delete']);
+        $stmt->bindParam(':id', $id, PDO::PARAM_INT);
+        $stmt->execute();
+
+        error_log("✅ MOŽNOST ZASTUPOVÁNÍ SMAZÁNA: ID=$id");
+
+        return array('status' => 'ok', 'message' => 'Možnost zastupování smazána');
+
+    } catch (PDOException $e) {
+        error_log("moznosti_zastupovani_delete DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při mazání možnosti zastupování');
+    }
+}
+
+/**
+ * POST moznosti-zastupovani/update
+ * Aktualizace existující možnosti zastupování
+ */
+function handle_moznosti_zastupovani_update($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    // Pouze admin může upravovat pravidla
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    $id = isset($data['id']) ? (int)$data['id'] : 0;
+    $zastupovany_id = isset($data['zastupovany_id']) ? (int)$data['zastupovany_id'] : 0;
+    $typ_zastupce = isset($data['typ_zastupce']) ? trim($data['typ_zastupce']) : '';
+    // Prázdný string, null, 0, nebo "0" se konvertuje na NULL pro skupiny
+    $zastupce_user_id = !empty($data['zastupce_user_id']) ? (int)$data['zastupce_user_id'] : null;
+    $zastupce_role_id = !empty($data['zastupce_role_id']) ? (int)$data['zastupce_role_id'] : null;
+    $zastupce_usek_id = !empty($data['zastupce_usek_id']) ? (int)$data['zastupce_usek_id'] : null;
+    $zastupce_lokalita_id = !empty($data['zastupce_lokalita_id']) ? (int)$data['zastupce_lokalita_id'] : null;
+    $poznamka = isset($data['poznamka']) ? trim($data['poznamka']) : '';
+
+    // Validace
+    if ($id <= 0) {
+        return array('status' => 'error', 'message' => 'Neplatné ID');
+    }
+
+    if ($zastupovany_id <= 0) {
+        return array('status' => 'error', 'message' => 'Neplatné zastupovany_id');
+    }
+
+    if (!in_array($typ_zastupce, ['user', 'role', 'usek', 'lokalita'])) {
+        return array('status' => 'error', 'message' => 'Neplatný typ_zastupce');
+    }
+
+    // Kontrola, že odpovídající ID je vyplněné/správné
+    $valid_target = false;
+    // Pro 'user' musí být konkrétní ID > 0
+    if ($typ_zastupce === 'user' && $zastupce_user_id > 0) {
+        $valid_target = true;
+    }
+    // Pro skupiny (role, usek, lokalita) je OK i NULL (znamená "Všechny")
+    elseif (in_array($typ_zastupce, ['role', 'usek', 'lokalita'])) {
+        $valid_target = true;
+    }
+
+    if (!$valid_target) {
+        return array('status' => 'error', 'message' => 'Pro uživatele musí být vybrán konkrétní zástupce');
+    }
+
+    try {
+        // Aktualizace pravidla
+        // POZN: Duplikátní kontrola se NEVYKONÁVÁ při UPDATE - uživatel si nemůže vytvořit duplikát editací
+        $stmt = $pdo->prepare($queries['moznosti_zastupovani_update']);
+        $stmt->execute([
+            ':id' => $id,
+            ':zastupovany_id' => $zastupovany_id,
+            ':typ_zastupce' => $typ_zastupce,
+            ':zastupce_user_id' => $zastupce_user_id,
+            ':zastupce_role_id' => $zastupce_role_id,
+            ':zastupce_usek_id' => $zastupce_usek_id,
+            ':zastupce_lokalita_id' => $zastupce_lokalita_id,
+            ':poznamka' => $poznamka,
+        ]);
+
+        error_log("✅ MOŽNOST ZASTUPOVÁNÍ AKTUALIZOVÁNA: ID=$id, zastupovany=$zastupovany_id, typ=$typ_zastupce");
+
+        return array('status' => 'ok', 'message' => 'Možnost zastupování aktualizována');
+
+    } catch (PDOException $e) {
+        error_log("moznosti_zastupovani_update DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při aktualizaci možnosti zastupování: ' . $e->getMessage());
+    }
+}
+
+/**
+ * POST moznosti-zastupovani/list-all
+ * Admin: seznam VŠECH možností zastupování v systému
+ */
+function handle_moznosti_zastupovani_list_all($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    // Pouze admin může načíst všechny možnosti
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    try {
+        $stmt = $pdo->prepare($queries['moznosti_zastupovani_list_all']);
+        $stmt->execute();
+
+        $rules = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $rule = array(
+                'id' => (int)$row['id'],
+                'zastupovany_id' => (int)$row['zastupovany_id'],
+                'zastupovany_username' => $row['zastupovany_username'],
+                'zastupovany_jmeno' => $row['zastupovany_jmeno'],
+                'zastupovany_prijmeni' => $row['zastupovany_prijmeni'],
+                'zastupovany_display' => trim($row['zastupovany_jmeno'] . ' ' . $row['zastupovany_prijmeni']) . ' (' . $row['zastupovany_username'] . ')',
+                'typ_zastupce' => $row['typ_zastupce'],
+                'poznamka' => $row['poznamka'],
+                'aktivni' => (int)$row['aktivni'],
+                'dt_vytvoreni' => $row['dt_vytvoreni'],
+            );
+
+            // Přidání detailů podle typu
+            switch ($row['typ_zastupce']) {
+                case 'user':
+                    $rule['zastupce_user_id'] = (int)$row['zastupce_user_id'];
+                    $rule['zastupce_user_username'] = $row['zastupce_user_username'];
+                    $rule['zastupce_user_jmeno'] = $row['zastupce_user_jmeno'];
+                    $rule['zastupce_user_prijmeni'] = $row['zastupce_user_prijmeni'];
+                    $rule['zastupce_display'] = trim($row['zastupce_user_jmeno'] . ' ' . $row['zastupce_user_prijmeni']) . ' (' . $row['zastupce_user_username'] . ')';
+                    break;
+                case 'role':
+                    $rule['zastupce_role_id'] = $row['zastupce_role_id'] ? (int)$row['zastupce_role_id'] : null;
+                    $rule['zastupce_role_kod'] = $row['zastupce_role_kod'];
+                    $rule['zastupce_role_nazev'] = $row['zastupce_role_nazev'];
+                    $rule['zastupce_display'] = $row['zastupce_role_id'] ? ($row['zastupce_role_nazev'] . ' (' . $row['zastupce_role_kod'] . ')') : 'Všechny role';
+                    break;
+                case 'usek':
+                    $rule['zastupce_usek_id'] = $row['zastupce_usek_id'] ? (int)$row['zastupce_usek_id'] : null;
+                    $rule['zastupce_usek_zkr'] = $row['zastupce_usek_zkr'];
+                    $rule['zastupce_usek_nazev'] = $row['zastupce_usek_nazev'];
+                    $rule['zastupce_display'] = $row['zastupce_usek_id'] ? ($row['zastupce_usek_nazev'] . ' (' . $row['zastupce_usek_zkr'] . ')') : 'Všechny úseky';
+                    break;
+                case 'lokalita':
+                    $rule['zastupce_lokalita_id'] = $row['zastupce_lokalita_id'] ? (int)$row['zastupce_lokalita_id'] : null;
+                    $rule['zastupce_lokalita_kod'] = $row['zastupce_lokalita_kod'];
+                    $rule['zastupce_lokalita_nazev'] = $row['zastupce_lokalita_nazev'];
+                    $rule['zastupce_display'] = $row['zastupce_lokalita_id'] ? ($row['zastupce_lokalita_nazev'] . ' (' . $row['zastupce_lokalita_kod'] . ')') : 'Všechny lokality';
+                    break;
+            }
+
+            $rules[] = $rule;
+        }
+
+        return array('status' => 'ok', 'data' => $rules, 'count' => count($rules));
+
+    } catch (PDOException $e) {
+        error_log("moznosti_zastupovani_list_all DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání možností zastupování');
     }
 }
 

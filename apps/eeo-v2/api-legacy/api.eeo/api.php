@@ -203,6 +203,7 @@ define('TBL_STICKY_POZNAMKY_KOMENTARE', '25_sticky_poznamky_komentare');
 
 // DATABASE TABLE NAMES - UŽIVATELÉ (EXTENDED)
 define('TBL_UZIVATELE_ZASTUPOVANI', '25_uzivatele_zastupovani');
+define('TBL_MOZNOSTI_ZASTUPOVANI', '25_moznosti_zastupovani');
 define('TBL_ZASTUPOVANI_AKCE_LOG', '25_zastupovani_akce_log');
 define('TBL_UZIVATELE_POZNAMKY', '25_uzivatele_poznamky');
 
@@ -1806,6 +1807,68 @@ switch ($endpoint) {
     case 'substitution/manageable-users':
         if ($request_method === 'POST') {
             $response = handle_substitution_manageable_users($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'substitution/all-users-for-admin':
+        if ($request_method === 'POST') {
+            $response = handle_substitution_all_users_for_admin($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+
+    // ============ MOŽNOSTI ZASTUPOVÁNÍ (VAZEBNÍ TABULKA) ============
+    case 'moznosti-zastupovani/list':
+        if ($request_method === 'POST') {
+            $response = handle_moznosti_zastupovani_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'moznosti-zastupovani/create':
+        if ($request_method === 'POST') {
+            $response = handle_moznosti_zastupovani_create($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'moznosti-zastupovani/delete':
+        if ($request_method === 'POST') {
+            $response = handle_moznosti_zastupovani_delete($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'moznosti-zastupovani/update':
+        if ($request_method === 'POST') {
+            $response = handle_moznosti_zastupovani_update($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'moznosti-zastupovani/list-all':
+        if ($request_method === 'POST') {
+            $response = handle_moznosti_zastupovani_list_all($input, $pdo);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode($response, JSON_UNESCAPED_UNICODE);
         } else {

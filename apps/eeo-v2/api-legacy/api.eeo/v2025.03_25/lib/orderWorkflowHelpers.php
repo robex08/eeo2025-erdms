@@ -344,4 +344,223 @@ function updateWorkflowAfterRegistrFilled($db, $orderId, $updateData = []) {
     }
 }
 
+/**
+ * Aktualizuje workflow stav objednávky po potvrzení věcné správnosti faktury
+ * 
+ * Logika:
+ * - Pokud je objednávka ve stavu VECNA_SPRAVNOST a faktura byla potvrzena
+ * - Zkontroluje, zda všechny faktury objednávky mají potvrzenou věcnou správnost
+ * - Pokud ano, přidá ZKONTROLOVANA do workflow
+ * 
+ * @param PDO $db - Databázové spojení
+ * @param int $orderId - ID objednávky
+ * @return bool - Úspěch aktualizace
+ */
+function updateWorkflowAfterVecnaSpravnostApproved($db, $orderId) {
+    try {
+        // Načíst aktuální objednávku
+        $stmt = $db->prepare("SELECT stav_workflow_kod FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
+        $stmt->execute();
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} nenalezena");
+            return false;
+        }
+        
+        $workflowStates = parseWorkflowStates($order['stav_workflow_kod']);
+        
+        // Skip pokud workflow neobsahuje VECNA_SPRAVNOST
+        if (!in_array('VECNA_SPRAVNOST', $workflowStates)) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} nemá stav VECNA_SPRAVNOST, přeskakuji");
+            return true;
+        }
+        
+        // Skip pokud už má ZKONTROLOVANA
+        if (in_array('ZKONTROLOVANA', $workflowStates)) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} už má stav ZKONTROLOVANA");
+            return true;
+        }
+        
+        // Zkontrolovat, zda VŠECHNY faktury objednávky mají potvrzenou věcnou správnost
+        $stmt_invoices = $db->prepare("
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN vecna_spravnost_potvrzeno = 1 THEN 1 ELSE 0 END) as confirmed
+            FROM " . TBL_FAKTURY . "
+            WHERE objednavka_id = :order_id AND aktivni = 1
+        ");
+        $stmt_invoices->bindParam(':order_id', $orderId, PDO::PARAM_INT);
+        $stmt_invoices->execute();
+        $invoice_stats = $stmt_invoices->fetch(PDO::FETCH_ASSOC);
+        
+        $totalInvoices = (int)$invoice_stats['total'];
+        $confirmedInvoices = (int)$invoice_stats['confirmed'];
+        
+        // Pokud nemá žádné faktury nebo ne všechny jsou potvrzeny, neděláme nic
+        if ($totalInvoices === 0) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} nemá žádné faktury");
+            return true;
+        }
+        
+        if ($confirmedInvoices < $totalInvoices) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} má {$confirmedInvoices}/{$totalInvoices} potvrzených faktur, čekáme na zbytek");
+            return true;
+        }
+        
+        // Všechny faktury jsou potvrzeny → přidat ZKONTROLOVANA
+        $workflowStates[] = 'ZKONTROLOVANA';
+        error_log("[WORKFLOW] Přidán stav ZKONTROLOVANA pro objednávku ID {$orderId} (všech {$totalInvoices} faktur potvrzeno)");
+        
+        // Seřadit stavy podle logického pořadí
+        $workflowOrder = [
+            'NOVA', 'ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA',
+            'ROZPRACOVANA', 'ODESLANA', 'ZRUSENA', 'POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT', 
+            'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'
+        ];
+        
+        usort($workflowStates, function($a, $b) use ($workflowOrder) {
+            $indexA = array_search($a, $workflowOrder);
+            $indexB = array_search($b, $workflowOrder);
+            $indexA = ($indexA === false) ? 999 : $indexA;
+            $indexB = ($indexB === false) ? 999 : $indexB;
+            return $indexA - $indexB;
+        });
+        
+        // Odstranit duplicity
+        $workflowStates = array_unique($workflowStates);
+        $workflowStates = array_values($workflowStates);
+        
+        // Uložit zpět jako JSON
+        $newWorkflowCode = json_encode($workflowStates);
+        
+        // Nastavit stav_objednavky podle posledního workflow stavu
+        $newStavObjednavky = getStavObjednavkyFromWorkflow($db, $newWorkflowCode);
+        
+        // Aktualizovat DB
+        $stmt = $db->prepare("UPDATE " . get_orders_table_name() . " 
+                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky 
+                              WHERE id = :id");
+        $stmt->bindParam(':workflow_kod', $newWorkflowCode, PDO::PARAM_STR);
+        $stmt->bindParam(':stav_objednavky', $newStavObjednavky, PDO::PARAM_STR);
+        $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
+        $result = $stmt->execute();
+        
+        if ($result) {
+            error_log("[WORKFLOW] ✅ Aktualizován workflow pro objednávku ID {$orderId}: " . $newWorkflowCode . " → stav: {$newStavObjednavky}");
+        } else {
+            error_log("[WORKFLOW] ❌ Chyba při aktualizaci workflow pro objednávku ID {$orderId}");
+        }
+        
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("[WORKFLOW] ❌ Chyba při aktualizaci workflow po potvrzení věcné správnosti pro objednávku ID {$orderId}: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Odebere ZKONTROLOVANA z workflow a vrátí objednávku na VECNA_SPRAVNOST
+ * 
+ * Používá se když je věcná správnost faktury zamítnuta nebo resetována
+ * a už nejsou všechny faktury potvrzeny.
+ * 
+ * @param PDO $db - Databázové spojení
+ * @param int $orderId - ID objednávky
+ * @return bool - Úspěch aktualizace
+ */
+function removeZkontrolovanaFromWorkflow($db, $orderId) {
+    try {
+        // Načíst aktuální objednávku
+        $stmt = $db->prepare("SELECT stav_workflow_kod FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
+        $stmt->execute();
+        $order = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$order) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} nenalezena");
+            return false;
+        }
+        
+        $workflowStates = parseWorkflowStates($order['stav_workflow_kod']);
+        
+        // Skip pokud workflow nemá ZKONTROLOVANA
+        if (!in_array('ZKONTROLOVANA', $workflowStates)) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} nemá stav ZKONTROLOVANA, není co odebírat");
+            return true;
+        }
+        
+        // Zkontrolovat, zda VŠECHNY faktury objednávky mají potvrzenou věcnou správnost
+        $stmt_invoices = $db->prepare("
+            SELECT COUNT(*) as total,
+                   SUM(CASE WHEN vecna_spravnost_potvrzeno = 1 THEN 1 ELSE 0 END) as confirmed
+            FROM " . TBL_FAKTURY . "
+            WHERE objednavka_id = :order_id AND aktivni = 1
+        ");
+        $stmt_invoices->bindParam(':order_id', $orderId, PDO::PARAM_INT);
+        $stmt_invoices->execute();
+        $invoice_stats = $stmt_invoices->fetch(PDO::FETCH_ASSOC);
+        
+        $totalInvoices = (int)$invoice_stats['total'];
+        $confirmedInvoices = (int)$invoice_stats['confirmed'];
+        
+        // Pokud jsou stále všechny faktury potvrzeny, neděláme nic
+        if ($totalInvoices > 0 && $confirmedInvoices === $totalInvoices) {
+            error_log("[WORKFLOW] Objednávka ID {$orderId} má stále všech {$totalInvoices} faktur potvrzeno, ponecháváme ZKONTROLOVANA");
+            return true;
+        }
+        
+        // Ne všechny faktury jsou potvrzeny → odebrat ZKONTROLOVANA
+        $workflowStates = array_filter($workflowStates, function($state) {
+            return $state !== 'ZKONTROLOVANA';
+        });
+        $workflowStates = array_values($workflowStates); // Reindex
+        
+        error_log("[WORKFLOW] Odebrán stav ZKONTROLOVANA z objednávky ID {$orderId} ({$confirmedInvoices}/{$totalInvoices} faktur potvrzeno)");
+        
+        // Seřadit stavy podle logického pořadí
+        $workflowOrder = [
+            'NOVA', 'ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'ZAMITNUTA', 'SCHVALENA',
+            'ROZPRACOVANA', 'ODESLANA', 'ZRUSENA', 'POTVRZENA', 'UVEREJNIT', 'NEUVEREJNIT', 
+            'UVEREJNENA', 'FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'
+        ];
+        
+        usort($workflowStates, function($a, $b) use ($workflowOrder) {
+            $indexA = array_search($a, $workflowOrder);
+            $indexB = array_search($b, $workflowOrder);
+            $indexA = ($indexA === false) ? 999 : $indexA;
+            $indexB = ($indexB === false) ? 999 : $indexB;
+            return $indexA - $indexB;
+        });
+        
+        // Uložit zpět jako JSON
+        $newWorkflowCode = json_encode($workflowStates);
+        
+        // Nastavit stav_objednavky podle posledního workflow stavu (mělo by vrátit "Věcná správnost")
+        $newStavObjednavky = getStavObjednavkyFromWorkflow($db, $newWorkflowCode);
+        
+        // Aktualizovat DB
+        $stmt = $db->prepare("UPDATE " . get_orders_table_name() . " 
+                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky 
+                              WHERE id = :id");
+        $stmt->bindParam(':workflow_kod', $newWorkflowCode, PDO::PARAM_STR);
+        $stmt->bindParam(':stav_objednavky', $newStavObjednavky, PDO::PARAM_STR);
+        $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
+        $result = $stmt->execute();
+        
+        if ($result) {
+            error_log("[WORKFLOW] ✅ Workflow vrácen na VECNA_SPRAVNOST pro objednávku ID {$orderId}: " . $newWorkflowCode . " → stav: {$newStavObjednavky}");
+        } else {
+            error_log("[WORKFLOW] ❌ Chyba při vrácení workflow pro objednávku ID {$orderId}");
+        }
+        
+        return $result;
+        
+    } catch (Exception $e) {
+        error_log("[WORKFLOW] ❌ Chyba při odebrání ZKONTROLOVANA z objednávky ID {$orderId}: " . $e->getMessage());
+        return false;
+    }
+}
+
 ?>

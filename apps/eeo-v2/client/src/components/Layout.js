@@ -3282,18 +3282,24 @@ const Layout = ({ children }) => {
           showToast(`Vráceno na ${adminName}`, { type: 'success', timeout: 5000 });
         }
         
-        // 🔄 Zůstat na aktuální URL (admin může pokračovat tam, kde impersonovaný uživatel skončil)
-        // ŽÁDNÝ navigate() - zůstáváme na místě!
-        const forcedReturnUrl = sessionStorage.getItem('impersonation_return_url');
-        if (forcedReturnUrl) {
-          setTimeout(() => {
-            const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-            if (currentUrl !== forcedReturnUrl) {
-              navigate(forcedReturnUrl, { replace: true });
-            }
-            sessionStorage.removeItem('impersonation_return_url');
-          }, 50);
-        }
+        // 🔄 AUTOMATICKÝ RELOAD stránky pro aplikování správných práv
+        // Po přepnutí zpět na admina je nutné znovu načíst stránku, aby se aplikovala správná práva
+        sessionStorage.removeItem('impersonation_return_url'); // Vyčistit před reload
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000); // 1s delay pro zobrazení toast zprávy
+        
+        // Poznámka: Následující kód navigace již nebude proveden kvůli reload
+        // const forcedReturnUrl = sessionStorage.getItem('impersonation_return_url');
+        // if (forcedReturnUrl) {
+        //   setTimeout(() => {
+        //     const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        //     if (currentUrl !== forcedReturnUrl) {
+        //       navigate(forcedReturnUrl, { replace: true });
+        //     }
+        //     sessionStorage.removeItem('impersonation_return_url');
+        //   }, 50);
+        // }
       } else if (!success && showToast) {
         showToast('Nepodařilo se vrátit na původní účet', { type: 'error', timeout: 5000 });
       }

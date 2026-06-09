@@ -39,6 +39,7 @@
 
 require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/handlers.php';
+require_once __DIR__ . '/orderWorkflowHelpers.php';
 
 /**
  * Helper - Ověří, zda je faktura uzamčena pro změnu věcné správnosti
@@ -437,10 +438,29 @@ function handle_invoice_toggle_check($input, $config) {
                 error_log("🔴 Zamítnuta VS faktury #$faktura_id - stav změněn na V_RESENI, LP čerpání smazáno");
             }
             
-            // 9. COMMIT transakce
+            // 9. ⚠️ AUTOMATICKÁ SPRÁVA WORKFLOW A STAVU OBJEDNÁVKY
+            // podle věcné správnosti faktury
+            if (!empty($faktura['objednavka_id'])) {
+                $objednavka_id = (int)$faktura['objednavka_id'];
+                
+                if ($status === VS_STATUS_POTVRZENA) {
+                    // ✅ POTVRZENO - zkontrolovat, zda jsou všechny faktury potvrzeny
+                    // Pokud ano, přidat ZKONTROLOVANA do workflow a změnit stav na "Zkontrolována"
+                    updateWorkflowAfterVecnaSpravnostApproved($db, $objednavka_id);
+                    error_log("✅ Spuštěna aktualizace workflow pro objednávku #{$objednavka_id} po potvrzení VS faktury #{$faktura_id}");
+                    
+                } elseif ($status === VS_STATUS_ZAMITNUTA || $status === VS_STATUS_NEPOTVRZENA) {
+                    // ❌ ZAMÍTNUTO nebo RESETOVÁNO - zkontrolovat, zda ještě nejsou všechny faktury potvrzeny
+                    // Pokud ne, odebrat ZKONTROLOVANA z workflow a vrátit stav na "Věcná správnost"
+                    removeZkontrolovanaFromWorkflow($db, $objednavka_id);
+                    error_log("🔄 Spuštěna revize workflow pro objednávku #{$objednavka_id} po zamítnutí/resetu VS faktury #{$faktura_id}");
+                }
+            }
+            
+            // 10. COMMIT transakce
             $db->commit();
             
-            // 🔔 10. NOTIFIKACE podle statusu věcné správnosti
+            // 🔔 11. NOTIFIKACE podle statusu věcné správnosti (MIMO TRANSAKCI)
             try {
                 if ($status === VS_STATUS_POTVRZENA) {
                     // ✅ POTVRZENO - poslat notifikaci přes organizační hierarchii
@@ -469,7 +489,7 @@ function handle_invoice_toggle_check($input, $config) {
                 error_log("⚠️ Chyba při odesílání notifikace pro fakturu #$faktura_id: " . $notifErr->getMessage());
             }
             
-            // 11. Úspěšná odpověď
+            // 12. Úspěšná odpověď
             http_response_code(200);
             echo json_encode(array(
                 'status' => 'success',
