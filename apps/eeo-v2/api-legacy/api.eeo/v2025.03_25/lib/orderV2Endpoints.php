@@ -1652,63 +1652,27 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
                             $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
                         }
+                        // ⚠️ VĚCNÁ SPRÁVNOST - metadata (poznamka, umisteni_majetku) lze ukládat
+                        // ❌ WORKFLOW POLE (vecna_spravnost_potvrzeno, potvrdil_vecnou_spravnost_id, dt_potvrzeni, vecna_spravnost_duvod)
+                        // se ukládají POUZE přes invoiceCheckHandlers.php endpoint!
+                        // Důvod: Nesmí se přepisovat ID uživatele, který fakturu potvrdil/zamítl
+                        
                         if (isset($faktura['vecna_spravnost_poznamka'])) {
                             $update_fields[] = 'vecna_spravnost_poznamka = ?';
                             $update_values[] = $faktura['vecna_spravnost_poznamka'];
                         }
-                        if (isset($faktura['vecna_spravnost_duvod'])) {
-                            $update_fields[] = 'vecna_spravnost_duvod = ?';
-                            $update_values[] = $faktura['vecna_spravnost_duvod'];
-                        }
-                        if (isset($faktura['vecna_spravnost_potvrzeno'])) {
-                            $vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
-                            $update_fields[] = 'vecna_spravnost_potvrzeno = ?';
-                            $update_values[] = $vs_status;
-
-                            // ✅ VŽDY nastavit potvrdil_vecnou_spravnost_id a dt při status > 0
-                            if ($vs_status > 0) {
-                                $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
-                                $update_values[] = $current_user_id;
-                                $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
-                                $update_values[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
-                            } else {
-                                // Reset při status 0
-                                $update_fields[] = 'potvrdil_vecnou_spravnost_id = NULL';
-                                $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = NULL';
-                            }
+                        if (isset($faktura['vecna_spravnost_umisteni_majetku'])) {
+                            $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
+                            $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
                         }
                         
-                        // ✅ AUTOMATIKA: Potvrzení nebo zamítnutí věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
-                        // Stejná logika jako v InvoiceEvidence modulu
-                        if (isset($faktura['vecna_spravnost_potvrzeno']) && (int)$faktura['vecna_spravnost_potvrzeno'] !== 0) {
-                            // Načíst aktuální stav faktury
-                            $current_check = $db->prepare("SELECT stav FROM `{$faktury_table}` WHERE id = ?");
-                            $current_check->execute(array($faktura_id));
-                            $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
-                            
-                            if ($current_row && $current_row['stav'] === 'ZAEVIDOVANA') {
-                                // Je ve stavu ZAEVIDOVANA → automaticky přepnout na VECNA_SPRAVNOST nebo V_RESENI
-                                $newStatus = ((int)$faktura['vecna_spravnost_potvrzeno'] === 1) ? 'VECNA_SPRAVNOST' : 'V_RESENI';
-                                $update_fields[] = 'stav = ?';
-                                $update_values[] = $newStatus;
-                                error_log("🔄 [OrderV2] Auto změna stavu faktury #{$faktura_id}: ZAEVIDOVANA → {$newStatus} (věcná správnost změněna)");
-                            }
-                        }
+                        // ❌ NEUKLÁDÁME workflow pole v obecném update:
+                        // - vecna_spravnost_potvrzeno
+                        // - potvrdil_vecnou_spravnost_id
+                        // - dt_potvrzeni_vecne_spravnosti
+                        // - vecna_spravnost_duvod
                         
-                        // ✅ AUTOMATIKA: Zrušení věcné správnosti → vrátit stav zpět na ZAEVIDOVANA pokud je aktuálně VECNA_SPRAVNOST
-                        if (isset($faktura['vecna_spravnost_potvrzeno']) && (int)$faktura['vecna_spravnost_potvrzeno'] === 0) {
-                            // Načíst aktuální stav faktury
-                            $current_check = $db->prepare("SELECT stav FROM `{$faktury_table}` WHERE id = ?");
-                            $current_check->execute(array($faktura_id));
-                            $current_row = $current_check->fetch(PDO::FETCH_ASSOC);
-                            
-                            if ($current_row && $current_row['stav'] === 'VECNA_SPRAVNOST') {
-                                // Je ve stavu VECNA_SPRAVNOST → vrátit zpět na ZAEVIDOVANA
-                                $update_fields[] = 'stav = ?';
-                                $update_values[] = 'ZAEVIDOVANA';
-                                error_log("🔙 [OrderV2] Auto změna stavu faktury #{$faktura_id}: VECNA_SPRAVNOST → ZAEVIDOVANA (zrušena věcná správnost)");
-                            }
-                        }
+                        // Tato pole se nastavují VÝHRADNĚ přes /invoices/check/{id}/verify endpoint
                         
                         // Pokud jsou nějaká pole k aktualizaci
                         if (!empty($update_fields)) {
