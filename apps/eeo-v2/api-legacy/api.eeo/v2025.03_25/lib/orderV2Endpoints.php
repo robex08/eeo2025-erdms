@@ -23,6 +23,7 @@ require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/limitovanePrislibyCerpaniHandlers_v2_pdo.php';
 require_once __DIR__ . '/smlouvyHandlers.php';
 require_once __DIR__ . '/hierarchyOrderFilters.php';
+require_once __DIR__ . '/orderWorkflowHelpers.php';
 
 /**
  * GET /api/order-v2/{id}
@@ -1384,7 +1385,9 @@ function handle_order_v2_update($input, $config, $queries) {
             
             foreach ($dbData as $key => $value) {
                 // ✅ CRITICAL FIX: Never update core IDs (creator/orderer) or id
-                if ($key !== 'id' && $key !== 'uzivatel_id' && $key !== 'objednatel_id') {
+                if ($key !== 'id' && 
+                    $key !== 'uzivatel_id' && 
+                    $key !== 'objednatel_id') {
                     $setParts[] = "`{$key}` = :{$key}";
                     $values[$key] = $value;
                 }
@@ -1471,6 +1474,11 @@ function handle_order_v2_update($input, $config, $queries) {
             
             $invoices_processed = 0;
             $invoices_updated = false;
+            
+            // ⚠️ WORKFLOW MANAGEMENT - sledovat změny ve věcné správnosti
+            $vs_status_changed = false;
+            $any_vs_approved = false;
+            $any_vs_rejected_or_reset = false;
             
             if (isset($input['faktury']) && is_array($input['faktury'])) {
                 $faktury_table = get_invoices_table_name(); // TBL_FAKTURY (25a_objednavky_faktury)
@@ -1588,6 +1596,12 @@ function handle_order_v2_update($input, $config, $queries) {
                         // 🔍 DEBUG fa_vema_kod
                         error_log("🔍 [INVOICE UPDATE] invoice_id={$faktura['id']}, fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
                         
+                        // ⚠️ Načíst PŮVODNÍ stav faktury pro detekci změn ve věcné správnosti
+                        $stmt_orig = $db->prepare("SELECT vecna_spravnost_potvrzeno FROM `{$faktury_table}` WHERE id = ?");
+                        $stmt_orig->execute(array($faktura_id));
+                        $original_invoice = $stmt_orig->fetch(PDO::FETCH_ASSOC);
+                        $original_vs_status = $original_invoice ? (int)$original_invoice['vecna_spravnost_potvrzeno'] : 0;
+                        
                         $update_fields = array();
                         $update_values = array();
                         
@@ -1652,11 +1666,7 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
                             $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
                         }
-                        // ⚠️ VĚCNÁ SPRÁVNOST - metadata (poznamka, umisteni_majetku) lze ukládat
-                        // ❌ WORKFLOW POLE (vecna_spravnost_potvrzeno, potvrdil_vecnou_spravnost_id, dt_potvrzeni, vecna_spravnost_duvod)
-                        // se ukládají POUZE přes invoiceCheckHandlers.php endpoint!
-                        // Důvod: Nesmí se přepisovat ID uživatele, který fakturu potvrdil/zamítl
-                        
+                        // ✅ VĚCNÁ SPRÁVNOST - metadata (poznamka, umisteni_majetku) lze ukládat
                         if (isset($faktura['vecna_spravnost_poznamka'])) {
                             $update_fields[] = 'vecna_spravnost_poznamka = ?';
                             $update_values[] = $faktura['vecna_spravnost_poznamka'];
@@ -1666,13 +1676,55 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
                         }
                         
-                        // ❌ NEUKLÁDÁME workflow pole v obecném update:
-                        // - vecna_spravnost_potvrzeno
-                        // - potvrdil_vecnou_spravnost_id
-                        // - dt_potvrzeni_vecne_spravnosti
-                        // - vecna_spravnost_duvod
-                        
-                        // Tato pole se nastavují VÝHRADNĚ přes /invoices/check/{id}/verify endpoint
+                        // ⚠️ VĚCNÁ SPRÁVNOST - STATUS (vecna_spravnost_potvrzeno)
+                        // Povolit změnu statusu z OrderForm, ale automaticky nastavit metadata
+                        $new_vs_status = null;
+                        if (isset($faktura['vecna_spravnost_potvrzeno'])) {
+                            $new_vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
+                            
+                            // Detekce změny stavu
+                            if ($new_vs_status !== $original_vs_status) {
+                                error_log("⚠️ [VS CHANGE] Invoice #{$faktura_id}: {$original_vs_status} → {$new_vs_status}");
+                                
+                                $vs_status_changed = true; // Zaznamenat změnu pro workflow management
+                                
+                                $update_fields[] = 'vecna_spravnost_potvrzeno = ?';
+                                $update_values[] = $new_vs_status;
+                                
+                                if ($new_vs_status === VS_STATUS_NEPOTVRZENA) {
+                                    // Reset všech VS údajů
+                                    $update_fields[] = 'potvrdil_vecnou_spravnost_id = NULL';
+                                    $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = NULL';
+                                    $update_fields[] = 'vecna_spravnost_duvod = NULL';
+                                    $any_vs_rejected_or_reset = true;
+                                    
+                                } elseif ($new_vs_status === VS_STATUS_POTVRZENA || $new_vs_status === VS_STATUS_ZAMITNUTA) {
+                                    // Nastavit kdo a kdy potvrdil/zamítl
+                                    $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
+                                    $update_values[] = $current_user_id;
+                                    
+                                    $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
+                                    $update_values[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+                                    
+                                    // Důvod pokud je poslán
+                                    if (isset($faktura['vecna_spravnost_duvod'])) {
+                                        $update_fields[] = 'vecna_spravnost_duvod = ?';
+                                        $update_values[] = $faktura['vecna_spravnost_duvod'];
+                                    }
+                                    
+                                    // Změnit stav faktury
+                                    if ($new_vs_status === VS_STATUS_POTVRZENA) {
+                                        $update_fields[] = 'stav = ?';
+                                        $update_values[] = INVOICE_STATUS_VERIFICATION;
+                                        $any_vs_approved = true;
+                                    } elseif ($new_vs_status === VS_STATUS_ZAMITNUTA) {
+                                        $update_fields[] = 'stav = ?';
+                                        $update_values[] = INVOICE_STATUS_IN_PROGRESS;
+                                        $any_vs_rejected_or_reset = true;
+                                    }
+                                }
+                            }
+                        }
                         
                         // Pokud jsou nějaká pole k aktualizaci
                         if (!empty($update_fields)) {
@@ -1693,6 +1745,24 @@ function handle_order_v2_update($input, $config, $queries) {
                             $invoices_updated = true;
                         }
                     }
+                }
+            }
+            
+            // ⚠️ WORKFLOW MANAGEMENT - automatická správa workflow podle věcné správnosti
+            // Pokud se změnil stav věcné správnosti u nějaké faktury, aktualizovat workflow objednávky
+            if ($vs_status_changed) {
+                error_log("⚠️ [WORKFLOW] VS status changed for order #{$order_id}, updating workflow...");
+                
+                if ($any_vs_approved) {
+                    // Nějaká faktura byla potvrzena → zkontrolovat jestli jsou všechny potvrzeny
+                    updateWorkflowAfterVecnaSpravnostApproved($db, $order_id);
+                    error_log("✅ [WORKFLOW] Called updateWorkflowAfterVecnaSpravnostApproved for order #{$order_id}");
+                }
+                
+                if ($any_vs_rejected_or_reset) {
+                    // Nějaká faktura byla zamítnuta nebo resetována → zkontrolovat jestli ještě jsou všechny potvrzeny
+                    removeZkontrolovanaFromWorkflow($db, $order_id);
+                    error_log("✅ [WORKFLOW] Called removeZkontrolovanaFromWorkflow for order #{$order_id}");
                 }
             }
             
