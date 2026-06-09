@@ -3972,7 +3972,7 @@ export default function InvoiceEvidencePage() {
 
   // 🆕 Handler: výběr LP z autocomplete (pro standalone faktury bez objednávky/smlouvy)
   const handleSelectLP = (lp) => {
-    console.log('🔖 Vybraný LP:', lp);
+    // console.log('🔖 Vybraný LP:', lp);
     setShowSuggestions(false);
     setSuggestions([]);
     // ✅ Zobrazit číslo LP s rokem platnosti + název účtu v inputu (jako u obj/sml)
@@ -8495,7 +8495,8 @@ export default function InvoiceEvidencePage() {
                     fontWeight: (!isVecnaSpravnostEditable || loading) ? '400' : '600',
                     color: (!isVecnaSpravnostEditable || loading) ? '#9ca3af' : '#374151'
                   }}>
-                    {/* 3 tlačítka pro výběr statusu věcné správnosti */}
+                    {/* 3 tlačítka - SKRYTÁ když disabled */}
+                    {(isVecnaSpravnostEditable && !loading) && (
                     <div style={{
                       display: 'flex',
                       gap: '1rem',
@@ -8644,8 +8645,9 @@ export default function InvoiceEvidencePage() {
                         Zamítnout
                       </button>
                     </div>
+                    )}
                     
-                    {/* Pole pro DŮVOD - pod tlačítky */}
+                    {/* Pole pro DŮVOD - viditelné vždy, jen disabled */}
                     <div style={{ marginTop: '1rem' }}>
                       <label style={{
                         display: 'block',

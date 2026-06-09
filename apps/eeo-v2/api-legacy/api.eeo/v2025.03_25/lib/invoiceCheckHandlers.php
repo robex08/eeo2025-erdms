@@ -440,6 +440,7 @@ function handle_invoice_toggle_check($input, $config) {
             
             // 9. ⚠️ AUTOMATICKÁ SPRÁVA WORKFLOW A STAVU OBJEDNÁVKY
             // podle věcné správnosti faktury
+            error_log("🔍 [WORKFLOW CHECK] Faktura ID: {$faktura_id}, Objednávka ID: " . ($faktura['objednavka_id'] ?? 'NULL') . ", Status: {$status}");
             if (!empty($faktura['objednavka_id'])) {
                 $objednavka_id = (int)$faktura['objednavka_id'];
                 
@@ -452,8 +453,11 @@ function handle_invoice_toggle_check($input, $config) {
                 } elseif ($status === VS_STATUS_ZAMITNUTA || $status === VS_STATUS_NEPOTVRZENA) {
                     // ❌ ZAMÍTNUTO nebo RESETOVÁNO - zkontrolovat, zda ještě nejsou všechny faktury potvrzeny
                     // Pokud ne, odebrat ZKONTROLOVANA z workflow a vrátit stav na "Věcná správnost"
+                    error_log("🔍 [CONDITION] elseif (status === VS_STATUS_ZAMITNUTA || status === VS_STATUS_NEPOTVRZENA) -> SPLNĚNA! Status=$status");
                     removeZkontrolovanaFromWorkflow($db, $objednavka_id);
+                    error_log("🔍 [BEFORE CALL] O sekund volám removeZkontrokovanaFromWorkflow($db, $objednavka_id) kde objednavka_id={$objednavka_id}");
                     error_log("🔄 Spuštěna revize workflow pro objednávku #{$objednavka_id} po zamítnutí/resetu VS faktury #{$faktura_id}");
+                    error_log("🔍 [AFTER CALL] removeZkontrokovanaFromWorkflow() dokončena");
                 }
             }
             

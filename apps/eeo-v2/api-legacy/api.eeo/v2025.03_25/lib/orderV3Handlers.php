@@ -639,7 +639,7 @@ function loadFakturyLpCerpaniBatch($db, $faktura_ids) {
                 lpc.faktura_id,
                 lpc.lp_id,
                 lpc.lp_cislo,
-                lpc.castka_cerpani as castka,
+                lpc.castka as castka,
                 lp.cislo_lp,
                 lp.nazev_uctu,
                 lp.vyuziti
@@ -708,9 +708,9 @@ function loadOrderInvoicesBatch($db, $order_ids) {
                 CONCAT(COALESCE(u_upd.titul_pred,''), ' ', u_upd.jmeno, ' ', u_upd.prijmeni, ' ', COALESCE(u_upd.titul_za,'')) as upd_user_jmeno,
                 CONCAT(COALESCE(u_schval.titul_pred,''), ' ', u_schval.jmeno, ' ', u_schval.prijmeni, ' ', COALESCE(u_schval.titul_za,'')) as schvalil_user_jmeno
             FROM " . TBL_FAKTURY . " f
-            LEFT JOIN " . TBL_UZIVATELE . " u_prijem ON f.prijal_user_id = u_prijem.id
-            LEFT JOIN " . TBL_UZIVATELE . " u_upd ON f.upd_user_id = u_upd.id
-            LEFT JOIN " . TBL_UZIVATELE . " u_schval ON f.schvalil_user_id = u_schval.id
+            LEFT JOIN " . TBL_UZIVATELE . " u_prijem ON f.fa_predana_zam_id = u_prijem.id
+            LEFT JOIN " . TBL_UZIVATELE . " u_upd ON f.aktualizoval_uzivatel_id = u_upd.id
+            LEFT JOIN " . TBL_UZIVATELE . " u_schval ON f.potvrdil_vecnou_spravnost_id = u_schval.id
             WHERE f.objednavka_id IN ($placeholders)
               AND f.aktivni = 1
             ORDER BY f.objednavka_id, f.id
