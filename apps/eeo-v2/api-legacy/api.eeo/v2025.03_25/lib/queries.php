@@ -1559,6 +1559,123 @@ $queries['substitution_manageable_users'] = "
     ORDER BY u.prijmeni, u.jmeno
 ";
 
+// NOVÝ: Všichni uživatelé pro admin nastavení "Možnosti zastupování" (bez filtrů)
+$queries['substitution_all_users_for_admin'] = "
+    SELECT
+        u.id, u.username, u.jmeno, u.prijmeni, u.titul_pred, u.titul_za, u.email
+    FROM " . TBL_UZIVATELE . " u
+    WHERE u.aktivni = 1
+    AND u.id != :current_user_id
+    ORDER BY u.prijmeni, u.jmeno
+";
+
+// ============ MOŽNOSTI ZASTUPOVÁNÍ (VAZEBNÍ TABULKA) ============
+
+// Seznam možností zastupování pro konkrétního uživatele
+$queries['moznosti_zastupovani_list'] = "
+    SELECT 
+        m.*,
+        u_user.username AS zastupce_user_username,
+        u_user.jmeno AS zastupce_user_jmeno,
+        u_user.prijmeni AS zastupce_user_prijmeni,
+        r.kod_role AS zastupce_role_kod,
+        r.nazev_role AS zastupce_role_nazev,
+        us.usek_zkr AS zastupce_usek_zkr,
+        us.usek_nazev AS zastupce_usek_nazev,
+        l.nazev AS zastupce_lokalita_nazev,
+        l.kod AS zastupce_lokalita_kod
+    FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
+    LEFT JOIN " . TBL_UZIVATELE . " u_user ON m.zastupce_user_id = u_user.id
+    LEFT JOIN " . TBL_ROLE . " r ON m.zastupce_role_id = r.id
+    LEFT JOIN " . TBL_USEKY . " us ON m.zastupce_usek_id = us.id
+    LEFT JOIN " . TBL_LOKALITY . " l ON m.zastupce_lokalita_id = l.id
+    WHERE m.zastupovany_id = :zastupovany_id
+    AND m.aktivni = 1
+    ORDER BY m.typ_zastupce, m.id
+";
+
+// Seznam VŠECH možností zastupování (admin)
+$queries['moznosti_zastupovani_list_all'] = "
+    SELECT 
+        m.*,
+        zu.username AS zastupovany_username,
+        zu.jmeno AS zastupovany_jmeno,
+        zu.prijmeni AS zastupovany_prijmeni,
+        u_user.username AS zastupce_user_username,
+        u_user.jmeno AS zastupce_user_jmeno,
+        u_user.prijmeni AS zastupce_user_prijmeni,
+        r.kod_role AS zastupce_role_kod,
+        r.nazev_role AS zastupce_role_nazev,
+        us.usek_zkr AS zastupce_usek_zkr,
+        us.usek_nazev AS zastupce_usek_nazev,
+        l.nazev AS zastupce_lokalita_nazev,
+        l.kod AS zastupce_lokalita_kod
+    FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
+    JOIN " . TBL_UZIVATELE . " zu ON m.zastupovany_id = zu.id
+    LEFT JOIN " . TBL_UZIVATELE . " u_user ON m.zastupce_user_id = u_user.id
+    LEFT JOIN " . TBL_ROLE . " r ON m.zastupce_role_id = r.id
+    LEFT JOIN " . TBL_USEKY . " us ON m.zastupce_usek_id = us.id
+    LEFT JOIN " . TBL_LOKALITY . " l ON m.zastupce_lokalita_id = l.id
+    WHERE m.aktivni = 1
+    ORDER BY zu.prijmeni, zu.jmeno, m.typ_zastupce
+";
+
+// Vytvoření nové možnosti zastupování
+$queries['moznosti_zastupovani_create'] = "
+    INSERT INTO " . TBL_MOZNOSTI_ZASTUPOVANI . "
+    (zastupovany_id, typ_zastupce, zastupce_user_id, zastupce_role_id, zastupce_usek_id, zastupce_lokalita_id, poznamka, vytvoril_user_id, dt_vytvoreni)
+    VALUES (:zastupovany_id, :typ_zastupce, :zastupce_user_id, :zastupce_role_id, :zastupce_usek_id, :zastupce_lokalita_id, :poznamka, :vytvoril_user_id, NOW())
+";
+
+// Smazání možnosti zastupování (soft delete)
+$queries['moznosti_zastupovani_delete'] = "
+    UPDATE " . TBL_MOZNOSTI_ZASTUPOVANI . "
+    SET aktivni = 0, dt_aktualizace = NOW()
+    WHERE id = :id
+";
+
+// Aktualizace možnosti zastupování
+$queries['moznosti_zastupovani_update'] = "
+    UPDATE " . TBL_MOZNOSTI_ZASTUPOVANI . "
+    SET 
+        zastupovany_id = :zastupovany_id,
+        typ_zastupce = :typ_zastupce,
+        zastupce_user_id = :zastupce_user_id,
+        zastupce_role_id = :zastupce_role_id,
+        zastupce_usek_id = :zastupce_usek_id,
+        zastupce_lokalita_id = :zastupce_lokalita_id,
+        poznamka = :poznamka,
+        dt_aktualizace = NOW()
+    WHERE id = :id
+";
+
+// Kontrola duplicitního pravidla
+$queries['moznosti_zastupovani_check_duplicate'] = "
+    SELECT COUNT(*) as cnt
+    FROM " . TBL_MOZNOSTI_ZASTUPOVANI . "
+    WHERE zastupovany_id = :zastupovany_id
+    AND typ_zastupce = :typ_zastupce
+    AND (
+        (typ_zastupce = 'user' AND zastupce_user_id = :zastupce_user_id) OR
+        (typ_zastupce = 'role' AND (
+            ((:zastupce_role_id IS NULL AND zastupce_role_id IS NULL) OR
+             (:zastupce_role_id IS NOT NULL AND zastupce_role_id = :zastupce_role_id))
+        )) OR
+        (typ_zastupce = 'usek' AND (
+            ((:zastupce_usek_id IS NULL AND zastupce_usek_id IS NULL) OR
+             (:zastupce_usek_id IS NOT NULL AND zastupce_usek_id = :zastupce_usek_id))
+        )) OR
+        (typ_zastupce = 'lokalita' AND (
+            ((:zastupce_lokalita_id IS NULL AND zastupce_lokalita_id IS NULL) OR
+             (:zastupce_lokalita_id IS NOT NULL AND zastupce_lokalita_id = :zastupce_lokalita_id))
+        ))
+    )
+    AND aktivni = 1
+    AND id != :exclude_id
+";
+
+// ============ END MOŽNOSTI ZASTUPOVÁNÍ ============
+
 // Audit log: zápis akce provedené v rámci zastupování
 $queries['substitution_log_action'] = "
     INSERT INTO " . TBL_ZASTUPOVANI_AKCE_LOG . "

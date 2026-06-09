@@ -14,11 +14,12 @@ import React, { useState, useContext } from 'react';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBook, faSyncAlt } from '@fortawesome/free-solid-svg-icons';
-import { Building, Briefcase, Network, Building2, Circle, Shield, Key, FileText, Calculator, FileSignature, Coins } from 'lucide-react';
+import { Building, Briefcase, Network, Building2, Circle, Shield, Key, FileText, Calculator, FileSignature, Coins, Users } from 'lucide-react';
 import { SmartTooltip } from '../styles/SmartTooltip';
 import { AuthContext } from '../context/AuthContext';
 
 // Import Tab komponent
+import MoznostiZastupovaniTab from '../components/dictionaries/tabs/MoznostiZastupovaniTab';
 import LokalityTab from '../components/dictionaries/tabs/LokalityTab';
 import PoziceTab from '../components/dictionaries/tabs/PoziceTab';
 import UsekyTab from '../components/dictionaries/tabs/UsekyTab';
@@ -193,6 +194,7 @@ const DictionariesNew = () => {
 
   // Seznam všech záložek v pořadí
   const availableTabs = [
+    { key: 'moznosti-zastupovani', prefix: 'ADMIN', name: 'Možnosti zastupování' },
     { key: 'docx', prefix: 'DOCX_TEMPLATES', name: 'DOCX Šablony' },
     { key: 'cashbook', prefix: 'CASH_BOOKS', name: 'Pokladní knihy' },
     { key: 'smlouvy', prefix: 'CONTRACT', name: 'Smlouvy' },
@@ -251,6 +253,7 @@ const DictionariesNew = () => {
          key.includes('stavy_') ||
          key.includes('role_') ||
          key.includes('prava_') ||
+         key.includes('moznosti_zastupovani_') ||
          key.includes('docx_') ||
          key.includes('cashbook_') ||
          key.includes('smlouvy_') ||
@@ -272,6 +275,7 @@ const DictionariesNew = () => {
   // Function to get Czech display name for active tab
   const getTabDisplayName = (tabKey) => {
     const tabNames = {
+      'moznosti-zastupovani': 'Možnosti zastupování',
       'lokality': 'Lokality',
       'pozice': 'Pozice',
       'useky': 'Úseky',
@@ -307,6 +311,12 @@ const DictionariesNew = () => {
       {/* Tab Navigation */}
       <TabContainer>
         <TabHeader>
+          {canViewTab('ADMIN') && (
+            <Tab $active={activeTab === 'moznosti-zastupovani'} onClick={() => handleTabChange('moznosti-zastupovani')}>
+              <Users size={18} />
+              Možnosti zastupování
+            </Tab>
+          )}
           {canViewTab('DOCX_TEMPLATES') && (
             <Tab $active={activeTab === 'docx'} onClick={() => handleTabChange('docx')}>
               <FileText size={18} />
@@ -388,6 +398,7 @@ const DictionariesNew = () => {
         )}
 
         {/* Tab Content - každý tab je samostatný komponent */}
+        {hasAnyTab && activeTab === 'moznosti-zastupovani' && canViewTab('ADMIN') && <MoznostiZastupovaniTab key={`moznosti-zastupovani-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'docx' && canViewTab('DOCX_TEMPLATES') && <DocxSablonyTab key={`docx-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'cashbook' && canViewTab('CASH_BOOKS') && <CashbookTab key={`cashbook-${refreshKey}`} />}
         {hasAnyTab && activeTab === 'smlouvy' && canViewTab('CONTRACT') && <SmlouvyTab key={`smlouvy-${refreshKey}`} />}
