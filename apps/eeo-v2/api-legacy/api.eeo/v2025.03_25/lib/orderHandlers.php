@@ -3167,30 +3167,10 @@ function handle_orders25_update($input, $config, $queries) {
                     }
                     
                     // ✅ VĚCNÁ SPRÁVNOST - podpora pro OrderForm25
-                    if (isset($faktura['vecna_spravnost_potvrzeno'])) {
-                        $vs_status = (int)$faktura['vecna_spravnost_potvrzeno'];
-                        $update_fields[] = 'vecna_spravnost_potvrzeno = ?';
-                        $update_values[] = $vs_status;
-                        
-                        // ✅ VŽDY nastavit potvrdil_vecnou_spravnost_id a dt při status > 0
-                        if ($vs_status > 0) {
-                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = ?';
-                            $update_values[] = $current_user_id;
-                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = ?';
-                            $update_values[] = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
-                            error_log("✅ [VECNA SPRAVNOST FULL-UPDATE] Nastaveno user_id={$current_user_id} pro fakturu ID={$faktura_id}, status={$vs_status}");
-                        } else {
-                            // Reset při status 0
-                            $update_fields[] = 'potvrdil_vecnou_spravnost_id = NULL';
-                            $update_fields[] = 'dt_potvrzeni_vecne_spravnosti = NULL';
-                            error_log("✅ [VECNA SPRAVNOST FULL-UPDATE] Reset ID a dt pro fakturu ID={$faktura_id}");
-                        }
-                    }
-                    
-                    if (isset($faktura['vecna_spravnost_duvod'])) {
-                        $update_fields[] = 'vecna_spravnost_duvod = ?';
-                        $update_values[] = $faktura['vecna_spravnost_duvod'];
-                    }
+                    // ⚠️ VĚCNÁ SPRÁVNOST - metadata (poznamka, umisteni_majetku) lze ukládat
+                    // ❌ WORKFLOW POLE (vecna_spravnost_potvrzeno, potvrdil_vecnou_spravnost_id, dt_potvrzeni, vecna_spravnost_duvod)
+                    // se ukládají POUZE přes invoiceCheckHandlers.php endpoint!
+                    // Důvod: Nesmí se přepisovat ID uživatele, který fakturu potvrdil/zamítl při dalším uložení objednávky
                     
                     if (isset($faktura['vecna_spravnost_poznamka'])) {
                         $update_fields[] = 'vecna_spravnost_poznamka = ?';
@@ -3201,6 +3181,15 @@ function handle_orders25_update($input, $config, $queries) {
                         $update_fields[] = 'vecna_spravnost_umisteni_majetku = ?';
                         $update_values[] = $faktura['vecna_spravnost_umisteni_majetku'];
                     }
+                    
+                    // ❌ NEUKLÁDÁME workflow pole v obecném full-update:
+                    // - vecna_spravnost_potvrzeno
+                    // - potvrdil_vecnou_spravnost_id
+                    // - dt_potvrzeni_vecne_spravnosti
+                    // - vecna_spravnost_duvod
+                    //
+                    // Tato pole se nastavují VÝHRADNĚ přes /invoices/check/{id}/verify endpoint (invoiceCheckHandlers.php)
+                    // při explicitní akci potvrzení/zamítnutí věcné správnosti
                     
                     // rozsirujici_data může být array nebo už JSON string
                     // FE posílá: rozsirujici_data: { isdoc: {...}, ... }
