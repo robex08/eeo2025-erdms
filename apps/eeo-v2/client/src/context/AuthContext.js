@@ -437,9 +437,6 @@ export const AuthProvider = ({ children }) => {
       // ImpersonationService ukládá pouze {id, username, token}, ale potřebujeme i detail pro banner
       try {
         localStorage.setItem('impersonation_original_user', JSON.stringify(adminBackup));
-        if (process.env.NODE_ENV === 'development') {
-          console.log('🔐 Uložen kompletní adminBackup do localStorage:', adminBackup.username);
-        }
       } catch (error) {
         console.warn('⚠️ Chyba při ukládání adminBackup do localStorage:', error);
       }
@@ -475,14 +472,6 @@ export const AuthProvider = ({ children }) => {
 
       // Aktivovat impersonation
       setImpersonationActive(true);
-
-      if (process.env.NODE_ENV === 'development') {
-        console.log('🔐 Impersonation aktivováno:', {
-          from: user.username,
-          to: data.username,
-          targetId: data.id
-        });
-      }
 
       return true;
 

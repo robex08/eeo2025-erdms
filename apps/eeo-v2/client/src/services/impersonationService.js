@@ -75,14 +75,6 @@ export const startImpersonation = async (targetUserId, token, username) => {
       startedAt: Date.now()
     });
 
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔐 Impersonation started:', {
-        originalAdmin: originalUser.username,
-        targetUser: data.username,
-        targetUserId: data.id
-      });
-    }
-
     return {
       success: true,
       data: {
