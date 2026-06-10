@@ -6224,6 +6224,30 @@ switch ($endpoint) {
                                             WHERE lpm2.cislo_lp = c.cislo_lp
                                             AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
                                         )
+                                        AND (
+                                            NOT EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_chk
+                                                WHERE f_chk.objednavka_id = o_lp.id
+                                                AND f_chk.aktivni = 1
+                                                AND f_chk.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                            )
+                                            OR EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_pr
+                                                WHERE f_pr.objednavka_id = o_lp.id
+                                                AND f_pr.aktivni = 1
+                                                AND f_pr.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                                AND (
+                                                    NOT EXISTS (SELECT 1 FROM 25a_faktury_lp_cerpani flp_a WHERE flp_a.faktura_id = f_pr.id)
+                                                    OR EXISTS (
+                                                        SELECT 1 FROM 25a_faktury_lp_cerpani flp_b
+                                                        INNER JOIN " . TBL_LP_MASTER . " lpm4 ON lpm4.id = flp_b.lp_id
+                                                        WHERE flp_b.faktura_id = f_pr.id
+                                                        AND lpm4.cislo_lp = c.cislo_lp
+                                                        AND flp_b.castka > 0
+                                                    )
+                                                )
+                                            )
+                                        )
                                     )
                                     + (
                                         SELECT COUNT(DISTINCT olp_n.faktura_id)
@@ -6374,6 +6398,30 @@ switch ($endpoint) {
                                             WHERE lpm2.cislo_lp = c.cislo_lp
                                             AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
                                         )
+                                        AND (
+                                            NOT EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_chk
+                                                WHERE f_chk.objednavka_id = o_lp.id
+                                                AND f_chk.aktivni = 1
+                                                AND f_chk.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                            )
+                                            OR EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_pr
+                                                WHERE f_pr.objednavka_id = o_lp.id
+                                                AND f_pr.aktivni = 1
+                                                AND f_pr.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                                AND (
+                                                    NOT EXISTS (SELECT 1 FROM 25a_faktury_lp_cerpani flp_a WHERE flp_a.faktura_id = f_pr.id)
+                                                    OR EXISTS (
+                                                        SELECT 1 FROM 25a_faktury_lp_cerpani flp_b
+                                                        INNER JOIN " . TBL_LP_MASTER . " lpm4 ON lpm4.id = flp_b.lp_id
+                                                        WHERE flp_b.faktura_id = f_pr.id
+                                                        AND lpm4.cislo_lp = c.cislo_lp
+                                                        AND flp_b.castka > 0
+                                                    )
+                                                )
+                                            )
+                                        )
                                     )
                                     + (
                                         SELECT COUNT(DISTINCT olp_n.faktura_id)
@@ -6510,6 +6558,30 @@ switch ($endpoint) {
                                             WHERE lpm2.cislo_lp = c.cislo_lp
                                             AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
                                         )
+                                        AND (
+                                            NOT EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_chk
+                                                WHERE f_chk.objednavka_id = o_lp.id
+                                                AND f_chk.aktivni = 1
+                                                AND f_chk.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                            )
+                                            OR EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_pr
+                                                WHERE f_pr.objednavka_id = o_lp.id
+                                                AND f_pr.aktivni = 1
+                                                AND f_pr.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                                AND (
+                                                    NOT EXISTS (SELECT 1 FROM 25a_faktury_lp_cerpani flp_a WHERE flp_a.faktura_id = f_pr.id)
+                                                    OR EXISTS (
+                                                        SELECT 1 FROM 25a_faktury_lp_cerpani flp_b
+                                                        INNER JOIN " . TBL_LP_MASTER . " lpm4 ON lpm4.id = flp_b.lp_id
+                                                        WHERE flp_b.faktura_id = f_pr.id
+                                                        AND lpm4.cislo_lp = c.cislo_lp
+                                                        AND flp_b.castka > 0
+                                                    )
+                                                )
+                                            )
+                                        )
                                     )
                                     + (
                                         SELECT COUNT(DISTINCT olp_n.faktura_id)
@@ -6615,6 +6687,30 @@ switch ($endpoint) {
                                             WHERE lpm2.cislo_lp = c.cislo_lp
                                             AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
                                         )
+                                        AND (
+                                            NOT EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_chk
+                                                WHERE f_chk.objednavka_id = o_lp.id
+                                                AND f_chk.aktivni = 1
+                                                AND f_chk.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                            )
+                                            OR EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_pr
+                                                WHERE f_pr.objednavka_id = o_lp.id
+                                                AND f_pr.aktivni = 1
+                                                AND f_pr.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                                AND (
+                                                    NOT EXISTS (SELECT 1 FROM 25a_faktury_lp_cerpani flp_a WHERE flp_a.faktura_id = f_pr.id)
+                                                    OR EXISTS (
+                                                        SELECT 1 FROM 25a_faktury_lp_cerpani flp_b
+                                                        INNER JOIN " . TBL_LP_MASTER . " lpm4 ON lpm4.id = flp_b.lp_id
+                                                        WHERE flp_b.faktura_id = f_pr.id
+                                                        AND lpm4.cislo_lp = c.cislo_lp
+                                                        AND flp_b.castka > 0
+                                                    )
+                                                )
+                                            )
+                                        )
                                     )
                                     + (
                                         SELECT COUNT(DISTINCT olp_n.faktura_id)
@@ -6690,6 +6786,30 @@ switch ($endpoint) {
                                             SELECT 1 FROM " . TBL_LP_MASTER . " lpm2
                                             WHERE lpm2.cislo_lp = c.cislo_lp
                                             AND JSON_CONTAINS(o_lp.financovani, CAST(lpm2.id AS CHAR), '$.lp_kody')
+                                        )
+                                        AND (
+                                            NOT EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_chk
+                                                WHERE f_chk.objednavka_id = o_lp.id
+                                                AND f_chk.aktivni = 1
+                                                AND f_chk.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                            )
+                                            OR EXISTS (
+                                                SELECT 1 FROM " . TBL_FAKTURY . " f_pr
+                                                WHERE f_pr.objednavka_id = o_lp.id
+                                                AND f_pr.aktivni = 1
+                                                AND f_pr.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                                                AND (
+                                                    NOT EXISTS (SELECT 1 FROM 25a_faktury_lp_cerpani flp_a WHERE flp_a.faktura_id = f_pr.id)
+                                                    OR EXISTS (
+                                                        SELECT 1 FROM 25a_faktury_lp_cerpani flp_b
+                                                        INNER JOIN " . TBL_LP_MASTER . " lpm4 ON lpm4.id = flp_b.lp_id
+                                                        WHERE flp_b.faktura_id = f_pr.id
+                                                        AND lpm4.cislo_lp = c.cislo_lp
+                                                        AND flp_b.castka > 0
+                                                    )
+                                                )
+                                            )
                                         )
                                     )
                                     + (
@@ -7025,26 +7145,48 @@ switch ($endpoint) {
                     // Je schválená?
                     $je_schvalena = (strpos($order['stav_workflow_kod'], 'SCHVALENA') !== false);
                     
-                    // Načíst faktury pro skutečnost
-                    $suma_faktur = 0;
-                    $suma_polozek = 0;
-                    
+                    // Načíst faktury per-řádek (pro per-LP výpočet respektující LP rozpis na faktuře)
+                    $faktury_rows = [];
                     try {
                         $stmt_inv = $db->prepare("
-                            SELECT SUM(fa_castka) as suma_faktur
-                            FROM " . TBL_FAKTURY . "
-                            WHERE objednavka_id = :order_id
-                            AND aktivni = 1
-                            AND stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
+                            SELECT 
+                                f.id,
+                                f.fa_castka,
+                                (SELECT 1 FROM 25a_faktury_lp_cerpani flp_any WHERE flp_any.faktura_id = f.id LIMIT 1) AS ma_lp_rozpis
+                            FROM " . TBL_FAKTURY . " f
+                            WHERE f.objednavka_id = :order_id
+                            AND f.aktivni = 1
+                            AND f.stav NOT IN ('ZAMITNUTA', 'ZRUSENO', 'STORNO')
                         ");
                         $stmt_inv->execute(['order_id' => $order['id']]);
-                        $invoices_row = $stmt_inv->fetch(PDO::FETCH_ASSOC);
-                        $suma_faktur = $invoices_row ? (float)$invoices_row['suma_faktur'] : 0;
+                        $faktury_rows = $stmt_inv->fetchAll(PDO::FETCH_ASSOC);
                     } catch (Exception $e) {
-                        $suma_faktur = 0;
+                        $faktury_rows = [];
+                    }
+                    $suma_faktur = 0;
+                    foreach ($faktury_rows as $fa) { $suma_faktur += (float)$fa['fa_castka']; }
+                    
+                    // Načíst LP rozpis per faktura+lp_id (pro per-LP skutečnost)
+                    $lp_castka_per_fid_lpid = [];
+                    if (!empty($faktury_rows)) {
+                        $fa_ids = array_map(function($f){return (int)$f['id'];}, $faktury_rows);
+                        $placeholders = implode(',', array_fill(0, count($fa_ids), '?'));
+                        try {
+                            $stmt_lp = $db->prepare("
+                                SELECT faktura_id, lp_id, SUM(castka) as castka
+                                FROM 25a_faktury_lp_cerpani
+                                WHERE faktura_id IN ($placeholders)
+                                GROUP BY faktura_id, lp_id
+                            ");
+                            $stmt_lp->execute($fa_ids);
+                            foreach ($stmt_lp->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                                $lp_castka_per_fid_lpid[(int)$r['faktura_id']][(int)$r['lp_id']] = (float)$r['castka'];
+                            }
+                        } catch (Exception $e) {}
                     }
                     
                     // Načíst položky objednávky jako fallback
+                    $suma_polozek = 0;
                     if ($suma_faktur == 0) {
                         try {
                             $stmt_items = $db->prepare("
@@ -7064,12 +7206,6 @@ switch ($endpoint) {
                     $rezervace_podil = 0;
                     if ($je_schvalena && $suma_faktur == 0 && $suma_polozek == 0) {
                         $rezervace_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
-                    }
-                    
-                    // Skutečné čerpání = pouze faktury (pokud nejsou, skutečné je 0)
-                    $skutecne_podil = 0;
-                    if ($suma_faktur > 0) {
-                        $skutecne_podil = $suma_faktur / $pocet_lp;
                     }
 
                     // Předpoklad: bez faktur z položek, případně fallback na max_cena_s_dph
@@ -7098,6 +7234,26 @@ switch ($endpoint) {
                     foreach ($lp_ids as $lp_id) {
                         // Načíst cislo_lp z master tabulky
                         $lp_id_int = (int)$lp_id;
+                        
+                        // Per-LP skutečné čerpání: respekt LP rozpis na faktuře
+                        // - faktura s rozpisem → vezmi jen částku přiřazenou tomuto LP (může být 0)
+                        // - faktura bez rozpisu → fallback rovnoměrně mezi LP objednávky
+                        $skutecne_podil = 0;
+                        foreach ($faktury_rows as $fa) {
+                            $fid = (int)$fa['id'];
+                            $fa_castka = (float)$fa['fa_castka'];
+                            if (!empty($fa['ma_lp_rozpis'])) {
+                                $skutecne_podil += $lp_castka_per_fid_lpid[$fid][$lp_id_int] ?? 0;
+                            } else {
+                                $skutecne_podil += $fa_castka / $pocet_lp;
+                            }
+                        }
+                        
+                        // Pokud objednávka tomuto LP nepřispívá (faktura(y) plně rozepsány do jiného LP
+                        // a žádná rezervace/předpoklad) → nezapočítávat do pocet_objednavek ani do detailu
+                        $prispiva = ($skutecne_podil > 0 || $rezervace_podil > 0 || $predpoklad_podil > 0);
+                        if (!$prispiva) continue;
+                        
                         try {
                             $stmt_lp = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = :lp_id LIMIT 1");
                             $stmt_lp->execute(['lp_id' => $lp_id_int]);
