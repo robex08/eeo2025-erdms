@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends, faUserSecret, faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends, faUserSecret, faSpinner, faRobot } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import ImpersonationDialog from './ImpersonationDialog';
 import { AuthContext } from '../context/AuthContext';
@@ -1281,6 +1281,139 @@ const RoundFab = styled.button`
   width:46px; height:46px; border-radius:50%; border:none; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:1.25em; color:#fff; background:#475569; box-shadow:0 4px 14px rgba(0,0,0,0.55),0 0 0 1px rgba(255,255,255,0.07) inset; opacity:.35; transition:opacity .22s ease, transform .22s ease, background .22s ease; &:hover,&:focus-visible{opacity:.92; outline:none;} &:active{transform:scale(.9);} `;
 const FabGroup = styled.div`position:fixed; right:.75rem; bottom:.75rem; display:flex; flex-direction:row; gap:.55rem; z-index:4000; align-items:center;`;
 
+const AiQuickChatPopup = styled.div`
+  position: fixed;
+  right: .75rem;
+  bottom: calc(.75rem + 46px + .85rem);
+  width: min(360px, calc(100vw - 1.5rem));
+  background: linear-gradient(165deg, #f8fafc 0%, #e2e8f0 100%);
+  border: 1px solid #cbd5e1;
+  border-radius: 14px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(255,255,255,0.45) inset;
+  z-index: 4050;
+  overflow: hidden;
+`;
+
+const AiQuickChatHeader = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+  padding: .7rem .8rem;
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 60%, #0369a1 100%);
+  color: #fff;
+  font-weight: 700;
+`;
+
+const AiQuickChatBody = styled.div`
+  padding: .85rem;
+  color: #0f172a;
+  font-size: .92rem;
+  line-height: 1.45;
+`;
+
+const AiQuickChatMessages = styled.div`
+  max-height: 250px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: .45rem;
+  padding-right: .2rem;
+  scrollbar-width: thin;
+  scrollbar-color: #7dd3fc #e2e8f0;
+
+  &::-webkit-scrollbar {
+    width: 9px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: #e2e8f0;
+    border-radius: 999px;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #38bdf8 0%, #0284c7 100%);
+    border-radius: 999px;
+    border: 2px solid #e2e8f0;
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #0ea5e9 0%, #0369a1 100%);
+  }
+`;
+
+const AiQuickChatMessage = styled.div`
+  align-self: ${props => props.$role === 'user' ? 'flex-end' : 'flex-start'};
+  max-width: 92%;
+  background: ${props => props.$role === 'user' ? 'linear-gradient(135deg, #0ea5e9, #0284c7)' : '#e2e8f0'};
+  color: ${props => props.$role === 'user' ? '#fff' : '#0f172a'};
+  border: 1px solid ${props => props.$role === 'user' ? '#0369a1' : '#cbd5e1'};
+  border-radius: 10px;
+  padding: .55rem .65rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: ${props => props.$role === 'assistant' ? '.84rem' : '.88rem'};
+  line-height: ${props => props.$role === 'assistant' ? '1.28' : '1.35'};
+  letter-spacing: ${props => props.$role === 'assistant' ? '.005em' : 'normal'};
+`;
+
+const AiQuickChatComposer = styled.form`
+  display: flex;
+  gap: .45rem;
+  margin-top: .65rem;
+`;
+
+const AiQuickChatInput = styled.textarea`
+  flex: 1;
+  min-height: 38px;
+  max-height: 100px;
+  resize: vertical;
+  border-radius: 8px;
+  border: 1px solid #94a3b8;
+  background: #fff;
+  color: #0f172a;
+  padding: .45rem .55rem;
+  font-size: .88rem;
+  line-height: 1.35;
+  outline: none;
+  &:focus {
+    border-color: #0284c7;
+    box-shadow: 0 0 0 2px rgba(2, 132, 199, .2);
+  }
+`;
+
+const AiQuickChatSendBtn = styled.button`
+  align-self: flex-end;
+  height: 38px;
+  min-width: 78px;
+  border-radius: 8px;
+  border: 1px solid #0369a1;
+  background: linear-gradient(135deg, #0ea5e9, #0284c7);
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 .7rem;
+  &:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+  }
+`;
+
+const AiQuickChatClose = styled.button`
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.55);
+  background: rgba(255,255,255,.12);
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  &:hover { background: rgba(255,255,255,.2); }
+`;
+
 const SmallIconBtn = styled.button`
   background:${({theme})=>theme.colors.darkBg};
   border:1px solid ${({theme})=>theme.colors.darkBorder};
@@ -2064,6 +2197,255 @@ const Layout = ({ children }) => {
   const [calculatorActive, setCalculatorActive] = useState(false);
   const [calculatorLastResult, setCalculatorLastResult] = useState(null);
   const [calculatorLastExpression, setCalculatorLastExpression] = useState(null);
+  const [aiQuickChatOpen, setAiQuickChatOpen] = useState(false);
+  const [aiQuickChatMessages, setAiQuickChatMessages] = useState([
+    { id: 'ai-hello', role: 'assistant', text: 'Ahoj, jsem AI asistent. Napiš dotaz a odešli.' }
+  ]);
+  const [aiQuickChatConversationId] = useState(() => `layout-ai-${Date.now()}`);
+  const [aiQuickChatInput, setAiQuickChatInput] = useState('');
+  const [aiQuickChatLoading, setAiQuickChatLoading] = useState(false);
+  const [aiQuickChatError, setAiQuickChatError] = useState('');
+  const aiQuickChatMessagesRef = useRef(null);
+  const aiQuickChatInputRef = useRef(null);
+
+  const focusAiQuickChatInput = useCallback(() => {
+    const input = aiQuickChatInputRef.current;
+    if (!input) return;
+    input.focus();
+    const len = (input.value || '').length;
+    try {
+      input.setSelectionRange(len, len);
+    } catch {
+      // no-op
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!aiQuickChatOpen) return;
+    const handleEscClose = (event) => {
+      if (event.key === 'Escape') {
+        setAiQuickChatOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleEscClose);
+    return () => window.removeEventListener('keydown', handleEscClose);
+  }, [aiQuickChatOpen]);
+
+  useEffect(() => {
+    if (!aiQuickChatOpen || aiQuickChatLoading) return;
+    const frame = requestAnimationFrame(() => {
+      focusAiQuickChatInput();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [aiQuickChatOpen, aiQuickChatLoading, focusAiQuickChatInput]);
+
+  useEffect(() => {
+    if (!aiQuickChatOpen) return;
+    const container = aiQuickChatMessagesRef.current;
+    if (!container) return;
+
+    const frame = requestAnimationFrame(() => {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    });
+
+    return () => cancelAnimationFrame(frame);
+  }, [aiQuickChatMessages, aiQuickChatLoading, aiQuickChatOpen]);
+
+  const extractAiQuickChatAnswer = useCallback((payload) => {
+    try {
+      const nestedReply = payload?.data?.reply;
+      if (typeof nestedReply === 'string' && nestedReply.trim()) return nestedReply.trim();
+
+      const nestedContent = payload?.data?.choices?.[0]?.message?.content;
+      if (typeof nestedContent === 'string' && nestedContent.trim()) return nestedContent.trim();
+
+      const content = payload?.choices?.[0]?.message?.content;
+      if (typeof content === 'string' && content.trim()) return content.trim();
+
+      if (Array.isArray(content)) {
+        const joined = content
+          .map((part) => {
+            if (typeof part === 'string') return part;
+            if (part && typeof part.text === 'string') return part.text;
+            return '';
+          })
+          .filter(Boolean)
+          .join('\n');
+        if (joined.trim()) return joined.trim();
+      }
+
+      if (typeof payload?.JSOU === 'string' && payload.JSOU.trim()) return payload.JSOU.trim();
+      if (Array.isArray(payload?.JSOU) && payload.JSOU.length > 0) {
+        return payload.JSOU.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join('\n');
+      }
+
+      if (typeof payload?.jsou === 'string' && payload.jsou.trim()) return payload.jsou.trim();
+      if (Array.isArray(payload?.jsou) && payload.jsou.length > 0) {
+        return payload.jsou.map((item) => (typeof item === 'string' ? item : JSON.stringify(item))).join('\n');
+      }
+
+      if (typeof payload?.response === 'string' && payload.response.trim()) return payload.response.trim();
+      if (typeof payload?.output_text === 'string' && payload.output_text.trim()) return payload.output_text.trim();
+
+      return '';
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const renderAiQuickChatMessageContent = useCallback((message) => {
+    const text = (message?.text || '').toString();
+    if (message?.role !== 'assistant' || !text) {
+      return text;
+    }
+
+    const lines = text.split('\n').map((line) => line.trim()).filter(Boolean);
+    if (lines.length < 2) {
+      return text;
+    }
+
+    const numbered = lines.filter((line) => /^\d+\.\s+/.test(line));
+    if (numbered.length < 2) {
+      return text;
+    }
+
+    const header = lines[0].replace(/:$/, '');
+
+    return (
+      <div>
+        <div style={{ fontWeight: 700, marginBottom: '.35rem' }}>{header}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '.32rem' }}>
+          {numbered.map((line, index) => {
+            const cleaned = line.replace(/^\d+\.\s+/, '').trim();
+            const splitToken = ' - zdroj: ';
+            const splitAt = cleaned.lastIndexOf(splitToken);
+            const mainText = splitAt > -1 ? cleaned.slice(0, splitAt).trim() : cleaned;
+            const sourceText = splitAt > -1 ? cleaned.slice(splitAt + splitToken.length).trim() : '';
+            const mdLinkMatch = sourceText.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/i);
+            const sourceLabel = mdLinkMatch ? mdLinkMatch[1] : sourceText;
+            const sourceHref = mdLinkMatch ? mdLinkMatch[2] : (sourceText.match(/^https?:\/\//i) ? sourceText : '');
+
+            return (
+              <div key={`rss-${index}`} style={{ padding: '.3rem .4rem', borderRadius: '8px', background: '#f1f5f9' }}>
+                <div style={{ fontSize: '.82rem', lineHeight: 1.28 }}>
+                  <strong>{index + 1}.</strong> {mainText}
+                </div>
+                {sourceText ? (
+                  <div style={{ marginTop: '.15rem', fontSize: '.73rem', color: '#475569' }}>
+                    zdroj:{' '}
+                    {sourceHref ? (
+                      <a
+                        href={sourceHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ color: '#0f766e', textDecoration: 'underline' }}
+                      >
+                        {sourceLabel}
+                      </a>
+                    ) : (
+                      sourceLabel
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }, []);
+
+  const handleAiQuickChatSend = useCallback(async (event) => {
+    event.preventDefault();
+    const text = (aiQuickChatInput || '').trim();
+    if (!text || aiQuickChatLoading) return;
+
+    const apiBase = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
+    const normalizedBase = apiBase.endsWith('/') ? apiBase : `${apiBase}/`;
+    const endpoint = `${normalizedBase}ai/chat`;
+
+    setAiQuickChatError('');
+    const userMessage = { id: `u-${Date.now()}`, role: 'user', text };
+    setAiQuickChatMessages((prev) => [...prev, userMessage]);
+    setAiQuickChatInput('');
+
+    const historyForApi = [...aiQuickChatMessages, userMessage]
+      .filter((msg) => msg && msg.id !== 'ai-hello' && (msg.role === 'user' || msg.role === 'assistant' || msg.role === 'system') && typeof msg.text === 'string' && msg.text.trim())
+      .map((msg) => ({ role: msg.role, content: msg.text.trim() }));
+
+    if (!token || !username) {
+      setAiQuickChatMessages((prev) => ([
+        ...prev,
+        {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          text: 'Nejste přihlášen. AI chat vyžaduje token uživatele.'
+        }
+      ]));
+      return;
+    }
+
+    try {
+      setAiQuickChatLoading(true);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          token,
+          username,
+          prompt: text,
+          messages: historyForApi,
+          conversation_id: aiQuickChatConversationId
+        })
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        const errorMessage = data?.error?.message || data?.message || data?.err || `AI endpoint chyba (${response.status})`;
+        throw new Error(errorMessage);
+      }
+
+      const answerText = extractAiQuickChatAnswer(data);
+      setAiQuickChatMessages((prev) => ([
+        ...prev,
+        {
+          id: `a-${Date.now()}`,
+          role: 'assistant',
+          text: answerText || 'Odpověď přišla, ale nebyl rozpoznán textový obsah.'
+        }
+      ]));
+    } catch (error) {
+      const message = error?.message || 'Nepodařilo se kontaktovat AI API.';
+      setAiQuickChatError(message);
+      setAiQuickChatMessages((prev) => ([
+        ...prev,
+        { id: `a-${Date.now()}`, role: 'assistant', text: `Chyba: ${message}` }
+      ]));
+    } finally {
+      setAiQuickChatLoading(false);
+
+      requestAnimationFrame(() => {
+        const container = aiQuickChatMessagesRef.current;
+        if (container) {
+          container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+        }
+        focusAiQuickChatInput();
+      });
+    }
+  }, [aiQuickChatInput, aiQuickChatLoading, extractAiQuickChatAnswer, token, username, aiQuickChatMessages, aiQuickChatConversationId, focusAiQuickChatInput]);
+
+  const handleAiQuickChatInputKeyDown = useCallback((event) => {
+    if (event.key === 'Enter' && event.shiftKey) {
+      event.preventDefault();
+      if (!aiQuickChatLoading) {
+        handleAiQuickChatSend(event);
+      }
+    }
+  }, [aiQuickChatLoading, handleAiQuickChatSend]);
 
   // 🌲 HIERARCHIE: Použít data z AuthContext
   const hierarchyInfo = useMemo(() => {
@@ -4636,6 +5018,7 @@ const Layout = ({ children }) => {
         />
       )}
       {isLoggedIn && (
+        <>
         <FabGroup>
       {/* Shared change-password dialog from top menu */}
       <ChangePasswordDialog
@@ -4656,6 +5039,39 @@ const Layout = ({ children }) => {
           }
         }}
       />
+          <SmartTooltip
+            text={aiQuickChatOpen ? 'Skrýt AI chat' : 'Otevřít AI chat'}
+            icon="info"
+            preferredPosition="left"
+          >
+            <RoundFab
+              type="button"
+              onClick={() => setAiQuickChatOpen((v) => !v)}
+              aria-label="AI chat"
+              style={{
+                background: 'linear-gradient(135deg, #0ea5e9, #0369a1)',
+                position: 'relative',
+                opacity: aiQuickChatOpen ? 0.95 : 0.35
+              }}
+            >
+              <FontAwesomeIcon icon={faRobot} />
+              <span style={{
+                position: 'absolute',
+                top: '-6px',
+                right: '-5px',
+                background: '#0f172a',
+                color: '#e0f2fe',
+                borderRadius: '999px',
+                border: '1px solid rgba(255,255,255,.45)',
+                fontSize: '9px',
+                fontWeight: '700',
+                lineHeight: 1,
+                padding: '3px 5px'
+              }}>
+                AI
+              </span>
+            </RoundFab>
+          </SmartTooltip>
           {/* NOTES TOOL BUTTON - conditional visibility */}
           {toolsVisibility.notes && (
           <SmartTooltip
@@ -5006,6 +5422,57 @@ const Layout = ({ children }) => {
             </GlobalAddBtn>
           </SmartTooltip>
         </FabGroup>
+        {aiQuickChatOpen && (
+          <AiQuickChatPopup role="dialog" aria-label="AI chat popup">
+            <AiQuickChatHeader>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.45rem' }}>
+                <FontAwesomeIcon icon={faRobot} />
+                AI chat
+                <span style={{
+                  fontSize: '.62rem',
+                  fontWeight: 800,
+                  letterSpacing: '.04em',
+                  color: '#7f1d1d',
+                  background: '#fecaca',
+                  border: '1px solid #f87171',
+                  borderRadius: '999px',
+                  padding: '.12rem .4rem'
+                }}>
+                  BETA
+                </span>
+              </span>
+              <AiQuickChatClose type="button" onClick={() => setAiQuickChatOpen(false)} aria-label="Zavřít AI chat">×</AiQuickChatClose>
+            </AiQuickChatHeader>
+            <AiQuickChatBody>
+              <AiQuickChatMessages ref={aiQuickChatMessagesRef}>
+                {aiQuickChatMessages.map((message) => (
+                  <AiQuickChatMessage key={message.id} $role={message.role}>
+                    {renderAiQuickChatMessageContent(message)}
+                  </AiQuickChatMessage>
+                ))}
+              </AiQuickChatMessages>
+              <AiQuickChatComposer onSubmit={handleAiQuickChatSend}>
+                <AiQuickChatInput
+                  ref={aiQuickChatInputRef}
+                  value={aiQuickChatInput}
+                  onChange={(event) => setAiQuickChatInput(event.target.value)}
+                  onKeyDown={handleAiQuickChatInputKeyDown}
+                  placeholder="Napiš dotaz pro AI..."
+                  disabled={aiQuickChatLoading}
+                />
+                <AiQuickChatSendBtn type="submit" disabled={aiQuickChatLoading || !(aiQuickChatInput || '').trim()}>
+                  {aiQuickChatLoading ? '...' : 'Odeslat'}
+                </AiQuickChatSendBtn>
+              </AiQuickChatComposer>
+              {!!aiQuickChatError && (
+                <div style={{ marginTop: '.5rem', color: '#b91c1c', fontSize: '.8rem' }}>
+                  {aiQuickChatError}
+                </div>
+              )}
+            </AiQuickChatBody>
+          </AiQuickChatPopup>
+        )}
+        </>
       )}
       {/* duplicate dialog removed - single instance mounted earlier in FabGroup */}
 
