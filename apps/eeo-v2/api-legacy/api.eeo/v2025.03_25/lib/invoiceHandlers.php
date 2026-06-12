@@ -690,6 +690,22 @@ function handle_invoices25_update($input, $config, $queries) {
             error_log("🔒 INVOICE UPDATE: Odstraněna pole věcné správnosti z \$input před sestavením UPDATE (zrušení aktivní)");
         }
 
+        // 🔒 OCHRANA: Pokud věcná správnost už má finální stav (1/2) a status se nemění,
+        // nesmí dojít k přepsání potvrdil_vecnou_spravnost_id ani dt potvrzení při běžné editaci faktury.
+        $oldVecnaStatus = (int)($oldInvoiceData['vecna_spravnost_potvrzeno'] ?? 0);
+        $incomingVecnaStatus = isset($input['vecna_spravnost_potvrzeno']) ? (int)$input['vecna_spravnost_potvrzeno'] : null;
+        $isSameVecnaStatusResend = ($incomingVecnaStatus !== null && $incomingVecnaStatus === $oldVecnaStatus);
+        if (!$resetVecnaSpravnost && $oldVecnaStatus !== 0 && ($incomingVecnaStatus === null || $isSameVecnaStatusResend)) {
+            unset($input['potvrdil_vecnou_spravnost_id']);
+            unset($input['dt_potvrzeni_vecne_spravnosti']);
+
+            if ($isSameVecnaStatusResend) {
+                unset($input['vecna_spravnost_potvrzeno']);
+            }
+
+            error_log("🔒 INVOICE UPDATE: Zachovávám původního potvrzujícího uživatele VS (faktura #$faktura_id, status=$oldVecnaStatus)");
+        }
+
         // Sestavení UPDATE dotazu - jen pole která přišla
         $fields = [];
         $values = [];
