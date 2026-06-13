@@ -1272,9 +1272,9 @@ function handle_sablona_docx_remove_file($input, $config, $queries) {
         // Vymazat informace o souboru v DB (záznam zůstává)
         $stmt = $db->prepare("
             UPDATE " . TBL_SABLONY_DOCX . "
-            SET nazev_souboru = NULL,
-                nazev_souboru_ulozeny = NULL,
-                cesta_souboru = NULL,
+            SET nazev_souboru = '',
+                nazev_souboru_ulozeny = '',
+                cesta_souboru = 'sablony/',
                 velikost_souboru = NULL,
                 md5_hash = NULL,
                 aktualizoval_uzivatel_id = :uzivatel_id,

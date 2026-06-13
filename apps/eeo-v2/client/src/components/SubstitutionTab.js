@@ -512,8 +512,9 @@ const EMPTY_ADMIN_FORM = () => ({
 });
 
 // ─── HLAVNÍ KOMPONENTA ────────────────────────────────────────────────────────
-export default function SubstitutionTab({ token, username, showToast, hasPermission, isSuperAdmin }) {
+export default function SubstitutionTab({ token, username, showToast, hasPermission, isSuperAdmin, canManageOwnSubstitution = false }) {
   const isAdmin = !!(hasPermission && hasPermission('ADMIN'));
+  const canManageOwn = isAdmin || !!(hasPermission && hasPermission('USER_SUBSTITUTE_SET')) || !!canManageOwnSubstitution;
 
   // Data
   const [substitutions, setSubstitutions] = useState([]);
@@ -526,6 +527,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   // Admin data
   const [adminSubstitutions, setAdminSubstitutions] = useState([]);
   const [manageableUsers, setManageableUsers]       = useState([]);
+  const [adminCandidates, setAdminCandidates]       = useState([]);
   const [adminLoading, setAdminLoading]             = useState(false);
   const [adminDeactivating, setAdminDeactivating]   = useState(null);
 
@@ -567,20 +569,22 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [subs, curr, cands] = await Promise.all([
+      const [subs, curr] = await Promise.all([
         fetchMySubstitutions({ token, username }),
         fetchCurrentlySubstituting({ token, username }),
-        fetchSubstitutionCandidates({ token, username }),
       ]);
+      const cands = canManageOwn
+        ? await fetchSubstitutionCandidates({ token, username })
+        : [];
       setSubstitutions(subs);
       setCurrentlySub(curr);
       setCandidates(cands);
     } catch (e) {
-      showToast && showToast('error', 'Nepodařilo se načíst data zastupování: ' + e.message);
+      showToast && showToast('Nepodařilo se načíst data zastupování: ' + e.message, 'error');
     } finally {
       setLoading(false);
     }
-  }, [token, username, showToast]);
+  }, [token, username, showToast, canManageOwn]);
 
   const loadAdmin = useCallback(async () => {
     if (!isAdmin) return;
@@ -593,7 +597,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
       setAdminSubstitutions(allSubs);
       setManageableUsers(users);
     } catch (e) {
-      showToast && showToast('error', 'Nepodařilo se načíst admin data');
+      showToast && showToast('Nepodařilo se načíst admin data', 'error');
     } finally {
       setAdminLoading(false);
     }
@@ -601,6 +605,29 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadAdmin(); }, [loadAdmin]);
+
+  // Pro admin modal načítáme kandidáty podle vybraného zastupovaného
+  useEffect(() => {
+    const loadAdminCandidates = async () => {
+      if (!isAdmin) return;
+      if (modal !== 'admin') return;
+      if (!adminForm.zastupovany_id) {
+        setAdminCandidates([]);
+        return;
+      }
+      try {
+        const list = await fetchSubstitutionCandidates({
+          token,
+          username,
+          zastupovany_id: parseInt(adminForm.zastupovany_id, 10),
+        });
+        setAdminCandidates(list);
+      } catch (e) {
+        setAdminCandidates([]);
+      }
+    };
+    loadAdminCandidates();
+  }, [isAdmin, modal, adminForm.zastupovany_id, token, username]);
 
   // Zavření modalu
   function closeModal() {
@@ -616,6 +643,10 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   // Otevření modalu pro vytvoření
   function openCreate() {
+    if (!canManageOwn) {
+      showToast && showToast('Nemáte oprávnění nastavovat vlastní zastupování (read-only režim).', 'warning');
+      return;
+    }
     setForm(EMPTY_FORM());
     setEditingSub(null);
     setFormError('');
@@ -626,6 +657,10 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   // Otevření modalu pro editaci
   function openEdit(sub) {
+    if (!canManageOwn) {
+      showToast && showToast('Nemáte oprávnění upravovat vlastní zastupování (read-only režim).', 'warning');
+      return;
+    }
     const perms = decodeOpravneni(sub.opravneni);
     setForm({
       zastupce_id: sub.zastupce?.id || sub.zastupce_id || '',
@@ -654,12 +689,17 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     setAdminFormError('');
     setSelectStates({});
     setSearchStates({});
+    setAdminCandidates([]);
     setModal('admin');
   }
 
   // Odeslání formuláře (create / edit)
   async function handleSubmit(e) {
     e.preventDefault();
+    if (!canManageOwn) {
+      setFormError('Read-only režim: nemáte oprávnění měnit vlastní zastupování.');
+      return;
+    }
     setFormError('');
     if (!form.zastupce_id) { setFormError('Vyberte zástupce ze seznamu.'); return; }
     if (!form.dt_od || !form.dt_do) { setFormError('Vyplňte datum začátku i konce zastupování.'); return; }
@@ -682,7 +722,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
           dt_od: form.dt_od, dt_do: form.dt_do,
           opravneni, popis: form.popis || null,
         });
-        showToast && showToast('success', 'Zastupování bylo aktualizováno.');
+        showToast && showToast('Zastupování bylo aktualizováno.', 'success');
       } else {
         await createSubstitution({
           token, username,
@@ -690,7 +730,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
           dt_od: form.dt_od, dt_do: form.dt_do,
           opravneni, popis: form.popis || null,
         });
-        showToast && showToast('success', 'Zastupování bylo úspěšně nastaveno.');
+        showToast && showToast('Zastupování bylo úspěšně nastaveno.', 'success');
       }
       closeModal();
       await load();
@@ -721,7 +761,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
         dt_od: adminForm.dt_od, dt_do: adminForm.dt_do,
         opravneni, popis: adminForm.popis || null,
       });
-      showToast && showToast('success', 'Zastupování bylo nastaveno adminem.');
+      showToast && showToast('Zastupování bylo nastaveno adminem.', 'success');
       closeModal();
       await Promise.all([load(), loadAdmin()]);
     } catch (e) {
@@ -733,6 +773,10 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   // Deaktivace
   async function handleDeactivate(sub) {
+    if (!canManageOwn) {
+      showToast && showToast('Read-only režim: nemáte oprávnění rušit vlastní zastupování.', 'warning');
+      return;
+    }
     setDeactivateConfirm({ isOpen: true, sub, isAdmin: false });
   }
 
@@ -752,14 +796,14 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     }
     try {
       await deactivateSubstitution({ token, username, id: sub.id });
-      showToast && showToast('success', 'Zastupování bylo zrušeno.');
+      showToast && showToast('Zastupování bylo zrušeno.', 'success');
       if (isAdmin) {
         await loadAdmin();
       } else {
         await load();
       }
     } catch (e) {
-      showToast && showToast('error', 'Chyba při rušení: ' + e.message);
+      showToast && showToast('Chyba při rušení: ' + e.message, 'error');
     } finally {
       if (isAdmin) {
         setAdminDeactivating(null);
@@ -771,6 +815,14 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   // Options pro select
   const candidateOptions = candidates.map(c => ({
+    id: c.id,
+    value: String(c.id),
+    label: `${c.jmeno} ${c.prijmeni}${c.username ? ` (${c.username})` : ''}`,
+    nazev: `${c.jmeno} ${c.prijmeni}${c.username ? ` (${c.username})` : ''}`,
+    activeSubCount: c.active_substitutions_count || 0,
+  }));
+
+  const adminCandidateOptions = adminCandidates.map(c => ({
     id: c.id,
     value: String(c.id),
     label: `${c.jmeno} ${c.prijmeni}${c.username ? ` (${c.username})` : ''}`,
@@ -801,6 +853,8 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   const activeAndFuture = substitutions.filter(s => s.aktivni === 1);
   const past = substitutions.filter(s => s.aktivni === 0);
+  const nowDate = today();
+  const activeIncomingNow = substitutions.filter(s => s.aktivni === 1 && s.dt_od <= nowDate && s.dt_do >= nowDate);
 
   // ─── Tabulka mých zastupování ────────────────────────────────────────────
   function renderMyTable() {
@@ -814,10 +868,17 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
             <StatusPill $s={activeAndFuture.length > 0 ? 'active' : 'past'} style={{ marginLeft: 4 }}>
               {activeAndFuture.length} aktivních
             </StatusPill>
+            {!canManageOwn && (
+              <StatusPill $s="future" style={{ marginLeft: 6 }}>
+                Read-only
+              </StatusPill>
+            )}
           </CardTitle>
-          <Btn $v="primary" $sm onClick={openCreate}>
-            <Plus size={14} /> Přidat
-          </Btn>
+          {canManageOwn && (
+            <Btn $v="primary" $sm onClick={openCreate}>
+              <Plus size={14} /> Přidat
+            </Btn>
+          )}
         </CardHeader>
         <div style={{ overflowX: 'auto' }}>
           <Table>
@@ -839,14 +900,18 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                   <td colSpan={8}>
                     <EmptyIcon><UserCheck size={24} /></EmptyIcon>
                     <div style={{ fontWeight: 600, color: '#475569', marginBottom: '.25rem' }}>Žádné zastupování</div>
-                    <div style={{ fontSize: '.8rem' }}>Klikněte na „+ Přidat" a nastavte svého zástupce.</div>
+                    <div style={{ fontSize: '.8rem' }}>
+                      {canManageOwn
+                        ? 'Klikněte na „+ Přidat" a nastavte svého zástupce.'
+                        : 'Nemáte právo nastavovat zastupování, vidíte pouze přehled (read-only).'}
+                    </div>
                   </td>
                 </EmptyRow>
               ) : rows.map(sub => {
                 const status = getSubstStatus(sub);
                 const perms  = decodeOpravneni(sub.opravneni);
-                const canEdit   = isFuture(sub);
-                const canDelete = sub.aktivni === 1;
+                const canEdit   = canManageOwn && isFuture(sub);
+                const canDelete = canManageOwn && sub.aktivni === 1;
                 const initials  = getInitials(sub.zastupce?.jmeno, sub.zastupce?.prijmeni);
                 return (
                   <Tr key={sub.id}>
@@ -955,6 +1020,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
               <tr>
                 <Th>Zastupovaný</Th>
                 <Th><ChevronRight size={10} style={{ display: 'inline' }} /> Zástupce</Th>
+                <Th>Nastavil</Th>
                 <Th>Email</Th>
                 <Th>Telefon</Th>
                 <Th>Období</Th>
@@ -974,7 +1040,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                 </EmptyRow>
               ) : adminSubstitutions.length === 0 ? (
                 <EmptyRow>
-                  <td colSpan={9}>
+                  <td colSpan={10}>
                     <EmptyIcon><Users size={22} /></EmptyIcon>
                     <div style={{ fontSize: '.82rem', color: '#94a3b8' }}>Žádná zastupování v systému</div>
                   </td>
@@ -995,6 +1061,10 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                     <Td>
                       <div style={{ fontWeight: 600, fontSize: '.85rem' }}>{s.zastupce_jmeno}</div>
                       <div style={{ fontSize: '.72rem', color: '#94a3b8' }}>{s.zastupce_username}</div>
+                    </Td>
+                    <Td style={{ fontSize: '.75rem', color: '#64748b' }}>
+                      <div style={{ fontWeight: 500 }}>{s.vytvoril_jmeno || '—'}</div>
+                      <div style={{ fontSize: '.7rem', color: '#94a3b8' }}>{s.vytvoril_username || ''}</div>
                     </Td>
                     <Td style={{ fontSize: '.75rem', color: '#64748b' }}>
                       {s.zastupce_email || '–'}
@@ -1052,6 +1122,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     const currentForm  = isAdminModal ? adminForm : form;
     const currentError = isAdminModal ? adminFormError : formError;
     const isSaving     = isAdminModal ? adminFormSaving : formSaving;
+    const currentCandidateOptions = isAdminModal ? adminCandidateOptions : candidateOptions;
 
     const setField = (k, v) => {
       if (isAdminModal) setAdminForm(p => ({ ...p, [k]: v }));
@@ -1099,10 +1170,10 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                 <Alert $t="error"><AlertCircle size={15} />{currentError}</Alert>
               )}
 
-              {!isAdminModal && candidates.length === 0 && (
+              {!isAdminModal && candidateOptions.length === 0 && (
                 <Alert $t="info">
                   <Info size={15} />
-                  V systému nejsou žádní způsobilí zástupci (uživatelé s právem USER_SUBSTITUTE).
+                  Nemáte definované žádné povolené zástupce ve vazební tabulce možností zastupování.
                 </Alert>
               )}
 
@@ -1132,10 +1203,10 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                   <CustomSelect
                     field={isAdminModal ? 'adm_zastupce' : 'subst_zastupce'}
                     value={currentForm.zastupce_id}
-                    options={candidateOptions}
+                    options={currentCandidateOptions}
                     placeholder="— Vyberte zástupce —"
                     isClearable={!isEditModal}
-                    disabled={candidates.length === 0 && !isAdminModal}
+                    disabled={currentCandidateOptions.length === 0}
                     onChange={e => setField('zastupce_id', e.target.value || '')}
                     hasError={!!(currentError && !currentForm.zastupce_id)}
                     selectStates={selectStates} setSelectStates={setSelectStates}
@@ -1145,7 +1216,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                   />
                   {/* Varování když vybraný zástupce již má aktivní zastupování */}
                   {(() => {
-                    const sel = candidateOptions.find(o => String(o.id) === String(currentForm.zastupce_id));
+                    const sel = currentCandidateOptions.find(o => String(o.id) === String(currentForm.zastupce_id));
                     if (!sel || !sel.activeSubCount) return null;
                     const cnt = sel.activeSubCount;
                     return (
@@ -1252,7 +1323,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                 <X size={14} /> Zrušit
               </Btn>
               <Btn type="submit" $v={isAdminModal ? 'danger' : 'success'}
-                disabled={isSaving || (candidates.length === 0 && !isAdminModal)}
+                disabled={isSaving || currentCandidateOptions.length === 0}
                 style={isAdminModal ? { background: 'linear-gradient(135deg,#dc2626,#b91c1c)', color: 'white' } : {}}>
                 {isSaving ? <SpinIcon size={15} /> : isEditModal ? <CheckCircle size={15} /> : <Plus size={15} />}
                 {isEditModal ? 'Uložit změny' : isAdminModal ? 'Nastavit zastupování' : 'Uložit zastupování'}
@@ -1284,16 +1355,35 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
         </HeaderActions>
       </PageHeader>
 
-      {/* Banner: kdo mě nyní zastupuje */}
+      {/* Banner: koho aktuálně zastupuji já */}
       {currentlySub.length > 0 && (
         <InfoBanner>
           <Clock size={16} />
           <div>
-            <strong>Nyní vás zastupuje: </strong>
+            <strong>Nyní zastupujete: </strong>
             {currentlySub.map((s, i) => (
               <span key={s.id}>
                 {i > 0 && ', '}
-                <strong>{s.zastupce_jmeno} {s.zastupce_prijmeni}</strong>
+                <strong>{s.zastupovany_jmeno} {s.zastupovany_prijmeni}</strong>
+                {s.zastupovany_username ? <> ({s.zastupovany_username})</> : null}
+                {' '}({formatDate(s.dt_od)} – {formatDate(s.dt_do)})
+              </span>
+            ))}
+          </div>
+        </InfoBanner>
+      )}
+
+      {/* Banner: kdo aktuálně zastupuje mě */}
+      {activeIncomingNow.length > 0 && (
+        <InfoBanner>
+          <Clock size={16} />
+          <div>
+            <strong>Nyní vás zastupuje: </strong>
+            {activeIncomingNow.map((s, i) => (
+              <span key={s.id}>
+                {i > 0 && ', '}
+                <strong>{s.zastupce?.jmeno} {s.zastupce?.prijmeni}</strong>
+                {s.zastupce?.username ? <> ({s.zastupce.username})</> : null}
                 {' '}({formatDate(s.dt_od)} – {formatDate(s.dt_do)})
               </span>
             ))}

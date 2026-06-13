@@ -1817,6 +1817,17 @@ switch ($endpoint) {
             echo json_encode(array('error' => 'Method not allowed'));
         }
         break;
+    case 'substitution/is-candidate':
+        if ($request_method === 'POST') {
+            $response = handle_substitution_is_candidate($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+
     case 'substitution/all-users-for-admin':
         if ($request_method === 'POST') {
             $response = handle_substitution_all_users_for_admin($input, $pdo);

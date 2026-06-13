@@ -1888,6 +1888,13 @@ function handle_ai_chat_proxy($input, $config, $queries) {
         return;
     }
 
+    // 🔒 AI CHAT - pouze pro SUPERADMIN
+    $user_roles = isset($token_data['roles']) ? $token_data['roles'] : array();
+    if (!in_array('SUPERADMIN', $user_roles)) {
+        api_error(403, 'AI chat je dostupný pouze pro SUPERADMIN roli', 'INSUFFICIENT_PERMISSIONS');
+        return;
+    }
+
     $endpoint = $_ENV['OPENROUTER_API_URL'] ?? $_SERVER['OPENROUTER_API_URL'] ?? getenv('OPENROUTER_API_URL');
     $api_key = $_ENV['OPENROUTER_API_KEY'] ?? $_SERVER['OPENROUTER_API_KEY'] ?? getenv('OPENROUTER_API_KEY');
     $default_model = $_ENV['OPENROUTER_MODEL'] ?? $_SERVER['OPENROUTER_MODEL'] ?? getenv('OPENROUTER_MODEL');

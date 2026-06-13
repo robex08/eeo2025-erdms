@@ -5039,6 +5039,8 @@ const Layout = ({ children }) => {
           }
         }}
       />
+          {/* AI CHAT - pouze pro SUPERADMIN */}
+          {isSuperAdmin && (
           <SmartTooltip
             text={aiQuickChatOpen ? 'Skrýt AI chat' : 'Otevřít AI chat'}
             icon="info"
@@ -5072,6 +5074,7 @@ const Layout = ({ children }) => {
               </span>
             </RoundFab>
           </SmartTooltip>
+          )}
           {/* NOTES TOOL BUTTON - conditional visibility */}
           {toolsVisibility.notes && (
           <SmartTooltip
@@ -5422,7 +5425,7 @@ const Layout = ({ children }) => {
             </GlobalAddBtn>
           </SmartTooltip>
         </FabGroup>
-        {aiQuickChatOpen && (
+        {aiQuickChatOpen && isSuperAdmin && (
           <AiQuickChatPopup role="dialog" aria-label="AI chat popup">
             <AiQuickChatHeader>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.45rem' }}>

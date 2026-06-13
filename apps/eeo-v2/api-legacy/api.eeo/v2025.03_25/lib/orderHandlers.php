@@ -2777,6 +2777,9 @@ function handle_orders25_update($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
         
         $current_user_id = $token_data['id'];
+        
+        // ✨ LOGOVÁNÍ ZASTUPOVÁNÍ: Detekce a zaznamenání akcí v zastoupení
+        check_and_log_substitution_action($db, $token_data, 'UPDATE', 'OBJEDNAVKA', $order_id, 'Úprava objednávky');
 
         // Check if order exists and verify lock status
         $stmtLockCheck = $db->prepare(selectOrderByIdForEditQuery());
@@ -5722,6 +5725,9 @@ function handle_orders25_cancel_order($input, $config, $queries) {
         $db = get_db($config);
         $current_user_id = $token_data['id'];
         
+        // ✨ LOGOVÁNÍ ZASTUPOVÁNÍ: Detekce a zaznamenání akcí v zastoupení
+        check_and_log_substitution_action($db, $token_data, 'CANCEL', 'OBJEDNAVKA', $order_id, "Storno objednávky - důvod: $reason");
+        
         // Načíst aktuální objednávku
         $stmt = $db->prepare(selectOrderByIdQuery());
         $stmt->bindParam(':id', $order_id, PDO::PARAM_INT);
@@ -5825,6 +5831,9 @@ function handle_orders25_confirm_acceptance($input, $config, $queries) {
     try {
         $db = get_db($config);
         $current_user_id = $token_data['id'];
+        
+        // ✨ LOGOVÁNÍ ZASTUPOVÁNÍ: Detekce a zaznamenání akcí v zastoupení
+        check_and_log_substitution_action($db, $token_data, 'CONFIRM', 'OBJEDNAVKA', $order_id, 'Potvrzení přijetí objednávky');
         
         // Načíst aktuální objednávku
         $stmt = $db->prepare(selectOrderByIdQuery());

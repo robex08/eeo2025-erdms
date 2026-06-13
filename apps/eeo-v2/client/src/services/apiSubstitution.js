@@ -11,6 +11,16 @@
 
 const API_BASE = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
 
+function toBool(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
+  }
+  return false;
+}
+
 async function _post(endpoint, body) {
   const response = await fetch(`${API_BASE}/${endpoint}`, {
     method: 'POST',
@@ -80,8 +90,12 @@ export async function deactivateSubstitution({ token, username, id }) {
 /**
  * Načte seznam uživatelů způsobilých být zástupcem (mají právo USER_SUBSTITUTE)
  */
-export async function fetchSubstitutionCandidates({ token, username }) {
-  const data = await _post('substitution/candidates', { token, username });
+export async function fetchSubstitutionCandidates({ token, username, zastupovany_id }) {
+  const payload = { token, username };
+  if (zastupovany_id) {
+    payload.zastupovany_id = zastupovany_id;
+  }
+  const data = await _post('substitution/candidates', payload);
   return data.data || [];
 }
 
@@ -96,6 +110,27 @@ export async function fetchCurrentlySubstituting({ token, username }) {
 /**
  * Admin: seznam všech zastupování v systému
  */
+/**
+ * Zjistí, zda je přihlášený uživatel v tabulce možností zastupování jako potenciální zástupce.
+ * Používá se pro rozhodnutí zda zobrazit tab "Zastupování" i uživatelům bez USER_SUBSTITUTE_SET.
+ */
+export async function fetchIsSubstitutionCandidate({ token, username }) {
+  const data = await _post('substitution/is-candidate', { token, username });
+  return toBool(data.is_candidate);
+}
+
+/**
+ * Vrátí detailní přístup k modulu zastupování z vazební tabulky.
+ */
+export async function fetchSubstitutionAccessScope({ token, username }) {
+  const data = await _post('substitution/is-candidate', { token, username });
+  return {
+    hasTabAccess: toBool(data.is_candidate),
+    canBeSubstitute: toBool(data.can_be_substitute),
+    canSetOwnSubstitute: toBool(data.can_set_own_substitute),
+  };
+}
+
 export async function fetchAllSubstitutionsAdmin({ token, username }) {
   const data = await _post('substitution/admin-list', { token, username });
   return data.data || [];

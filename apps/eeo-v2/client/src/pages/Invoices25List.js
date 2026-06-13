@@ -27,6 +27,7 @@ import InvoiceStatusSelect from '../components/InvoiceStatusSelect';
 import InvoiceAttachmentsTooltip from '../components/invoices/InvoiceAttachmentsTooltip';
 import OrderAttachmentsTooltip from '../components/orders/OrderAttachmentsTooltip';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
+import SubstitutionBadge from '../components/common/SubstitutionBadge';
 import OperatorInput from '../components/OperatorInput';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, restoreInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
@@ -2043,7 +2044,13 @@ const VecnaSpravnostCell = ({ invoice }) => {
                     {invoice.potvrdil_vecnou_spravnost_jmeno && (
                       <tr>
                         <td>{status === 1 ? 'Potvrdil:' : 'Zamítl:' }</td>
-                        <td style={{ color: 'white' }}>{invoice.potvrdil_vecnou_spravnost_jmeno}</td>
+                        <td style={{ color: 'white' }}>
+                          {invoice.potvrdil_vecnou_spravnost_jmeno}
+                          <SubstitutionBadge 
+                            substitutionInfo={invoice.substitution_info?.potvrdil_vecnou_spravnost} 
+                            actionLabel="Potvrzeno" 
+                          />
+                        </td>
                       </tr>
                     )}
                     {invoice.dt_potvrzeni_vecne_spravnosti && (
