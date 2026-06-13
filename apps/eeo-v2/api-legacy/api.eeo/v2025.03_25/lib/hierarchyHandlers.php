@@ -581,6 +581,19 @@ function handle_substitution_update($data, $pdo) {
     try {
         TimezoneHelper::setMysqlTimezone($pdo);
 
+        // Ověření proti vazební tabulce možností zastupování i při UPDATE.
+        $stmtCandidate = $pdo->prepare($queries['substitution_validate_candidate_pair']);
+        $stmtCandidate->execute([
+            ':zastupce_id' => $zastupce_id,
+            ':zastupovany_id' => $zastupovany_id,
+            ':zastupovany_id2' => $zastupovany_id,
+        ]);
+        $rowCandidate = $stmtCandidate->fetch(PDO::FETCH_ASSOC);
+        $isAllowed = (int)($rowCandidate['cnt'] ?? 0) > 0;
+        if (!$isAllowed) {
+            return array('status' => 'error', 'message' => 'Vybraný uživatel není povoleným zástupcem dle vazební tabulky');
+        }
+
         $stmt = $pdo->prepare($queries['substitution_update']);
         $stmt->bindParam(':substitution_id', $substitution_id, PDO::PARAM_INT);
         $stmt->bindParam(':zastupovany_id', $zastupovany_id, PDO::PARAM_INT);
@@ -591,6 +604,51 @@ function handle_substitution_update($data, $pdo) {
         $stmt->execute();
 
         if ($stmt->rowCount() > 0) {
+            // Nekritická notifikace pro zástupce: zastupování bylo upraveno.
+            try {
+                $stmtNames = $pdo->prepare("SELECT id, jmeno, prijmeni FROM " . TBL_UZIVATELE . " WHERE id IN (?, ?) AND aktivni = 1");
+                $stmtNames->execute([$zastupce_id, $zastupovany_id]);
+                $names = [];
+                while ($r = $stmtNames->fetch(PDO::FETCH_ASSOC)) {
+                    $names[(int)$r['id']] = trim(($r['jmeno'] ?? '') . ' ' . ($r['prijmeni'] ?? ''));
+                }
+
+                $zastupce_jmeno = $names[$zastupce_id] ?? 'Zástupce';
+                $zastupovany_jmeno = $names[$zastupovany_id] ?? 'Uživatel';
+                $dt_od_fmt = date('d.m.Y', strtotime($dt_od));
+                $dt_do_fmt = date('d.m.Y', strtotime($dt_do));
+
+                $notif_data_json = json_encode([
+                    'substitution_id' => $substitution_id,
+                    'placeholders' => [
+                        'zastupce_jmeno' => $zastupce_jmeno,
+                        'zastupovany_jmeno' => $zastupovany_jmeno,
+                        'dt_od' => $dt_od_fmt,
+                        'dt_do' => $dt_do_fmt,
+                    ]
+                ], JSON_UNESCAPED_UNICODE);
+
+                createNotification($pdo, [
+                    ':typ'              => 'SUBSTITUTION_SET',
+                    ':nadpis'           => 'Zastupování upraveno: ' . $zastupovany_jmeno,
+                    ':zprava'           => 'Nastavení zastupování za ' . $zastupovany_jmeno . ' bylo upraveno na období ' . $dt_od_fmt . ' – ' . $dt_do_fmt . '.',
+                    ':data_json'        => $notif_data_json,
+                    ':od_uzivatele_id'  => (int)$token_data['id'],
+                    ':pro_uzivatele_id' => $zastupce_id,
+                    ':prijemci_json'    => null,
+                    ':pro_vsechny'      => 0,
+                    ':priorita'         => 'normal',
+                    ':kategorie'        => 'zastupovani',
+                    ':odeslat_email'    => 0,
+                    ':objekt_typ'       => 'zastupovani',
+                    ':objekt_id'        => $substitution_id,
+                    ':dt_expires'       => null,
+                    ':aktivni'          => 1,
+                ]);
+            } catch (Exception $e_notif) {
+                error_log("substitution_update – notifikace selhaly: " . $e_notif->getMessage());
+            }
+
             return array(
                 'status' => 'ok',
                 'message' => 'Zastupování bylo úspěšně aktualizováno',
