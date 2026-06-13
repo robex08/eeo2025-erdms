@@ -415,29 +415,16 @@ function handle_substitution_create($data, $pdo) {
         TimezoneHelper::setMysqlTimezone($pdo);
         $pdo->beginTransaction();
 
-        // Ověření: zástupce musí být aktivní; kontrola USER_SUBSTITUTE práva se přeskakuje při admin override
-        $check_right = $admin_override
-            ? "SELECT COUNT(*) FROM " . TBL_UZIVATELE . " u WHERE u.id = ? AND u.aktivni = 1"
-            : "SELECT COUNT(*) FROM " . TBL_UZIVATELE . " u
-            WHERE u.id = ? AND u.aktivni = 1
-            AND (
-                u.id IN (
-                    SELECT rp.user_id FROM " . TBL_ROLE_PRAVA . " rp
-                    JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
-                    WHERE p.kod_prava = 'USER_SUBSTITUTE' AND rp.user_id > 0 AND rp.aktivni = 1
-                )
-                OR u.id IN (
-                    SELECT ur.uzivatel_id FROM " . TBL_UZIVATELE_ROLE . " ur
-                    JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id
-                    JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
-                    WHERE p.kod_prava = 'USER_SUBSTITUTE' AND rp.user_id = -1 AND rp.aktivni = 1
-                )
-            )";
-        $stmt = $pdo->prepare($check_right);
-        $stmt->execute(array($zastupce_id));
+        // Ověření proti vazební tabulce možností zastupování (platí pro všechny včetně admin override)
+        $stmt = $pdo->prepare($queries['substitution_validate_candidate_pair']);
+        $stmt->execute(array(
+            ':zastupce_id' => $zastupce_id,
+            ':zastupovany_id' => $zastupovany_id,
+            ':zastupovany_id2' => $zastupovany_id,
+        ));
         if ((int)$stmt->fetchColumn() === 0) {
             $pdo->rollBack();
-            return array('status' => 'error', 'message' => 'Vybraný uživatel nemá oprávnění být zástupcem');
+            return array('status' => 'error', 'message' => 'Vybraný uživatel není povoleným zástupcem dle vazební tabulky');
         }
 
         // Vložení záznamu
@@ -772,7 +759,8 @@ function handle_substitution_current($data, $pdo) {
 
 /**
  * POST substitution/candidates
- * Vrátí seznam uživatelů, kteří mohou být zástupcem (mají právo USER_SUBSTITUTE)
+ * Vrátí seznam uživatelů, kteří mohou být zástupcem dle vazební tabulky možností zastupování.
+ * Pro admina je možné poslat zastupovany_id, aby dostal kandidáty pro konkrétního uživatele.
  */
 function handle_substitution_candidates($data, $pdo) {
     global $queries;
@@ -784,8 +772,15 @@ function handle_substitution_candidates($data, $pdo) {
 
     try {
         $user_id = (int)$token_data['id'];
+        $zastupovany_id = $user_id;
+
+        if ($token_data['is_admin'] && isset($data['zastupovany_id']) && (int)$data['zastupovany_id'] > 0) {
+            $zastupovany_id = (int)$data['zastupovany_id'];
+        }
+
         $stmt = $pdo->prepare($queries['substitution_candidates']);
-        $stmt->bindParam(':current_user_id', $user_id, PDO::PARAM_INT);
+        $stmt->bindParam(':zastupovany_id', $zastupovany_id, PDO::PARAM_INT);
+        $stmt->bindParam(':zastupovany_id2', $zastupovany_id, PDO::PARAM_INT);
         $stmt->execute();
 
         $candidates = array();
@@ -838,6 +833,7 @@ function handle_substitution_admin_list($data, $pdo) {
                 'id'                    => (int)$row['id'],
                 'zastupovany_id'        => (int)$row['zastupovany_id'],
                 'zastupce_id'           => (int)$row['zastupce_id'],
+                'vytvoril_user_id'      => (int)$row['vytvoril_user_id'],
                 'dt_od'                 => $row['dt_od'],
                 'dt_do'                 => $row['dt_do'],
                 'opravneni'             => $opravneni,
@@ -853,6 +849,8 @@ function handle_substitution_admin_list($data, $pdo) {
                 'zastupce_jmeno'        => trim($row['zastupce_jmeno'] . ' ' . $row['zastupce_prijmeni']),
                 'zastupce_email'        => $row['zastupce_email'] ?? '',
                 'zastupce_telefon'      => $row['zastupce_telefon'] ?? '',
+                'vytvoril_username'     => $row['vytvoril_username'],
+                'vytvoril_jmeno'        => trim($row['vytvoril_jmeno'] . ' ' . $row['vytvoril_prijmeni']),
             );
         }
 
@@ -1248,6 +1246,57 @@ function log_substitution_action($pdo, $zastupovani_id, $zastupce_id, $zastupova
     }
 }
 
+/**
+ * WRAPPER: Detekce a logování akcí v zastoupení
+ * Používá se v handler funkcích (orders, invoices) pro automatické logování akcí
+ * 
+ * PŘÍKLAD POUŽITÍ v orderHandlers.php:
+ * ```php
+ * $token_data = verify_token($token);
+ * check_and_log_substitution_action($db, $token_data, 'UPDATE', 'OBJEDNAVKA', $order_id, "Úprava objednávky");
+ * ```
+ * 
+ * @param PDO $pdo PDO instance
+ * @param array $token_data Data z verify_token() - musí obsahovat 'id' (user_id)
+ * @param string $akce_typ Typ akce (CREATE, UPDATE, DELETE, APPROVE, CONFIRM, REJECT, VIEW...)
+ * @param string $objekt_typ Typ objektu (OBJEDNAVKA, FAKTURA, SMLOUVA, LP...)
+ * @param int|null $objekt_id ID objektu (číslo objednávky, faktury apod.)
+ * @param string $popis_akce Textový popis akce
+ * @return bool TRUE pokud byla akce v zastoupení (logováno), FALSE pokud uživatel jednal sám
+ */
+function check_and_log_substitution_action($pdo, $token_data, $akce_typ, $objekt_typ, $objekt_id = null, $popis_akce = '') {
+    if (!$pdo || !$token_data || empty($token_data['id'])) {
+        return false; // Chybí data
+    }
+    
+    $zastupce_id = (int)$token_data['id'];
+    
+    // Detekce aktivního zastupování s oprávněním 'approve' (používá se v akcích)
+    $substitution = get_active_substitution_for_action($pdo, $zastupce_id, 'approve');
+    
+    if (!$substitution) {
+        // Žádné aktivní zastupování → uživatel jedná sám
+        return false;
+    }
+    
+    // Zastupování je aktivní → loguj akci
+    $zastupovani_id = $substitution['zastupovani_id'];
+    $zastupovany_id = $substitution['zastupovany_id'];
+    
+    $logged = log_substitution_action(
+        $pdo,
+        $zastupovani_id,
+        $zastupce_id,
+        $zastupovany_id,
+        $akce_typ,
+        $objekt_typ,
+        $objekt_id,
+        $popis_akce
+    );
+    
+    return $logged;
+}
+
 // ============ MOŽNOSTI ZASTUPOVÁNÍ (VAZEBNÍ TABULKA) ============
 
 /**
@@ -1539,6 +1588,67 @@ function handle_moznosti_zastupovani_update($data, $pdo) {
  * POST moznosti-zastupovani/list-all
  * Admin: seznam VŠECH možností zastupování v systému
  */
+/**
+ * POST substitution/is-candidate
+ * Rychlý check: je přihlášený uživatel v tabulce možností zastupování jako potenciální zástupce?
+ * Vrací { is_candidate: bool }  – používá se pro rozhodnutí zda zobrazit ouško Zastupování v profilu.
+ */
+function handle_substitution_is_candidate($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return ['status' => 'error', 'message' => 'Neplatný nebo chybějící token'];
+    }
+
+    $user_id = (int)$token_data['id'];
+
+    try {
+        $stmt = $pdo->prepare($queries['moznosti_zastupovani_is_candidate']);
+        $stmt->execute([
+            ':user_id'  => $user_id,
+            ':user_id2' => $user_id,
+            ':user_id3' => $user_id,
+            ':user_id4' => $user_id,
+        ]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $can_be_substitute = (int)($row['cnt'] ?? 0) > 0;
+
+        $stmtOwn = $pdo->prepare($queries['moznosti_zastupovani_can_set_own']);
+        $stmtOwn->execute([
+            ':user_id' => $user_id,
+        ]);
+        $rowOwn = $stmtOwn->fetch(PDO::FETCH_ASSOC);
+        $can_set_own_substitute = (int)($rowOwn['cnt'] ?? 0) > 0;
+
+        $stmtRel = $pdo->prepare($queries['substitution_has_active_relation']);
+        $stmtRel->execute([
+            ':user_id' => $user_id,
+            ':user_id2' => $user_id,
+        ]);
+        $rowRel = $stmtRel->fetch(PDO::FETCH_ASSOC);
+        $has_active_relation = (int)($rowRel['cnt'] ?? 0) > 0;
+
+        // Backward compatibility: původní pole is_candidate necháváme,
+        // ale nyní reprezentuje "má přístup do ouška zastupování".
+        $is_candidate = ($can_be_substitute || $can_set_own_substitute || $has_active_relation);
+
+        error_log("🔍 [substitution/is-candidate] user_id=$user_id => can_be_substitute=" . ($can_be_substitute ? 1 : 0) . ", can_set_own=" . ($can_set_own_substitute ? 1 : 0) . ", active_rel=" . ($has_active_relation ? 1 : 0) . ", is_candidate=" . ($is_candidate ? 1 : 0));
+
+        return [
+            'status' => 'ok',
+            'is_candidate' => $is_candidate,
+            'can_be_substitute' => $can_be_substitute,
+            'can_set_own_substitute' => $can_set_own_substitute,
+            'has_active_relation' => $has_active_relation,
+        ];
+
+    } catch (PDOException $e) {
+        error_log("substitution_is_candidate DB error: " . $e->getMessage());
+        return ['status' => 'error', 'message' => 'Chyba při kontrole kandidatury'];
+    }
+}
+
 function handle_moznosti_zastupovani_list_all($data, $pdo) {
     global $queries;
 
@@ -2956,6 +3066,78 @@ function migrateHierarchyStructureToV2($structure) {
     }
     
     return $structure;
+}
+
+/**
+ * 🎯 HELPER: Zjistí informace o zastoupení pro konkrétní akci
+ * 
+ * Čte z tabulky 25_zastupovani_akce_log a vrátí informace o tom,
+ * zda uživatel jednal v zastoupení při konkrétní akci
+ * 
+ * @param PDO $pdo - databázové spojení
+ * @param int $zastupce_id - uživatel, který akci vykonal (schvalovatel, potvrzovatel atd)
+ * @param string $akce_typ - typ akce: APPROVE, CONFIRM, UPDATE
+ * @param string $objekt_typ - typ objektu: OBJEDNAVKA, FAKTURA
+ * @param int $objekt_id - ID objektu (objednávka ID, faktura ID)
+ * @param string $dt_akce - čas akce (přibližně, ±60 sekund) - "2026-06-13 18:25:22"
+ * 
+ * @return array|bool - ['is_substitution' => true, 'zastupovany_id' => X, 'zastupovany_jmeno' => 'Jméno'] 
+ *                     nebo false pokud je to vlastní akce
+ */
+function get_substitution_info_for_action($pdo, $zastupce_id, $akce_typ, $objekt_typ, $objekt_id, $dt_akce) {
+    if (!$pdo || !$zastupce_id || !$akce_typ || !$objekt_typ || !$objekt_id || !$dt_akce) {
+        return false;
+    }
+    
+    try {
+        // Vyhledej záznam v audit logu s přesností ±60 sekund
+        // (čas se může mírně lišit kvůli asynchronnímu logování)
+        $query = "
+            SELECT 
+                z.zastupovani_id,
+                z.zastupovany_id,
+                u.jmeno,
+                u.prijmeni,
+                z.dt_akce
+            FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " z
+            LEFT JOIN " . TBL_UZIVATELE . " u ON z.zastupovany_id = u.id
+            WHERE z.zastupce_id = ?
+              AND z.akce_typ = ?
+              AND z.objekt_typ = ?
+              AND z.objekt_id = ?
+              AND ABS(TIMESTAMPDIFF(SECOND, z.dt_akce, ?)) <= 60
+            ORDER BY ABS(TIMESTAMPDIFF(SECOND, z.dt_akce, ?)) ASC
+            LIMIT 1
+        ";
+        
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([
+            $zastupce_id,
+            $akce_typ,
+            $objekt_typ,
+            $objekt_id,
+            $dt_akce,
+            $dt_akce
+        ]);
+        
+        $record = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$record) {
+            return false; // Žádné zastupování
+        }
+        
+        // Vraťka info o zastoupení
+        return [
+            'is_substitution' => true,
+            'zastupovany_id' => (int)$record['zastupovany_id'],
+            'zastupovany_jmeno' => trim($record['jmeno'] . ' ' . $record['prijmeni']),
+            'dt_akce' => $record['dt_akce']
+        ];
+        
+    } catch (Exception $e) {
+        error_log("[SUBSTITUTION INFO] Error: " . $e->getMessage());
+        return false;
+    }
 }
 
 ?>

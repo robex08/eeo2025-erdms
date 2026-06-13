@@ -1479,7 +1479,7 @@ $queries['substitution_my_active'] = "
     ORDER BY z.dt_od DESC
 ";
 
-// Kandidáti na zástupce - uživatelé s právem USER_SUBSTITUTE
+// Kandidáti na zástupce - pouze dle vazební tabulky možností zastupování (user/role/usek/lokalita)
 $queries['substitution_candidates'] = "
     SELECT DISTINCT
         u.id,
@@ -1493,32 +1493,54 @@ $queries['substitution_candidates'] = "
          WHERE z.zastupce_id = u.id AND z.aktivni = 1 AND z.dt_do >= CURDATE()) AS active_substitutions_count
     FROM " . TBL_UZIVATELE . " u
     WHERE u.aktivni = 1
-    AND u.id != :current_user_id
-    AND (
-        u.id IN (
-            SELECT rp.user_id FROM " . TBL_ROLE_PRAVA . " rp
-            JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
-            WHERE p.kod_prava = 'USER_SUBSTITUTE'
-            AND rp.user_id > 0
-            AND rp.aktivni = 1
-        )
-        OR u.id IN (
-            SELECT ur.uzivatel_id FROM " . TBL_UZIVATELE_ROLE . " ur
-            JOIN " . TBL_ROLE_PRAVA . " rp ON rp.role_id = ur.role_id
-            JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
-            WHERE p.kod_prava = 'USER_SUBSTITUTE'
-            AND rp.user_id = -1
-            AND rp.aktivni = 1
-        )
+    AND u.id != :zastupovany_id
+    AND EXISTS (
+        SELECT 1
+        FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
+        WHERE m.aktivni = 1
+          AND m.zastupovany_id = :zastupovany_id2
+          AND (
+            (m.typ_zastupce = 'user' AND m.zastupce_user_id = u.id)
+            OR (m.typ_zastupce = 'role' AND m.zastupce_role_id IS NOT NULL AND m.zastupce_role_id IN (
+                SELECT ur.role_id FROM " . TBL_UZIVATELE_ROLE . " ur WHERE ur.uzivatel_id = u.id
+            ))
+            OR (m.typ_zastupce = 'usek' AND m.zastupce_usek_id IS NOT NULL AND m.zastupce_usek_id = u.usek_id)
+            OR (m.typ_zastupce = 'lokalita' AND m.zastupce_lokalita_id IS NOT NULL AND m.zastupce_lokalita_id = u.lokalita_id)
+            OR (m.typ_zastupce IN ('role','usek','lokalita') AND m.zastupce_role_id IS NULL AND m.zastupce_usek_id IS NULL AND m.zastupce_lokalita_id IS NULL)
+          )
     )
     ORDER BY u.prijmeni, u.jmeno
+";
+
+// Ověření konkrétní dvojice: může uživatel :zastupce_id zastupovat :zastupovany_id dle vazební tabulky?
+$queries['substitution_validate_candidate_pair'] = "
+    SELECT COUNT(*) as cnt
+    FROM " . TBL_UZIVATELE . " u
+    WHERE u.id = :zastupce_id
+      AND u.aktivni = 1
+      AND u.id != :zastupovany_id
+      AND EXISTS (
+          SELECT 1
+          FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
+          WHERE m.aktivni = 1
+            AND m.zastupovany_id = :zastupovany_id2
+            AND (
+              (m.typ_zastupce = 'user' AND m.zastupce_user_id = u.id)
+              OR (m.typ_zastupce = 'role' AND m.zastupce_role_id IS NOT NULL AND m.zastupce_role_id IN (
+                  SELECT ur.role_id FROM " . TBL_UZIVATELE_ROLE . " ur WHERE ur.uzivatel_id = u.id
+              ))
+              OR (m.typ_zastupce = 'usek' AND m.zastupce_usek_id IS NOT NULL AND m.zastupce_usek_id = u.usek_id)
+              OR (m.typ_zastupce = 'lokalita' AND m.zastupce_lokalita_id IS NOT NULL AND m.zastupce_lokalita_id = u.lokalita_id)
+              OR (m.typ_zastupce IN ('role','usek','lokalita') AND m.zastupce_role_id IS NULL AND m.zastupce_usek_id IS NULL AND m.zastupce_lokalita_id IS NULL)
+            )
+      )
 ";
 
 // Admin: seznam VŠECH zastupování v systému
 $queries['substitution_get_all'] = "
     SELECT
         z.id, z.zastupovany_id, z.zastupce_id,
-        z.dt_od, z.dt_do, z.opravneni, z.popis, z.aktivni, z.dt_vytvoreni, z.dt_ukonceni,
+        z.dt_od, z.dt_do, z.opravneni, z.popis, z.aktivni, z.dt_vytvoreni, z.dt_ukonceni, z.vytvoril_user_id,
         zuov.username AS zastupovany_username,
         zuov.jmeno    AS zastupovany_jmeno,
         zuov.prijmeni AS zastupovany_prijmeni,
@@ -1528,10 +1550,14 @@ $queries['substitution_get_all'] = "
         zuce.jmeno    AS zastupce_jmeno,
         zuce.prijmeni AS zastupce_prijmeni,
         zuce.email    AS zastupce_email,
-        zuce.telefon  AS zastupce_telefon
+        zuce.telefon  AS zastupce_telefon,
+        zutvf.username AS vytvoril_username,
+        zutvf.jmeno    AS vytvoril_jmeno,
+        zutvf.prijmeni AS vytvoril_prijmeni
     FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
     JOIN " . TBL_UZIVATELE . " zuov ON zuov.id = z.zastupovany_id
     JOIN " . TBL_UZIVATELE . " zuce ON zuce.id = z.zastupce_id
+    JOIN " . TBL_UZIVATELE . " zutvf ON zutvf.id = z.vytvoril_user_id
     ORDER BY z.aktivni DESC, z.dt_od DESC
     LIMIT 200
 ";
@@ -1672,6 +1698,42 @@ $queries['moznosti_zastupovani_check_duplicate'] = "
     )
     AND aktivni = 1
     AND id != :exclude_id
+";
+
+// Kontrola: je uživatel potenciálním zástupcem v tabulce možností (přímý/role/úsek/lokalita)?
+$queries['moznosti_zastupovani_is_candidate'] = "
+    SELECT COUNT(*) as cnt
+    FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
+    WHERE m.aktivni = 1
+    AND (
+        (m.typ_zastupce = 'user' AND m.zastupce_user_id = :user_id)
+        OR (m.typ_zastupce = 'role' AND m.zastupce_role_id IS NOT NULL AND m.zastupce_role_id IN (
+            SELECT ur.role_id FROM " . TBL_UZIVATELE_ROLE . " ur WHERE ur.uzivatel_id = :user_id2
+        ))
+        OR (m.typ_zastupce = 'usek' AND m.zastupce_usek_id IS NOT NULL AND m.zastupce_usek_id IN (
+            SELECT u.usek_id FROM " . TBL_UZIVATELE . " u WHERE u.id = :user_id3 AND u.aktivni = 1 AND u.usek_id IS NOT NULL
+        ))
+        OR (m.typ_zastupce = 'lokalita' AND m.zastupce_lokalita_id IS NOT NULL AND m.zastupce_lokalita_id IN (
+            SELECT u.lokalita_id FROM " . TBL_UZIVATELE . " u WHERE u.id = :user_id4 AND u.aktivni = 1 AND u.lokalita_id IS NOT NULL
+        ))
+        OR (m.typ_zastupce IN ('role','usek','lokalita') AND m.zastupce_role_id IS NULL AND m.zastupce_usek_id IS NULL AND m.zastupce_lokalita_id IS NULL)
+    )
+";
+
+// Kontrola: má uživatel aktivní možnosti zastupování jako zastupovaný (tj. může si volit svého zástupce)?
+$queries['moznosti_zastupovani_can_set_own'] = "
+        SELECT COUNT(*) as cnt
+        FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
+        WHERE m.aktivni = 1
+            AND m.zastupovany_id = :user_id
+";
+
+// Fallback: má uživatel aktuálně nějaký aktivní vztah zastupování (jako zastupovaný nebo zastupce)?
+$queries['substitution_has_active_relation'] = "
+        SELECT COUNT(*) as cnt
+        FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+        WHERE z.aktivni = 1
+            AND (z.zastupovany_id = :user_id OR z.zastupce_id = :user_id2)
 ";
 
 // ============ END MOŽNOSTI ZASTUPOVÁNÍ ============

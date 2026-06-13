@@ -16,6 +16,7 @@ import { getAvailableSections, isSectionAvailable, getFirstAvailableSection } fr
 import ModernHelper from '../components/ModernHelper';
 import ContactManagement from '../components/ContactManagement';
 import SubstitutionTab from '../components/SubstitutionTab';
+import { fetchSubstitutionAccessScope } from '../services/apiSubstitution';
 import { getGlobalSettings } from '../services/globalSettingsApi';
 
 const slideInUp = keyframes`
@@ -2055,6 +2056,10 @@ const ProfilePage = () => {
   const [profileData, setProfileData] = useState(null);
   const loadingRef = React.useRef(false); // Prevent multiple simultaneous loads
   const [isSubstitutionEnabled, setIsSubstitutionEnabled] = useState(false);
+  const [isSubstitutionCandidate, setIsSubstitutionCandidate] = useState(false);
+  const [canSetOwnSubstituteByRule, setCanSetOwnSubstituteByRule] = useState(false);
+  const canUseSubstitutionByPermission = !!(hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')));
+  const canSeeSubstitutionTab = !!(isSubstitutionCandidate || (isSubstitutionEnabled && canUseSubstitutionByPermission));
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const savedTab = localStorage.getItem(`profile_active_tab_${user_id || 'default'}`) || 'info';
@@ -2069,11 +2074,11 @@ const ProfilePage = () => {
     if (activeTab === 'lp') {
       setActiveTab('info');
     }
-    // Pokud je zastupování tab aktivní ale systém je vypnutý, přepni na info
-    if (activeTab === 'substitution' && !isSubstitutionEnabled) {
+    // Pokud je aktivní tab, na který už není přístup, přepni na info.
+    if (activeTab === 'substitution' && !canSeeSubstitutionTab) {
       setActiveTab('info');
     }
-  }, [activeTab, isSubstitutionEnabled]);
+  }, [activeTab, canSeeSubstitutionTab]);
 
   // Načíst globální nastavení pro kontrolu substitution_enabled
   useEffect(() => {
@@ -2081,12 +2086,26 @@ const ProfilePage = () => {
       if (!token || !username) return;
       try {
         const settings = await getGlobalSettings(token, username);
-        setIsSubstitutionEnabled(!!settings?.substitution_enabled);
+        const enabled = settings?.substitution_enabled;
+        setIsSubstitutionEnabled(enabled === true || enabled === 1 || enabled === '1' || enabled === 'true');
       } catch (e) {
         // Při chybě nechat výchozí false
       }
     };
     checkSubstitutionEnabled();
+
+    // Zkontroluj, zda je uživatel v tabulce možností zastupování jako potenciální zástupce
+    const checkCandidate = async () => {
+      if (!token || !username) return;
+      try {
+        const scope = await fetchSubstitutionAccessScope({ token, username });
+        setIsSubstitutionCandidate(scope.hasTabAccess);
+        setCanSetOwnSubstituteByRule(scope.canSetOwnSubstitute);
+      } catch (e) {
+        // Při chybě nechat false
+      }
+    };
+    checkCandidate();
   }, [token, username]);
 
   // Uložit aktivní tab do localStorage
@@ -3326,7 +3345,7 @@ const ProfilePage = () => {
                 <span>Adresář dodavatelů</span>
               </TabButton>
             )}
-            {isSubstitutionEnabled && hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
+            {canSeeSubstitutionTab && (
               <TabButton
                 $active={activeTab === 'substitution'}
                 onClick={() => setActiveTab('substitution')}
@@ -4009,7 +4028,7 @@ const ProfilePage = () => {
           })()}
 
           {/* Tab Content - Zastupování */}
-          {isSubstitutionEnabled && hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')) && (
+            {canSeeSubstitutionTab && (
             <TabContent $active={activeTab === 'substitution'}>
               <SubstitutionTab
                 token={token}
@@ -4017,6 +4036,7 @@ const ProfilePage = () => {
                 showToast={showToast}
                 hasPermission={hasPermission}
                 isSuperAdmin={!!(userDetail?.roles?.some(r => r.kod_role === 'SUPERADMIN'))}
+                canManageOwnSubstitution={canSetOwnSubstituteByRule}
               />
             </TabContent>
           )}

@@ -217,6 +217,14 @@ const IconBtn = styled.button`
   }
 `;
 
+const ActionButtonsRow = styled.div`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  white-space: nowrap;
+`;
+
 // ─── Form ─────────────────────────────────────────────────────────────────────
 const FormGroup = styled.div`
   margin-bottom: 1.25rem;
@@ -1032,13 +1040,15 @@ export default function MoznostiZastupovaniTab() {
                           {rule.poznamka || '—'}
                         </Td>
                         <Td style={{ textAlign: 'center' }}>
-                          <IconBtn onClick={() => {
-                            setEditingRuleId(null);
-                            setError('');
-                            setSuccess('');
-                          }} title="Zrušit editaci">
-                            <X size={16} />
-                          </IconBtn>
+                          <ActionButtonsRow>
+                            <IconBtn onClick={() => {
+                              setEditingRuleId(null);
+                              setError('');
+                              setSuccess('');
+                            }} title="Zrušit editaci">
+                              <X size={16} />
+                            </IconBtn>
+                          </ActionButtonsRow>
                         </Td>
                       </EditingTr>
                     ) : (
@@ -1060,12 +1070,14 @@ export default function MoznostiZastupovaniTab() {
                           {rule.poznamka || '—'}
                         </Td>
                         <Td style={{ textAlign: 'center' }}>
-                          <IconBtn onClick={() => handleEdit(rule)} title="Upravit" style={{ marginRight: '0.25rem' }}>
-                            <Edit2 size={16} />
-                          </IconBtn>
-                          <IconBtn onClick={() => handleDelete(rule.id)} title="Smazat">
-                            <Trash2 size={16} />
-                          </IconBtn>
+                          <ActionButtonsRow>
+                            <IconBtn onClick={() => handleEdit(rule)} title="Upravit">
+                              <Edit2 size={16} />
+                            </IconBtn>
+                            <IconBtn onClick={() => handleDelete(rule.id)} title="Smazat">
+                              <Trash2 size={16} />
+                            </IconBtn>
+                          </ActionButtonsRow>
                         </Td>
                       </Tr>
                     )}

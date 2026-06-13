@@ -2635,6 +2635,43 @@ function handle_order_v3_list($input, $config, $queries) {
             enrichRegistrZverejneniV3($db, $order);
         }
         unset($order);
+        
+        // 13.4 🎯 SUBSTITUTION INFO - Přidej informace o zastoupení ke každé akci
+        foreach ($orders as &$order) {
+            // Inicializuj pole pro substitution info
+            $order['substitution_info'] = [];
+            
+            // Schválení objednávky (schvalovatel_id + dt_schvaleni)
+            if (!empty($order['schvalovatel_id']) && !empty($order['dt_schvaleni'])) {
+                $sub_info = get_substitution_info_for_action(
+                    $db,
+                    (int)$order['schvalovatel_id'],
+                    'APPROVE',
+                    'OBJEDNAVKA',
+                    (int)$order['id'],
+                    $order['dt_schvaleni']
+                );
+                if ($sub_info) {
+                    $order['substitution_info']['schvalovatel'] = $sub_info;
+                }
+            }
+            
+            // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)
+            if (!empty($order['potvrdil_vecnou_spravnost_id']) && !empty($order['dt_potvrzeni_vecne_spravnosti'])) {
+                $sub_info = get_substitution_info_for_action(
+                    $db,
+                    (int)$order['potvrdil_vecnou_spravnost_id'],
+                    'CONFIRM',
+                    'OBJEDNAVKA',
+                    (int)$order['id'],
+                    $order['dt_potvrzeni_vecne_spravnosti']
+                );
+                if ($sub_info) {
+                    $order['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
+                }
+            }
+        }
+        unset($order);
 
         // 14. Úspěšná odpověď
         http_response_code(200);

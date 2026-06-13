@@ -24,6 +24,7 @@ import OperatorInput from '../OperatorInput';
 import useExpandedRowsV3 from '../../hooks/ordersV3/useExpandedRowsV3';
 import OrderExpandedRowV3 from './OrderExpandedRowV3';
 import OrderCommentsTooltip from './OrderCommentsTooltip';
+import SubstitutionBadge from '../common/SubstitutionBadge';
 import ConfirmDialog from '../ConfirmDialog';
 import { updateOrderV3 } from '../../services/apiOrdersV3';
 import { getOrderDetailV3 } from '../../services/apiOrderV3';
@@ -4471,8 +4472,20 @@ const OrdersTableV3 = ({
           
           return (
             <div style={{ lineHeight: '1.3' }}>
-              <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{prikazce}</div>
-              <div style={{ fontSize: '0.85em', color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{schvalovatel}</div>
+              <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {prikazce}
+                <SubstitutionBadge 
+                  substitutionInfo={order.substitution_info?.schvalovatel} 
+                  actionLabel="Schváleno" 
+                />
+              </div>
+              <div style={{ fontSize: '0.85em', color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {schvalovatel}
+                <SubstitutionBadge 
+                  substitutionInfo={order.substitution_info?.schvalovatel} 
+                  actionLabel="Schváleno" 
+                />
+              </div>
             </div>
           );
         },

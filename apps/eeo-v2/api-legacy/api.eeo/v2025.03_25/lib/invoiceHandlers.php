@@ -511,6 +511,9 @@ function handle_invoices25_update($input, $config, $queries) {
         
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
+        
+        // ✨ LOGOVÁNÍ ZASTUPOVÁNÍ: Detekce a zaznamenání akcí v zastoupení
+        check_and_log_substitution_action($db, $token_data, 'UPDATE', 'FAKTURA', $faktura_id, 'Úprava faktury (potvrz. věcné správnosti)');
 
         // Ověř, že faktura existuje + načti aktuální data pro detekci změn
         $faktury_table = get_invoices_table_name();
@@ -3150,6 +3153,28 @@ function handle_invoices25_list($input, $config, $queries) {
             }
             unset($faktura); // ⚠️ KRITICKÉ: Unset reference
         }
+
+        // 🎯 SUBSTITUTION INFO - Přidej informace o zastoupení ke každé faktuře
+        foreach ($faktury as &$faktura) {
+            // Inicializuj pole pro substitution info
+            $faktura['substitution_info'] = [];
+            
+            // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)
+            if (!empty($faktura['potvrdil_vecnou_spravnost_id']) && !empty($faktura['dt_potvrzeni_vecne_spravnosti'])) {
+                $sub_info = get_substitution_info_for_action(
+                    $db,
+                    (int)$faktura['potvrdil_vecnou_spravnost_id'],
+                    'CONFIRM',
+                    'FAKTURA',
+                    (int)$faktura['id'],
+                    $faktura['dt_potvrzeni_vecne_spravnosti']
+                );
+                if ($sub_info) {
+                    $faktura['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
+                }
+            }
+        }
+        unset($faktura); // ⚠️ KRITICKÉ: Unset reference
 
         // Vypočítat pagination metadata
         $total_pages = $use_pagination ? (int)ceil($total_count / $per_page) : 1;

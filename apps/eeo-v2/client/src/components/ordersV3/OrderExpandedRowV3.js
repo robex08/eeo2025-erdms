@@ -7,6 +7,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { downloadOrderAttachment, downloadInvoiceAttachment } from '../../services/apiOrderV2';
 import { getStrediska25 } from '../../services/api25orders';
 import AttachmentViewer from '../invoices/AttachmentViewer';
+import SubstitutionBadge from '../common/SubstitutionBadge';
 import { SmartTooltip } from '../../styles/SmartTooltip'; // ✅ Custom tooltip component
 import { AuthContext } from '../../context/AuthContext';
 import {
@@ -2186,6 +2187,10 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     </div>
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
                       {formatUserName(detail.schvalovatel_jmeno, detail.schvalovatel_prijmeni, detail.schvalovatel_titul_pred, detail.schvalovatel_titul_za)}
+                      <SubstitutionBadge 
+                        substitutionInfo={detail.substitution_info?.schvalovatel} 
+                        actionLabel="Schváleno" 
+                      />
                     </div>
                     {detail.schvalovatel_email && (
                       <div style={{ gridColumn: '2', fontSize: '0.75rem', color: '#6b7280', marginTop: '0.15rem' }}>
