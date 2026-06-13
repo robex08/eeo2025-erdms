@@ -405,6 +405,29 @@ function resolveHierarchyNotificationRecipients($eventType, $eventData, $pdo, $d
             }
         }
         
+        // Rozšíření: aktivní zástupci mají dostat stejné notifikace jako zastupovaný.
+        // Tím se notifikace z org-hierarchie propíší i do systému zastupování.
+        if (isSubstitutionEnabledForHierarchyNotifications($pdo) && !empty($allRecipients)) {
+            $expandedRecipients = $allRecipients;
+            foreach ($allRecipients as $recipient) {
+                $recipientUserId = (int)($recipient['user_id'] ?? 0);
+                if ($recipientUserId <= 0) {
+                    continue;
+                }
+
+                $substitutes = getActiveSubstituteRecipientsForUser($pdo, $recipientUserId, $recipient['delivery'] ?? ['email' => false, 'inApp' => true, 'sms' => false]);
+                if (empty($substitutes)) {
+                    continue;
+                }
+
+                foreach ($substitutes as $subRecipient) {
+                    $subRecipient['priority'] = $recipient['priority'] ?? 'INFO';
+                    $expandedRecipients[] = $subRecipient;
+                }
+            }
+            $allRecipients = $expandedRecipients;
+        }
+
         // DEDUPLIKACE příjemců (stejný user_id může být v několika rolích/úsecích)
         // POZOR: Zachovat nejvyšší prioritu pokud user je víckrát!
         $uniqueRecipients = [];
@@ -495,6 +518,69 @@ function resolveAutoPriority($eventData) {
     }
     
     return 'WARNING';  // ✅ OPRAVA: Normální = WARNING (oranžová), ne INFO (zelená)
+}
+
+/**
+ * Kontrola, zda je zastupování zapnuté (pro rozšíření příjemců notifikací).
+ */
+function isSubstitutionEnabledForHierarchyNotifications($pdo) {
+    try {
+        $stmt = $pdo->prepare("SELECT hodnota FROM 25a_nastaveni_globalni WHERE klic = 'substitution_enabled' LIMIT 1");
+        $stmt->execute();
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return isset($row['hodnota']) && (string)$row['hodnota'] === '1';
+    } catch (Exception $e) {
+        error_log("HIERARCHY TRIGGER: substitution_enabled check failed: " . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Vrátí aktivní zástupce pro daného zastupovaného uživatele.
+ * Pouze zástupce s alespoň jedním oprávněním view/approve/confirm.
+ */
+function getActiveSubstituteRecipientsForUser($pdo, $zastupovanyId, $fallbackDelivery = ['email' => false, 'inApp' => true, 'sms' => false]) {
+    $out = [];
+
+    if ((int)$zastupovanyId <= 0) {
+        return $out;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT z.zastupce_id, z.opravneni, u.email, u.username
+             FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+             INNER JOIN " . TBL_UZIVATELE . " u ON u.id = z.zastupce_id AND u.aktivni = 1
+             WHERE z.zastupovany_id = :zastupovany_id
+               AND z.aktivni = 1
+               AND z.dt_od <= CURDATE()
+               AND z.dt_do >= CURDATE()"
+        );
+        $stmt->execute([':zastupovany_id' => (int)$zastupovanyId]);
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $opravneni = json_decode($row['opravneni'] ?? '{}', true);
+            if (!is_array($opravneni)) {
+                continue;
+            }
+
+            $canReceive = !empty($opravneni['view']) || !empty($opravneni['approve']) || !empty($opravneni['confirm']);
+            if (!$canReceive) {
+                continue;
+            }
+
+            $out[] = [
+                'user_id' => (int)$row['zastupce_id'],
+                'email' => $row['email'] ?? null,
+                'username' => $row['username'] ?? null,
+                'delivery' => $fallbackDelivery,
+            ];
+        }
+    } catch (Exception $e) {
+        error_log("HIERARCHY TRIGGER: substitute recipient expansion failed for user " . (int)$zastupovanyId . ": " . $e->getMessage());
+    }
+
+    return $out;
 }
 
 /**
