@@ -3210,6 +3210,7 @@ const Invoices25List = () => {
         })(),
         potvrdil_vecnou_spravnost_email: invoice.potvrdil_vecnou_spravnost_email || null,
         dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti || null,
+        substitution_info: invoice.substitution_info || null,
         vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno !== null && invoice.vecna_spravnost_potvrzeno !== undefined 
           ? parseInt(invoice.vecna_spravnost_potvrzeno, 10) 
           : null,
@@ -5829,6 +5830,11 @@ const Invoices25List = () => {
                                     }}
                                   >
                                     {invoice.potvrdil_vecnou_spravnost_zkracene}
+                                    <SubstitutionBadge
+                                      substitutionInfo={invoice.substitution_info?.potvrdil_vecnou_spravnost}
+                                      actionLabel="Potvrzeno"
+                                      actorName={invoice.potvrdil_vecnou_spravnost_zkracene || ''}
+                                    />
                                   </strong>
                                 </div>
                               );

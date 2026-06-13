@@ -17,7 +17,11 @@ const { PERMISSIONS, WORKFLOW_STATES } = ORDERS_V3_CONFIG;
  * @param {number} userId - Current user ID
  * @returns {Object} Memoized permission functions
  */
-export function useOrderPermissions(hasPermission, userId) {
+export function useOrderPermissions(hasPermission, userId, options = {}) {
+  const substitutedApproverIds = Array.isArray(options.substitutedApproverIds)
+    ? options.substitutedApproverIds
+    : [];
+
   // ✅ OPTIMALIZACE: Memoizuj permission funkce - zavolají se pouze při změně hasPermission nebo userId
   const permissionFunctions = useMemo(() => {
     if (!hasPermission) {
@@ -32,6 +36,12 @@ export function useOrderPermissions(hasPermission, userId) {
         canGenerateFinancialControl: () => false,
       };
     }
+
+    const substitutedApproverIdSet = new Set(
+      substitutedApproverIds
+        .filter(id => id !== null && id !== undefined)
+        .map(id => String(id))
+    );
 
     // ============================================================================
     // OPTIMALIZED PERMISSION FUNCTIONS
@@ -57,6 +67,17 @@ export function useOrderPermissions(hasPermission, userId) {
       // ✅ APPROVAL: Uživatelé s ORDER_APPROVE mohou editovat (dle viditelnosti z API)
       if (hasPermission(PERMISSIONS.ORDER_APPROVE) || hasPermission('ORDER_APPROVE')) {
         return true;
+      }
+
+      // ✅ SUBSTITUCE: Aktivní zástupce příkazce může otevřít objednávku v editačním režimu
+      // pro schvalovací workflow (jinak by skončil ve viewOnly a neprovedl schválení).
+      const isSubstituteForPrikazce = substitutedApproverIdSet.has(String(order.prikazce_id));
+      if (isSubstituteForPrikazce) {
+        const workflowStates = parseWorkflowStates(order.stav_workflow_kod);
+        const approvalStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
+        if (workflowStates.some(state => approvalStates.includes(state))) {
+          return true;
+        }
       }
 
       // ✅ DEPARTMENT SUBORDINATE: Can edit subordinate orders
@@ -194,7 +215,7 @@ export function useOrderPermissions(hasPermission, userId) {
       canViewDetails,
       canGenerateFinancialControl,
     };
-  }, [hasPermission, userId]);
+  }, [hasPermission, userId, substitutedApproverIds]);
 
   return permissionFunctions;
 }

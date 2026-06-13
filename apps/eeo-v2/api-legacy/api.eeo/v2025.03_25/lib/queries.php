@@ -1763,6 +1763,42 @@ $queries['substitution_log_get'] = "
     ORDER BY l.dt_akce DESC
 ";
 
+// Audit log: systémový přehled akcí v zastoupení (admin) - stránkovaný výpis
+$queries['substitution_audit_log_count'] = "
+    SELECT COUNT(*)
+    FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " l
+";
+
+$queries['substitution_audit_log_list'] = "
+    SELECT
+        l.id,
+        l.zastupovani_id,
+        l.zastupce_id,
+        l.zastupovany_id,
+        l.akce_typ,
+        l.objekt_typ,
+        l.objekt_id,
+        l.popis_akce,
+        l.dt_akce,
+        o.cislo_objednavky AS objekt_cislo_objednavky,
+        f.fa_cislo_vema AS objekt_faktura_vs,
+        zuce.username AS zastupce_username,
+        zuce.jmeno    AS zastupce_jmeno,
+        zuce.prijmeni AS zastupce_prijmeni,
+        zuov.username AS zastupovany_username,
+        zuov.jmeno    AS zastupovany_jmeno,
+        zuov.prijmeni AS zastupovany_prijmeni
+    FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " l
+    LEFT JOIN " . TBL_OBJEDNAVKY . " o
+        ON l.objekt_typ = 'OBJEDNAVKA' AND o.id = l.objekt_id
+    LEFT JOIN " . TBL_FAKTURY . " f
+        ON l.objekt_typ = 'FAKTURA' AND f.id = l.objekt_id
+    LEFT JOIN " . TBL_UZIVATELE . " zuce ON zuce.id = l.zastupce_id
+    LEFT JOIN " . TBL_UZIVATELE . " zuov ON zuov.id = l.zastupovany_id
+    ORDER BY l.dt_akce DESC, l.id DESC
+    LIMIT :limit OFFSET :offset
+";
+
 // ============ SCHVALOVACÍ PRAVOMOCI ============
 $queries['approval_get_user_permissions'] = "
 

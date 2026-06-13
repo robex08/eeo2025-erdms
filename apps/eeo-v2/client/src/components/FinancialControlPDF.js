@@ -458,7 +458,7 @@ const formatDateTime = (dateString) => {
  * @param {Object} organizace - Vizitka organizace (nazev_organizace, ico, adresa, email, telefon)
  * @param {Object} strediskaMap - Mapa středisek {kod: nazev} pro převod kódů na názvy
  */
-const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {} }) => {
+const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}, approvalSubstitutionInfo = null }) => {
   const currentDate = new Date().toLocaleString('cs-CZ', {
     day: '2-digit',
     month: '2-digit',
@@ -504,6 +504,41 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
   const vyrizuje = formatUserName(order?.objednatel || order?.uzivatel);
   const garant = formatUserName(order?.garant_uzivatel || order?.garant);
   const schvalovatel = formatUserName(order?.schvalovatel || order?.prikazce);
+
+  const resolveApprovalSubstitutionInfo = () => {
+    if (approvalSubstitutionInfo) {
+      return approvalSubstitutionInfo;
+    }
+
+    const direct = order?.substitution_info?.schvalovatel;
+    if (direct) {
+      return direct;
+    }
+
+    const actions = Array.isArray(order?.zastupovani_akce) ? order.zastupovani_akce : [];
+    return actions.find((a) => a?.akce_typ === 'APPROVE' && a?.objekt_typ === 'OBJEDNAVKA') || null;
+  };
+
+  const formatPersonFromSubstitution = (info) => {
+    if (!info) return MISSING;
+    const jmeno = info.zastupovany_jmeno || info.jmeno || '';
+    const prijmeni = info.zastupovany_prijmeni || info.prijmeni || '';
+    const fullName = `${jmeno} ${prijmeni}`.replace(/\s+/g, ' ').trim();
+    return fullName || MISSING;
+  };
+
+  const formatSubstituteName = (info) => {
+    if (!info) return schvalovatel;
+    const jmeno = info.zastupce_jmeno || '';
+    const prijmeni = info.zastupce_prijmeni || '';
+    const fullName = `${jmeno} ${prijmeni}`.replace(/\s+/g, ' ').trim();
+    return fullName || schvalovatel;
+  };
+
+  const approvalSubstitutionResolved = resolveApprovalSubstitutionInfo();
+  const schvalovatelDisplay = approvalSubstitutionResolved
+    ? `${formatSubstituteName(approvalSubstitutionResolved)} v zastoupení za ${formatPersonFromSubstitution(approvalSubstitutionResolved)}`
+    : schvalovatel;
   
   // 📅 Datum vytvoření (dt_vytvoreni) - zobrazí se pod "Vyřizuje"
   const dtVytvoreni = order?.dt_vytvoreni || MISSING;
@@ -776,7 +811,7 @@ const FinancialControlPDF = ({ order, generatedBy, organizace, strediskaMap = {}
 
           <View style={styles.controlRow}>
             <Text style={styles.controlLabel}>Schvalovatel:</Text>
-            <Text style={[styles.controlValue, getMissingStyle(schvalovatel)]}>{schvalovatel}</Text>
+            <Text style={[styles.controlValue, getMissingStyle(schvalovatelDisplay)]}>{schvalovatelDisplay}</Text>
           </View>
 
           <View style={styles.controlRow}>

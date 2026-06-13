@@ -149,6 +149,34 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
   return parts.length > 0 ? parts.join(' ') : '---';
 };
 
+const resolveApprovalSubstitutionInfo = (source) => {
+  if (!source) return null;
+
+  const direct = source.substitution_info?.schvalovatel;
+  if (direct) return direct;
+
+  const actions = Array.isArray(source.zastupovani_akce) ? source.zastupovani_akce : [];
+  const matched = actions.find((item) => {
+    const type = String(item?.akce_typ || '').toUpperCase();
+    return type === 'APPROVE' || type === 'REJECT' || type === 'CONFIRM';
+  });
+
+  return matched || null;
+};
+
+const getApprovalActionLabel = (source) => {
+  if (!source) return 'Schváleno';
+
+  const statusByCheckbox = String(source.stav_schvaleni || '').toLowerCase();
+  if (statusByCheckbox === 'neschvaleno') return 'Zamítnuto';
+  if (statusByCheckbox === 'ceka_se') return 'Vráceno';
+
+  const lastState = getLastWorkflowState(source.stav_workflow_kod);
+  if (lastState === 'ZAMITNUTA') return 'Zamítnuto';
+  if (lastState === 'CEKA_SE') return 'Vráceno';
+  return 'Schváleno';
+};
+
 // Funkce pro detekci časové části v datetime stringu
 const hasTimePart = (dateString) => {
   if (!dateString) return false;
@@ -3336,22 +3364,15 @@ const OrdersTableV3 = ({
       return;
     }
 
-    // 🔒 VALIDACE ÚSEKU: Kontrola zda může uživatel schvalovat objednávku
-    const isPrikazce = String(orderToApprove.prikazce_id) === String(userId);
-    // Použij již existující isAdmin prop
-    
-    if (!isPrikazce && !isAdmin) {
-      // Uživatel není přímo příkazce ani admin - zkontroluj úsek
-      const myUsekId = userDetail?.usek_id || userDetail?.usek;
-      const prikazceUsekId = orderToApprove?.prikazce_usek_id || orderToApprove?.prikazce?.usek_id;
-      
-      if (!myUsekId || !prikazceUsekId || String(myUsekId) !== String(prikazceUsekId)) {
-        setApprovalCommentError('❌ Nemáte oprávnění schvalovat tuto objednávku. Příkazce je z jiného úseku.');
-        if (showToast) {
-          showToast('Nemáte oprávnění schvalovat objednávky z jiného úseku', { type: 'error' });
-        }
-        return;
+    // 🔒 VALIDACE OPRÁVNĚNÍ: sjednocená logika jako v hlavním/podřádku tabulky.
+    // Důležité pro zastupování: respektuje delegated approve právo místo staré kontroly úseku.
+    const canApproveThisOrder = canApproveOrder ? canApproveOrder(orderToApprove) : true;
+    if (!canApproveThisOrder) {
+      setApprovalCommentError('❌ Nemáte oprávnění schvalovat tuto objednávku.');
+      if (showToast) {
+        showToast('Nemáte oprávnění schvalovat tuto objednávku', { type: 'error' });
       }
+      return;
     }
 
     // Vymaž validaci pokud je vše OK
@@ -3496,7 +3517,7 @@ const OrdersTableV3 = ({
       console.error('Chyba při schvalování objednávky:', error);
       setApprovalCommentError('Chyba při ukládání schválení. Zkuste to znovu.');
     }
-  }, [orderToApprove, approvalComment, token, username, userId, onActionClick, showToast, onHighlightOrder]);
+  }, [orderToApprove, approvalComment, token, username, userId, onActionClick, showToast, onHighlightOrder, canApproveOrder]);
 
   const handleCancelOrder = useCallback(async () => {
     if (!orderToCancel) return;
@@ -3717,11 +3738,8 @@ const OrdersTableV3 = ({
           const workflowStates = parseWorkflowStates(order.stav_workflow_kod);
           const lastState = getLastWorkflowState(order.stav_workflow_kod);
 
-          // ✅ Zjištění, zda je aktuální uživatel oprávněn schvalovat
-          const isPrikazce = String(order.prikazce_id) === String(userId);
-          const canUserApprove = isPrikazce || isBudgetManagerRole || isAdmin;
-
           // 🎯 Zjištění, zda je uživatel v privilegované roli (admin, příkazce, správce rozpočtu, účetní role)
+          const isPrikazce = String(order.prikazce_id) === String(userId);
           const isPrivilegedUser = isAdmin || isPrikazce || isBudgetManagerRole || hasAccountingRole;
 
           const allowedApproveStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
@@ -3760,7 +3778,9 @@ const OrdersTableV3 = ({
           // 🎯 KLÍČOVÁ LOGIKA: Pro ODESLANA_KE_SCHVALENI a SCHVALENA:
           // - Příkazce/správce/admin → zobrazit SCHVÁLENÍ (mohou zamítnout místo storna)
           // - Ostatní uživatelé → zobrazit STORNO
-          const shouldShowApprovalForUser = isAllowedApproveState && canUserApprove;
+          // ✅ DŮLEŽITÉ: Použij stejnou permission logiku jako podřádek (canApproveOrder),
+          // včetně zastupování s delegated approve právem.
+          const shouldShowApprovalForUser = isAllowedApproveState && canApproveThisOrder;
           const shouldShowCancelForUser = isAllowedCancelState && !shouldShowApprovalForUser;
 
           // Pokud uživatel nemá právo na schválení ani na storno, nezobrazovat nic
@@ -4462,6 +4482,8 @@ const OrdersTableV3 = ({
         header: 'Příkazce / Schvalovatel',
         cell: ({ row }) => {
           const order = row.original;
+          const approvalSubstitutionInfo = resolveApprovalSubstitutionInfo(order);
+          const approvalActionLabel = getApprovalActionLabel(order);
           // Příjmení Jméno (BEZ titulů)
           const prikazce = (order.prikazce_prijmeni && order.prikazce_jmeno)
             ? `${order.prikazce_prijmeni} ${order.prikazce_jmeno}`
@@ -4474,16 +4496,13 @@ const OrdersTableV3 = ({
             <div style={{ lineHeight: '1.3' }}>
               <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {prikazce}
-                <SubstitutionBadge 
-                  substitutionInfo={order.substitution_info?.schvalovatel} 
-                  actionLabel="Schváleno" 
-                />
               </div>
               <div style={{ fontSize: '0.85em', color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {schvalovatel}
                 <SubstitutionBadge 
-                  substitutionInfo={order.substitution_info?.schvalovatel} 
-                  actionLabel="Schváleno" 
+                  substitutionInfo={approvalSubstitutionInfo}
+                  actionLabel={approvalActionLabel}
+                  actorName={schvalovatel}
                 />
               </div>
             </div>

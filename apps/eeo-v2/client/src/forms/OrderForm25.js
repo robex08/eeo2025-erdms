@@ -25,6 +25,7 @@ import { useAutosave } from '../hooks/useAutosave'; // 🎯 CENTRALIZOVANÝ AUTO
 import { prettyDate, formatDateOnly } from '../utils/format';
 import { getDefaultHomepage, getDefaultHomepageSync } from '../utils/homepageHelper';
 import { fetchAllUsers, fetchApprovers, fetchLimitovanePrisliby, fetchLPDetail, searchSupplierByIco, searchSuppliersList, fetchSupplierContacts, createSupplier, updateSupplierByIco, fetchTemplatesList, fetchTemplatesListWithMeta, createTemplate, updateTemplate, deleteTemplate, getUserDetailApi2, fetchUskyList } from '../services/api2auth';
+import { fetchCurrentlySubstituting } from '../services/apiSubstitution';
 import { getSmlouvyList, getSmlouvaDetail, prepocetCerpaniSmluv } from '../services/apiSmlouvy';
 // NOTE: setDebugLogger removed - was unused (only commented call on line 11445)
 import {
@@ -66,6 +67,7 @@ import {
   updateAttachmentV2
 } from '../services/apiOrderV2';
 import { deleteInvoiceV2, createInvoiceV2, updateInvoiceV2 } from '../services/apiInvoiceV2';
+import { getOrderDetailV3 } from '../services/apiOrderV3';
 import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
 import { toggleVecnaSpravnost, VS_STATUS } from '../services/apiInvoiceCheck';
 import { notificationService, NOTIFICATION_TYPES } from '../services/notificationsUnified';
@@ -130,6 +132,28 @@ const getCurrentDateFormatted = () => {
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const toBool = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
+  }
+  return false;
+};
+
+const decodeOpravneni = (value) => {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
 };
 
 /**
@@ -4331,6 +4355,40 @@ function OrderForm25() {
   const metadata = draftManager.getMetadata();
   const editOrderIdFromLS = metadata?.editOrderId;
   const editOrderId = editOrderIdFromUrl || editOrderIdFromLS;
+  const [activeSubstitutions, setActiveSubstitutions] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActiveSubstitutions = async () => {
+      if (!token || !username) {
+        if (!cancelled) setActiveSubstitutions([]);
+        return;
+      }
+
+      try {
+        const current = await fetchCurrentlySubstituting({ token, username });
+        if (!cancelled) {
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const normalized = (Array.isArray(current) ? current : []).filter(item => {
+            if (!item) return false;
+            if (item.aktivni === false || item.aktivni === 0 || item.aktivni === '0') return false;
+            if (item.dt_od && todayStr < item.dt_od) return false;
+            if (item.dt_do && todayStr > item.dt_do) return false;
+            return true;
+          });
+          setActiveSubstitutions(normalized);
+        }
+      } catch (_) {
+        if (!cancelled) setActiveSubstitutions([]);
+      }
+    };
+
+    loadActiveSubstitutions();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, username]);
   
   // 🎯 RETURNTO: Pamatovat si odkud jsme přišli pro návrat při zavření
   // Použít useMemo aby se hodnota aktualizovala synchronně při změně location.state
@@ -4513,6 +4571,7 @@ function OrderForm25() {
   // 🔒 Enriched financovani data z BE (lp_info + smlouva_info s ke_schvaleni daty)
   // Ukládáme SEPARÁTNĚ od formData, aby nebylo přepsáno draft mergem
   const [enrichedFinancovani, setEnrichedFinancovani] = useState({ lp_info: [], smlouva_info: null });
+  const [approvalSubstitutionInfoFromDetail, setApprovalSubstitutionInfoFromDetail] = useState(null);
 
   // Popup panel pro "Ke schválení" a "V procesu" objednávky na approval sekci OrderForm25
   const [keSchvaleniPopup, setKeSchvaleniPopup] = useState({ open: false, title: '', data: null, loading: false, anchorRect: null });
@@ -7112,6 +7171,123 @@ function OrderForm25() {
   const canConfirmOrderCompletion = isSuperAdmin || isAdmin || hasOrderManagePermission || hasOrderCompletePermission || hasEducationCompletePermission;
 
   const isPrikazceOfOrder = formData.prikazce_id && parseInt(formData.prikazce_id, 10) === user_id;
+  const approveDelegatedUserIdSet = useMemo(() => {
+    const set = new Set();
+    activeSubstitutions.forEach(item => {
+      if (!item) return;
+      const perms = decodeOpravneni(item.opravneni);
+      const hasApprovePermission = toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+      if (hasApprovePermission && item.zastupovany_id !== null && item.zastupovany_id !== undefined) {
+        set.add(String(item.zastupovany_id));
+      }
+    });
+    return set;
+  }, [activeSubstitutions]);
+
+  const isSubstituteForOrderPrikazce = useMemo(() => {
+    const orderPrikazceId = formData.prikazce_id ? String(parseInt(formData.prikazce_id, 10)) : '';
+    if (!orderPrikazceId) return false;
+
+    return approveDelegatedUserIdSet.has(orderPrikazceId);
+  }, [formData.prikazce_id, approveDelegatedUserIdSet]);
+
+  const formatSubstitutionPersonName = useCallback((data) => {
+    if (!data) return '---';
+    const parts = [];
+    if (data.zastupovany_titul_pred || data.titul_pred) parts.push(data.zastupovany_titul_pred || data.titul_pred);
+    if (data.zastupovany_prijmeni || data.prijmeni) parts.push(data.zastupovany_prijmeni || data.prijmeni);
+    if (data.zastupovany_jmeno || data.jmeno) parts.push(data.zastupovany_jmeno || data.jmeno);
+    if (data.zastupovany_titul_za || data.titul_za) parts.push(data.zastupovany_titul_za || data.titul_za);
+    return parts.length > 0 ? parts.join(' ') : '---';
+  }, []);
+
+  const formatSubstituteName = useCallback((data) => {
+    if (!data) return '---';
+    const parts = [];
+    if (data.zastupce_titul_pred) parts.push(data.zastupce_titul_pred);
+    if (data.zastupce_prijmeni) parts.push(data.zastupce_prijmeni);
+    if (data.zastupce_jmeno) parts.push(data.zastupce_jmeno);
+    if (data.zastupce_titul_za) parts.push(data.zastupce_titul_za);
+    return parts.length > 0 ? parts.join(' ') : '---';
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadApprovalSubstitutionInfo = async () => {
+      if (!formData?.id || !token || !username) {
+        setApprovalSubstitutionInfoFromDetail(null);
+        return;
+      }
+
+      try {
+        const detail = await getOrderDetailV3({
+          token,
+          username,
+          orderId: formData.id,
+        });
+
+        if (cancelled) return;
+
+        const direct = detail?.substitution_info?.schvalovatel;
+        if (direct && (direct.is_substitution || direct.zastupovany_jmeno || direct.zastupovany_prijmeni || direct.zastupce_jmeno || direct.zastupce_prijmeni)) {
+          setApprovalSubstitutionInfoFromDetail(direct);
+          return;
+        }
+
+        const actions = Array.isArray(detail?.zastupovani_akce) ? detail.zastupovani_akce : [];
+        const matched = actions.find((item) => {
+          const type = String(item?.akce_typ || '').toUpperCase();
+          return type === 'APPROVE' || type === 'REJECT' || type === 'CONFIRM';
+        }) || null;
+
+        setApprovalSubstitutionInfoFromDetail(matched);
+      } catch (error) {
+        if (!cancelled) {
+          setApprovalSubstitutionInfoFromDetail(null);
+        }
+      }
+    };
+
+    loadApprovalSubstitutionInfo();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [formData?.id, token, username]);
+
+  const approvalSubstitutionInfo = useMemo(() => {
+    if (approvalSubstitutionInfoFromDetail) {
+      return approvalSubstitutionInfoFromDetail;
+    }
+
+    const direct = formData?.substitution_info?.schvalovatel;
+    if (direct && (direct.is_substitution || direct.zastupovany_jmeno || direct.zastupovany_prijmeni || direct.zastupce_jmeno || direct.zastupce_prijmeni)) {
+      return direct;
+    }
+
+    const actions = Array.isArray(formData?.zastupovani_akce) ? formData.zastupovani_akce : [];
+    return actions.find((item) => {
+      const type = String(item?.akce_typ || '').toUpperCase();
+      return type === 'APPROVE' || type === 'REJECT' || type === 'CONFIRM';
+    }) || null;
+  }, [approvalSubstitutionInfoFromDetail, formData?.substitution_info, formData?.zastupovani_akce]);
+
+  const approvalSubstitutionText = useMemo(() => {
+    if (!approvalSubstitutionInfo) return null;
+
+    const zastupovanyName = formatSubstitutionPersonName(approvalSubstitutionInfo);
+    const zastupceName = formatSubstituteName(approvalSubstitutionInfo);
+    const actionTime = approvalSubstitutionInfo.dt_akce
+      ? prettyDate(approvalSubstitutionInfo.dt_akce)
+      : (formData.dt_schvaleni ? prettyDate(formData.dt_schvaleni) : '---');
+
+    return {
+      zastupovanyName,
+      zastupceName,
+      actionTime,
+    };
+  }, [approvalSubstitutionInfo, formData.dt_schvaleni, formatSubstituteName, formatSubstitutionPersonName, prettyDate]);
 
   // ❌ ODSTRANENO: canApproveAsSameUsekPrikazce (řádky 7116-7172)
   // Důvod: Nekonzistence s rychlým schvalováním v OrdersTableV3
@@ -7142,6 +7318,11 @@ function OrderForm25() {
       return null; // Žádné omezení
     }
 
+    // Pokud je aktivní zástupce příkazce této objednávky, může schvalovat
+    if (isSubstituteForOrderPrikazce) {
+      return null; // Žádné omezení
+    }
+
     // Pokud je příkazce (ale jiné objednávky) nebo správce rozpočtu
     if (isPrikazce || isBudgetManagerRole) {
       // Zjisti jméno příkazce objednávky
@@ -7152,18 +7333,18 @@ function OrderForm25() {
     }
 
     return null; // Ostatní uživatelé vůbec neuvidí sekci schválení
-  }, [isSuperAdmin, isAdmin, isPrikazceOfOrder, isPrikazce, isBudgetManagerRole, formData.prikazce_id]);
+  }, [isSuperAdmin, isAdmin, isPrikazceOfOrder, isSubstituteForOrderPrikazce, isPrikazce, isBudgetManagerRole, formData.prikazce_id]);
 
   // Sekci schválení vidí pouze:
   // - Příkazce objednávky
   // - Admin/Superadmin
   // ❌ NEVIDÍ: Příkazce jiné objednávky, Správce rozpočtu (pokud nejsou příkazcem této objednávky)
-  const canViewApprovalSection = (isPrikazceOfOrder || isSuperAdmin || isAdmin) && !cannotApproveReason;
+  const canViewApprovalSection = (isPrikazceOfOrder || isSubstituteForOrderPrikazce || isSuperAdmin || isAdmin) && !cannotApproveReason;
 
   // 🔒 EDITACE VE FÁZI 2 (KE SCHVÁLENÍ)
   // Běžný uživatel po znovu-otevření nesmí upravovat sekce Objednatel/Schválení/Financování.
   // Výjimka: role/permission pro schvalování nebo správu (ORDER_APPROVE/ORDER_MANAGE), příkazce objednávky, správce rozpočtu, admin.
-  const canEditDuringApprovalPhase = canManageOrders || canApproveOrders || isPrikazceOfOrder || isBudgetManagerRole || isSuperAdmin || isAdmin;
+  const canEditDuringApprovalPhase = canManageOrders || canApproveOrders || isPrikazceOfOrder || isSubstituteForOrderPrikazce || isBudgetManagerRole || isSuperAdmin || isAdmin;
 
   // 💰 Helper: Jednotná detekce LP financování (primárně dle KÓDU, fallback dle názvu v číselníku)
   // DŮVOD: detekce dle názvu je citlivá na timing (financovaniOptions nemusí být ready) a na změny textů.
@@ -7434,13 +7615,14 @@ function OrderForm25() {
         );
         const isBudgetManagerRole = userDetail?.roles?.some(role => role.kod_role === 'SPRAVCE_ROZPOCTU');
         const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
+        const isSubstituteForPrikazce = approveDelegatedUserIdSet.has(String(parseInt(formData.prikazce_id, 10)));
         
         // 🔒 OPRÁVNĚNÍ KE SCHVALOVÁNÍ (konzistentní s OrdersTableV3):
         // - Pouze přímý příkazce objednávky
         // - Správce rozpočtu
         // - Admin/Superadmin
         // ❌ NEPOVOLENO: Příkazce ze stejného úseku (ale jiný než příkazce objednávky)
-        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder || isBudgetManagerRole;
+        const hasSpecialApprovalRights = hasGeneralRole || isPrikazceOfOrder || isSubstituteForPrikazce || isBudgetManagerRole;
         const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
         
         // Pokud má uživatel speciální oprávnění a objednávka je zamítnuta VE FÁZI SCHVALOVÁNÍ, nechej checkboxy aktivní
@@ -21349,7 +21531,8 @@ function OrderForm25() {
                         role.kod_role === 'PRIKAZCE' || role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
                       );
                       const isPrikazceOfOrder = parseInt(formData.prikazce_id, 10) === user_id;
-                      const hasSpecialRights = hasGeneralRole || isPrikazceOfOrder;
+                      const isSubstituteForPrikazce = approveDelegatedUserIdSet.has(String(parseInt(formData.prikazce_id, 10)));
+                      const hasSpecialRights = hasGeneralRole || isPrikazceOfOrder || isSubstituteForPrikazce;
                       const isRejectedOrder = hasWorkflowState(formData.stav_workflow_kod, 'ZAMITNUTA');
                       
                       // Pokud má speciální práva a je to zamítnutá objednávka ve fázi schvalování, povolit uložit
@@ -23050,6 +23233,17 @@ function OrderForm25() {
                              formData.stav_schvaleni === 'neschvaleno' ? 'Zamítl:' : 'Vrátil:'}
                           </strong> {getUserNameById(formData.schvalovatel_id)}
                         </div>
+                        {approvalSubstitutionText && (
+                          <div style={{
+                            marginBottom: '0.5rem',
+                            padding: '0.45rem 0.6rem',
+                            borderLeft: '3px solid #f59e0b',
+                            backgroundColor: 'rgba(251, 191, 36, 0.12)',
+                            borderRadius: '4px'
+                          }}>
+                            <strong>Akce v zastoupení:</strong> za {approvalSubstitutionText.zastupovanyName} provedl {approvalSubstitutionText.zastupceName} ({approvalSubstitutionText.actionTime}).
+                          </div>
+                        )}
                         {/* Zobrazení komentáře pro VŠECHNY stavy včetně schválení */}
                         {formData.schvaleni_komentar && (
                           <div>
@@ -23184,6 +23378,17 @@ function OrderForm25() {
                          formData.stav_schvaleni === 'neschvaleno' ? 'Zamítl:' : 'Vrátil:'}
                       </strong> {getUserNameById(formData.schvalovatel_id)}
                     </div>
+                    {approvalSubstitutionText && (
+                      <div style={{
+                        marginBottom: '0.5rem',
+                        padding: '0.45rem 0.6rem',
+                        borderLeft: '3px solid #f59e0b',
+                        backgroundColor: 'rgba(251, 191, 36, 0.12)',
+                        borderRadius: '4px'
+                      }}>
+                        <strong>Akce v zastoupení:</strong> za {approvalSubstitutionText.zastupovanyName} provedl {approvalSubstitutionText.zastupceName} ({approvalSubstitutionText.actionTime}).
+                      </div>
+                    )}
                     {/* Zobrazení komentáře pro VŠECHNY stavy včetně schválení */}
                     {formData.schvaleni_komentar && (
                       <div>
@@ -30017,6 +30222,7 @@ function OrderForm25() {
         order={formData}
         onConfirm={handleConfirmCompletion}
         onCancel={handleCancelCompletion}
+        approvalSubstitutionInfo={approvalSubstitutionInfo}
         generatedBy={{
           fullName: userDetail ? `${userDetail.titul_pred || ''} ${userDetail.jmeno || ''} ${userDetail.prijmeni || ''} ${userDetail.titul_za || ''}`.trim() : username,
           position: userDetail?.pozice_nazev || 'Uživatel'

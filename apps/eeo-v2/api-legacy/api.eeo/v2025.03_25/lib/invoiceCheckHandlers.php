@@ -249,6 +249,7 @@ function handle_invoice_toggle_check($input, $config) {
         
         $user_id = $token_data['id'];
         $has_permission = false;
+        $substitution_context = null;
         
         // Načíst úsek aktuálního uživatele
         $stmt_user_usek = $db->prepare("
@@ -259,6 +260,31 @@ function handle_invoice_toggle_check($input, $config) {
         $stmt_user_usek->execute(array($user_id));
         $user_usek_data = $stmt_user_usek->fetch(PDO::FETCH_ASSOC);
         $user_usek_id = $user_usek_data ? (int)$user_usek_data['usek_id'] : null;
+
+        // 5x. Kontrola aktivního zastoupení vůči uživateli, kterému je faktura předána
+        // Důležité: používá se pro oprávnění i pro audit log (badge v seznamu faktur)
+        if (!empty($faktura['fa_predana_zam_id'])
+            && (int)$faktura['fa_predana_zam_id'] !== (int)$user_id
+            && function_exists('get_active_substitution_for_action')) {
+            try {
+                $target_zastupovany_id = (int)$faktura['fa_predana_zam_id'];
+
+                // Primárně očekáváme oprávnění confirm pro věcnou správnost
+                $substitution_context = get_active_substitution_for_action($db, $user_id, 'confirm', $target_zastupovany_id);
+
+                // Fallback pro starší záznamy, kde může být jen approve
+                if (!$substitution_context) {
+                    $substitution_context = get_active_substitution_for_action($db, $user_id, 'approve', $target_zastupovany_id);
+                }
+
+                if ($substitution_context) {
+                    error_log("✅ VS zastoupení: Uživatel #{$user_id} aktivně zastupuje uživatele #{$target_zastupovany_id} pro fakturu #{$faktura_id}");
+                }
+            } catch (Exception $e) {
+                error_log("⚠️ VS zastoupení check error: " . $e->getMessage());
+                $substitution_context = null;
+            }
+        }
         
         // 5a. Kontrola globálních rolí (SUPERADMIN, ADMINISTRATOR, KONTROLOR_FAKTUR)
         $stmt_role = $db->prepare("
@@ -355,6 +381,12 @@ function handle_invoice_toggle_check($input, $config) {
                 if ($predany_usek_id && $user_usek_id && $predany_usek_id == $user_usek_id) {
                     $has_permission = true;
                     error_log("✅ VS oprávnění: Uživatel #{$user_id} je kolega z úseku #{$user_usek_id} uživatele #{$faktura['fa_predana_zam_id']} komu byla faktura předána");
+                }
+
+                // Aktivní zastoupení má přednost nad omezením úsek/lokalita
+                if (!$has_permission && $substitution_context) {
+                    $has_permission = true;
+                    error_log("✅ VS oprávnění: Uživatel #{$user_id} má aktivní zastoupení pro uživatele #{$faktura['fa_predana_zam_id']}");
                 }
             }
         }
@@ -536,6 +568,38 @@ function handle_invoice_toggle_check($input, $config) {
                 $stmt_delete_lp->execute(array($faktura_id));
                 
                 error_log("🔴 Zamítnuta VS faktury #$faktura_id - stav změněn na V_RESENI, LP čerpání smazáno");
+            }
+
+            // 8c. Audit log akce v zastoupení (pokud byla akce provedena za zastupovaného)
+            if ($substitution_context && function_exists('log_substitution_action')) {
+                $sub_akce_typ = 'UPDATE';
+                $sub_popis = 'Úprava věcné správnosti faktury';
+
+                if ($status === VS_STATUS_POTVRZENA) {
+                    $sub_akce_typ = 'CONFIRM';
+                    $sub_popis = 'Potvrzení věcné správnosti faktury';
+                } elseif ($status === VS_STATUS_ZAMITNUTA) {
+                    $sub_akce_typ = 'REJECT';
+                    $sub_popis = 'Zamítnutí věcné správnosti faktury';
+                } elseif ($status === VS_STATUS_NEPOTVRZENA) {
+                    $sub_akce_typ = 'UPDATE';
+                    $sub_popis = 'Reset věcné správnosti faktury';
+                }
+
+                $logged_sub = log_substitution_action(
+                    $db,
+                    (int)$substitution_context['zastupovani_id'],
+                    (int)$user_id,
+                    (int)$substitution_context['zastupovany_id'],
+                    $sub_akce_typ,
+                    'FAKTURA',
+                    (int)$faktura_id,
+                    $sub_popis
+                );
+
+                if (!$logged_sub) {
+                    error_log("⚠️ VS substitution audit: nepodařilo se zapsat audit log pro fakturu #{$faktura_id}");
+                }
             }
             
             // 9. ⚠️ AUTOMATICKÁ SPRÁVA WORKFLOW A STAVU OBJEDNÁVKY

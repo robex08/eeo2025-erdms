@@ -18,8 +18,10 @@ import {
   fetchSubstitutionCandidates,
   fetchCurrentlySubstituting,
   fetchAllSubstitutionsAdmin,
+  fetchSubstitutionAuditLog,
   fetchManageableUsers,
 } from '../services/apiSubstitution';
+import OrdersPaginationV3 from './ordersV3/OrdersPaginationV3';
 
 // ─── Animace ──────────────────────────────────────────────────────────────────
 const spinAnim   = keyframes`from{transform:rotate(0deg);}to{transform:rotate(360deg);}`;
@@ -425,6 +427,21 @@ function formatDate(d) {
   try { return new Date(d).toLocaleDateString('cs-CZ'); } catch { return d; }
 }
 
+function formatDateTime(d) {
+  if (!d) return '—';
+  try {
+    return new Date(d).toLocaleString('cs-CZ', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return d;
+  }
+}
+
 function getInitials(jmeno, prijmeni) {
   return ((jmeno || '').charAt(0) + (prijmeni || '').charAt(0)).toUpperCase() || '??';
 }
@@ -530,6 +547,15 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   const [adminCandidates, setAdminCandidates]       = useState([]);
   const [adminLoading, setAdminLoading]             = useState(false);
   const [adminDeactivating, setAdminDeactivating]   = useState(null);
+  const [systemSection, setSystemSection]           = useState('substitutions'); // substitutions | audit
+  const [adminAuditLog, setAdminAuditLog]           = useState([]);
+  const [adminAuditLoading, setAdminAuditLoading]   = useState(false);
+  const [adminAuditPagination, setAdminAuditPagination] = useState({
+    page: 1,
+    per_page: 25,
+    total: 0,
+    total_pages: 0,
+  });
 
   // View přepínač
   const [view, setView] = useState('mine'); // 'mine' | 'system'
@@ -603,8 +629,31 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     }
   }, [token, username, showToast, isAdmin]);
 
+  const loadAdminAudit = useCallback(async ({ page = 1, per_page = adminAuditPagination.per_page } = {}) => {
+    if (!isAdmin) return;
+    setAdminAuditLoading(true);
+    try {
+      const res = await fetchSubstitutionAuditLog({ token, username, page, per_page });
+      setAdminAuditLog(res.data || []);
+      setAdminAuditPagination(res.pagination || {
+        page: 1,
+        per_page,
+        total: 0,
+        total_pages: 0,
+      });
+    } catch (e) {
+      showToast && showToast('Nepodařilo se načíst auditní log zastupování', 'error');
+    } finally {
+      setAdminAuditLoading(false);
+    }
+  }, [token, username, showToast, isAdmin, adminAuditPagination.per_page]);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadAdmin(); }, [loadAdmin]);
+  useEffect(() => {
+    if (!isAdmin || view !== 'system' || systemSection !== 'audit') return;
+    loadAdminAudit({ page: adminAuditPagination.page, per_page: adminAuditPagination.per_page });
+  }, [isAdmin, view, systemSection, loadAdminAudit, adminAuditPagination.page, adminAuditPagination.per_page]);
 
   // Pro admin modal načítáme kandidáty podle vybraného zastupovaného
   useEffect(() => {
@@ -995,25 +1044,121 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
   // ─── Admin tabulka systému ────────────────────────────────────────────────
   function renderAdminTable() {
+    const showAudit = systemSection === 'audit';
+
     return (
       <Card>
         <CardHeader>
           <CardTitle>
             <Shield size={16} color="#dc2626" />
-            Přehled zastupování v systému
+            {showAudit ? 'Auditní log zastupování' : 'Přehled zastupování v systému'}
             <span style={{ fontSize: '.75rem', fontWeight: 500, color: '#94a3b8', marginLeft: 4 }}>
-              {adminSubstitutions.length} záznamů
+              {showAudit ? `${adminAuditPagination.total || 0} záznamů` : `${adminSubstitutions.length} záznamů`}
             </span>
           </CardTitle>
           <div style={{ display: 'flex', gap: '.5rem' }}>
-            <ActionBtn title="Obnovit" onClick={loadAdmin} disabled={adminLoading}>
-              <RefreshCw size={13} style={{ animation: adminLoading ? `${spinAnim} .9s linear infinite` : 'none' }} />
+            <ActionBtn
+              title="Obnovit"
+              onClick={showAudit
+                ? () => loadAdminAudit({ page: adminAuditPagination.page, per_page: adminAuditPagination.per_page })
+                : loadAdmin}
+              disabled={showAudit ? adminAuditLoading : adminLoading}
+            >
+              <RefreshCw size={13} style={{ animation: (showAudit ? adminAuditLoading : adminLoading) ? `${spinAnim} .9s linear infinite` : 'none' }} />
             </ActionBtn>
-            <Btn $v="danger" $sm onClick={openAdminCreate} style={{ borderColor: 'transparent' }}>
-              <Plus size={14} /> Přidat
-            </Btn>
+            {!showAudit && (
+              <Btn $v="danger" $sm onClick={openAdminCreate} style={{ borderColor: 'transparent' }}>
+                <Plus size={14} /> Přidat
+              </Btn>
+            )}
           </div>
         </CardHeader>
+
+        <div style={{ display: 'flex', gap: '.5rem', padding: '.75rem 1rem', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+          <ViewTab
+            type="button"
+            $active={systemSection === 'substitutions'}
+            onClick={() => setSystemSection('substitutions')}
+            style={{ padding: '0.35rem 0.75rem', fontSize: '.75rem' }}
+          >
+            Přehled zastupování
+          </ViewTab>
+          <ViewTab
+            type="button"
+            $active={systemSection === 'audit'}
+            onClick={() => setSystemSection('audit')}
+            style={{ padding: '0.35rem 0.75rem', fontSize: '.75rem' }}
+          >
+            Auditní log
+          </ViewTab>
+        </div>
+
+        {showAudit ? (
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Datum akce</Th>
+                    <Th>Zástupce</Th>
+                    <Th>V zastoupení</Th>
+                    <Th>Akce</Th>
+                    <Th>Objekt</Th>
+                    <Th>Identifikátor</Th>
+                    <Th>Popis</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adminAuditLoading ? (
+                    <EmptyRow>
+                      <td colSpan={7}>
+                        <SpinIcon size={22} style={{ display: 'block', margin: '0 auto .5rem', color: '#94a3b8' }} />
+                        <div style={{ color: '#94a3b8' }}>Načítám auditní log…</div>
+                      </td>
+                    </EmptyRow>
+                  ) : adminAuditLog.length === 0 ? (
+                    <EmptyRow>
+                      <td colSpan={7}>
+                        <EmptyIcon><Shield size={22} /></EmptyIcon>
+                        <div style={{ fontSize: '.82rem', color: '#94a3b8' }}>Auditní log je zatím prázdný</div>
+                      </td>
+                    </EmptyRow>
+                  ) : adminAuditLog.map((row) => (
+                    <Tr key={row.id}>
+                      <Td style={{ whiteSpace: 'nowrap', fontSize: '.78rem' }}>{formatDateTime(row.dt_akce)}</Td>
+                      <Td>
+                        <div style={{ fontWeight: 600, fontSize: '.82rem' }}>{row.zastupce_jmeno || '—'}</div>
+                        <div style={{ fontSize: '.72rem', color: '#94a3b8' }}>{row.zastupce_username || ''}</div>
+                      </Td>
+                      <Td>
+                        <div style={{ fontWeight: 600, fontSize: '.82rem' }}>{row.zastupovany_jmeno || '—'}</div>
+                        <div style={{ fontSize: '.72rem', color: '#94a3b8' }}>{row.zastupovany_username || ''}</div>
+                      </Td>
+                      <Td><PermPill>{row.akce_typ || '—'}</PermPill></Td>
+                      <Td style={{ whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.objekt_typ || '—'}</Td>
+                      <Td style={{ whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.objekt_identifikator || row.objekt_reference || row.objekt_id || '—'}</Td>
+                      <Td style={{ fontSize: '.78rem', color: '#475569' }}>{row.popis_akce || '—'}</Td>
+                    </Tr>
+                  ))}
+                </tbody>
+              </Table>
+            </div>
+
+            <OrdersPaginationV3
+              currentPage={adminAuditPagination.page || 1}
+              totalPages={adminAuditPagination.total_pages || 1}
+              totalItems={adminAuditPagination.total || 0}
+              itemsPerPage={adminAuditPagination.per_page || 25}
+              loading={adminAuditLoading}
+              onPageChange={(nextPage) => {
+                loadAdminAudit({ page: nextPage, per_page: adminAuditPagination.per_page || 25 });
+              }}
+              onItemsPerPageChange={(nextPerPage) => {
+                loadAdminAudit({ page: 1, per_page: nextPerPage });
+              }}
+            />
+          </>
+        ) : (
         <div style={{ overflowX: 'auto' }}>
           <Table>
             <thead>
@@ -1110,6 +1255,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
             </tbody>
           </Table>
         </div>
+        )}
       </Card>
     );
   }
