@@ -1,6 +1,6 @@
 import React from 'react';
 import styled from 'styled-components';
-import { Tooltip } from '@mui/material';
+import { SmartTooltip } from '../../styles/SmartTooltip';
 
 /**
  * 🎯 SubstitutionBadge - Komponenta pro zobrazení ikony zastoupení
@@ -21,8 +21,55 @@ import { Tooltip } from '@mui/material';
  * 
  * Bez substituce: komponent vrací null (nic se nezobrazí)
  */
-function SubstitutionBadge({ substitutionInfo, actionLabel = 'Provedeno' }) {
-  if (!substitutionInfo || !substitutionInfo.is_substitution) {
+const formatPersonName = (person = {}) => {
+  const parts = [];
+  if (person.titul_pred) parts.push(person.titul_pred);
+  if (person.prijmeni) parts.push(person.prijmeni);
+  if (person.jmeno) parts.push(person.jmeno);
+  if (person.titul_za) parts.push(person.titul_za);
+  return parts.length > 0 ? parts.join(' ') : '---';
+};
+
+const normalizeSubstitutionInfo = (raw) => {
+  if (!raw) return null;
+
+  const zastupovany = {
+    jmeno: raw.zastupovany_jmeno,
+    prijmeni: raw.zastupovany_prijmeni,
+    titul_pred: raw.zastupovany_titul_pred,
+    titul_za: raw.zastupovany_titul_za,
+  };
+
+  const zastupce = {
+    jmeno: raw.zastupce_jmeno,
+    prijmeni: raw.zastupce_prijmeni,
+    titul_pred: raw.zastupce_titul_pred,
+    titul_za: raw.zastupce_titul_za,
+  };
+
+  const hasSubstitutionHint = Boolean(
+    raw.is_substitution ||
+      raw.zastupovany_id !== null && raw.zastupovany_id !== undefined ||
+      raw.zastupovany_jmeno ||
+      raw.zastupovany_prijmeni ||
+      raw.zastupce_jmeno ||
+      raw.zastupce_prijmeni
+  );
+
+  if (!hasSubstitutionHint) return null;
+
+  return {
+    is_substitution: true,
+    dt_akce: raw.dt_akce,
+    zastupovany,
+    zastupce,
+  };
+};
+
+function SubstitutionBadge({ substitutionInfo, actionLabel = 'Provedeno', actorName = '' }) {
+  const normalizedInfo = normalizeSubstitutionInfo(substitutionInfo);
+
+  if (!normalizedInfo) {
     return null;
   }
 
@@ -43,12 +90,43 @@ function SubstitutionBadge({ substitutionInfo, actionLabel = 'Provedeno' }) {
     }
   };
 
-  const tooltipText = `${actionLabel} v zastoupení za ${substitutionInfo.zastupovany_jmeno || '---'}\nČas: ${formatDateTime(substitutionInfo.dt_akce)}`;
+  const zastupovanyName = formatPersonName(normalizedInfo.zastupovany);
+  const rawZastupceName = formatPersonName(normalizedInfo.zastupce);
+  const zastupceName = rawZastupceName !== '---' ? rawZastupceName : (actorName || '---');
+  const actionDate = formatDateTime(normalizedInfo.dt_akce);
+
+  const tooltipContent = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem', minWidth: '290px', maxWidth: '420px' }}>
+      <div style={{ color: '#fbbf24', fontWeight: 700, fontSize: '0.85rem', borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '0.25rem' }}>
+        Akce v zastoupení
+      </div>
+
+      <div style={{ fontSize: '0.8rem', color: 'white', lineHeight: 1.45 }}>
+        <span style={{ color: '#f1f5f9', fontWeight: 600 }}>{actionLabel}:</span> v zastoupení za
+        <span style={{ color: '#fde68a', fontWeight: 700 }}> {zastupovanyName}</span>
+      </div>
+
+      <div style={{ fontSize: '0.78rem', color: '#e2e8f0', lineHeight: 1.45 }}>
+        Provedl zástupce:
+        <span style={{ color: '#bfdbfe', fontWeight: 600 }}> {zastupceName}</span>
+      </div>
+
+      {actionDate && (
+        <div style={{ fontSize: '0.75rem', color: '#cbd5e1', lineHeight: 1.45 }}>
+          Čas akce: <span style={{ color: '#f8fafc', fontWeight: 600 }}>{actionDate}</span>
+        </div>
+      )}
+
+      <div style={{ color: '#fcd34d', fontSize: '0.7rem', fontStyle: 'italic', borderLeft: '2px solid #f59e0b', paddingLeft: '0.5rem' }}>
+        Akce byla provedena v době aktivního zástupu.
+      </div>
+    </div>
+  );
 
   return (
-    <Tooltip title={tooltipText} arrow placement="top">
-      <BadgeIcon title={tooltipText}>👥</BadgeIcon>
-    </Tooltip>
+    <SmartTooltip text={tooltipContent} preferredPosition="top" icon="none" interactive={true}>
+      <BadgeIcon title={`${actionLabel} v zastoupení`}>👥</BadgeIcon>
+    </SmartTooltip>
   );
 }
 

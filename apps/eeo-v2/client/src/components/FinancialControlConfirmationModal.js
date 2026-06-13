@@ -210,6 +210,7 @@ const FinancialControlConfirmationModal = ({
   onConfirm, 
   onCancel, 
   generatedBy,
+  approvalSubstitutionInfo = null,
   token,
   username
 }) => {
@@ -299,6 +300,7 @@ const FinancialControlConfirmationModal = ({
             generatedBy={generatedBy}
             organizace={orgData}
             strediskaMap={strediska}
+            approvalSubstitutionInfo={approvalSubstitutionInfo}
           />
         ).toBlob();
 
@@ -370,6 +372,7 @@ const FinancialControlConfirmationModal = ({
           generatedBy={generatedBy}
           organizace={pdfDataRef.current.organizace}
           strediskaMap={pdfDataRef.current.strediskaMap}
+          approvalSubstitutionInfo={approvalSubstitutionInfo}
         />
       ).toBlob();
 

@@ -64,6 +64,7 @@ import { getOrderV2, deleteOrderV2 } from '../services/apiOrderV2';
 import { findOrderPageV3 } from '../services/apiOrdersV3';
 import { fetchCiselniky } from '../services/api2auth';
 import { getInvoicesByOrder25 } from '../services/api25invoices';
+import { fetchCurrentlySubstituting } from '../services/apiSubstitution';
 
 // Custom hooks
 import { useOrdersV3 } from '../hooks/ordersV3/useOrdersV3';
@@ -717,6 +718,28 @@ const COLUMN_LABELS = {
   actions: 'Akce',
 };
 
+function toBool(value) {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes';
+  }
+  return false;
+}
+
+function decodeOpravneni(value) {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+}
+
 // ============================================================================
 // MAIN COMPONENT
 // ============================================================================
@@ -737,6 +760,7 @@ function Orders25ListV3() {
 
   // 🔄 BT: čas posledního tichého auto-refresh (zobrazuje se vedle ikony refresh)
   const [lastBtAutoRefreshTime, setLastBtAutoRefreshTime] = useState(null);
+  const [activeSubstitutions, setActiveSubstitutions] = useState([]);
 
   // 🐛 CRITICAL FIX: API V2 vrací ID jako NUMBER, AuthContext má user_id jako STRING
   // Musíme konvertovat na number pro správné porovnání v permissions
@@ -763,13 +787,32 @@ function Orders25ListV3() {
 
   const hasApproveColumn = useMemo(() => {
     if (!hasPermission) return false;
+    const hasDelegatedApprove = activeSubstitutions.some(item => {
+      const perms = decodeOpravneni(item?.opravneni);
+      return toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+    });
+
     return (hasAdminRole && hasAdminRole()) ||
       hasPermission('ORDER_APPROVE') ||
       hasPermission('ORDER_EDIT_ALL') ||
       hasPermission('ORDER_EDIT_OWN') ||
       hasPermission('ORDER_EDIT_SUBORDINATE') ||
-      hasPermission('ORDER_MANAGE');
-  }, [hasAdminRole, hasPermission]);
+      hasPermission('ORDER_MANAGE') ||
+      hasDelegatedApprove;
+  }, [hasAdminRole, hasPermission, activeSubstitutions]);
+
+  const substitutedApproverIds = useMemo(() => {
+    return activeSubstitutions
+      .filter(item => {
+        const perms = decodeOpravneni(item?.opravneni);
+        return toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+      })
+      .map(item => item?.zastupovany_id)
+      .filter(id => id !== null && id !== undefined)
+      .map(id => String(id));
+  }, [activeSubstitutions]);
+
+  const substitutedApproverIdSet = useMemo(() => new Set(substitutedApproverIds), [substitutedApproverIds]);
 
   // ✅ OPTIMALIZACE: Memoizované permission funkce místo inline definic
   const {
@@ -780,7 +823,9 @@ function Orders25ListV3() {
     canHardDelete,
     canViewDetails,
     canGenerateFinancialControl,
-  } = useOrderPermissions(hasPermission, currentUserId);
+  } = useOrderPermissions(hasPermission, currentUserId, {
+    substitutedApproverIds,
+  });
 
   // ✅ Permission funkce nyní v useOrderPermissions hook
 
@@ -809,6 +854,39 @@ function Orders25ListV3() {
 
     return () => clearTimeout(timer);
   }, [globalFilter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActiveSubstitutions = async () => {
+      if (!token || !username) {
+        if (!cancelled) setActiveSubstitutions([]);
+        return;
+      }
+
+      try {
+        const current = await fetchCurrentlySubstituting({ token, username });
+        if (!cancelled) {
+          const todayStr = new Date().toISOString().slice(0, 10);
+          const normalized = (Array.isArray(current) ? current : []).filter(item => {
+            if (!item) return false;
+            if (item.aktivni === false || item.aktivni === 0 || item.aktivni === '0') return false;
+            if (item.dt_od && todayStr < item.dt_od) return false;
+            if (item.dt_do && todayStr > item.dt_do) return false;
+            return true;
+          });
+          setActiveSubstitutions(normalized);
+        }
+      } catch (_) {
+        if (!cancelled) setActiveSubstitutions([]);
+      }
+    };
+
+    loadActiveSubstitutions();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, username]);
 
   // State pro číselník stavů (načítá se z API)
   const [orderStatesList, setOrderStatesList] = useState([]);
@@ -2317,11 +2395,12 @@ function Orders25ListV3() {
     // Příkazce a admini NEMOHOU stornovat - mají ikonu schválení/zamítnutí
     if (lastState === 'ODESLANA_KE_SCHVALENI') {
       const isPrikazce = String(order.prikazce_id) === String(currentUserId);
+      const isSubstituteForPrikazce = substitutedApproverIdSet.has(String(order.prikazce_id));
       const isAdmin = hasPermission('SUPERADMIN') || 
                       hasPermission('ADMINISTRATOR') || 
                       hasPermission('ORDER_MANAGE');
       
-      if (isPrikazce || isAdmin || isBudgetManagerRole) {
+      if (isPrikazce || isSubstituteForPrikazce || isAdmin || isBudgetManagerRole) {
         return false; // Příkazce/admin nemůže stornovat - má zamítnout místo toho
       }
     }
@@ -2336,7 +2415,7 @@ function Orders25ListV3() {
     }
 
     return false;
-  }, [currentUserId, hasPermission, isUserInOrderRole, userDetail?.roles]);
+  }, [currentUserId, hasPermission, isUserInOrderRole, userDetail?.roles, substitutedApproverIdSet]);
 
   // canToggleCheck - pouze SUPERADMIN, ADMINISTRATOR, KONTROLOR_OBJEDNAVEK
   const canToggleCheck = useCallback(() => {
@@ -2350,6 +2429,7 @@ function Orders25ListV3() {
     if (!order) return false;
     
     const isPrikazce = String(order.prikazce_id) === String(currentUserId);
+    const isSubstituteForPrikazce = substitutedApproverIdSet.has(String(order.prikazce_id));
     const isBudgetManagerRole = userDetail?.roles?.some(role => role.kod_role === 'SPRAVCE_ROZPOCTU');
     const isAdminRole = hasAdminRole && hasAdminRole();
     
@@ -2385,12 +2465,12 @@ function Orders25ListV3() {
     // - Správce rozpočtu
     // ❌ ODSTRANENO: Kontrola příkazce ze stejného úseku (nekonzistentní s OrdersTableV3)
     //    Příkazce může schvalovat POUZE svoje objednávky (kde je přímým příkazcem)
-    if (isBudgetManagerRole || isPrikazce) {
-      return isPrikazce && isAllowedState;
+    if (isBudgetManagerRole || isPrikazce || isSubstituteForPrikazce) {
+      return (isPrikazce || isSubstituteForPrikazce) && isAllowedState;
     }
     
     return false;
-  }, [currentUserId, hasAdminRole, userDetail]);
+  }, [currentUserId, hasAdminRole, userDetail, substitutedApproverIdSet]);
 
   return (
     <>

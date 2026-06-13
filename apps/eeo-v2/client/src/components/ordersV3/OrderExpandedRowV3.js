@@ -891,6 +891,46 @@ const parseWorkflowStates = (raw) => {
   return [];
 };
 
+const resolveApprovalSubstitutionInfo = (source) => {
+  if (!source) return null;
+
+  const direct = source.substitution_info?.schvalovatel;
+  if (direct) return direct;
+
+  const actions = Array.isArray(source.zastupovani_akce) ? source.zastupovani_akce : [];
+  const matched = actions.find((item) => {
+    const type = String(item?.akce_typ || '').toUpperCase();
+    return type === 'APPROVE' || type === 'REJECT' || type === 'CONFIRM';
+  });
+
+  return matched || null;
+};
+
+const getApprovalActionLabel = (source) => {
+  if (!source) return 'Schváleno';
+
+  const statusByCheckbox = String(source.stav_schvaleni || '').toLowerCase();
+  if (statusByCheckbox === 'neschvaleno') return 'Zamítnuto';
+  if (statusByCheckbox === 'ceka_se') return 'Vráceno';
+
+  const states = parseWorkflowStates(source.stav_workflow_kod)
+    .map((state) => {
+      if (typeof state === 'string') return state.toUpperCase().trim();
+      return String(state?.kod_stavu || state?.nazev_stavu || '').toUpperCase().trim();
+    })
+    .filter(Boolean);
+
+  const lastState = states.length > 0 ? states[states.length - 1] : '';
+  if (lastState === 'ZAMITNUTA') return 'Zamítnuto';
+  if (lastState === 'CEKA_SE') return 'Vráceno';
+  return 'Schváleno';
+};
+
+const getLastOrderChangeDate = (source) => {
+  if (!source) return null;
+  return source.dt_aktualizace || source.dt_schvaleni || source.dt_odeslani || source.dt_vytvoreni || null;
+};
+
 // Získání lidsky čitelného stavu objednávky
 const getOrderDisplayStatus = (order) => {
   // Backend vrací sloupec 'stav_objednavky' který už obsahuje čitelný český název
@@ -1353,6 +1393,11 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
   const hasWorkflowState = useCallback((code) => workflowStates.includes(code), [workflowStates]);
   const isCancelled = hasWorkflowState('ZRUSENA');
+  const approvalSubstitutionInfo = useMemo(
+    () => resolveApprovalSubstitutionInfo(detail),
+    [detail?.substitution_info?.schvalovatel, detail?.zastupovani_akce]
+  );
+  const approvalActionLabel = useMemo(() => getApprovalActionLabel(detail), [detail?.stav_schvaleni, detail?.stav_workflow_kod]);
   
   // 📥 Download/Preview handler pro přílohy - detekce typu a zobrazení ve vieweru
   const handleDownloadAttachment = async (attachment, orderId) => {
@@ -1804,7 +1849,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
               <InfoRow>
                 <InfoLabel>Poslední změna:</InfoLabel>
-                <InfoValue>{renderSmartDateInline(detail.dt_aktualizace)}</InfoValue>
+                <InfoValue>{renderSmartDateInline(getLastOrderChangeDate(detail))}</InfoValue>
               </InfoRow>
 
               <div style={{ borderTop: '1px solid #d1d5db', margin: '0.75rem 0' }} />
@@ -2188,8 +2233,9 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
                       {formatUserName(detail.schvalovatel_jmeno, detail.schvalovatel_prijmeni, detail.schvalovatel_titul_pred, detail.schvalovatel_titul_za)}
                       <SubstitutionBadge 
-                        substitutionInfo={detail.substitution_info?.schvalovatel} 
-                        actionLabel="Schváleno" 
+                        substitutionInfo={approvalSubstitutionInfo}
+                        actionLabel={approvalActionLabel}
+                        actorName={formatUserName(detail.schvalovatel_jmeno, detail.schvalovatel_prijmeni, detail.schvalovatel_titul_pred, detail.schvalovatel_titul_za)}
                       />
                     </div>
                     {detail.schvalovatel_email && (
@@ -2353,10 +2399,15 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
                     <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#059669' }}>
-                      2. Schválil
+                      2. Schválil {approvalSubstitutionInfo ? '(v zástupu)' : ''}
                     </div>
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
                       {formatUserName(detail.schvalovatel_jmeno, detail.schvalovatel_prijmeni, detail.schvalovatel_titul_pred, detail.schvalovatel_titul_za)}
+                      <SubstitutionBadge
+                        substitutionInfo={approvalSubstitutionInfo}
+                        actionLabel={approvalActionLabel}
+                        actorName={formatUserName(detail.schvalovatel_jmeno, detail.schvalovatel_prijmeni, detail.schvalovatel_titul_pred, detail.schvalovatel_titul_za)}
+                      />
                     </div>
                     
                     {/* Řádek 2: Datum */}

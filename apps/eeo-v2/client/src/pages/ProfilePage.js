@@ -2058,16 +2058,29 @@ const ProfilePage = () => {
   const [isSubstitutionEnabled, setIsSubstitutionEnabled] = useState(false);
   const [isSubstitutionCandidate, setIsSubstitutionCandidate] = useState(false);
   const [canSetOwnSubstituteByRule, setCanSetOwnSubstituteByRule] = useState(false);
+  const [substitutionAccessLoaded, setSubstitutionAccessLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState('info'); // 'info', 'permissions', 'settings', 'substitution'
   const canUseSubstitutionByPermission = !!(hasPermission && (hasPermission('USER_SUBSTITUTE_SET') || hasPermission('ADMIN')));
-  const canSeeSubstitutionTab = !!(isSubstitutionCandidate || (isSubstitutionEnabled && canUseSubstitutionByPermission));
-  const [activeTab, setActiveTab] = useState(() => {
+  const canSeeSubstitutionTabByRights = !!(isSubstitutionCandidate || (isSubstitutionEnabled && canUseSubstitutionByPermission));
+  const canSeeSubstitutionTab = substitutionAccessLoaded
+    ? canSeeSubstitutionTabByRights
+    : (activeTab === 'substitution');
+  const [profileTabStorageReady, setProfileTabStorageReady] = useState(false);
+
+  // Načtení aktivního tabu až po dostupnosti user_id (zabrání přepisu na "info" při reloadu)
+  useEffect(() => {
+    if (!user_id) return;
+
     try {
-      const savedTab = localStorage.getItem(`profile_active_tab_${user_id || 'default'}`) || 'info';
-      return savedTab === 'lp' ? 'info' : savedTab;
+      const savedTab = localStorage.getItem(`profile_active_tab_${user_id}`) || 'info';
+      const normalized = savedTab === 'lp' ? 'info' : savedTab;
+      setActiveTab(normalized);
     } catch {
-      return 'info';
+      setActiveTab('info');
+    } finally {
+      setProfileTabStorageReady(true);
     }
-  }); // 'info', 'permissions', 'settings'
+  }, [user_id]);
 
   // Legacy fallback: pokud je v URL/state ještě starý tab LP, přepni na Info
   useEffect(() => {
@@ -2075,47 +2088,76 @@ const ProfilePage = () => {
       setActiveTab('info');
     }
     // Pokud je aktivní tab, na který už není přístup, přepni na info.
-    if (activeTab === 'substitution' && !canSeeSubstitutionTab) {
+    if (substitutionAccessLoaded && activeTab === 'substitution' && !canSeeSubstitutionTabByRights) {
       setActiveTab('info');
     }
-  }, [activeTab, canSeeSubstitutionTab]);
+  }, [activeTab, canSeeSubstitutionTabByRights, substitutionAccessLoaded]);
 
   // Načíst globální nastavení pro kontrolu substitution_enabled
   useEffect(() => {
+    let isMounted = true;
+
     const checkSubstitutionEnabled = async () => {
       if (!token || !username) return;
       try {
         const settings = await getGlobalSettings(token, username);
         const enabled = settings?.substitution_enabled;
-        setIsSubstitutionEnabled(enabled === true || enabled === 1 || enabled === '1' || enabled === 'true');
+        if (isMounted) {
+          setIsSubstitutionEnabled(enabled === true || enabled === 1 || enabled === '1' || enabled === 'true');
+        }
       } catch (e) {
         // Při chybě nechat výchozí false
       }
     };
-    checkSubstitutionEnabled();
 
     // Zkontroluj, zda je uživatel v tabulce možností zastupování jako potenciální zástupce
     const checkCandidate = async () => {
       if (!token || !username) return;
       try {
         const scope = await fetchSubstitutionAccessScope({ token, username });
-        setIsSubstitutionCandidate(scope.hasTabAccess);
-        setCanSetOwnSubstituteByRule(scope.canSetOwnSubstitute);
+        if (isMounted) {
+          setIsSubstitutionCandidate(scope.hasTabAccess);
+          setCanSetOwnSubstituteByRule(scope.canSetOwnSubstitute);
+        }
       } catch (e) {
         // Při chybě nechat false
       }
     };
-    checkCandidate();
+
+    const loadSubstitutionAccess = async () => {
+      if (!token || !username) {
+        if (isMounted) setSubstitutionAccessLoaded(true);
+        return;
+      }
+
+      await Promise.allSettled([
+        checkSubstitutionEnabled(),
+        checkCandidate(),
+      ]);
+
+      if (isMounted) {
+        setSubstitutionAccessLoaded(true);
+      }
+    };
+
+    setSubstitutionAccessLoaded(false);
+    loadSubstitutionAccess();
+
+    return () => {
+      isMounted = false;
+    };
   }, [token, username]);
 
   // Uložit aktivní tab do localStorage
   useEffect(() => {
+    if (!user_id || !profileTabStorageReady) return;
+
     try {
-      localStorage.setItem(`profile_active_tab_${user_id || 'default'}`, activeTab);
+      localStorage.setItem(`profile_active_tab_${user_id}`, activeTab);
     } catch (e) {
       console.error('Chyba při ukládání aktivního tabu:', e);
     }
-  }, [activeTab, user_id]);
+  }, [activeTab, user_id, profileTabStorageReady]);
   const [permissionsSearch, setPermissionsSearch] = useState('');
   const [orderStats, setOrderStats] = useState({
     total: 0,
@@ -2589,7 +2631,9 @@ const ProfilePage = () => {
 
       // Krok 3: Ujisti se, že zůstaneme na záložce Nastavení po reloadu
       try {
-        localStorage.setItem(`profile_active_tab_${user_id || 'default'}`, 'settings');
+        if (user_id) {
+          localStorage.setItem(`profile_active_tab_${user_id}`, 'settings');
+        }
       } catch (e) {
         console.warn('Nelze uložit aktivní tab před reloadem:', e);
       }

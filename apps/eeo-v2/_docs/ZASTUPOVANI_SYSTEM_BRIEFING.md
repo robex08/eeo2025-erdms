@@ -2,8 +2,44 @@
 
 > **Projekt:** ERDMS / EEO v2  
 > **Větev:** `feature/v3-development`  
-> **Aktualizováno:** 14. 4. 2026  
+> **Aktualizováno:** 13. 6. 2026  
 > **Stav:** Plná integrace do dashboardu, notifikací a UI systému ✅
+
+---
+
+## 🆕 AKTUALIZACE 06/2026 – Co bylo nově dokončeno
+
+### 1. Admin audit log zastupování v UI (SubstitutionTab)
+- Přidán přepínač v Přehledu systému: „Přehled zastupování“ / „Auditní log“.
+- Audit log je dostupný pouze pro role SUPERADMIN/ADMINISTRATOR.
+- Přidána stránkovaná tabulka audit logu včetně pagination ve stylu Order list V3.
+- Nový FE endpoint wrapper: `fetchSubstitutionAuditLog()`.
+- Nový BE endpoint: `substitution/audit-log` (router + handler + queries).
+
+### 2. Polidštění audit logu
+- Akce v auditu jsou mapovány na čitelné české názvy.
+- Identifikátor objektu je „lidský“:
+  - objednávka → evidenční číslo,
+  - faktura → variabilní symbol.
+- Popisy akcí se vrací česky a se jmény místo technických ID.
+
+### 3. PDF „Záznam o předběžné řídící kontrole“
+- V řádku „Schvalovatel“ se při zastoupení zobrazuje text ve formátu:
+  - „{zástupce} v zastoupení za {zastupovaného}“.
+- Přenos substitučních dat byl dotažen přes `OrderForm25` → `FinancialControlConfirmationModal` → `FinancialControlPDF`.
+
+### 4. Stabilita záložky Profilu „Zastupování“ po F5
+- Opraven race condition při reloadu profilu.
+- Persistovaná záložka `substitution` se nepřepisuje na `info` před dokončením async načtení práv.
+- Přidán guard `substitutionAccessLoaded`.
+
+### 5. Faktury – věcná správnost a zastupování
+- Upozornění ve formuláři VS nyní rozlišuje běžný případ vs. potvrzení v aktivním zastoupení.
+- Při potvrzení zástupcem má upozornění oranžový (méně agresivní) styl.
+- Oprávnění VS bylo rozšířeno: aktivní zastoupení má přednost před omezením „stejný úsek“.
+- Potvrzení/zamítnutí VS faktury v zastoupení se nyní zapisuje do `25_zastupovani_akce_log`.
+- Do seznamu faktur byl doplněn `SubstitutionBadge` (SmartTooltip) i v master řádku ve sloupci „Věcnou provedl“.
+- Pro historická data bez audit záznamu je přidán fallback detekce zastoupení podle aktivního zástupu v čase akce.
 
 ---
 
@@ -738,7 +774,7 @@ return {
 - `_substitution_auth($data, $pdo)` – ověří token
 - `_substitution_has_right($token_data, $kod_prava)` – kontrola práv
 - `_substitution_decode_opravneni($raw)` – parsuje JSON oprávnění
-- `log_zastupovani_akce($pdo, ...)` – zápis do audit logu (**momentálně nikde nevolána!**)
+- `log_substitution_action($pdo, ...)` – zápis do audit logu (aktivně používáno při akcích v zastoupení)
 
 ### `dashboardHandlers.php`
 **Cesta:** `/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/v2025.03_25/lib/dashboardHandlers.php`

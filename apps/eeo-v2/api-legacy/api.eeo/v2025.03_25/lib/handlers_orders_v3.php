@@ -1471,6 +1471,64 @@ function handle_orders_v3_update($input, $config) {
             return;
         }
 
+        $acting_user_id = (int)($user['id'] ?? $user['user_id'] ?? 0);
+        $approval_substitution = null;
+
+        // 🔐 Autorizační guard pro schvalovací akce:
+        // musí být přímý příkazce objednávky, admin/ORDER_MANAGE, nebo aktivní zástupce
+        // právě tohoto příkazce s oprávněním approve.
+        $is_approval_action = false;
+        $workflow_for_auth = [];
+        if (isset($payload['stav_workflow_kod'])) {
+            $workflow_for_auth = json_decode($payload['stav_workflow_kod'], true);
+            if (is_array($workflow_for_auth)) {
+                $is_approval_action = in_array('SCHVALENA', $workflow_for_auth, true)
+                    || in_array('ZAMITNUTA', $workflow_for_auth, true)
+                    || in_array('CEKA_SE', $workflow_for_auth, true);
+            }
+        }
+
+        if ($is_approval_action) {
+            $stmt_order_auth = $db->prepare("SELECT id, prikazce_id FROM `" . TBL_OBJEDNAVKY . "` WHERE id = ? LIMIT 1");
+            $stmt_order_auth->execute([(int)$order_id]);
+            $order_auth_row = $stmt_order_auth->fetch(PDO::FETCH_ASSOC);
+
+            if (!$order_auth_row) {
+                api_error(404, 'Objednávka nebyla nalezena', 'ORDER_NOT_FOUND');
+                return;
+            }
+
+            $order_prikazce_id = (int)($order_auth_row['prikazce_id'] ?? 0);
+
+            $is_direct_prikazce = ($order_prikazce_id > 0 && $acting_user_id === $order_prikazce_id);
+            $is_admin_like = !empty($user['is_admin']);
+            if (!$is_admin_like && function_exists('has_permission') && $acting_user_id > 0) {
+                $is_admin_like = has_permission($acting_user_id, 'ORDER_MANAGE', $db)
+                    || has_permission($acting_user_id, 'SUPERADMIN', $db)
+                    || has_permission($acting_user_id, 'ADMINISTRATOR', $db);
+            }
+
+            if (!$is_direct_prikazce && !$is_admin_like) {
+                if (function_exists('get_active_substitution_for_action') && $order_prikazce_id > 0) {
+                    $approval_substitution = get_active_substitution_for_action(
+                        $db,
+                        $acting_user_id,
+                        'approve',
+                        $order_prikazce_id
+                    );
+                }
+
+                if (!$approval_substitution) {
+                    error_log("❌ [V3 ORDER UPDATE] Approval denied: actor=$acting_user_id, prikazce=$order_prikazce_id, order=$order_id");
+                    api_error(403, 'Nemáte oprávnění schválit tuto objednávku', 'APPROVAL_NOT_ALLOWED');
+                    return;
+                }
+            }
+
+            // Bezpečnost: schvalovatel_id musí vždy odpovídat reálně přihlášenému uživateli.
+            $payload['schvalovatel_id'] = $acting_user_id;
+        }
+
         // Build UPDATE query dynamically podle payload
         $allowed_fields = [
             'stav_objednavky',
@@ -1579,7 +1637,14 @@ function handle_orders_v3_update($input, $config) {
                     
                     // Zkontroluj zda je to zastupce - pro approve/confirm checkneme příslušný scope
                     $check_perm = in_array($akce_typ, ['APPROVE', 'REJECT']) ? 'approve' : 'view';
-                    $substitution = get_active_substitution_for_action($db, $acting_user_id, $check_perm);
+                    $substitution = null;
+
+                    // Pro schvalovací akce preferuj substituci ověřenou proti konkrétnímu příkazci objednávky.
+                    if (!empty($approval_substitution) && in_array($akce_typ, ['APPROVE', 'REJECT', 'CONFIRM'])) {
+                        $substitution = $approval_substitution;
+                    } else {
+                        $substitution = get_active_substitution_for_action($db, $acting_user_id, $check_perm);
+                    }
                     
                     if ($substitution) {
                         $komentar = $payload['schvaleni_komentar'] ?? '';

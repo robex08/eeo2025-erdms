@@ -77,6 +77,7 @@ import { parseISDOCFile, createISDOCSummary, mapISDOCToFaktura } from '../utils/
 import { markSpisovkaDocumentProcessed } from '../services/apiSpisovkaZpracovani';
 import { saveFakturaLPCerpani, getFakturaLPCerpani } from '../services/apiFakturyLPCerpani';
 import { toggleVecnaSpravnost, VS_STATUS } from '../services/apiInvoiceCheck';
+import { fetchCurrentlySubstituting } from '../services/apiSubstitution';
 import { useDictionaries } from '../forms/OrderForm25/hooks/useDictionaries';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import { fetchLPList, saveOdboryLP, getOdboryLP, deleteOdboryLP } from '../services/apiLP';
@@ -2287,6 +2288,7 @@ export default function InvoiceEvidencePage() {
   // Zaměstnanci options (pro předání FA)
   const [zamestnanci, setZamestnanci] = useState([]);
   const [zamestnanciLoading, setZamestnanciLoading] = useState(false);
+  const [activeSubstitutions, setActiveSubstitutions] = useState([]);
   
   // Tracking změn kritických polí
   const [originalFormData, setOriginalFormData] = useState(null);
@@ -2753,6 +2755,84 @@ export default function InvoiceEvidencePage() {
     if (originalFormData?.vecna_spravnost_potvrzeno === 1) return false;
     return String(assignedId) !== String(user_id);
   }, [formData?.fa_predana_zam_id, user_id, originalFormData?.vecna_spravnost_potvrzeno]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const toBool = (value) => {
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'number') return value === 1;
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        return normalized === '1' || normalized === 'true' || normalized === 'yes';
+      }
+      return false;
+    };
+
+    const decodeOpravneni = (opravneniRaw) => {
+      if (!opravneniRaw) return {};
+      if (typeof opravneniRaw === 'object') return opravneniRaw;
+      if (typeof opravneniRaw === 'string') {
+        try {
+          return JSON.parse(opravneniRaw);
+        } catch {
+          return {};
+        }
+      }
+      return {};
+    };
+
+    const loadActiveSubstitutions = async () => {
+      if (!token || !username) {
+        if (!cancelled) setActiveSubstitutions([]);
+        return;
+      }
+
+      try {
+        const current = await fetchCurrentlySubstituting({ token, username });
+        if (cancelled) return;
+
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const normalized = (Array.isArray(current) ? current : []).filter((item) => {
+          if (!item) return false;
+          if (item.aktivni === false || item.aktivni === 0 || item.aktivni === '0') return false;
+          if (item.dt_od && todayStr < item.dt_od) return false;
+          if (item.dt_do && todayStr > item.dt_do) return false;
+
+          const perms = decodeOpravneni(item.opravneni);
+          const canConfirm = toBool(
+            perms?.confirm ?? perms?.material_check ?? perms?.materialCorrectness ?? item?.confirm ?? item?.can_confirm
+          );
+          const canApprove = toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+          return canConfirm || canApprove;
+        });
+
+        setActiveSubstitutions(normalized);
+      } catch {
+        if (!cancelled) setActiveSubstitutions([]);
+      }
+    };
+
+    loadActiveSubstitutions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, username]);
+
+  const isVecnaSpravnostAssignedViaSubstitution = useMemo(() => {
+    if (!isVecnaSpravnostAssignedToOtherEmployee) return false;
+    const assignedId = formData?.fa_predana_zam_id;
+    if (!assignedId) return false;
+    const assignedIdStr = String(assignedId);
+
+    return activeSubstitutions.some((item) => {
+      if (!item) return false;
+      const zastupovanyId = item.zastupovany_id ?? item.zastupovanyId ?? item.user_id;
+      if (zastupovanyId === null || zastupovanyId === undefined) return false;
+      return String(zastupovanyId) === assignedIdStr;
+    });
+  }, [isVecnaSpravnostAssignedToOtherEmployee, formData?.fa_predana_zam_id, activeSubstitutions]);
 
   // � Načítání LP číselníků při mount
   useEffect(() => {
@@ -8475,18 +8555,20 @@ export default function InvoiceEvidencePage() {
                     <div style={{
                       marginBottom: '0.75rem',
                       padding: '0.75rem',
-                      background: '#fef2f2',
-                      border: '2px solid #ef4444',
+                      background: isVecnaSpravnostAssignedViaSubstitution ? '#fffbeb' : '#fef2f2',
+                      border: isVecnaSpravnostAssignedViaSubstitution ? '2px solid #f59e0b' : '2px solid #ef4444',
                       borderRadius: '8px',
-                      color: '#991b1b',
+                      color: isVecnaSpravnostAssignedViaSubstitution ? '#92400e' : '#991b1b',
                       fontSize: '0.9rem',
                       fontWeight: 600
                     }}>
-                      ⚠️ Faktura byla předána k potvrzení věcné správnosti jinému zaměstnanci:{' '}
+                      {isVecnaSpravnostAssignedViaSubstitution ? '🟠' : '⚠️'} Faktura byla předána k potvrzení věcné správnosti zaměstnanci:{' '}
                       <strong>
                         {vecnaSpravnostAssignedEmployee?.name || `ID ${vecnaSpravnostAssignedEmployee?.id}`}
                       </strong>
-                      . Přesto můžete věcnou správnost k faktuře potvrdit i vy.
+                      {isVecnaSpravnostAssignedViaSubstitution
+                        ? '. Jako jeho aktivní zástupce můžete věcnou správnost potvrdit také vy.'
+                        : '. Přesto můžete věcnou správnost k faktuře potvrdit i vy.'}
                     </div>
                   )}
                   <div style={{

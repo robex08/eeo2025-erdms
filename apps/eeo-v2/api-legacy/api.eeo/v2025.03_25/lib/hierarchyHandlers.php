@@ -920,6 +920,240 @@ function handle_substitution_admin_list($data, $pdo) {
     }
 }
 
+function _substitution_audit_action_label($akce_typ) {
+    $map = array(
+        'APPROVE' => 'Schválení',
+        'CONFIRM' => 'Potvrzení',
+        'UPDATE' => 'Úprava',
+        'CREATE' => 'Vytvoření',
+        'CANCEL' => 'Storno',
+        'REJECT' => 'Zamítnutí',
+        'DELETE' => 'Smazání',
+        'VIEW' => 'Zobrazení',
+    );
+    $key = strtoupper(trim((string)$akce_typ));
+    return isset($map[$key]) ? $map[$key] : ($key ?: 'Akce');
+}
+
+function _substitution_audit_object_label($objekt_typ) {
+    $map = array(
+        'OBJEDNAVKA' => 'Objednávka',
+        'FAKTURA' => 'Faktura',
+        'SMLOUVA' => 'Smlouva',
+        'LP' => 'Limitovaný příslib',
+    );
+    $key = strtoupper(trim((string)$objekt_typ));
+    return isset($map[$key]) ? $map[$key] : ($key ?: 'Objekt');
+}
+
+function _substitution_audit_object_reference_from_row($row) {
+    $objekt_typ = strtoupper(trim((string)($row['objekt_typ'] ?? '')));
+    if ($objekt_typ === 'OBJEDNAVKA' && !empty($row['objekt_cislo_objednavky'])) {
+        return (string)$row['objekt_cislo_objednavky'];
+    }
+    if ($objekt_typ === 'FAKTURA' && !empty($row['objekt_faktura_vs'])) {
+        return (string)$row['objekt_faktura_vs'];
+    }
+    return null;
+}
+
+function _substitution_audit_object_identifier($objekt_typ, $objekt_reference, $objekt_id) {
+    $typ = strtoupper(trim((string)$objekt_typ));
+    if (!empty($objekt_reference)) {
+        if ($typ === 'FAKTURA') {
+            return 'VS ' . $objekt_reference;
+        }
+        return (string)$objekt_reference;
+    }
+    if ($objekt_id !== null && $objekt_id !== '') {
+        return '#' . (int)$objekt_id;
+    }
+    return '—';
+}
+
+function _substitution_audit_is_technical_description($popis_akce) {
+    $popis = trim((string)$popis_akce);
+    if ($popis === '') {
+        return true;
+    }
+
+    if (preg_match('/uzivatele\s+ID\s+\d+/iu', $popis)) {
+        return true;
+    }
+
+    if (preg_match('/^(APPROVE|CONFIRM|UPDATE|CREATE|CANCEL|REJECT|DELETE|VIEW)\b/i', $popis)) {
+        return true;
+    }
+
+    return false;
+}
+
+function _substitution_get_user_display_name_by_id($pdo, $user_id) {
+    try {
+        $stmt = $pdo->prepare("SELECT titul_pred, jmeno, prijmeni, titul_za, username FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+        $stmt->execute(array((int)$user_id));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return 'uživatel #' . (int)$user_id;
+        }
+
+        $full = trim((string)($row['titul_pred'] ?? '') . ' ' . (string)($row['jmeno'] ?? '') . ' ' . (string)($row['prijmeni'] ?? '') . ' ' . (string)($row['titul_za'] ?? ''));
+        if ($full === '') {
+            $full = 'uživatel #' . (int)$user_id;
+        }
+
+        $username = trim((string)($row['username'] ?? ''));
+        if ($username !== '') {
+            $full .= ' (' . $username . ')';
+        }
+
+        return $full;
+    } catch (Exception $e) {
+        return 'uživatel #' . (int)$user_id;
+    }
+}
+
+function _substitution_get_object_reference($pdo, $objekt_typ, $objekt_id) {
+    $typ = strtoupper(trim((string)$objekt_typ));
+    $id = (int)$objekt_id;
+    if ($id <= 0) {
+        return null;
+    }
+
+    try {
+        if ($typ === 'OBJEDNAVKA') {
+            $stmt = $pdo->prepare("SELECT cislo_objednavky FROM " . TBL_OBJEDNAVKY . " WHERE id = ? LIMIT 1");
+            $stmt->execute(array($id));
+            $value = $stmt->fetchColumn();
+            return $value ? (string)$value : null;
+        }
+
+        if ($typ === 'FAKTURA') {
+            $stmt = $pdo->prepare("SELECT fa_cislo_vema FROM " . TBL_FAKTURY . " WHERE id = ? LIMIT 1");
+            $stmt->execute(array($id));
+            $value = $stmt->fetchColumn();
+            return $value ? (string)$value : null;
+        }
+    } catch (Exception $e) {
+        return null;
+    }
+
+    return null;
+}
+
+function _substitution_build_human_description($akce_typ, $objekt_typ, $objekt_id, $objekt_reference, $zastupce_name, $zastupovany_name) {
+    $akce_label = _substitution_audit_action_label($akce_typ);
+    $objekt_label = _substitution_audit_object_label($objekt_typ);
+    $objekt_identifikator = _substitution_audit_object_identifier($objekt_typ, $objekt_reference, $objekt_id);
+
+    return $akce_label . ': ' . $objekt_label . ' ' . $objekt_identifikator . ' provedl ' . $zastupce_name . ' v zastoupení za ' . $zastupovany_name . '.';
+}
+
+/**
+ * POST substitution/audit-log
+ * Admin/Superadmin – stránkovaný audit log akcí v zastoupení
+ */
+function handle_substitution_audit_log($data, $pdo) {
+    global $queries;
+
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    if (!$token_data['is_admin']) {
+        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
+    }
+
+    $page = isset($data['page']) ? (int)$data['page'] : 1;
+    $per_page = isset($data['per_page']) ? (int)$data['per_page'] : 25;
+
+    if ($page < 1) {
+        $page = 1;
+    }
+    if ($per_page < 1) {
+        $per_page = 25;
+    }
+    if ($per_page > 200) {
+        $per_page = 200;
+    }
+
+    $offset = ($page - 1) * $per_page;
+
+    try {
+        TimezoneHelper::setMysqlTimezone($pdo);
+
+        $stmt_count = $pdo->query($queries['substitution_audit_log_count']);
+        $total_count = (int)$stmt_count->fetchColumn();
+        $total_pages = $total_count > 0 ? (int)ceil($total_count / $per_page) : 0;
+
+        $stmt = $pdo->prepare($queries['substitution_audit_log_list']);
+        $stmt->bindValue(':limit', $per_page, PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $rows = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $akce_typ_kod = strtoupper(trim((string)$row['akce_typ']));
+            $objekt_typ_kod = strtoupper(trim((string)$row['objekt_typ']));
+
+            $zastupce_jmeno = trim(($row['zastupce_jmeno'] ?? '') . ' ' . ($row['zastupce_prijmeni'] ?? ''));
+            $zastupovany_jmeno = trim(($row['zastupovany_jmeno'] ?? '') . ' ' . ($row['zastupovany_prijmeni'] ?? ''));
+            if ($zastupce_jmeno === '') {
+                $zastupce_jmeno = 'uživatel #' . (int)$row['zastupce_id'];
+            }
+            if ($zastupovany_jmeno === '') {
+                $zastupovany_jmeno = 'uživatel #' . (int)$row['zastupovany_id'];
+            }
+
+            $objekt_reference = _substitution_audit_object_reference_from_row($row);
+            $objekt_identifikator = _substitution_audit_object_identifier($objekt_typ_kod, $objekt_reference, $row['objekt_id'] ?? null);
+
+            $popis_raw = (string)($row['popis_akce'] ?? '');
+            $popis_human = _substitution_audit_is_technical_description($popis_raw)
+                ? _substitution_build_human_description($akce_typ_kod, $objekt_typ_kod, $row['objekt_id'] ?? null, $objekt_reference, $zastupce_jmeno, $zastupovany_jmeno)
+                : $popis_raw;
+
+            $rows[] = array(
+                'id' => (int)$row['id'],
+                'zastupovani_id' => (int)$row['zastupovani_id'],
+                'zastupce_id' => (int)$row['zastupce_id'],
+                'zastupovany_id' => (int)$row['zastupovany_id'],
+                'akce_typ_kod' => $akce_typ_kod,
+                'akce_typ' => _substitution_audit_action_label($akce_typ_kod),
+                'objekt_typ_kod' => $objekt_typ_kod,
+                'objekt_typ' => _substitution_audit_object_label($objekt_typ_kod),
+                'objekt_id' => isset($row['objekt_id']) ? (int)$row['objekt_id'] : null,
+                'objekt_identifikator' => $objekt_identifikator,
+                'objekt_reference' => $objekt_reference,
+                'popis_akce_raw' => $popis_raw,
+                'popis_akce' => $popis_human,
+                'dt_akce' => $row['dt_akce'],
+                'zastupce_username' => $row['zastupce_username'] ?? null,
+                'zastupce_jmeno' => $zastupce_jmeno,
+                'zastupovany_username' => $row['zastupovany_username'] ?? null,
+                'zastupovany_jmeno' => $zastupovany_jmeno,
+            );
+        }
+
+        return array(
+            'status' => 'ok',
+            'data' => $rows,
+            'count' => count($rows),
+            'pagination' => array(
+                'page' => $page,
+                'per_page' => $per_page,
+                'total' => $total_count,
+                'total_pages' => $total_pages,
+            ),
+        );
+
+    } catch (PDOException $e) {
+        error_log('substitution_audit_log DB error: ' . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání auditního logu zastupování');
+    }
+}
+
 /**
  * POST substitution/manageable-users
  * Admin – seznam uživatelů, za které může admin nastavit zastupování
@@ -1221,23 +1455,32 @@ function get_user_ids_with_substitution($pdo, $user_id, $required_permissions = 
  * @param string $required_permission Požadované oprávnění (view, approve, confirm...)
  * @return array|null Pole s info [zastupovani_id, zastupovany_id, opravneni] nebo NULL
  */
-function get_active_substitution_for_action($pdo, $zastupce_id, $required_permission = 'approve') {
+function get_active_substitution_for_action($pdo, $zastupce_id, $required_permission = 'approve', $target_zastupovany_id = null) {
     // ⚠️ KONTROLA APP SETTING - pokud je zastupování vypnuto → vrátit NULL
     if (!isSubstitutionEnabled($pdo)) {
         return null;
     }
     
     try {
-        $stmt = $pdo->prepare("
-            SELECT z.id, z.zastupovany_id, z.opravneni
-            FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
-            WHERE z.zastupce_id = :zastupce_id
-              AND z.aktivni = 1
-              AND z.dt_od <= CURDATE()
-              AND z.dt_do >= CURDATE()
-            LIMIT 1
-        ");
-        $stmt->execute([':zastupce_id' => $zastupce_id]);
+                $sql = "
+                        SELECT z.id, z.zastupovany_id, z.opravneni
+                        FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+                        WHERE z.zastupce_id = :zastupce_id
+                            AND z.aktivni = 1
+                            AND z.dt_od <= CURDATE()
+                            AND z.dt_do >= CURDATE()";
+
+                $params = [':zastupce_id' => $zastupce_id];
+
+                if ($target_zastupovany_id !== null && (int)$target_zastupovany_id > 0) {
+                        $sql .= " AND z.zastupovany_id = :target_zastupovany_id";
+                        $params[':target_zastupovany_id'] = (int)$target_zastupovany_id;
+                }
+
+                $sql .= " LIMIT 1";
+
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute($params);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$row) {
@@ -1246,7 +1489,8 @@ function get_active_substitution_for_action($pdo, $zastupce_id, $required_permis
         
         $opravneni = json_decode($row['opravneni'], true);
         if (!is_array($opravneni) || empty($opravneni[$required_permission])) {
-            error_log("🔍 SUBSTITUTION: User $zastupce_id zastupuje, ale NEMÁ oprávnění '$required_permission'");
+            error_log("🔍 SUBSTITUTION: User $zastupce_id zastupuje, ale NEMÁ oprávnění '$required_permission'" .
+                (($target_zastupovany_id !== null) ? " pro user " . (int)$target_zastupovany_id : ""));
             return null; // Nemá požadované oprávnění
         }
         
@@ -1280,6 +1524,22 @@ function get_active_substitution_for_action($pdo, $zastupce_id, $required_permis
  */
 function log_substitution_action($pdo, $zastupovani_id, $zastupce_id, $zastupovany_id, $akce_typ, $objekt_typ, $objekt_id = null, $popis_akce = '') {
     try {
+        $objekt_reference = _substitution_get_object_reference($pdo, $objekt_typ, $objekt_id);
+        $zastupce_name = _substitution_get_user_display_name_by_id($pdo, $zastupce_id);
+        $zastupovany_name = _substitution_get_user_display_name_by_id($pdo, $zastupovany_id);
+
+        $final_popis = trim((string)$popis_akce);
+        if (_substitution_audit_is_technical_description($final_popis)) {
+            $final_popis = _substitution_build_human_description(
+                $akce_typ,
+                $objekt_typ,
+                $objekt_id,
+                $objekt_reference,
+                $zastupce_name,
+                $zastupovany_name
+            );
+        }
+
         $stmt = $pdo->prepare("
             INSERT INTO `" . TBL_ZASTUPOVANI_AKCE_LOG . "` 
             (zastupovani_id, zastupce_id, zastupovany_id, akce_typ, objekt_typ, objekt_id, popis_akce, dt_akce)
@@ -1292,7 +1552,7 @@ function log_substitution_action($pdo, $zastupovani_id, $zastupce_id, $zastupova
             ':akce' => $akce_typ,
             ':objekt' => $objekt_typ,
             ':objekt_id' => $objekt_id,
-            ':popis' => $popis_akce
+            ':popis' => $final_popis
         ]);
         
         error_log("📝 SUBSTITUTION AUDIT: $akce_typ on $objekt_typ #$objekt_id by user $zastupce_id (v zastoupení user $zastupovany_id)");
@@ -3181,6 +3441,59 @@ function get_substitution_info_for_action($pdo, $zastupce_id, $akce_typ, $objekt
         $record = $stmt->fetch(PDO::FETCH_ASSOC);
         
         if (!$record) {
+            // Fallback pro historická data: když chybí audit záznam,
+            // zkusíme odvodit zastoupení z aktivního zástupu v čase akce.
+            if ($objekt_typ === 'FAKTURA') {
+                $stmtInvoice = $pdo->prepare("SELECT fa_predana_zam_id FROM " . TBL_FAKTURY . " WHERE id = ? LIMIT 1");
+                $stmtInvoice->execute([(int)$objekt_id]);
+                $invoice = $stmtInvoice->fetch(PDO::FETCH_ASSOC);
+
+                $target_zastupovany_id = !empty($invoice['fa_predana_zam_id']) ? (int)$invoice['fa_predana_zam_id'] : 0;
+
+                if ($target_zastupovany_id > 0 && (int)$target_zastupovany_id !== (int)$zastupce_id) {
+                    $stmtFallback = $pdo->prepare("\n                        SELECT z.id as zastupovani_id, z.zastupovany_id, z.opravneni, u.jmeno, u.prijmeni\n                        FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z\n                        LEFT JOIN " . TBL_UZIVATELE . " u ON z.zastupovany_id = u.id\n                        WHERE z.zastupce_id = ?\n                          AND z.zastupovany_id = ?\n                          AND z.aktivni = 1\n                          AND DATE(?) BETWEEN z.dt_od AND z.dt_do\n                        ORDER BY z.id DESC\n                        LIMIT 5\n                    ");
+                    $stmtFallback->execute([
+                        (int)$zastupce_id,
+                        (int)$target_zastupovany_id,
+                        $dt_akce
+                    ]);
+
+                    $fallbackRows = $stmtFallback->fetchAll(PDO::FETCH_ASSOC);
+
+                    foreach ($fallbackRows as $fallbackRow) {
+                        $opravneni = json_decode($fallbackRow['opravneni'] ?? '', true);
+                        $hasPermission = false;
+
+                        if (is_array($opravneni)) {
+                            $confirm = $opravneni['confirm'] ?? null;
+                            $approve = $opravneni['approve'] ?? null;
+
+                            $toBool = function($value) {
+                                if (is_bool($value)) return $value;
+                                if (is_numeric($value)) return (int)$value === 1;
+                                if (is_string($value)) {
+                                    $normalized = strtolower(trim($value));
+                                    return $normalized === '1' || $normalized === 'true' || $normalized === 'yes';
+                                }
+                                return false;
+                            };
+
+                            $hasPermission = $toBool($confirm) || $toBool($approve);
+                        }
+
+                        if ($hasPermission) {
+                            error_log("[SUBSTITUTION INFO] Fallback match pro fakturu #{$objekt_id}, zastupce #{$zastupce_id}, zastupovany #{$target_zastupovany_id}");
+                            return [
+                                'is_substitution' => true,
+                                'zastupovany_id' => (int)$fallbackRow['zastupovany_id'],
+                                'zastupovany_jmeno' => trim(($fallbackRow['jmeno'] ?? '') . ' ' . ($fallbackRow['prijmeni'] ?? '')),
+                                'dt_akce' => $dt_akce
+                            ];
+                        }
+                    }
+                }
+            }
+
             return false; // Žádné zastupování
         }
         

@@ -137,6 +137,22 @@ export async function fetchAllSubstitutionsAdmin({ token, username }) {
 }
 
 /**
+ * Admin: paginovaný audit log akcí v zastoupení
+ */
+export async function fetchSubstitutionAuditLog({ token, username, page = 1, per_page = 25 }) {
+  const data = await _post('substitution/audit-log', { token, username, page, per_page });
+  return {
+    data: data.data || [],
+    pagination: data.pagination || {
+      page: 1,
+      per_page,
+      total: 0,
+      total_pages: 0,
+    },
+  };
+}
+
+/**
  * Admin: seznam uživatelů, za které může admin spravovat zastupování
  */
 export async function fetchManageableUsers({ token, username }) {
