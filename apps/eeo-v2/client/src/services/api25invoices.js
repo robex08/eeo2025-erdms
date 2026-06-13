@@ -29,8 +29,10 @@ api25invoices.interceptors.response.use(
   (error) => {
     // 🚨 TEMPORARY FIX: Disable auto-logout for delete invoice endpoint
     // Důvod: BE může vrátit 403 pro permission check (není to auth issue)
-    const isDeleteInvoice = error.config?.url?.includes('/invoices/') && error.config?.url?.includes('/delete'); 
-                           (error.config?.method === 'delete' && error.config?.url?.includes('order-v2/invoices'));
+    const isDeleteInvoice = (
+      (error.config?.url?.includes('/invoices/') && error.config?.url?.includes('/delete')) ||
+      (String(error.config?.method || '').toLowerCase() === 'delete' && error.config?.url?.includes('order-v2/invoices'))
+    );
 
     if (isDeleteInvoice) {
       // Vrátit error BEZ triggeru authError event
