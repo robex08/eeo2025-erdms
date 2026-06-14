@@ -1145,6 +1145,28 @@ function handle_order_v2_create($input, $config, $queries) {
         
         $stmt->execute();
         $newOrderId = $db->lastInsertId();
+
+        // AUDIT LOG: CREATE objednávky včetně počátečních hodnot (fail-safe)
+        try {
+            if (function_exists('audit_log_create_with_data')) {
+                $orders_table = get_orders_table_name();
+                $created_order_stmt = $db->prepare("SELECT * FROM `{$orders_table}` WHERE id = ? LIMIT 1");
+                $created_order_stmt->execute(array((int)$newOrderId));
+                $created_order = $created_order_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
+
+                audit_log_create_with_data(
+                    $db,
+                    $auth_result,
+                    'OBJEDNAVKA',
+                    (int)$newOrderId,
+                    'order-v2/create',
+                    (array)$created_order,
+                    'Vytvoření nové objednávky'
+                );
+            }
+        } catch (Exception $ae) {
+            error_log('[AUDIT] orderV2 create audit error: ' . $ae->getMessage());
+        }
         
         // === PŘEPOČET ČERPÁNÍ SMLOUVY - NEVOLÁ SE PŘI CREATE ===
         // Přepočet smluv má smysl až při schválení nebo změně položek (stejně jako u LP)
@@ -1195,6 +1217,9 @@ function handle_order_v2_update($input, $config, $queries) {
     $token = isset($input['token']) ? $input['token'] : '';
     $username = isset($input['username']) ? $input['username'] : '';
     $order_id = isset($input['id']) ? (int)$input['id'] : 0;
+    $audit_event = isset($input['audit_event']) ? trim((string)$input['audit_event']) : '';
+    $audit_unlock_section = isset($input['audit_unlock_section']) ? trim((string)$input['audit_unlock_section']) : '';
+    $audit_unlock_note = isset($input['audit_unlock_note']) ? trim((string)$input['audit_unlock_note']) : '';
     
     $auth_result = verify_token_v2($username, $token);
     if (!$auth_result) {
@@ -1217,6 +1242,11 @@ function handle_order_v2_update($input, $config, $queries) {
     try {
         $handler = new OrderV2Handler($config);
         $current_user_id = $auth_result['id'];
+        $audit_invoice_old_map = array();
+        $audit_invoice_created_ids = array();
+        $audit_old_items = array();
+        $audit_new_items = array();
+        $audit_items_touched = false;
         
         // Ověř že objednávka existuje
         $existingOrder = $handler->getOrderById($order_id, $current_user_id);
@@ -1224,6 +1254,16 @@ function handle_order_v2_update($input, $config, $queries) {
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Objednávka nebyla nalezena'));
             return;
+        }
+
+        // Audit snapshot objednávky: používat surová DB data (stabilní klíče pro diff)
+        $orders_table_for_audit = get_orders_table_name();
+        $audit_db = get_db($config);
+        $audit_old_order = array();
+        if ($audit_db) {
+            $audit_old_order_stmt = $audit_db->prepare("SELECT * FROM `{$orders_table_for_audit}` WHERE id = ? LIMIT 1");
+            $audit_old_order_stmt->execute(array($order_id));
+            $audit_old_order = $audit_old_order_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
         }
         
         // Kontrola lock stavu
@@ -1382,12 +1422,19 @@ function handle_order_v2_update($input, $config, $queries) {
             
             $setParts = array();
             $values = array();
+            $excludedUpdateKeys = array(
+                'id',
+                'uzivatel_id',
+                'objednatel_id',
+                // Technická FE pole pro audit unlocku - nejsou DB sloupce objednávky
+                'audit_event',
+                'audit_unlock_section',
+                'audit_unlock_note',
+            );
             
             foreach ($dbData as $key => $value) {
-                // ✅ CRITICAL FIX: Never update core IDs (creator/orderer) or id
-                if ($key !== 'id' && 
-                    $key !== 'uzivatel_id' && 
-                    $key !== 'objednatel_id') {
+                // ✅ CRITICAL FIX: Never update core IDs and ignore non-column technical keys
+                if (!in_array($key, $excludedUpdateKeys, true)) {
                     $setParts[] = "`{$key}` = :{$key}";
                     $values[$key] = $value;
                 }
@@ -1435,6 +1482,12 @@ function handle_order_v2_update($input, $config, $queries) {
             }
             // Kontrola, zda jsou v input datech položky k aktualizaci
             elseif (array_key_exists('polozky', $input) || array_key_exists('polozky_objednavky', $input)) {
+                $audit_items_touched = true;
+
+                $audit_old_items_stmt = $db->prepare("SELECT lp_id, popis, cena_bez_dph, sazba_dph, cena_s_dph, usek_kod, budova_kod, mistnost_kod, poznamka FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` WHERE objednavka_id = ? ORDER BY id ASC");
+                $audit_old_items_stmt->execute(array($order_id));
+                $audit_old_items = $audit_old_items_stmt->fetchAll(PDO::FETCH_ASSOC) ?: array();
+
                 // Validace a parsování položek (lp_id je součástí validateAndParseOrderItems)
                 $order_items = validateAndParseOrderItems($input);
                 
@@ -1455,6 +1508,10 @@ function handle_order_v2_update($input, $config, $queries) {
                 if ($order_items !== false) {
                     // saveOrderItems pattern: smaž stávající + vlož nové
                     if (saveOrderV2Items($db, $order_id, $order_items)) {
+                        $audit_new_items_stmt = $db->prepare("SELECT lp_id, popis, cena_bez_dph, sazba_dph, cena_s_dph, usek_kod, budova_kod, mistnost_kod, poznamka FROM `" . TBL_OBJEDNAVKY_POLOZKY . "` WHERE objednavka_id = ? ORDER BY id ASC");
+                        $audit_new_items_stmt->execute(array($order_id));
+                        $audit_new_items = $audit_new_items_stmt->fetchAll(PDO::FETCH_ASSOC) ?: array();
+
                         $items_processed = count($order_items);
                         $items_updated = true;
                     } else {
@@ -1564,6 +1621,11 @@ function handle_order_v2_update($input, $config, $queries) {
                             isset($faktura['dt_potvrzeni_vecne_spravnosti']) ? $faktura['dt_potvrzeni_vecne_spravnosti'] : null,
                             $current_user_id
                         ));
+
+                        $new_invoice_id = (int)$db->lastInsertId();
+                        if ($new_invoice_id > 0) {
+                            $audit_invoice_created_ids[] = $new_invoice_id;
+                        }
                         
                         $invoices_processed++;
                         $invoices_updated = true;
@@ -1592,6 +1654,12 @@ function handle_order_v2_update($input, $config, $queries) {
                         
                     } else {
                         // ========== UPDATE existující faktura ==========
+
+                        if (!isset($audit_invoice_old_map[$faktura_id])) {
+                            $audit_old_invoice_stmt = $db->prepare("SELECT * FROM `{$faktury_table}` WHERE id = ? LIMIT 1");
+                            $audit_old_invoice_stmt->execute(array($faktura_id));
+                            $audit_invoice_old_map[$faktura_id] = $audit_old_invoice_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
+                        }
                         
                         // 🔍 DEBUG fa_vema_kod
                         error_log("🔍 [INVOICE UPDATE] invoice_id={$faktura['id']}, fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
@@ -1803,6 +1871,163 @@ function handle_order_v2_update($input, $config, $queries) {
             throw $e; // Re-throw pro vnější catch
         }
         
+        // === AUDIT LOG: field-level diff objednávky + faktur (po commitu, fail-safe) ===
+        try {
+            if (function_exists('audit_log_field_changes')) {
+                $orders_table = get_orders_table_name();
+                $audit_new_order_stmt = $db->prepare("SELECT * FROM `{$orders_table}` WHERE id = ? LIMIT 1");
+                $audit_new_order_stmt->execute(array($order_id));
+                $audit_new_order = $audit_new_order_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
+
+                $audit_batch = audit_log_field_changes(
+                    $db,
+                    $auth_result,
+                    'OBJEDNAVKA',
+                    $order_id,
+                    'order-v2/update',
+                    (array)$audit_old_order,
+                    (array)$audit_new_order
+                );
+
+                // Klíčové workflow přechody objednávky - explicitní akce (pro lepší čitelnost auditu)
+                $parse_workflow_states = function ($raw) {
+                    if (is_array($raw)) return $raw;
+                    if ($raw === null || $raw === '') return array();
+                    $decoded = json_decode((string)$raw, true);
+                    if (is_array($decoded)) return $decoded;
+                    $single = trim((string)$raw);
+                    return $single !== '' ? array($single) : array();
+                };
+
+                $old_workflow_states = $parse_workflow_states($audit_old_order['stav_workflow_kod'] ?? null);
+                $new_workflow_states = $parse_workflow_states($audit_new_order['stav_workflow_kod'] ?? null);
+                $added_workflow_states = array_values(array_diff($new_workflow_states, $old_workflow_states));
+
+                foreach ($added_workflow_states as $state_code) {
+                    $normalized_state = strtoupper(trim((string)$state_code));
+                    if ($normalized_state === '') continue;
+
+                    $action_type = function_exists('audit_map_order_state_to_action')
+                        ? audit_map_order_state_to_action($normalized_state)
+                        : null;
+                    if (!$action_type) {
+                        $action_type = 'UPDATE';
+                    }
+
+                    $action_note_prefix = 'Změna stavu objednávky';
+                    if ($action_type === 'REJECT') {
+                        $action_note_prefix = 'Rozhodnutí příkazce: zamítnutí';
+                    } elseif ($action_type === 'POSTPONE') {
+                        $action_note_prefix = 'Rozhodnutí příkazce: odložení';
+                    } elseif ($action_type === 'STORNO') {
+                        $action_note_prefix = 'Uživatelské storno objednávky';
+                    }
+
+                    if (function_exists('audit_log_action')) {
+                        audit_log_action(
+                            $db,
+                            $auth_result,
+                            'OBJEDNAVKA',
+                            $order_id,
+                            $action_type,
+                            'order-v2/update',
+                            $action_note_prefix . ': ' . $normalized_state,
+                            $audit_batch
+                        );
+                    }
+                }
+
+                // Faktury UPDATE v rámci stejného save - porovnání old/new DB snapshotů
+                if (!empty($audit_invoice_old_map)) {
+                    $faktury_table = get_invoices_table_name();
+                    foreach ($audit_invoice_old_map as $fa_id => $fa_old) {
+                        $fa_new_stmt = $db->prepare("SELECT * FROM `{$faktury_table}` WHERE id = ? LIMIT 1");
+                        $fa_new_stmt->execute(array((int)$fa_id));
+                        $fa_new = $fa_new_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
+
+                        audit_log_field_changes(
+                            $db,
+                            $auth_result,
+                            'FAKTURA',
+                            (int)$fa_id,
+                            'order-v2/update',
+                            (array)$fa_old,
+                            (array)$fa_new,
+                            $audit_batch
+                        );
+                    }
+                }
+
+                // Položky objednávky (full i partial payload) ve stejném batchi
+                if ($audit_items_touched && function_exists('audit_log_field_changes')) {
+                    $old_items_payload = json_encode($audit_old_items, JSON_UNESCAPED_UNICODE);
+                    $new_items_payload = json_encode($audit_new_items, JSON_UNESCAPED_UNICODE);
+
+                    audit_log_field_changes(
+                        $db,
+                        $auth_result,
+                        'OBJEDNAVKA',
+                        $order_id,
+                        'order-v2/update',
+                        array('polozky_objednavky' => $old_items_payload),
+                        array('polozky_objednavky' => $new_items_payload),
+                        $audit_batch,
+                        'Změna položek objednávky'
+                    );
+                }
+
+                // Faktury CREATE v rámci stejného save
+                if (!empty($audit_invoice_created_ids) && function_exists('audit_log_create_with_data')) {
+                    $faktury_table = get_invoices_table_name();
+                    foreach ($audit_invoice_created_ids as $created_fa_id) {
+                        $created_fa_stmt = $db->prepare("SELECT * FROM `{$faktury_table}` WHERE id = ? LIMIT 1");
+                        $created_fa_stmt->execute(array((int)$created_fa_id));
+                        $created_fa = $created_fa_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
+
+                        if (!empty($created_fa)) {
+                            audit_log_create_with_data(
+                                $db,
+                                $auth_result,
+                                'FAKTURA',
+                                (int)$created_fa_id,
+                                'order-v2/update',
+                                (array)$created_fa,
+                                'Vytvoření faktury při uložení objednávky',
+                                $audit_batch
+                            );
+                        }
+                    }
+                }
+
+                // Explicitní audit odemčení bloku v OrderForm25 (pokud ho FE označil)
+                if ($audit_event === 'UNLOCK_BLOCK' && function_exists('audit_log_action')) {
+                    $safe_section = preg_replace('/[^a-zA-Z0-9_\-]/', '', (string)$audit_unlock_section);
+                    $safe_note = substr((string)$audit_unlock_note, 0, 300);
+
+                    $note_parts = array('Odemčení bloku v OrderForm25');
+                    if (!empty($safe_section)) {
+                        $note_parts[] = 'sekce=' . $safe_section;
+                    }
+                    if (!empty($safe_note)) {
+                        $note_parts[] = $safe_note;
+                    }
+
+                    audit_log_action(
+                        $db,
+                        $auth_result,
+                        'OBJEDNAVKA',
+                        $order_id,
+                        'UNLOCK',
+                        'order-v2/update',
+                        implode(' | ', $note_parts),
+                        $audit_batch
+                    );
+                }
+            }
+        } catch (Exception $ae) {
+            error_log('[AUDIT] orderV2 update audit error: ' . $ae->getMessage());
+        }
+
         // === PO COMMITU: Přepočty a načtení dat ===
         // Tyto operace jsou už mimo transakci, takže případná chyba nezpůsobí rollback
         
@@ -2143,6 +2368,23 @@ function handle_order_v2_delete($input, $config, $queries) {
                 if ($failedFiles > 0) {
                     $response['warning'] = "Některé soubory se nepodařilo smazat z disku ($failedFiles). Pravděpodobně problém s oprávněními.";
                 }
+
+                // AUDIT LOG: HARD DELETE objednávky (fail-safe)
+                try {
+                    if (function_exists('audit_log_action')) {
+                        audit_log_action(
+                            $db,
+                            $auth_result,
+                            'OBJEDNAVKA',
+                            (int)$order_id,
+                            'DELETE',
+                            'order-v2/delete',
+                            'Hard delete objednávky (včetně položek/příloh)'
+                        );
+                    }
+                } catch (Exception $ae) {
+                    error_log('[AUDIT] orderV2 hard delete audit error: ' . $ae->getMessage());
+                }
                 
                 echo json_encode($response);
             } catch (Exception $e) {
@@ -2159,6 +2401,23 @@ function handle_order_v2_delete($input, $config, $queries) {
             $stmt->bindValue(':dt_aktualizace', TimezoneHelper::getCzechDateTime());
             $stmt->bindValue(':id', $order_id, PDO::PARAM_INT);
             $stmt->execute();
+
+            // AUDIT LOG: SOFT DELETE objednávky (fail-safe)
+            try {
+                if (function_exists('audit_log_action')) {
+                    audit_log_action(
+                        $db,
+                        $auth_result,
+                        'OBJEDNAVKA',
+                        (int)$order_id,
+                        'DELETE',
+                        'order-v2/delete',
+                        'Soft delete objednávky (aktivni=0)'
+                    );
+                }
+            } catch (Exception $ae) {
+                error_log('[AUDIT] orderV2 soft delete audit error: ' . $ae->getMessage());
+            }
             
             echo json_encode(array(
                 'status' => 'ok',

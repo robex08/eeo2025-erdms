@@ -437,6 +437,27 @@ function handle_invoices25_create($input, $config, $queries) {
 
         $new_id = $db->lastInsertId();
 
+        // AUDIT LOG: CREATE faktury včetně počátečních hodnot (fail-safe)
+        try {
+            if (function_exists('audit_log_create_with_data')) {
+                $created_faktura_stmt = $db->prepare("SELECT * FROM `{$faktury_table}` WHERE id = ? LIMIT 1");
+                $created_faktura_stmt->execute([(int)$new_id]);
+                $created_faktura = $created_faktura_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                audit_log_create_with_data(
+                    $db,
+                    $token_data,
+                    'FAKTURA',
+                    (int)$new_id,
+                    'invoices25/create',
+                    (array)$created_faktura,
+                    'Vytvoření nové faktury'
+                );
+            }
+        } catch (Exception $ae) {
+            error_log('[AUDIT] invoice create audit error: ' . $ae->getMessage());
+        }
+
         // 🔔 TRIGGER: INVOICE_MATERIAL_CHECK_REQUESTED - pokud má faktura objednávku NEBO předáno komu (s datem) NEBO smlouvu
         // ⚠️ DŮLEŽITÉ: Stav faktury NEkontrolujeme - faktura NEMÁ workflow! (stav je jen informační poznámka)
         $hasFaPredana = $fa_predana_zam_id > 0 && !empty($fa_datum_predani_zam);
@@ -924,8 +945,85 @@ function handle_invoices25_update($input, $config, $queries) {
         $stmt = $db->prepare($sql);
         $stmt->execute($values);
 
+        // === AUDIT LOG: field-level diff faktury (fail-safe) ===
+        try {
+            if (function_exists('audit_log_field_changes')) {
+                $audit_new_stmt = $db->prepare("SELECT * FROM `$faktury_table` WHERE id = ? LIMIT 1");
+                $audit_new_stmt->execute(array($faktura_id));
+                $audit_new_invoice = $audit_new_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
+
+                $audit_batch = audit_log_field_changes(
+                    $db,
+                    $token_data,
+                    'FAKTURA',
+                    $faktura_id,
+                    'invoices25/update',
+                    (array)$oldInvoiceData,
+                    (array)$audit_new_invoice
+                );
+
+                // Pokud se explicitně změnila věcná správnost, zalogovat i jako akci APPROVE/REJECT
+                $audit_incomingVecna = isset($input['vecna_spravnost_potvrzeno']) ? (int)$input['vecna_spravnost_potvrzeno'] : null;
+                $audit_oldVecna = (int)($oldInvoiceData['vecna_spravnost_potvrzeno'] ?? 0);
+                if ($audit_incomingVecna !== null && $audit_incomingVecna !== $audit_oldVecna && function_exists('audit_log_action')) {
+                    if ($audit_incomingVecna === 1) {
+                        audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'APPROVE', 'invoices25/update', 'Potvrzení věcné správnosti', $audit_batch);
+                    } elseif ($audit_incomingVecna === 2) {
+                        audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'REJECT', 'invoices25/update', 'Zamítnutí věcné správnosti', $audit_batch);
+                    } elseif ($audit_incomingVecna === 0) {
+                        audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'RESET', 'invoices25/update', 'Reset věcné správnosti', $audit_batch);
+                    }
+                } elseif ($resetVecnaSpravnost && function_exists('audit_log_action')) {
+                    audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'RESET', 'invoices25/update', 'Automatický reset věcné správnosti (změna kritického pole)', $audit_batch);
+                }
+
+                // Klíčové stavové přechody faktury - explicitní akce
+                $old_status = strtoupper(trim((string)($oldInvoiceData['stav'] ?? '')));
+                $new_status = strtoupper(trim((string)($audit_new_invoice['stav'] ?? '')));
+                if ($new_status !== '' && $new_status !== $old_status && function_exists('audit_log_action')) {
+                    $status_action = 'RESET';
+                    if (in_array($new_status, array('VECNA_SPRAVNOST', 'ZAEVIDOVANA'), true)) {
+                        $status_action = 'APPROVE';
+                    } elseif (in_array($new_status, array('VRACENA', 'K_DOPLNENI', 'V_RESENI'), true)) {
+                        $status_action = 'REJECT';
+                    }
+
+                    audit_log_action(
+                        $db,
+                        $token_data,
+                        'FAKTURA',
+                        $faktura_id,
+                        $status_action,
+                        'invoices25/update',
+                        'Změna stavu faktury: ' . $old_status . ' -> ' . $new_status,
+                        $audit_batch
+                    );
+                }
+
+                // Předání PO (fa_predana_zam_id / fa_datum_predani_zam) - explicitní audit
+                $old_predana_id = (string)($oldInvoiceData['fa_predana_zam_id'] ?? '');
+                $new_predana_id = (string)($audit_new_invoice['fa_predana_zam_id'] ?? '');
+                $old_predana_dt = (string)($oldInvoiceData['fa_datum_predani_zam'] ?? '');
+                $new_predana_dt = (string)($audit_new_invoice['fa_datum_predani_zam'] ?? '');
+                if (($old_predana_id !== $new_predana_id || $old_predana_dt !== $new_predana_dt) && function_exists('audit_log_action')) {
+                    audit_log_action(
+                        $db,
+                        $token_data,
+                        'FAKTURA',
+                        $faktura_id,
+                        'RESET',
+                        'invoices25/update',
+                        'Změna předání PO: ID ' . $old_predana_id . ' -> ' . $new_predana_id . ', datum ' . $old_predana_dt . ' -> ' . $new_predana_dt,
+                        $audit_batch
+                    );
+                }
+            }
+        } catch (Exception $ae) {
+            error_log('[AUDIT] invoices25_update audit error: ' . $ae->getMessage());
+        }
+
         // ==========================================
-        // � LP PŘEPOČET po změně věcné správnosti
+        // 🔄 LP PŘEPOČET po změně věcné správnosti
         // Faktura s LP rozpisem / odborovým přiřazením musí přepočítat
         // čerpání → mezi "v procesu" (predpoklad) a "skutečně"
         // ==========================================
@@ -1152,6 +1250,20 @@ function handle_invoices25_update($input, $config, $queries) {
             'message' => 'Faktura byla úspěšně aktualizována'
         ]);
 
+        // AUDIT LOG: field-level diff faktury (po odpovědi, fail-safe)
+        try {
+            if (function_exists('audit_log_field_changes') && !empty($oldInvoiceData)) {
+                $fa_after_stmt = $db->prepare("SELECT * FROM `$faktury_table` WHERE id = ? LIMIT 1");
+                $fa_after_stmt->execute([$faktura_id]);
+                $fa_after = $fa_after_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                audit_log_field_changes(
+                    $db, $token_data, 'FAKTURA', $faktura_id,
+                    'invoices25/update',
+                    (array)$oldInvoiceData, (array)$fa_after
+                );
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] invoice update audit error: ' . $ae->getMessage()); }
+
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['err' => 'Chyba při aktualizaci faktury: ' . $e->getMessage()]);
@@ -1268,6 +1380,26 @@ function handle_invoices25_delete($input, $config, $queries) {
 
         // Commit transakce
         $db->commit();
+
+        // AUDIT LOG: DELETE faktury (fail-safe)
+        try {
+            if (function_exists('audit_log_action')) {
+                $delete_note = ($hard_delete === 1)
+                    ? 'Hard delete faktury (včetně příloh)'
+                    : 'Soft delete faktury (aktivni=0)';
+                audit_log_action(
+                    $db,
+                    $token_data,
+                    'FAKTURA',
+                    (int)$faktura_id,
+                    'DELETE',
+                    'invoices25/delete',
+                    $delete_note
+                );
+            }
+        } catch (Exception $ae) {
+            error_log('[AUDIT] invoice delete audit error: ' . $ae->getMessage());
+        }
 
         http_response_code(200);
         echo json_encode([

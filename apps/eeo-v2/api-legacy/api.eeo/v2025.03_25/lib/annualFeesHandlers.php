@@ -465,6 +465,26 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
 
         $pdo->commit();
 
+        // AUDIT LOG: CREATE ročního poplatku včetně počátečních hodnot (fail-safe)
+        try {
+            if (function_exists('audit_log_create_with_data')) {
+                $tblRocniPoplatky = defined('TBL_ROCNI_POPLATKY') ? TBL_ROCNI_POPLATKY : '25a_rocni_poplatky';
+                $created_fee_stmt = $pdo->prepare("SELECT * FROM `{$tblRocniPoplatky}` WHERE id = ? LIMIT 1");
+                $created_fee_stmt->execute([(int)$rocni_poplatek_id]);
+                $created_fee = $created_fee_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                audit_log_create_with_data(
+                    $pdo,
+                    ['id' => $user['id'], 'username' => $user['username'] ?? ''],
+                    'ROCNI_POPLATEK',
+                    $rocni_poplatek_id,
+                    'annual-fees/create',
+                    (array)$created_fee,
+                    'Vytvoření nového ročního poplatku'
+                );
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] annual-fees create: ' . $ae->getMessage()); }
+
         // Úspěšná odpověď podle PHPAPI.prompt.md standardu
         error_log("✅ Annual Fees CREATE: Úspěšně vytvořen roční poplatek ID: $rocni_poplatek_id");
         http_response_code(200);
@@ -631,6 +651,20 @@ function handleAnnualFeesUpdate($pdo, $data, $user) {
 
         $pdo->commit();
 
+        // AUDIT LOG: update (fail-safe)
+        try {
+            if (function_exists('audit_log_field_changes') && !empty($existing)) {
+                $updated_now = queryAnnualFeesDetail($pdo, $id);
+                audit_log_field_changes(
+                    $pdo,
+                    ['id' => $user['id'], 'username' => $user['username'] ?? ''],
+                    'ROCNI_POPLATEK', $id,
+                    'annual-fees/update',
+                    (array)$existing, (array)($updated_now ?? [])
+                );
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] annual-fees update: ' . $ae->getMessage()); }
+
         // Načtení aktualizovaných dat
         $updated = queryAnnualFeesDetail($pdo, $id);
 
@@ -749,7 +783,14 @@ function handleAnnualFeesCreateItem($pdo, $data, $user) {
         queryRecalculateAnnualFeeSums($pdo, $rocni_poplatek_id);
         
         $pdo->commit();
-        
+
+        // AUDIT LOG: create item (fail-safe)
+        try {
+            if (function_exists('audit_log_action')) {
+                audit_log_action($pdo, ['id' => $user['id'], 'username' => $user['username'] ?? ''], 'ROCNI_POPLATEK_POLOZKA', $polozka_id, 'CREATE', 'annual-fees/create-item');
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] annual-fees create-item: ' . $ae->getMessage()); }
+
         return [
             'status' => 'success',
             'data' => [
@@ -954,6 +995,16 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
 
         $pdo->commit();
 
+        // AUDIT LOG: update item (fail-safe)
+        try {
+            if (function_exists('audit_log_field_changes') && !empty($item)) {
+                $item_after = $pdo->prepare("SELECT * FROM `25a_rocni_poplatky_polozky` WHERE id = ? LIMIT 1");
+                $item_after->execute([$item['id']]);
+                $item_new = $item_after->fetch(PDO::FETCH_ASSOC) ?: [];
+                audit_log_field_changes($pdo, ['id' => $user['id'], 'username' => $user['username'] ?? ''], 'ROCNI_POPLATEK_POLOZKA', (int)$item['id'], 'annual-fees/update-item', (array)$item, (array)$item_new);
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] annual-fees update-item: ' . $ae->getMessage()); }
+
         return [
             'status' => 'success',
             'data' => $item,
@@ -1015,6 +1066,13 @@ function handleAnnualFeesDelete($pdo, $data, $user) {
         }
 
         error_log("🔥 Annual Fees Delete: Mazání ID $id, user: " . $user['id']);
+
+        // AUDIT LOG: before hard delete (fail-safe)
+        try {
+            if (function_exists('audit_log_action')) {
+                audit_log_action($pdo, ['id' => $user['id'], 'username' => $user['username'] ?? ''], 'ROCNI_POPLATEK', $id, 'DELETE', 'annual-fees/delete', 'Hard delete ročního poplatku');
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] annual-fees delete: ' . $ae->getMessage()); }
 
         // 4. Hard delete s SQL DELETE příkazem (místo soft delete jak požadoval uživatel)
         $result = queryHardDeleteAnnualFee($pdo, $id);
