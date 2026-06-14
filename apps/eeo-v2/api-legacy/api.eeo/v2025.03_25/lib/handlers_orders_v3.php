@@ -1462,6 +1462,24 @@ function handle_orders_v3_update($input, $config) {
     try {
         $db = get_db($config);
         TimezoneHelper::setMysqlTimezone($db);
+
+        // Audit snapshot objednávky (před změnou)
+        $audit_old_order = [];
+        $audit_old_workflow = [];
+        $audit_old_status = '';
+        try {
+            $audit_old_stmt = $db->prepare("SELECT * FROM `" . TBL_OBJEDNAVKY . "` WHERE id = ? LIMIT 1");
+            $audit_old_stmt->execute([(int)$order_id]);
+            $audit_old_order = $audit_old_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+            if (!empty($audit_old_order['stav_workflow_kod'])) {
+                $decoded_old_workflow = json_decode($audit_old_order['stav_workflow_kod'], true);
+                $audit_old_workflow = is_array($decoded_old_workflow) ? $decoded_old_workflow : [];
+            }
+            $audit_old_status = strtoupper(trim((string)($audit_old_order['stav_objednavky'] ?? '')));
+        } catch (Exception $ae) {
+            error_log('⚠️ [V3 ORDER UPDATE] Audit pre-snapshot error: ' . $ae->getMessage());
+        }
         
         // Ověření tokenu
         $user = verify_token($token, $db);
@@ -1617,6 +1635,98 @@ function handle_orders_v3_update($input, $config) {
 
         if ($stmt->rowCount() > 0) {
             error_log("✅ [V3 ORDER UPDATE] Order #$order_id updated successfully");
+
+            // === AUDIT LOG: field diff + klíčové workflow/stavové přechody (fail-safe) ===
+            try {
+                if (function_exists('audit_log_field_changes')) {
+                    $audit_new_stmt = $db->prepare("SELECT * FROM `" . TBL_OBJEDNAVKY . "` WHERE id = ? LIMIT 1");
+                    $audit_new_stmt->execute([(int)$order_id]);
+                    $audit_new_order = $audit_new_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                    $audit_batch = audit_log_field_changes(
+                        $db,
+                        $user,
+                        'OBJEDNAVKA',
+                        (int)$order_id,
+                        'orders-v3/update',
+                        (array)$audit_old_order,
+                        (array)$audit_new_order
+                    );
+
+                    if (function_exists('audit_log_action')) {
+                        $audit_new_workflow = [];
+                        if (!empty($audit_new_order['stav_workflow_kod'])) {
+                            $decoded_new_workflow = json_decode($audit_new_order['stav_workflow_kod'], true);
+                            $audit_new_workflow = is_array($decoded_new_workflow) ? $decoded_new_workflow : [];
+                        }
+
+                        $added_states = array_values(array_diff($audit_new_workflow, $audit_old_workflow));
+                        foreach ($added_states as $state_code) {
+                            $state = strtoupper(trim((string)$state_code));
+                            if ($state === '') continue;
+
+                            $action = function_exists('audit_map_order_state_to_action')
+                                ? audit_map_order_state_to_action($state)
+                                : null;
+                            if (!$action) {
+                                $action = 'UPDATE';
+                            }
+
+                            $action_note_prefix = 'Změna workflow stavu';
+                            if ($action === 'REJECT') {
+                                $action_note_prefix = 'Rozhodnutí příkazce: zamítnutí';
+                            } elseif ($action === 'POSTPONE') {
+                                $action_note_prefix = 'Rozhodnutí příkazce: odložení';
+                            } elseif ($action === 'STORNO') {
+                                $action_note_prefix = 'Uživatelské storno objednávky';
+                            }
+
+                            audit_log_action(
+                                $db,
+                                $user,
+                                'OBJEDNAVKA',
+                                (int)$order_id,
+                                $action,
+                                'orders-v3/update',
+                                $action_note_prefix . ': ' . $state,
+                                $audit_batch
+                            );
+                        }
+
+                        $audit_new_status = strtoupper(trim((string)($audit_new_order['stav_objednavky'] ?? '')));
+                        if ($audit_new_status !== '' && $audit_new_status !== $audit_old_status) {
+                            $status_action = function_exists('audit_map_order_state_to_action')
+                                ? audit_map_order_state_to_action($audit_new_status)
+                                : null;
+                            if (!$status_action) {
+                                $status_action = 'UPDATE';
+                            }
+
+                            $status_note_prefix = 'Změna stav_objednavky';
+                            if ($status_action === 'REJECT') {
+                                $status_note_prefix = 'Rozhodnutí příkazce: zamítnutí';
+                            } elseif ($status_action === 'POSTPONE') {
+                                $status_note_prefix = 'Rozhodnutí příkazce: odložení';
+                            } elseif ($status_action === 'STORNO') {
+                                $status_note_prefix = 'Uživatelské storno objednávky';
+                            }
+
+                            audit_log_action(
+                                $db,
+                                $user,
+                                'OBJEDNAVKA',
+                                (int)$order_id,
+                                $status_action,
+                                'orders-v3/update',
+                                $status_note_prefix . ': ' . $audit_old_status . ' -> ' . $audit_new_status,
+                                $audit_batch
+                            );
+                        }
+                    }
+                }
+            } catch (Exception $ae) {
+                error_log('⚠️ [V3 ORDER UPDATE] Audit post-update error: ' . $ae->getMessage());
+            }
             
             // 📝 AUDIT LOG - pokud akci provedl zástupce v zastoupení
             if (function_exists('get_active_substitution_for_action') && function_exists('log_substitution_action')) {

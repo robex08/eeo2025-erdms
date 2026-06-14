@@ -263,6 +263,7 @@ define('TBL_CHAT_MENTIONS', '25_chat_mentions');
 
 // DATABASE TABLE NAMES - AUDIT
 define('TBL_AUDITNI_ZAZNAMY', '25_auditni_zaznamy');
+define('TBL_AUDIT_ZMEN', '25a_audit_zmen'); // Fáze 1: field-level audit log
 
 // DATABASE TABLE NAMES - LIMITOVANÉ PŘÍSLIBY
 define('TBL_LIMITOVANE_PRISLIBY', '25_limitovane_prisliby');
@@ -318,6 +319,10 @@ require_once __DIR__ . '/v2025.03_25/lib/cashboxByPeriodHandler.php';
 // ANNUAL FEES - Roční poplatky
 require_once __DIR__ . '/v2025.03_25/lib/rozsirujiciDataHelper.php';
 require_once __DIR__ . '/v2025.03_25/lib/annualFeesHandlers.php';
+
+// AUDIT TRAIL - Field-level audit log (Fáze 1)
+require_once __DIR__ . '/v2025.03_25/lib/auditTrailHelper.php';
+require_once __DIR__ . '/v2025.03_25/lib/auditHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/annualFeesAttachmentsHandlers.php';
 
 // USER DETAIL - User detail with statistics
@@ -4641,7 +4646,36 @@ switch ($endpoint) {
             $input['order_id'] = null; // Standalone faktura
             
             if ($request_method === 'POST') {
+                ob_start();
                 handle_order_v2_create_invoice_with_attachment($input, $config, $queries);
+                $create_response = ob_get_clean();
+
+                // AUDIT fallback: CREATE faktury přes V2 endpoint včetně počátečních hodnot
+                try {
+                    $create_json = json_decode($create_response, true);
+                    if (is_array($create_json) && ($create_json['status'] ?? '') === 'ok' && !empty($create_json['data']['id']) && function_exists('audit_log_create_with_data')) {
+                        $token_data = verify_token_v2($input['username'] ?? '', $input['token'] ?? '');
+                        $db = get_db($config);
+                        if ($token_data && $db) {
+                            $created_row_stmt = $db->prepare("SELECT * FROM `" . TBL_FAKTURY . "` WHERE id = ? LIMIT 1");
+                            $created_row_stmt->execute([(int)$create_json['data']['id']]);
+                            $created_row = $created_row_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                            audit_log_create_with_data(
+                                $db,
+                                $token_data,
+                                'FAKTURA',
+                                (int)$create_json['data']['id'],
+                                'order-v2/invoices/create-with-attachment',
+                                (array)$created_row,
+                                'Vytvoření nové faktury (včetně přílohy)'
+                            );
+                        }
+                    }
+                } catch (Exception $ae) {
+                    error_log('[AUDIT] order-v2 invoice create-with-attachment fallback error: ' . $ae->getMessage());
+                }
+
+                echo $create_response;
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -4654,7 +4688,36 @@ switch ($endpoint) {
             $input['order_id'] = null; // Standalone faktura
             
             if ($request_method === 'POST') {
+                ob_start();
                 handle_order_v2_create_invoice($input, $config, $queries);
+                $create_response = ob_get_clean();
+
+                // AUDIT fallback: CREATE faktury přes V2 endpoint včetně počátečních hodnot
+                try {
+                    $create_json = json_decode($create_response, true);
+                    if (is_array($create_json) && ($create_json['status'] ?? '') === 'ok' && !empty($create_json['data']['id']) && function_exists('audit_log_create_with_data')) {
+                        $token_data = verify_token_v2($input['username'] ?? '', $input['token'] ?? '');
+                        $db = get_db($config);
+                        if ($token_data && $db) {
+                            $created_row_stmt = $db->prepare("SELECT * FROM `" . TBL_FAKTURY . "` WHERE id = ? LIMIT 1");
+                            $created_row_stmt->execute([(int)$create_json['data']['id']]);
+                            $created_row = $created_row_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                            audit_log_create_with_data(
+                                $db,
+                                $token_data,
+                                'FAKTURA',
+                                (int)$create_json['data']['id'],
+                                'order-v2/invoices/create',
+                                (array)$created_row,
+                                'Vytvoření nové faktury'
+                            );
+                        }
+                    }
+                } catch (Exception $ae) {
+                    error_log('[AUDIT] order-v2 invoice create fallback error: ' . $ae->getMessage());
+                }
+
+                echo $create_response;
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -4668,7 +4731,36 @@ switch ($endpoint) {
             $input['order_id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             
             if ($request_method === 'POST') {
+                ob_start();
                 handle_order_v2_create_invoice_with_attachment($input, $config, $queries);
+                $create_response = ob_get_clean();
+
+                // AUDIT fallback: CREATE faktury přes V2 endpoint včetně počátečních hodnot
+                try {
+                    $create_json = json_decode($create_response, true);
+                    if (is_array($create_json) && ($create_json['status'] ?? '') === 'ok' && !empty($create_json['data']['id']) && function_exists('audit_log_create_with_data')) {
+                        $token_data = verify_token_v2($input['username'] ?? '', $input['token'] ?? '');
+                        $db = get_db($config);
+                        if ($token_data && $db) {
+                            $created_row_stmt = $db->prepare("SELECT * FROM `" . TBL_FAKTURY . "` WHERE id = ? LIMIT 1");
+                            $created_row_stmt->execute([(int)$create_json['data']['id']]);
+                            $created_row = $created_row_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                            audit_log_create_with_data(
+                                $db,
+                                $token_data,
+                                'FAKTURA',
+                                (int)$create_json['data']['id'],
+                                'order-v2/' . $input['order_id'] . '/invoices/create-with-attachment',
+                                (array)$created_row,
+                                'Vytvoření nové faktury k objednávce (včetně přílohy)'
+                            );
+                        }
+                    }
+                } catch (Exception $ae) {
+                    error_log('[AUDIT] order-v2 order-invoice create-with-attachment fallback error: ' . $ae->getMessage());
+                }
+
+                echo $create_response;
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -4682,7 +4774,36 @@ switch ($endpoint) {
             $input['order_id'] = is_numeric($matches[1]) ? (int)$matches[1] : $matches[1];
             
             if ($request_method === 'POST') {
+                ob_start();
                 handle_order_v2_create_invoice($input, $config, $queries);
+                $create_response = ob_get_clean();
+
+                // AUDIT fallback: CREATE faktury přes V2 endpoint včetně počátečních hodnot
+                try {
+                    $create_json = json_decode($create_response, true);
+                    if (is_array($create_json) && ($create_json['status'] ?? '') === 'ok' && !empty($create_json['data']['id']) && function_exists('audit_log_create_with_data')) {
+                        $token_data = verify_token_v2($input['username'] ?? '', $input['token'] ?? '');
+                        $db = get_db($config);
+                        if ($token_data && $db) {
+                            $created_row_stmt = $db->prepare("SELECT * FROM `" . TBL_FAKTURY . "` WHERE id = ? LIMIT 1");
+                            $created_row_stmt->execute([(int)$create_json['data']['id']]);
+                            $created_row = $created_row_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                            audit_log_create_with_data(
+                                $db,
+                                $token_data,
+                                'FAKTURA',
+                                (int)$create_json['data']['id'],
+                                'order-v2/' . $input['order_id'] . '/invoices/create',
+                                (array)$created_row,
+                                'Vytvoření nové faktury k objednávce'
+                            );
+                        }
+                    }
+                } catch (Exception $ae) {
+                    error_log('[AUDIT] order-v2 order-invoice create fallback error: ' . $ae->getMessage());
+                }
+
+                echo $create_response;
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use POST.'));
@@ -4864,7 +4985,34 @@ switch ($endpoint) {
             $input['invoice_id'] = (int)$matches[1];
             
             if ($request_method === 'DELETE' || $request_method === 'POST') {
+                ob_start();
                 handle_order_v2_delete_invoice($input, $config, $queries);
+                $delete_response = ob_get_clean();
+
+                // AUDIT fallback: DELETE faktury přes V2 endpoint (handler zatím neloguje DELETE)
+                try {
+                    $delete_json = json_decode($delete_response, true);
+                    if (is_array($delete_json) && ($delete_json['status'] ?? '') === 'ok' && function_exists('audit_log_action')) {
+                        $token_data = verify_token_v2($input['username'] ?? '', $input['token'] ?? '');
+                        $db = get_db($config);
+                        if ($token_data && $db) {
+                            $is_hard = !empty($input['hard_delete']);
+                            audit_log_action(
+                                $db,
+                                $token_data,
+                                'FAKTURA',
+                                (int)$input['invoice_id'],
+                                'DELETE',
+                                'order-v2/invoices/' . (int)$input['invoice_id'] . '/delete',
+                                $is_hard ? 'Hard delete faktury (V2 endpoint)' : 'Soft delete faktury (V2 endpoint)'
+                            );
+                        }
+                    }
+                } catch (Exception $ae) {
+                    error_log('[AUDIT] order-v2 invoice delete fallback error: ' . $ae->getMessage());
+                }
+
+                echo $delete_response;
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use DELETE or POST.'));
@@ -4879,7 +5027,34 @@ switch ($endpoint) {
             
             if ($request_method === 'DELETE' || $request_method === 'POST') {
                 debug_log("🗑️ Calling handle_order_v2_delete_invoice with input: " . json_encode($input));
+                ob_start();
                 handle_order_v2_delete_invoice($input, $config, $queries);
+                $delete_response = ob_get_clean();
+
+                // AUDIT fallback: DELETE faktury přes V2 endpoint (handler zatím neloguje DELETE)
+                try {
+                    $delete_json = json_decode($delete_response, true);
+                    if (is_array($delete_json) && ($delete_json['status'] ?? '') === 'ok' && function_exists('audit_log_action')) {
+                        $token_data = verify_token_v2($input['username'] ?? '', $input['token'] ?? '');
+                        $db = get_db($config);
+                        if ($token_data && $db) {
+                            $is_hard = !empty($input['hard_delete']);
+                            audit_log_action(
+                                $db,
+                                $token_data,
+                                'FAKTURA',
+                                (int)$input['invoice_id'],
+                                'DELETE',
+                                'order-v2/invoices/' . (int)$input['invoice_id'],
+                                $is_hard ? 'Hard delete faktury (V2 endpoint)' : 'Soft delete faktury (V2 endpoint)'
+                            );
+                        }
+                    }
+                } catch (Exception $ae) {
+                    error_log('[AUDIT] order-v2 invoice delete REST fallback error: ' . $ae->getMessage());
+                }
+
+                echo $delete_response;
             } else {
                 http_response_code(405);
                 echo json_encode(array('status' => 'error', 'message' => 'Method not allowed. Use DELETE or POST.'));
@@ -6045,6 +6220,32 @@ switch ($endpoint) {
             break;
         }
         
+        // ===== AUDIT TRAIL - Fáze 1 =====
+
+        // POST /api.eeo/audit/history - timeline změn (jen SUPERADMIN / ADMINISTRATOR)
+        if ($endpoint === 'audit/history') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true) ?? [];
+                handle_audit_history($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+            }
+            break;
+        }
+
+        // POST /api.eeo/audit/detail - detail jednoho batche (jen SUPERADMIN / ADMINISTRATOR)
+        if ($endpoint === 'audit/detail') {
+            if ($request_method === 'POST') {
+                $input = json_decode(file_get_contents('php://input'), true) ?? [];
+                handle_audit_detail($input, $config);
+            } else {
+                http_response_code(405);
+                echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+            }
+            break;
+        }
+
         // POST /api.eeo/limitovane-prisliby/inicializace - inicializace čerpání všech LP (admin only)
         if ($endpoint === 'limitovane-prisliby/inicializace') {
             if ($request_method === 'POST') {
