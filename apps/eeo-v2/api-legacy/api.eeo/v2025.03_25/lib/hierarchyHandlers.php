@@ -289,6 +289,32 @@ function _substitution_decode_opravneni($opravneni_raw) {
 }
 
 /**
+ * Pomocná funkce: může uživatel spravovat své zastupování?
+ * Ano pokud má USER_SUBSTITUTE_SET, je admin, nebo má v tabulce možností aktivní vlastní pravidla.
+ */
+function _substitution_can_manage_own($token_data, $pdo, $queries) {
+    if (!empty($token_data['is_admin']) || _substitution_has_right($token_data, 'USER_SUBSTITUTE_SET')) {
+        return true;
+    }
+
+    try {
+        if (!isset($queries['moznosti_zastupovani_can_set_own'])) {
+            return false;
+        }
+        $user_id = (int)($token_data['id'] ?? 0);
+        if ($user_id <= 0) return false;
+
+        $stmt = $pdo->prepare($queries['moznosti_zastupovani_can_set_own']);
+        $stmt->execute(array(':user_id' => $user_id));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        return (int)($row['cnt'] ?? 0) > 0;
+    } catch (Exception $e) {
+        error_log('_substitution_can_manage_own error: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
  * POST substitution/list
  * Vrátí moje zastupování (kdo zastupuje mě) nebo aktuálně aktivní (pro adminy)
  */
@@ -359,8 +385,7 @@ function handle_substitution_create($data, $pdo) {
         return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
     }
 
-    // Kontrola práva USER_SUBSTITUTE_SET
-    if (!_substitution_has_right($token_data, 'USER_SUBSTITUTE_SET') && !$token_data['is_admin']) {
+    if (!_substitution_can_manage_own($token_data, $pdo, $queries)) {
         return array('status' => 'error', 'message' => 'Nemáte oprávnění nastavit vlastního zástupce');
     }
 
@@ -546,7 +571,7 @@ function handle_substitution_update($data, $pdo) {
         return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
     }
 
-    if (!_substitution_has_right($token_data, 'USER_SUBSTITUTE_SET') && !$token_data['is_admin']) {
+    if (!_substitution_can_manage_own($token_data, $pdo, $queries)) {
         return array('status' => 'error', 'message' => 'Nemáte oprávnění upravit zastupování');
     }
 
@@ -684,7 +709,7 @@ function handle_substitution_deactivate($data, $pdo) {
         return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
     }
 
-    if (!_substitution_has_right($token_data, 'USER_SUBSTITUTE_SET') && !$token_data['is_admin']) {
+    if (!_substitution_can_manage_own($token_data, $pdo, $queries)) {
         return array('status' => 'error', 'message' => 'Nemáte oprávnění zrušit zastupování');
     }
 
@@ -693,27 +718,71 @@ function handle_substitution_deactivate($data, $pdo) {
     }
 
     $substitution_id = (int)$data['id'];
-    $zastupovany_id = (int)$token_data['id'];
+    $current_user_id = (int)$token_data['id'];
+    $is_admin = !empty($token_data['is_admin']);
 
     try {
         TimezoneHelper::setMysqlTimezone($pdo);
 
-        // Načti data zastupování PŘED deaktivací (pro notifikaci)
+        // Načti data zastupování PŘED změnou (pro validaci i notifikaci)
         $stmt_info = $pdo->prepare(
-            "SELECT z.zastupce_id, z.zastupovany_id, z.dt_od, z.dt_do,
+            "SELECT z.id, z.zastupce_id, z.zastupovany_id, z.dt_od, z.dt_do, z.aktivni,
                     uc.jmeno AS zastupce_jmeno, uc.prijmeni AS zastupce_prijmeni,
                     uo.jmeno AS zastupovany_jmeno, uo.prijmeni AS zastupovany_prijmeni
              FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
              LEFT JOIN " . TBL_UZIVATELE . " uc ON uc.id = z.zastupce_id
              LEFT JOIN " . TBL_UZIVATELE . " uo ON uo.id = z.zastupovany_id
-             WHERE z.id = ? AND z.aktivni = 1"
+             WHERE z.id = ?"
         );
         $stmt_info->execute(array($substitution_id));
         $sub_info = $stmt_info->fetch(PDO::FETCH_ASSOC);
 
-        $stmt = $pdo->prepare($queries['substitution_deactivate']);
-        $stmt->bindParam(':substitution_id', $substitution_id, PDO::PARAM_INT);
-        $stmt->bindParam(':zastupovany_id', $zastupovany_id, PDO::PARAM_INT);
+        if (!$sub_info) {
+            return array('status' => 'error', 'message' => 'Zastupování nebylo nalezeno');
+        }
+
+        // Non-admin může měnit pouze svá zastupování (kde je zastupovaný)
+        if (!$is_admin && (int)$sub_info['zastupovany_id'] !== $current_user_id) {
+            return array('status' => 'error', 'message' => 'Nemáte oprávnění měnit toto zastupování');
+        }
+
+        $today = TimezoneHelper::getCzechDateTime('Y-m-d');
+        $is_future = ((int)$sub_info['aktivni'] === 1) && ((string)$sub_info['dt_od'] > $today);
+        $is_active_now = ((int)$sub_info['aktivni'] === 1) && ((string)$sub_info['dt_od'] <= $today) && ((string)$sub_info['dt_do'] >= $today);
+
+        // Ukončené / neaktivní / již proběhlé nelze měnit kvůli historii
+        if (!$is_future && !$is_active_now) {
+            return array('status' => 'error', 'message' => 'Ukončené zastupování nelze smazat ani deaktivovat');
+        }
+
+        $operation = 'deactivated';
+        if ($is_future) {
+            // Budoucí záznam: smazat úplně
+            if ($is_admin) {
+                $stmt = $pdo->prepare("DELETE FROM " . TBL_UZIVATELE_ZASTUPOVANI . " WHERE id = :substitution_id");
+                $stmt->bindParam(':substitution_id', $substitution_id, PDO::PARAM_INT);
+            } else {
+                $stmt = $pdo->prepare("DELETE FROM " . TBL_UZIVATELE_ZASTUPOVANI . " WHERE id = :substitution_id AND zastupovany_id = :zastupovany_id");
+                $stmt->bindParam(':substitution_id', $substitution_id, PDO::PARAM_INT);
+                $stmt->bindParam(':zastupovany_id', $current_user_id, PDO::PARAM_INT);
+            }
+            $operation = 'deleted';
+        } else {
+            // Běžící záznam: pouze deaktivovat
+            if ($is_admin) {
+                $stmt = $pdo->prepare(
+                    "UPDATE " . TBL_UZIVATELE_ZASTUPOVANI . "
+                     SET aktivni = 0, dt_aktualizace = NOW(), dt_ukonceni = NOW()
+                     WHERE id = :substitution_id AND aktivni = 1"
+                );
+                $stmt->bindParam(':substitution_id', $substitution_id, PDO::PARAM_INT);
+            } else {
+                $stmt = $pdo->prepare($queries['substitution_deactivate']);
+                $stmt->bindParam(':substitution_id', $substitution_id, PDO::PARAM_INT);
+                $stmt->bindParam(':zastupovany_id', $current_user_id, PDO::PARAM_INT);
+            }
+        }
+
         $stmt->execute();
 
         if ($stmt->rowCount() > 0) {
@@ -737,10 +806,12 @@ function handle_substitution_deactivate($data, $pdo) {
 
                     createNotification($pdo, array(
                         ':typ'              => 'SUBSTITUTION_ENDED',
-                        ':nadpis'           => 'Zastupování ukončeno',
-                        ':zprava'           => 'Vaše zastupování za ' . $zastupovany_jmeno_full . ' (' . $dt_od_fmt . ' – ' . $dt_do_fmt . ') bylo ukončeno.',
+                        ':nadpis'           => ($operation === 'deleted' ? 'Plánované zastupování zrušeno' : 'Zastupování ukončeno'),
+                        ':zprava'           => ($operation === 'deleted'
+                            ? 'Plánované zastupování za ' . $zastupovany_jmeno_full . ' (' . $dt_od_fmt . ' – ' . $dt_do_fmt . ') bylo zrušeno před začátkem.'
+                            : 'Vaše zastupování za ' . $zastupovany_jmeno_full . ' (' . $dt_od_fmt . ' – ' . $dt_do_fmt . ') bylo ukončeno.'),
                         ':data_json'        => $notif_data_json,
-                        ':od_uzivatele_id'  => (int)$token_data['id'],
+                        ':od_uzivatele_id'  => (int)$current_user_id,
                         ':pro_uzivatele_id' => (int)$sub_info['zastupce_id'],
                         ':prijemci_json'    => null,
                         ':pro_vsechny'      => 0,
@@ -757,9 +828,15 @@ function handle_substitution_deactivate($data, $pdo) {
                 }
             }
             // ───────────────────────────────────────────────────────────────
-            return array('status' => 'ok', 'message' => 'Zastupování bylo úspěšně zrušeno');
+            return array(
+                'status' => 'ok',
+                'message' => ($operation === 'deleted'
+                    ? 'Plánované zastupování bylo smazáno'
+                    : 'Aktivní zastupování bylo deaktivováno'),
+                'data' => array('operation' => $operation)
+            );
         } else {
-            return array('status' => 'error', 'message' => 'Zastupování nebylo nalezeno nebo nepatří vašemu účtu');
+            return array('status' => 'error', 'message' => 'Zastupování nebylo nalezeno nebo jej nelze změnit');
         }
 
     } catch (PDOException $e) {

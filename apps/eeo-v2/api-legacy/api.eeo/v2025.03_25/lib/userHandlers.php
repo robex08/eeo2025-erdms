@@ -625,7 +625,17 @@ function handle_users_update($input, $config, $queries) {
         }
         
         $db->commit();
-        
+
+        // AUDIT LOG: uživatel update (fail-safe)
+        try {
+            if (function_exists('audit_log_field_changes') && !empty($existing_user)) {
+                $stmtNew = $db->prepare("SELECT * FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+                $stmtNew->execute([$user_id]);
+                $new_user = $stmtNew->fetch(PDO::FETCH_ASSOC) ?: [];
+                audit_log_field_changes($db, $token_data, 'UZIVATEL', $user_id, 'users/update', (array)$existing_user, (array)$new_user);
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] users_update audit error: ' . $ae->getMessage()); }
+
         $response_data = array(
             'id' => (int)$user_id,
             'username' => $username_changed ? $new_username : $existing_user['username'],

@@ -347,6 +347,77 @@ export const createOrdersV3RefreshTask = (onOrdersV3AutoRefresh) => ({
 });
 
 /**
+ * Task handler pro automatické obnovení faktur (Invoices25List)
+ * Spouští se každých 10 minut
+ * DŮLEŽITÉ:
+ * - Pouze pokud je modul faktur globálně zapnutý
+ * - Pouze pokud je uživatel na route /invoices25-list
+ * - Tichý refresh řeší samotná stránka přes callback
+ */
+export const createInvoicesRefreshTask = (onInvoicesAutoRefresh) => ({
+  name: 'autoRefreshInvoices',
+  interval: 10 * 60 * 1000, // 10 minut
+  immediate: false,
+  enabled: true,
+
+  condition: () => {
+    try {
+      const token = loadAuthData.token();
+      const currentPath = window.location.pathname;
+
+      const moduleSettings = getModuleSettingsSafe();
+      if (moduleSettings && moduleSettings.module_invoices_visible === false) {
+        return false;
+      }
+
+      // Spouštět jen na route seznamu faktur
+      const isOnInvoicesPage = /\/invoices25-list(?:\/|$)/.test(currentPath);
+      return !!token && isOnInvoicesPage;
+    } catch (_) {
+      return false;
+    }
+  },
+
+  callback: async () => {
+    try {
+      // Hard guard (i kdyby condition nebyla respektována v budoucnu)
+      const currentPath = window.location.pathname;
+      if (!/\/invoices25-list(?:\/|$)/.test(currentPath)) {
+        return { skipped: true, reason: 'not_on_invoices_route', timestamp: new Date().toISOString() };
+      }
+
+      const moduleSettings = getModuleSettingsSafe();
+      if (moduleSettings && moduleSettings.module_invoices_visible === false) {
+        return { skipped: true, reason: 'module_invoices_visible=false', timestamp: new Date().toISOString() };
+      }
+
+      // Načti autentizační data (jen pro validaci přihlášení)
+      const token = await loadAuthData.token();
+      const user = await loadAuthData.user();
+
+      if (!token || !user?.username) {
+        throw new Error('Missing authentication data for invoices background refresh');
+      }
+
+      if (typeof onInvoicesAutoRefresh === 'function') {
+        await onInvoicesAutoRefresh();
+      }
+
+      return {
+        timestamp: new Date().toISOString(),
+        note: 'Invoices auto-refresh executed (silent)'
+      };
+    } catch (error) {
+      throw error;
+    }
+  },
+
+  onError: (_error) => {
+    // Tiché selhání
+  }
+});
+
+/**
  * Kombinovaný task handler - po přidání/úpravě objednávky
  * Provede okamžitý refresh objednávek + kontrolu notifikací
  * Tato úloha se spouští MANUÁLNĚ po uložení objednávky
@@ -431,6 +502,7 @@ export const createPostOrderActionTask = (callbacks = {}) => ({
  * Helper funkce pro rychlou konfiguraci všech standardních tasků
  * @param {Object} callbacks - Callbacky pro jednotlivé úlohy
  * @param {Function} callbacks.getCurrentFilters - Callback pro získání aktuálních filtrů
+ * @param {Function} callbacks.onInvoicesAutoRefresh - Callback pro tichý refresh faktur
  * @returns {Array} - Pole task konfigurací
  */
 export const createStandardTasks = (callbacks = {}) => {
@@ -446,6 +518,9 @@ export const createStandardTasks = (callbacks = {}) => {
     ),
     createOrdersV3RefreshTask(
       callbacks.onOrdersV3AutoRefresh
+    ),
+    createInvoicesRefreshTask(
+      callbacks.onInvoicesAutoRefresh
     ),
     createExchangeRatesTask(callbacks.onExchangeRatesUpdated), // ← Nový task pro směnné kurzy
     createPostOrderActionTask({
@@ -553,6 +628,7 @@ export const TASK_INTERVALS = {
   NOTIFICATIONS: 60 * 1000,         // 1 minuta
   CHAT: 90 * 1000,                  // 1.5 minuty
   ORDERS_REFRESH: 10 * 60 * 1000,   // 10 minut
+  INVOICES_REFRESH: 10 * 60 * 1000, // 10 minut
   EXCHANGE_RATES: 30 * 60 * 1000,   // 30 minut
   HEALTH_CHECK: 5 * 60 * 1000,      // 5 minut (pro budoucí použití)
   SESSION_CHECK: 15 * 60 * 1000     // 15 minut (pro budoucí použití)
@@ -563,6 +639,7 @@ export default {
   createChatCheckTask,
   createOrdersRefreshTask,
   createOrdersV3RefreshTask,
+  createInvoicesRefreshTask,
   createExchangeRatesTask,
   createPostOrderActionTask,
   createStandardTasks,

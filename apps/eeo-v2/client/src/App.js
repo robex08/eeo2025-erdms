@@ -52,6 +52,7 @@ const CerpaniPage = lazy(() => import('./pages/CerpaniPage'));
 const MajetekOverviewPage = lazy(() => import('./pages/MajetekOverviewPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
+const AuditLogPage = lazy(() => import('./pages/AuditLogPage')); // Audit log - SUPERADMIN / ADMINISTRATOR
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
 const PlanningAdminPage = lazy(() => import('./pages/PlanningAdminPage'));
@@ -828,7 +829,8 @@ function App() {
       try {
         const existing = bgTasksInstance?.service?.getTasksInfo?.() || [];
         const hasOrdersV3 = existing.some(t => t?.name === 'autoRefreshOrdersV3');
-        if (!hasOrdersV3) {
+        const hasInvoices = existing.some(t => t?.name === 'autoRefreshInvoices');
+        if (!hasOrdersV3 || !hasInvoices) {
           const tasks = createStandardTasks({
             onOrdersRefreshed: (ordersData) => {
               const ctx = bgTasksContextRef.current;
@@ -840,6 +842,13 @@ function App() {
               const ctx = bgTasksContextRef.current;
               if (ctx?.triggerOrdersV3Refresh) {
                 return await ctx.triggerOrdersV3Refresh();
+              }
+              return undefined;
+            },
+            onInvoicesAutoRefresh: async () => {
+              const ctx = bgTasksContextRef.current;
+              if (ctx?.triggerInvoicesRefresh) {
+                return await ctx.triggerInvoicesRefresh();
               }
               return undefined;
             },
@@ -869,9 +878,13 @@ function App() {
             }
           });
 
+          const missingTaskNames = [];
+          if (!hasOrdersV3) missingTaskNames.push('autoRefreshOrdersV3');
+          if (!hasInvoices) missingTaskNames.push('autoRefreshInvoices');
+
           // Zaregistruj pouze chybějící tasky (BackgroundTaskService deduplikuje podle jména)
           tasks.forEach(taskConfig => {
-            if (taskConfig?.name === 'autoRefreshOrdersV3') {
+            if (missingTaskNames.includes(taskConfig?.name)) {
               bgTasksInstance.register(taskConfig);
             }
           });
@@ -897,6 +910,15 @@ function App() {
         const ctx = bgTasksContextRef.current;
         if (ctx?.triggerOrdersV3Refresh) {
           return await ctx.triggerOrdersV3Refresh();
+        }
+        return undefined;
+      },
+
+      // Callback pro invoices auto-refresh (tichý refresh v komponentě)
+      onInvoicesAutoRefresh: async () => {
+        const ctx = bgTasksContextRef.current;
+        if (ctx?.triggerInvoicesRefresh) {
+          return await ctx.triggerInvoicesRefresh();
         }
         return undefined;
       },
@@ -1188,6 +1210,7 @@ function App() {
                     ))
                   ) && <Route path="/material-overview" element={<Navigate to="/majetek-overview" replace />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/app-settings" element={<AppSettings />} />}
+                  {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/admin/audit-log" element={<AuditLogPage />} />}
                   {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
                   {isLoggedIn && hasPermission && hasPermission('PLANNING_MANAGE') && <Route path="/planning" element={<PlanningAdminPage />} />}
                   {isLoggedIn && (

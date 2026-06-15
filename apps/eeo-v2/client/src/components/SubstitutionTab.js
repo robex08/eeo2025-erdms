@@ -539,7 +539,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   const [candidates, setCandidates]       = useState([]);
   const [loading, setLoading]             = useState(true);
   const [deactivating, setDeactivating]   = useState(null);
-  const [deactivateConfirm, setDeactivateConfirm] = useState({ isOpen: false, sub: null, isAdmin: false });
+  const [deactivateConfirm, setDeactivateConfirm] = useState({ isOpen: false, sub: null, isAdmin: false, mode: 'deactivate' });
 
   // Admin data
   const [adminSubstitutions, setAdminSubstitutions] = useState([]);
@@ -826,26 +826,31 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
       showToast && showToast('Read-only režim: nemáte oprávnění rušit vlastní zastupování.', 'warning');
       return;
     }
-    setDeactivateConfirm({ isOpen: true, sub, isAdmin: false });
+    const status = getSubstStatus(sub);
+    const mode = status === 'future' ? 'delete' : 'deactivate';
+    setDeactivateConfirm({ isOpen: true, sub, isAdmin: false, mode });
   }
 
   // Admin deaktivace
   async function handleAdminDeactivate(sub) {
-    setDeactivateConfirm({ isOpen: true, sub, isAdmin: true });
+    const status = getSubstStatus(sub);
+    const mode = status === 'future' ? 'delete' : 'deactivate';
+    setDeactivateConfirm({ isOpen: true, sub, isAdmin: true, mode });
   }
 
   async function confirmDeactivate() {
     const { sub, isAdmin } = deactivateConfirm;
     if (!sub) return;
-    setDeactivateConfirm({ isOpen: false, sub: null, isAdmin: false });
+    setDeactivateConfirm({ isOpen: false, sub: null, isAdmin: false, mode: 'deactivate' });
     if (isAdmin) {
       setAdminDeactivating(sub.id);
     } else {
       setDeactivating(sub.id);
     }
     try {
-      await deactivateSubstitution({ token, username, id: sub.id });
-      showToast && showToast('Zastupování bylo zrušeno.', 'success');
+      const response = await deactivateSubstitution({ token, username, id: sub.id });
+      const op = response?.data?.operation;
+      showToast && showToast(op === 'deleted' ? 'Plánované zastupování bylo smazáno.' : 'Aktivní zastupování bylo deaktivováno.', 'success');
       if (isAdmin) {
         await loadAdmin();
       } else {
@@ -960,7 +965,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                 const status = getSubstStatus(sub);
                 const perms  = decodeOpravneni(sub.opravneni);
                 const canEdit   = canManageOwn && isFuture(sub);
-                const canDelete = canManageOwn && sub.aktivni === 1;
+                const canDelete = canManageOwn && (status === 'active' || status === 'future');
                 const initials  = getInitials(sub.zastupce?.jmeno, sub.zastupce?.prijmeni);
                 return (
                   <Tr key={sub.id}>
@@ -1026,8 +1031,12 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                           </ActionBtn>
                         )}
                         {canDelete && (
-                          <ActionBtn $danger title="Zrušit zastupování" onClick={() => handleDeactivate(sub)} disabled={deactivating === sub.id}>
-                            {deactivating === sub.id ? <Loader size={13} style={{ animation: `${spinAnim} .9s linear infinite` }} /> : <XCircle size={14} style={{ color: '#dc2626' }} />}
+                          <ActionBtn $danger title={status === 'future' ? 'Smazat plánované zastupování' : 'Deaktivovat aktivní zastupování'} onClick={() => handleDeactivate(sub)} disabled={deactivating === sub.id}>
+                            {deactivating === sub.id
+                              ? <Loader size={13} style={{ animation: `${spinAnim} .9s linear infinite` }} />
+                              : (status === 'future'
+                                ? <Trash2 size={14} style={{ color: '#dc2626' }} />
+                                : <XCircle size={14} style={{ color: '#dc2626' }} />)}
                           </ActionBtn>
                         )}
                       </ActionsCell>
@@ -1196,7 +1205,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                   ? (s.dt_od <= now && s.dt_do >= now ? 'active' : s.dt_od > now ? 'future' : 'past')
                   : 'past';
                 const perms = decodeOpravneni(s.opravneni);
-                const canDelete = s.aktivni === 1;
+                const canDelete = status === 'active' || status === 'future';
                 return (
                   <Tr key={s.id}>
                     <Td>
@@ -1244,8 +1253,12 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                     <Td><StatusPill $s={status}>{STATUS_LABELS[status] || status}</StatusPill></Td>
                     <Td>
                       {canDelete && (
-                        <ActionBtn $danger title="Zrušit zastupování" onClick={() => handleAdminDeactivate(s)} disabled={adminDeactivating === s.id}>
-                          {adminDeactivating === s.id ? <Loader size={13} style={{ animation: `${spinAnim} .9s linear infinite` }} /> : <XCircle size={14} style={{ color: '#dc2626' }} />}
+                        <ActionBtn $danger title={status === 'future' ? 'Smazat plánované zastupování' : 'Deaktivovat aktivní zastupování'} onClick={() => handleAdminDeactivate(s)} disabled={adminDeactivating === s.id}>
+                          {adminDeactivating === s.id
+                            ? <Loader size={13} style={{ animation: `${spinAnim} .9s linear infinite` }} />
+                            : (status === 'future'
+                              ? <Trash2 size={14} style={{ color: '#dc2626' }} />
+                              : <XCircle size={14} style={{ color: '#dc2626' }} />)}
                         </ActionBtn>
                       )}
                     </Td>
@@ -1560,8 +1573,8 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
       {deactivateConfirm.isOpen && (
         <ConfirmDialog
           isOpen={deactivateConfirm.isOpen}
-          title="Zrušit zastupování"
-          message={`Opravdu zrušit zastupování uživatele ${
+          title={deactivateConfirm.mode === 'delete' ? 'Smazat plánované zastupování' : 'Deaktivovat aktivní zastupování'}
+          message={`${deactivateConfirm.mode === 'delete' ? 'Opravdu smazat plánované zastupování uživatele' : 'Opravdu deaktivovat aktivní zastupování uživatele'} ${
             deactivateConfirm.isAdmin
               ? (deactivateConfirm.sub?.zastupce_jmeno || 'zástupce')
               : (deactivateConfirm.sub?.zastupce?.jmeno
@@ -1569,10 +1582,10 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                   : (deactivateConfirm.sub?.zastupce_jmeno || 'zástupce'))
           }?`}
           variant="danger"
-          confirmText="Zrušit zastupování"
+          confirmText={deactivateConfirm.mode === 'delete' ? 'Smazat' : 'Deaktivovat'}
           cancelText="Zpět"
           onConfirm={confirmDeactivate}
-          onClose={() => setDeactivateConfirm({ isOpen: false, sub: null, isAdmin: false })}
+          onClose={() => setDeactivateConfirm({ isOpen: false, sub: null, isAdmin: false, mode: 'deactivate' })}
         />
       )}
     </Container>

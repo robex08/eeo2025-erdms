@@ -2634,6 +2634,32 @@ function handle_dodavatele_create($input, $config, $queries) {
         $stmt->execute();
         
         $new_id = $db->lastInsertId();
+
+        // AUDIT LOG: CREATE dodavatele včetně počátečních hodnot (fail-safe)
+        try {
+            if (function_exists('audit_log_create_with_data')) {
+                audit_log_create_with_data(
+                    $db,
+                    $token_data,
+                    'DODAVATEL',
+                    (int)$new_id,
+                    'dodavatele/create',
+                    [
+                        'nazev'           => $nazev,
+                        'adresa'          => $adresa,
+                        'ico'             => $ico,
+                        'dic'             => $dic,
+                        'zastoupeny'      => $zastoupeny,
+                        'kontakt_jmeno'   => $kontakt_jmeno,
+                        'kontakt_email'   => $kontakt_email,
+                        'kontakt_telefon' => $kontakt_telefon,
+                    ],
+                    'Vytvoření nového dodavatele (včetně kontaktu)'
+                );
+            }
+        } catch (Exception $ae) {
+            error_log('[AUDIT] dodavatel create error: ' . $ae->getMessage());
+        }
         
         api_ok(array('id' => (int)$new_id, 'message' => 'Dodavatel úspěšně vytvořen'));
         return;
@@ -2760,6 +2786,20 @@ function handle_dodavatele_update($input, $config, $queries) {
             }
         }
         $stmt->execute();
+
+        // AUDIT LOG: field-level diff dodavatele (fail-safe)
+        try {
+            if (function_exists('audit_log_field_changes') && !empty($existing)) {
+                $dod_after_stmt = $db->prepare("SELECT * FROM `" . TBL_DODAVATELE . "` WHERE id = ? LIMIT 1");
+                $dod_after_stmt->execute([$dodavatel_id]);
+                $dod_after = $dod_after_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+                audit_log_field_changes(
+                    $db, $token_data, 'DODAVATEL', $dodavatel_id,
+                    'dodavatele/update',
+                    (array)$existing, (array)$dod_after
+                );
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] dodavatel update error: ' . $ae->getMessage()); }
         
         api_ok(array('id' => $dodavatel_id, 'message' => 'Dodavatel úspěšně aktualizován'));
         return;
@@ -2906,7 +2946,17 @@ function handle_dodavatele_update_by_ico($input, $config, $queries) {
             }
         }
         $stmt->execute();
-        
+
+        // AUDIT LOG: dodavatel update by ico (fail-safe)
+        try {
+            if (function_exists('audit_log_field_changes') && !empty($existing)) {
+                $stmtNew = $db->prepare("SELECT * FROM " . TBL_DODAVATELE . " WHERE ico = ? LIMIT 1");
+                $stmtNew->execute([$ico]);
+                $new_dodavatel = $stmtNew->fetch(PDO::FETCH_ASSOC) ?: [];
+                audit_log_field_changes($db, $token_data, 'DODAVATEL', (int)($existing['id'] ?? 0), 'dodavatele/update-by-ico', (array)$existing, (array)$new_dodavatel);
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] dodavatele update-by-ico: ' . $ae->getMessage()); }
+
         api_ok(array(
             'ico' => $ico, 
             'updated_fields' => array_keys(array_diff_key($params, array(':ico' => true))),
@@ -2980,6 +3030,23 @@ function handle_dodavatele_delete($input, $config, $queries) {
         
         if (API_DEBUG_MODE) {
             error_log("Dodavatel deleted - ID: $id, nazev: " . $existing['nazev'] . ", ICO: " . $existing['ico']);
+        }
+
+        // AUDIT LOG: DELETE dodavatele (fail-safe)
+        try {
+            if (function_exists('audit_log_action')) {
+                audit_log_action(
+                    $db,
+                    $token_data,
+                    'DODAVATEL',
+                    (int)$id,
+                    'DELETE',
+                    'dodavatele/delete',
+                    'Smazání dodavatele'
+                );
+            }
+        } catch (Exception $ae) {
+            error_log('[AUDIT] dodavatel delete error: ' . $ae->getMessage());
         }
         
         api_ok(array(
