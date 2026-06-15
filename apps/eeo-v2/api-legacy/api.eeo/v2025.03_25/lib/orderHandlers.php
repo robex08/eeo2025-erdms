@@ -5488,6 +5488,14 @@ function handle_orders25_unlock($input, $config, $queries) {
         $unlock_stmt->bindParam(':id', $order_id, PDO::PARAM_INT);
         $unlock_stmt->execute();
 
+        // AUDIT LOG: unlock akce (fail-safe)
+        try {
+            if (function_exists('audit_log_action')) {
+                $audit_note = $force_unlock ? 'Force unlock (' . $unlock_reason . ')' : 'Odemčení (' . $unlock_reason . ')';
+                audit_log_action($db, $token_data, 'OBJEDNAVKA', $order_id, 'UNLOCK', 'orders25/unlock', $audit_note);
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] orders25_unlock error: ' . $ae->getMessage()); }
+
         $response = [
             'status' => 'ok',
             'message' => 'Objednávka byla úspěšně odemčena'
@@ -6355,6 +6363,14 @@ function handle_order_v2_unlock($input, $config, $queries, $order_id) {
         // Odemkni
         $unlock_stmt = $db->prepare(unlockOrderQuery());
         $unlock_stmt->execute([':id' => $order_id]);
+
+        // AUDIT LOG: unlock akce (fail-safe)
+        try {
+            if (function_exists('audit_log_action')) {
+                $au_note = ($locked_by != $current_user_id) ? 'Admin odemčení cizího zámku' : 'Odemčení vlastního zámku';
+                audit_log_action($db, $token_data, 'OBJEDNAVKA', $order_id, 'UNLOCK', 'order-v2/{id}/unlock', $au_note);
+            }
+        } catch (Exception $ae) { error_log('[AUDIT] order_v2_unlock error: ' . $ae->getMessage()); }
         
         http_response_code(200);
         echo json_encode([

@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
 import { ProgressContext } from '../context/ProgressContext';
 import { ToastContext } from '../context/ToastContext';
+import { useBackgroundTasks } from '../context/BackgroundTasksContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faFileInvoice, faSearch, faFilter, faTimes, faPlus, faEdit, faEye, faTrash,
@@ -2114,6 +2115,7 @@ const Invoices25List = () => {
   const { user, token, username, hasPermission, user_id } = useContext(AuthContext);
   const { showProgress, hideProgress } = useContext(ProgressContext) || {};
   const { showToast } = useContext(ToastContext) || {};
+  const bgTasksContext = useBackgroundTasks();
 
   // Refs pro sticky header - synchronizace horizontálního scrollu
   const stickyHeaderRef = useRef(null);
@@ -2219,6 +2221,8 @@ const Invoices25List = () => {
   const [invoices, setInvoices] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  // 🔄 BT: čas posledního tichého auto-refresh faktur (zobrazuje se vedle ikony refresh)
+  const [lastBtAutoRefreshTime, setLastBtAutoRefreshTime] = useState(null);
   const [invoiceChecks, setInvoiceChecks] = useState({});
   const [checksLoading, setChecksLoading] = useState(false);
   
@@ -3664,6 +3668,37 @@ const Invoices25List = () => {
       showToast?.('❌ Chyba při obnovování seznamu faktur', 'error');
     }
   };
+
+  // ✅ BT AUTO-REFRESH: registrace callbacku pro background task (každých 10 min)
+  // - probíhá tiše (bez toastu)
+  // - nastaví čas posledního auto-refreshu pro zobrazení v headeru
+  useEffect(() => {
+    if (!bgTasksContext?.registerInvoicesRefreshCallback) {
+      return;
+    }
+
+    const btRefreshCallback = async () => {
+      try {
+        await loadData();
+        setLastBtAutoRefreshTime(new Date());
+        return { status: 'success' };
+      } catch (_) {
+        // Tiché selhání - background refresh nesmí rušit UI
+        return undefined;
+      }
+    };
+
+    bgTasksContext.registerInvoicesRefreshCallback(btRefreshCallback);
+
+    return () => {
+      if (bgTasksContext.unregisterInvoicesRefreshCallback) {
+        bgTasksContext.unregisterInvoicesRefreshCallback();
+      } else {
+        // Backward compat fallback
+        bgTasksContext.registerInvoicesRefreshCallback?.(null);
+      }
+    };
+  }, [bgTasksContext, loadData]);
   
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
@@ -4800,9 +4835,26 @@ const Invoices25List = () => {
               )}
             </PeriodFilterDropdownContainer>
             <TooltipWrapper text="Obnovit data" preferredPosition="bottom">
-              <RefreshIconButton onClick={handleRefresh}>
-                <FontAwesomeIcon icon={faSyncAlt} />
-              </RefreshIconButton>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <RefreshIconButton onClick={handleRefresh}>
+                  <FontAwesomeIcon icon={faSyncAlt} />
+                </RefreshIconButton>
+
+                {lastBtAutoRefreshTime && (
+                  <span
+                    style={{
+                      color: '#fde68a',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap',
+                      textShadow: '0 1px 1px rgba(0,0,0,0.25)'
+                    }}
+                    title="Čas posledního automatického refresh (BT)"
+                  >
+                    LAST:{lastBtAutoRefreshTime.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
             </TooltipWrapper>
           </PeriodFilterLeft>
           

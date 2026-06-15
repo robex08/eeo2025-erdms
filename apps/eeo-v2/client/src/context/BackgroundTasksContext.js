@@ -31,6 +31,7 @@ export const BackgroundTasksProvider = ({ children }) => {
   // Reference na callbacky pro jednotlivé úlohy
   const ordersRefreshCallbackRef = useRef(null);
   const ordersV3RefreshCallbackRef = useRef(null);
+  const invoicesRefreshCallbackRef = useRef(null);
   const notificationsCallbackRef = useRef(null);
   const newNotificationsCallbackRef = useRef(null);
   const getCurrentFiltersCallbackRef = useRef(null);  // ← Nový ref pro getCurrentFilters
@@ -53,6 +54,14 @@ export const BackgroundTasksProvider = ({ children }) => {
   }, []);
 
   /**
+   * Registrace callback pro refresh faktur (Invoices25List)
+   * Volá Invoices25List při mount
+   */
+  const registerInvoicesRefreshCallback = useCallback((callback) => {
+    invoicesRefreshCallbackRef.current = callback;
+  }, []);
+
+  /**
    * Registrace callback pro získání aktuálních filtrů (ROK, OBDOBÍ, ARCHIV)
    * Volá Orders25List při mount
    */
@@ -72,6 +81,13 @@ export const BackgroundTasksProvider = ({ children }) => {
    */
   const unregisterOrdersV3RefreshCallback = useCallback(() => {
     ordersV3RefreshCallbackRef.current = null;
+  }, []);
+
+  /**
+   * Odregistrace callback pro faktury
+   */
+  const unregisterInvoicesRefreshCallback = useCallback(() => {
+    invoicesRefreshCallbackRef.current = null;
   }, []);
 
   /**
@@ -116,6 +132,20 @@ export const BackgroundTasksProvider = ({ children }) => {
     if (ordersV3RefreshCallbackRef.current) {
       try {
         return ordersV3RefreshCallbackRef.current();
+      } catch (error) {
+        return undefined;
+      }
+    }
+    return undefined;
+  }, []);
+
+  /**
+   * Spustí tichý refresh faktur (callback obvykle volá loadData())
+   */
+  const triggerInvoicesRefresh = useCallback(() => {
+    if (invoicesRefreshCallbackRef.current) {
+      try {
+        return invoicesRefreshCallbackRef.current();
       } catch (error) {
         return undefined;
       }
@@ -203,6 +233,8 @@ export const BackgroundTasksProvider = ({ children }) => {
     unregisterOrdersRefreshCallback,
     registerOrdersV3RefreshCallback,
     unregisterOrdersV3RefreshCallback,
+    registerInvoicesRefreshCallback,
+    unregisterInvoicesRefreshCallback,
     registerGetCurrentFiltersCallback,  // ← Nová registrace pro getCurrentFilters
     registerNotificationsCallback,
     registerNewNotificationsCallback,
@@ -214,6 +246,7 @@ export const BackgroundTasksProvider = ({ children }) => {
     // Triggery
     triggerOrdersRefresh,
     triggerOrdersV3Refresh,
+    triggerInvoicesRefresh,
     handleUnreadCountChange,
     handleNewNotifications,
     triggerNotificationsRefresh,  // NOVÁ funkce pro manuální refresh

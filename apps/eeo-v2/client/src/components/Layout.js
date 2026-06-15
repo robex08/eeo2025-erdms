@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends, faUserSecret, faSpinner, faRobot } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends, faUserSecret, faSpinner, faRobot, faClipboardList } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import ImpersonationDialog from './ImpersonationDialog';
 import { AuthContext } from '../context/AuthContext';
@@ -4448,6 +4448,14 @@ const Layout = ({ children }) => {
                         onClick={() => setAdminMenuOpen(false)}
                       >
                         <FontAwesomeIcon icon={faCalendarAlt} /> Plánování a rezervace
+                      </MenuDropdownItem>
+                    )}
+                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) && (
+                      <MenuDropdownItem 
+                        to="/admin/audit-log" 
+                        onClick={() => setAdminMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faClipboardList} /> Audit log
                       </MenuDropdownItem>
                     )}
                     {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) && (

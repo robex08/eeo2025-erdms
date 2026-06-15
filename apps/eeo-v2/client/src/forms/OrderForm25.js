@@ -5481,6 +5481,9 @@ function OrderForm25() {
     storno: false
   });
 
+  // Marker pro explicitní audit blokového odemčení při následném update
+  const [pendingAuditUnlockAction, setPendingAuditUnlockAction] = useState(null);
+
   // 💰 SPRINT 4: Consolidated Faktury (Invoice) State (4→1 hook)
   const [fakturyState, setFakturyState] = useState({
     loading: false,
@@ -12518,7 +12521,14 @@ function OrderForm25() {
         if (orderData.faktury && orderData.faktury.length > 0) {
         }
 
+        if (pendingAuditUnlockAction && pendingAuditUnlockAction.event === 'UNLOCK_BLOCK') {
+          orderData.audit_event = pendingAuditUnlockAction.event;
+          orderData.audit_unlock_section = pendingAuditUnlockAction.section || '';
+          orderData.audit_unlock_note = pendingAuditUnlockAction.note || '';
+        }
+
         result = await updateOrderV2(formData.id, orderData, token, username);
+        setPendingAuditUnlockAction(null);
 
         addDebugLog('info', 'SAVE-V2', 'update-success', `Order ${formData.id} updated`);
 
@@ -18237,6 +18247,15 @@ function OrderForm25() {
     setCancelWarningMessage('');
   }, []);
 
+  const markPendingUnlockAudit = useCallback((section, note) => {
+    setPendingAuditUnlockAction({
+      event: 'UNLOCK_BLOCK',
+      section: section || '',
+      note: note || '',
+      ts: new Date().toISOString()
+    });
+  }, []);
+
   // Funkce pro odemykání FÁZE 1 sekcí - ČISTÁ FUNKCE BEZ TOAST
   // 🔓 Handler pro odemčení FÁZE 1 - nyní používá workflowManager.unlockPhase2()
   // ✅ SJEDNOCENO s handleResetToPhase3Sections (unlock z PO sekce)
@@ -18246,6 +18265,7 @@ function OrderForm25() {
 
     // Aktualizuj formData state okamžitě
     setFormData(updatedFormData);
+    markPendingUnlockAudit('phase1', 'Odemčení FÁZE 1 (návrat na ODESLANA_KE_SCHVALENI)');
 
     // ✅ WorkflowManager se automaticky přepočítá díky změně formData.stav_workflow_kod
 
@@ -18277,6 +18297,12 @@ function OrderForm25() {
           const cleanStates = existingStates.filter(s => s !== 'ODESLANA' && s !== 'ZRUSENA');
           orderData.stav_workflow_kod = JSON.stringify(cleanStates);
 
+          if (pendingAuditUnlockAction && pendingAuditUnlockAction.event === 'UNLOCK_BLOCK') {
+            orderData.audit_event = pendingAuditUnlockAction.event;
+            orderData.audit_unlock_section = pendingAuditUnlockAction.section || '';
+            orderData.audit_unlock_note = pendingAuditUnlockAction.note || '';
+          }
+
           // Storno checkboxy - false (stav_stornovano neexistuje v DB)
           orderData.stav_odeslano = false;
 
@@ -18284,6 +18310,7 @@ function OrderForm25() {
           // ⚠️ prepareDataForAPI() se volá automaticky uvnitř updateOrderV2() - NEMĚNIT ZNOVU!
           // const preparedData = prepareDataForAPI(orderData);  ❌ DUPLICITNÍ - již se dělá v updateOrderV2()
           await updateOrderV2(formData.id, orderData, token, username);
+          setPendingAuditUnlockAction(null);
 
         } catch (error) {
           showToast && showToast(`Chyba při ukládání: ${error.message}`, { type: 'error' });
@@ -18294,7 +18321,7 @@ function OrderForm25() {
       };
       doSave();
     }
-  }, [pendingUnlock, isPhase3SectionsUnlocked, isSaving]); // Přidána závislost isSaving
+  }, [pendingUnlock, isPhase3SectionsUnlocked, isSaving, pendingAuditUnlockAction, formData, token, username, showToast]); // Přidána závislost isSaving
 
   // 🔄 Univerzální helper pro reset vyšších fází při odemčení nižší sekce
   const resetHigherPhaseCheckboxes = (sectionName) => {
@@ -18321,6 +18348,7 @@ function OrderForm25() {
 
     // Aktualizuj formData state okamžitě
     setFormData(updatedFormData);
+    markPendingUnlockAudit('phase2', 'Odemčení FÁZE 2 (Přílohy)');
 
     // ⚠️ FÁZE 2 se odemyká změnou workflow na ODESLANA_KE_SCHVALENI
 
@@ -18341,6 +18369,7 @@ function OrderForm25() {
 
     // 🔓 KRITICKÉ: Nastav unlock state pro FÁZI 3 PŘED změnou formData!
     setIsPhase3SectionsUnlocked(true);
+    markPendingUnlockAudit('phase3_sections', 'Odemčení FÁZE 3 (Dodavatel až Stav odeslání)');
 
     // Aktualizuj formData state s malým zpožděním pro zajištění správného pořadí
     setTimeout(() => {
@@ -18373,6 +18402,7 @@ function OrderForm25() {
       onConfirm: async () => {
         // 🎯 DELEGACE NA WORKFLOWMANAGER
         const { updatedFormData, unlockState, newPhase } = workflowManager.unlockPhase4();
+        markPendingUnlockAudit('phase4', 'Odemčení FÁZE 4 (Potvrzení dodavatele)');
 
         // 🔓 KRITICKÉ: Nastav unlock state pro potvrzení PŘED změnou formData!
         workflowManager.unlockSection('potvrzeni');
@@ -29815,6 +29845,7 @@ function OrderForm25() {
       onClose={() => setShowUnlockRegistrConfirm(false)}
       onConfirm={() => {
         setShowUnlockRegistrConfirm(false);
+        markPendingUnlockAudit('registr_vyplneni', 'Odemčení sekce Registr smluv');
         workflowManager.unlockSection('registr_vyplneni'); // ✅ Odemknout sekci vyplnění registru (FÁZE 5)
 
         // ✅ Nastavit workflow na FÁZI 5 - UVEREJNIT
@@ -29886,6 +29917,7 @@ function OrderForm25() {
       icon={faExclamationTriangle}
       onConfirm={() => {
         setShowUnlockPotvrzeniConfirm(false);
+        markPendingUnlockAudit('potvrzeni', 'Odemčení sekce Potvrzení od dodavatele');
         workflowManager.unlockSection('potvrzeni');
         workflowManager.unlockSection('registr'); // ✅ Také odemknout sekci Registr smluv
 
@@ -29970,6 +30002,7 @@ function OrderForm25() {
       variant="warning"
       onConfirm={() => {
         setShowUnlockFakturaceConfirm(false);
+        markPendingUnlockAudit('fakturace', 'Odemčení sekce Fakturace');
         workflowManager.unlockSection('fakturace');
 
         // ✅ Odebrat VŠE CO JE VÝŠE NEŽ FAKTURACE → vrátit na FÁZI 6 (FAKTURACE)
@@ -30022,6 +30055,7 @@ function OrderForm25() {
       icon={faExclamationTriangle}
       onConfirm={() => {
         setShowUnlockDokonceniConfirm(false);
+        markPendingUnlockAudit('dokonceni', 'Odemčení dokončené objednávky');
 
         addDebugLog('info', 'UNLOCK', 'dokonceni', '🔓 Dokončená objednávka odemčena');
 
@@ -30077,6 +30111,7 @@ function OrderForm25() {
       icon={faExclamationTriangle}
       onConfirm={async () => {
         setShowUnlockStornoConfirm(false);
+        markPendingUnlockAudit('storno', 'Odemčení stornované objednávky');
         
         addDebugLog('info', 'UNLOCK', 'cancelled', `🔓 Odemykám stornovanou objednávku ID: ${formData.id}`);
         
