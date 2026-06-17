@@ -221,12 +221,37 @@ function handle_save_settings($db, $settings, $isSuperAdmin, $hasMaintenanceAdmi
     
     try {
         // Kontrola oprávnění pro maintenance_mode
-        // Může měnit: SUPERADMIN nebo uživatel s právem MAINTENANCE_ADMIN
+        // Může měnit: SUPERADMIN nebo uživatel s právem MAINTENANCE_ADMIN.
+        // Důležité: AppSettings posílá celý objekt nastavení, proto blokujeme
+        // pouze skutečnou změnu hodnoty maintenance_mode.
         if (isset($settings['maintenance_mode']) && !$isSuperAdmin && !$hasMaintenanceAdmin) {
-            error_log("ERROR: Permission denied for maintenance_mode");
-            http_response_code(403);
-            echo json_encode(array('status' => 'error', 'message' => 'Pouze SUPERADMIN nebo MAINTENANCE_ADMIN může měnit maintenance_mode'));
-            return;
+            $incomingMaintenance = $settings['maintenance_mode'];
+            if (is_bool($incomingMaintenance)) {
+                $incomingMaintenance = $incomingMaintenance ? '1' : '0';
+            } elseif (is_numeric($incomingMaintenance)) {
+                $incomingMaintenance = ((int)$incomingMaintenance) ? '1' : '0';
+            } else {
+                $incomingMaintenance = in_array(strtolower(trim((string)$incomingMaintenance)), array('1', 'true', 'yes', 'on'), true) ? '1' : '0';
+            }
+
+            $currentMaintenance = '0';
+            try {
+                $stmtMaintenance = $db->prepare("SELECT hodnota FROM " . TBL_NASTAVENI_GLOBALNI . " WHERE klic = 'maintenance_mode' LIMIT 1");
+                $stmtMaintenance->execute();
+                $dbValue = $stmtMaintenance->fetchColumn();
+                if ($dbValue !== false && $dbValue !== null) {
+                    $currentMaintenance = in_array(strtolower(trim((string)$dbValue)), array('1', 'true', 'yes', 'on'), true) ? '1' : '0';
+                }
+            } catch (Exception $e) {
+                error_log("WARNING: maintenance_mode current value lookup failed: " . $e->getMessage());
+            }
+
+            if ($incomingMaintenance !== $currentMaintenance) {
+                error_log("ERROR: Permission denied for maintenance_mode change");
+                http_response_code(403);
+                echo json_encode(array('status' => 'error', 'message' => 'Pouze SUPERADMIN nebo MAINTENANCE_ADMIN může měnit maintenance_mode'));
+                return;
+            }
         }
         
         // Mapování frontend -> DB klíčů

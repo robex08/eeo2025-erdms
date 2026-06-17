@@ -282,6 +282,74 @@ function handle_cashbook_assignments_all_post($config, $input) {
  * - uzivatel_id: null = všechna přiřazení (admin), číslo = konkrétní uživatel, vynecháno = aktuální uživatel
  * - active_only: true = jen aktivní, false = všechna
  */
+
+/**
+ * Interní helper: zkontroluje, zda má zástupce přes aktivní zastupování
+ * přenesenou globální viditelnost pokladen (CASH_BOOK_READ_ALL nebo CASH_BOOK_MANAGE).
+ *
+ * Pravidlo přenosu:
+ * - preferuje explicitní module_visibility
+ * - fallback pro staré záznamy bez module_visibility je view
+ *
+ * @param PDO $db
+ * @param int $zastupceId
+ * @return bool
+ */
+function _cashbook_has_substitution_global_cashbox_visibility($db, $zastupceId) {
+    try {
+        $stmt = $db->prepare(
+            "SELECT z.zastupovany_id, z.opravneni
+             FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+             WHERE z.zastupce_id = :zastupce_id
+               AND z.aktivni = 1
+               AND z.dt_od <= CURDATE()
+               AND z.dt_do >= CURDATE()"
+        );
+        $stmt->bindValue(':zastupce_id', (int)$zastupceId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $opravneni = json_decode($row['opravneni'], true);
+            if (!is_array($opravneni)) {
+                continue;
+            }
+
+            $canView = !empty($opravneni['view']);
+            $canModuleVisibility = array_key_exists('module_visibility', $opravneni)
+                ? !empty($opravneni['module_visibility'])
+                : $canView;
+            $canCashbookTransfer = array_key_exists('cashbook_transfer', $opravneni)
+                ? !empty($opravneni['cashbook_transfer'])
+                : $canModuleVisibility;
+
+            if (!$canModuleVisibility || !$canCashbookTransfer) {
+                continue;
+            }
+
+            $zastupovanyId = (int)$row['zastupovany_id'];
+            if ($zastupovanyId <= 0) {
+                continue;
+            }
+
+            $codesForUser = array();
+            if (function_exists('_substitution_get_permission_codes_for_user')) {
+                $codesForUser = _substitution_get_permission_codes_for_user($db, $zastupovanyId);
+            }
+
+            foreach ((array)$codesForUser as $code) {
+                $norm = strtoupper(trim((string)$code));
+                if ($norm === 'CASH_BOOK_READ_ALL' || $norm === 'CASH_BOOK_MANAGE') {
+                    return true;
+                }
+            }
+        }
+    } catch (Exception $e) {
+        error_log('_cashbook_has_substitution_global_cashbox_visibility error: ' . $e->getMessage());
+    }
+
+    return false;
+}
+
 function handle_cashbox_assignments_list_post($config, $input) {
     try {
         if (empty($input['username']) || empty($input['token'])) {
@@ -298,10 +366,35 @@ function handle_cashbox_assignments_list_post($config, $input) {
         $permissions = new CashbookPermissions($userData, $db);
         $activeOnly = isset($input['active_only']) ? (bool)$input['active_only'] : true;
         
-        // Rozlišení mezi null (všechna), vynecháno (aktuální), a konkrétní ID
+        // Rozlišení mezi null (všechna), vynecháno (aktuální+zastupovaní), a konkrétní ID
+        $effectiveUserIds = array((int)$userData['id']);
+        $hasSubstitutionGlobalCashboxVisibility = false;
         if (!array_key_exists('uzivatel_id', $input)) {
-            // Parametr vůbec nepřišel → vrátit přiřazení aktuálního uživatele
-            $targetUserId = $userData['id'];
+            // Parametr vůbec nepřišel → vrátit přiřazení aktuálního uživatele + aktivně zastupovaných
+            if (function_exists('get_user_ids_with_substitution')) {
+                try {
+                    $scopeInfo = null;
+                    // Preferovat explicitní module_visibility
+                    $subIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('module_visibility'), $scopeInfo);
+
+                    // Fallback kompatibility: staré záznamy bez module_visibility
+                    if (!is_array($subIds) || count($subIds) <= 1) {
+                        $legacySubIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('view'), $scopeInfo);
+                        if (is_array($legacySubIds) && !empty($legacySubIds)) {
+                            $subIds = $legacySubIds;
+                        }
+                    }
+
+                    if (is_array($subIds) && !empty($subIds)) {
+                        $effectiveUserIds = array_values(array_unique(array_map('intval', $subIds)));
+                    }
+
+                    $hasSubstitutionGlobalCashboxVisibility = _cashbook_has_substitution_global_cashbox_visibility($db, (int)$userData['id']);
+                } catch (Exception $e) {
+                    error_log('handle_cashbox_assignments_list_post substitution lookup error: ' . $e->getMessage());
+                }
+            }
+            $targetUserId = (int)$userData['id'];
         } elseif ($input['uzivatel_id'] === null || $input['uzivatel_id'] === 'null' || $input['uzivatel_id'] === '') {
             // Explicitně null → vrátit všechna přiřazení (jen pro správce)
             if (!$permissions->canManageCashbooks()) {
@@ -319,9 +412,29 @@ function handle_cashbox_assignments_list_post($config, $input) {
         
         $assignmentModel = new CashboxAssignmentModel($db);
         
-        if ($targetUserId === null) {
+        if ($targetUserId === null || $hasSubstitutionGlobalCashboxVisibility) {
             // Vrátit všechna přiřazení
             $assignments = $assignmentModel->getAllAssignments($activeOnly);
+        } elseif (!array_key_exists('uzivatel_id', $input)) {
+            // Vrátit sjednocená přiřazení aktuálního uživatele + aktivně zastupovaných
+            $merged = array();
+            foreach ($effectiveUserIds as $uid) {
+                $rows = $assignmentModel->getAssignmentsByUserId((int)$uid, $activeOnly);
+                foreach ($rows as $row) {
+                    // Ochrana proti nekonzistentním datům: vracej pouze reálně existující pokladny z DB.
+                    if (!isset($row['pokladna_id']) || (int)$row['pokladna_id'] <= 0) {
+                        continue;
+                    }
+                    if (!isset($row['cislo_pokladny']) || (int)$row['cislo_pokladny'] <= 0) {
+                        continue;
+                    }
+                    $aid = isset($row['id']) ? (int)$row['id'] : 0;
+                    if ($aid > 0) {
+                        $merged[$aid] = $row;
+                    }
+                }
+            }
+            $assignments = array_values($merged);
         } else {
             // Vrátit přiřazení konkrétního uživatele
             $assignments = $assignmentModel->getAssignmentsByUserId($targetUserId, $activeOnly);

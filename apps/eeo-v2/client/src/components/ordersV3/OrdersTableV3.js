@@ -165,16 +165,16 @@ const resolveApprovalSubstitutionInfo = (source) => {
 };
 
 const getApprovalActionLabel = (source) => {
-  if (!source) return 'Schváleno';
+  if (!source) return 'Schvalovatel';
 
   const statusByCheckbox = String(source.stav_schvaleni || '').toLowerCase();
   if (statusByCheckbox === 'neschvaleno') return 'Zamítnuto';
-  if (statusByCheckbox === 'ceka_se') return 'Vráceno';
+  if (statusByCheckbox === 'ceka_se') return 'Čeká se';
 
   const lastState = getLastWorkflowState(source.stav_workflow_kod);
   if (lastState === 'ZAMITNUTA') return 'Zamítnuto';
-  if (lastState === 'CEKA_SE') return 'Vráceno';
-  return 'Schváleno';
+  if (lastState === 'CEKA_SE') return 'Čeká se';
+  return 'Schvalovatel';
 };
 
 // Funkce pro detekci časové části v datetime stringu
@@ -236,11 +236,11 @@ const formatWorkflowTooltip = (order) => {
     });
   }
   
-  // 2. Schválil
+  // 2. Schvalovatel
   if (order.dt_schvaleni && (order.schvalovatel_jmeno || order.schvalovatel_prijmeni)) {
     const userName = formatUserName(order.schvalovatel_jmeno, order.schvalovatel_prijmeni, order.schvalovatel_titul_pred, order.schvalovatel_titul_za);
     steps.push({
-      label: '2. Schválil:',
+      label: '2. Schvalovatel:',
       user: userName,
       date: formatSmartDate(order.dt_schvaleni),
       color: '#059669'
@@ -663,7 +663,7 @@ const formatWorkflowStateTooltip = (order, displayStatus, statusCode) => {
             {/* ✅ Použij custom akci pokud je dostupná (z fallbacku) */}
             {info.action ? `${info.action}:` :
              statusCode === 'POTVRZENA' ? 'Potvrdil:' : 
-             statusCode === 'SCHVALENA' ? 'Schválil:' :
+             statusCode === 'SCHVALENA' ? 'Schvalovatel:' :
              statusCode === 'DOKONCENA' ? 'Dokončil:' :
              statusCode === 'UVEREJNENA' || statusCode === 'K_UVEREJNENI_DO_REGISTRU' ? 'Zveřejnil:' :
              statusCode === 'ODESLANA' || statusCode === 'ODESLANA_KE_SCHVALENI' ? 'Odeslal:' :

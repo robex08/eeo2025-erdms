@@ -142,6 +142,7 @@ const WIDGET_REGISTRY = {
   weather:             { title: 'Počasí',                      icon: faCloud,              color: '#1e40af', requires: 'DASHBOARD_WEATHER' },
   finance_markets:     { title: 'Finanční trhy',               icon: faChartLine,          color: '#059669', requires: 'DASHBOARD_FINANCE_MARKETS' },
   calendar:            { title: 'Kalendář',                    icon: faCalendarAlt,        color: '#0891b2', requires: 'DASHBOARD_CALENDAR' },
+  planned_substitutions:{ title: 'Plánovaná zastupování',      icon: faUserFriends,        color: '#0f766e', requires: 'DASHBOARD_CALENDAR' },
   active_users_admin:  { title: 'Přehled aktivit uživatelů',   icon: faUsers,              color: '#1d4ed8', requires: 'DASHBOARD_ACTIVE_USERS', alwaysOn: true, alwaysLast: true }
 };
 
@@ -2240,7 +2241,10 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
   // Synchronizace counts z externího data (quick-tile badge) — jen counts, ne items
   useEffect(() => {
     if (data?.counts) {
-      setLocalData(prev => prev ? { ...prev, counts: data.counts } : data);
+      setLocalData(prev => {
+        if (prev) return { ...prev, counts: data.counts };
+        return { counts: data.counts, items: [] };
+      });
     }
   }, [data?.counts]);
 
@@ -2271,12 +2275,12 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
     });
   }, []);
 
-  const rawItems = localData?.items || [];
   const counts   = localData?.counts || {};
   const activePeriod = PERIOD_OPTIONS.find(o => o.key === period);
 
   // Aplikace sortu
   const items = useMemo(() => {
+    const rawItems = localData?.items || [];
     if (!sort.field || !sort.dir) return rawItems;
     return [...rawItems].sort((a, b) => {
       const sortField = sort.field === 'dt_pred' ? 'dt_posledni_aktivita' : sort.field;
@@ -2293,7 +2297,7 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
       if (av > bv) return sort.dir === 'asc' ?  1 : -1;
       return 0;
     });
-  }, [rawItems, sort]);
+  }, [localData?.items, sort]);
 
   const formatAgo = (dt) => {
     if (!dt) return '–';
@@ -3720,9 +3724,206 @@ const CAL_MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červ
 const CAL_DAYS   = ['Po','Út','St','Čt','Pá','So','Ne'];
 const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i);
 
+function PlannedSubstitutionsWidget({ token, username }) {
+  const MONTH_KEY = 'dashboardSubstitutionsWidgetMonth';
+  const MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+
+  const parseDate = (value) => {
+    if (!value) return null;
+    const d = new Date(`${value}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
+  const formatDate = (value) => {
+    if (!value) return '—';
+    const d = parseDate(value);
+    if (!d) return '—';
+    return d.toLocaleDateString('cs-CZ');
+  };
+
+  const getSavedMonth = () => {
+    try {
+      const saved = localStorage.getItem(MONTH_KEY);
+      if (!saved) return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const [year, month] = String(saved).split('-').map(Number);
+      if (!year || !month) return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      return new Date(year, month - 1, 1);
+    } catch {
+      return new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    }
+  };
+
+  const [viewDate, setViewDate] = useState(getSavedMonth);
+  const [allSubstitutions, setAllSubstitutions] = useState([]);
+  const [loadingAll, setLoadingAll] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+
+  // Načíst všechna zastupování ze systému (admin endpoint)
+  useEffect(() => {
+    if (!token || !username) return;
+    let cancelled = false;
+    setLoadingAll(true);
+    setLoadError(false);
+    import('../services/apiSubstitution').then(({ fetchAllSubstitutionsAdmin }) =>
+      fetchAllSubstitutionsAdmin({ token, username })
+    ).then(data => {
+      if (!cancelled) setAllSubstitutions(Array.isArray(data) ? data : []);
+    }).catch(() => {
+      if (!cancelled) setLoadError(true);
+    }).finally(() => {
+      if (!cancelled) setLoadingAll(false);
+    });
+    return () => { cancelled = true; };
+  }, [token, username]);
+
+  const saveMonth = (date) => {
+    try {
+      const y = date.getFullYear();
+      const m = String(date.getMonth() + 1).padStart(2, '0');
+      localStorage.setItem(MONTH_KEY, `${y}-${m}`);
+    } catch (_) { /* ignore */ }
+  };
+
+  const moveMonth = (offset) => {
+    setViewDate(prev => {
+      const next = new Date(prev.getFullYear(), prev.getMonth() + offset, 1);
+      saveMonth(next);
+      return next;
+    });
+  };
+
+  const monthItems = useMemo(() => {
+    const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const monthEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    return allSubstitutions
+      .filter(s => {
+        if (!s.aktivni) return false;
+        const start = parseDate(s.dt_od);
+        const end = parseDate(s.dt_do || s.dt_od);
+        if (!start || !end) return false;
+        return start <= monthEnd && end >= monthStart;
+      })
+      .map(s => ({
+        id: s.id,
+        zastupovany: s.zastupovany_jmeno || `#${s.zastupovany_id}`,
+        zastupce: s.zastupce_jmeno || `#${s.zastupce_id}`,
+        zastupovany_username: s.zastupovany_username || '',
+        zastupce_username: s.zastupce_username || '',
+        dt_od: s.dt_od,
+        dt_do: s.dt_do,
+        opravneni: s.opravneni || {},
+        popis: s.popis || '',
+      }))
+      .sort((a, b) => {
+        const ad = parseDate(a.dt_od)?.getTime() || 0;
+        const bd = parseDate(b.dt_od)?.getTime() || 0;
+        return ad - bd;
+      });
+  }, [allSubstitutions, viewDate]);
+
+  const formatOpravneni = (op) => {
+    if (!op || typeof op !== 'object') return null;
+    const labels = [];
+    if (op.view || op.view_scope)   labels.push('Zobrazení');
+    if (op.approve)                  labels.push('Schválení');
+    if (op.confirm)                  labels.push('Potvrzení');
+    if (op.cashbook_transfer)        labels.push('Pokladna');
+    return labels.length > 0 ? labels.join(' · ') : null;
+  };
+
+  const isCurrentMonth =
+    viewDate.getFullYear() === new Date().getFullYear() &&
+    viewDate.getMonth() === new Date().getMonth();
+
+  return (
+    <WidgetBody>
+      {/* Navigace měsíce */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+        <button
+          onClick={() => moveMonth(-1)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.3rem', borderRadius: '50%', fontSize: '0.85rem' }}
+          title="Předchozí měsíc"
+        >
+          <FontAwesomeIcon icon={faChevronLeft} />
+        </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>
+            {MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}
+          </span>
+          {!isCurrentMonth && (
+            <button
+              onClick={() => {
+                const now = new Date();
+                const d = new Date(now.getFullYear(), now.getMonth(), 1);
+                setViewDate(d);
+                saveMonth(d);
+              }}
+              style={{ fontSize: '0.68rem', padding: '1px 6px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'transparent', color: '#64748b', cursor: 'pointer' }}
+              title="Přejít na aktuální měsíc"
+            >
+              dnes
+            </button>
+          )}
+        </div>
+
+        <button
+          onClick={() => moveMonth(1)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: '0.3rem', borderRadius: '50%', fontSize: '0.85rem' }}
+          title="Následující měsíc"
+        >
+          <FontAwesomeIcon icon={faChevronRight} />
+        </button>
+      </div>
+
+      {/* Počet celkem */}
+      <div style={{ display: 'flex', gap: '0.45rem', marginBottom: '0.75rem' }}>
+        <WidgetBadge $bg="#e0f2fe" $color="#0369a1">
+          Celkem: {loadingAll ? '…' : monthItems.length}
+        </WidgetBadge>
+      </div>
+
+      {/* Stavy načítání / chyby */}
+      {loadingAll && (
+        <div style={{ fontSize: '0.75rem', color: '#64748b', padding: '0.5rem 0' }}>Načítám zastupování…</div>
+      )}
+      {!loadingAll && loadError && (
+        <EmptyState>Přehled zastupování se nepodařilo načíst.</EmptyState>
+      )}
+
+      {/* Prázdný stav */}
+      {!loadingAll && !loadError && monthItems.length === 0 && (
+        <EmptyState>V tomto měsíci nejsou žádná zastupování v systému.</EmptyState>
+      )}
+
+      {/* Seznam */}
+      {!loadingAll && !loadError && monthItems.map(item => {
+        const opLabel = formatOpravneni(item.opravneni);
+        return (
+          <ListItem key={item.id}>
+            <ListItemLeft>
+              {/* Zastupovaný → Zástupce */}
+              <ListItemTitle style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                <span style={{ color: '#1e293b' }}>{item.zastupovany}</span>
+                <FontAwesomeIcon icon={faChevronRight} style={{ fontSize: '0.65rem', color: '#94a3b8', flexShrink: 0 }} />
+                <span style={{ color: '#0f766e', fontWeight: 600 }}>{item.zastupce}</span>
+              </ListItemTitle>
+              <ListItemSub>
+                {formatDate(item.dt_od)} – {formatDate(item.dt_do)}
+                {opLabel && <span style={{ marginLeft: '0.4rem', color: '#94a3b8' }}>· {opLabel}</span>}
+                {item.popis && <span style={{ marginLeft: '0.4rem', color: '#94a3b8' }}>· {item.popis}</span>}
+              </ListItemSub>
+            </ListItemLeft>
+          </ListItem>
+        );
+      })}
+    </WidgetBody>
+  );
+}
+
 function CalendarWidget({ token, username, mySubstitutions, substituting, onHeaderButton, onPlanningEventsUpdate, urlEventId, urlOpenPanel }) {
   const today = new Date();
-  
+
   // Načíst uložený stav kalendáře z localStorage
   const getSavedCalendarState = () => {
     try {
@@ -6153,7 +6354,7 @@ function NotificationsWidget({ notifications, navigate }) {
       // ✅ Barvy podle orderStatusColors.js (jako v Moje obj)
       const statusNorm = statusText.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
       if (statusNorm.includes('SCHVALEN')) statusColor = '#ea580c'; // oranžová
-      else if (statusNorm.includes('KE SCHVALEN') || statusNorm.includes('ODESLAN') && statusNorm.includes('SCHVALEN')) statusColor = '#dc2626'; // červená
+      else if (statusNorm.includes('KE SCHVALEN') || (statusNorm.includes('ODESLAN') && statusNorm.includes('SCHVALEN'))) statusColor = '#dc2626'; // červená
       else if (statusNorm.includes('ROZPRAC')) statusColor = '#ca8a04'; // žlutá
       else if (statusNorm.includes('ODESLAN')) statusColor = '#1d4ed8'; // modrá
       else if (statusNorm.includes('POTVRZEN')) statusColor = '#0891b2'; // cyan
@@ -6165,7 +6366,7 @@ function NotificationsWidget({ notifications, navigate }) {
       
     } else if (type === 'FA') {
       // Priorita: "Po splatnosti" > běžný stav
-      if (placeholders.invoice_is_overdue && placeholders.invoice_is_overdue == 1) {
+      if (placeholders.invoice_is_overdue && Number(placeholders.invoice_is_overdue) === 1) {
         statusText = 'Po splatnosti';
         statusColor = '#dc2626'; // červená
       } else if (placeholders.invoice_status) {
@@ -9268,6 +9469,9 @@ export default function DashboardPage() {
           urlOpenPanel={urlOpenPanel}
         />;
         headerExtra = widgetHeaderExtras.calendar;
+        break;
+      case 'planned_substitutions':
+        content = <PlannedSubstitutionsWidget token={token} username={username} />;
         break;
       default:
         return null;

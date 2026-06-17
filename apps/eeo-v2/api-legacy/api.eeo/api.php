@@ -1792,6 +1792,26 @@ switch ($endpoint) {
             echo json_encode(array('error' => 'Method not allowed'));
         }
         break;
+    case 'substitution/effective-permissions':
+        if ($request_method === 'POST') {
+            $response = handle_substitution_effective_permissions($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    case 'substitution/cashbook-transfer-eligibility':
+        if ($request_method === 'POST') {
+            $response = handle_substitution_cashbook_transfer_eligibility($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
     case 'substitution/candidates':
         if ($request_method === 'POST') {
             $response = handle_substitution_candidates($input, $pdo);

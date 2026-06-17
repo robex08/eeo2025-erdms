@@ -5069,7 +5069,7 @@ const CashbookLPSummary = () => {
     (async () => {
       try {
         const cashbookAPI = (await import('../services/cashbookService')).default;
-        const response = await cashbookAPI.listAssignments(userDetail.id, true);
+        const response = await cashbookAPI.listAssignments(undefined, true);
         const assignments = Array.isArray(response?.data?.assignments)
           ? response.data.assignments
           : Array.isArray(response?.assignments) ? response.assignments : [];

@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect, useCallback } from 'react';
 import { loginApi2, getUserDetailApi2, normalizeApiError, getNameday } from '../services/api2auth';
+import { fetchSubstitutionEffectivePermissions } from '../services/apiSubstitution';
 import {
   saveAuthData,
   loadAuthData,
@@ -61,6 +62,11 @@ export const AuthProvider = ({ children }) => {
   
   // 🔐 HIERARCHIE PERMISSIONS: Rozšířená práva s hierarchií
   const [expandedPermissions, setExpandedPermissions] = useState([]);
+  const [substitutionEffectivePermissions, setSubstitutionEffectivePermissions] = useState([]);
+  const [substitutionDelegation, setSubstitutionDelegation] = useState({
+    hasAdminAccess: false,
+    hasSuperadminAccess: false,
+  });
   
   // 🔐 USER IMPERSONATION: Feature flag zda je impersonation povolen
   const [impersonationFeatureEnabled, setImpersonationFeatureEnabled] = useState(false);
@@ -90,6 +96,50 @@ export const AuthProvider = ({ children }) => {
     }
     return null;
   }); // {id, username, token, userDetail, permissions}
+
+  const refreshSubstitutionEffectivePermissions = useCallback(async () => {
+    if (!token || !user?.username || impersonationActive) {
+      setSubstitutionEffectivePermissions([]);
+      setSubstitutionDelegation({ hasAdminAccess: false, hasSuperadminAccess: false });
+      return [];
+    }
+
+    try {
+      const res = await fetchSubstitutionEffectivePermissions({
+        token,
+        username: user.username,
+      });
+      const normalized = (res?.permissionCodes || [])
+        .map(code => String(code || '').trim().toUpperCase())
+        .filter(Boolean);
+      const uniqueCodes = Array.from(new Set(normalized));
+      setSubstitutionEffectivePermissions(uniqueCodes);
+      setSubstitutionDelegation({
+        hasAdminAccess: !!res?.delegation?.hasAdminAccess,
+        hasSuperadminAccess: !!res?.delegation?.hasSuperadminAccess,
+      });
+      return uniqueCodes;
+    } catch (error) {
+      setSubstitutionEffectivePermissions([]);
+      setSubstitutionDelegation({ hasAdminAccess: false, hasSuperadminAccess: false });
+      return [];
+    }
+  }, [token, user, impersonationActive]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !token || !user?.username || impersonationActive) {
+      setSubstitutionEffectivePermissions([]);
+      setSubstitutionDelegation({ hasAdminAccess: false, hasSuperadminAccess: false });
+      return;
+    }
+
+    refreshSubstitutionEffectivePermissions();
+    const intervalId = setInterval(() => {
+      refreshSubstitutionEffectivePermissions();
+    }, 120000);
+
+    return () => clearInterval(intervalId);
+  }, [isLoggedIn, token, user, impersonationActive, refreshSubstitutionEffectivePermissions]);
 
   const login = async (username, password) => {
     try {
@@ -652,6 +702,8 @@ export const AuthProvider = ({ children }) => {
     setUserDetail(null);
     setUserPermissions([]);
     setExpandedPermissions([]); // 🔐 Vyčistit i rozšířená práva
+    setSubstitutionEffectivePermissions([]);
+    setSubstitutionDelegation({ hasAdminAccess: false, hasSuperadminAccess: false });
     setAuthMethod(null); // 🔐 EntraID: Reset authentication method
     setNeedsPasswordChange(false); // 🔑 Reset vynucené změny hesla
     setImpersonationActive(false); // 🔐 IMPERSONATION: Reset impersonation state
@@ -1227,10 +1279,28 @@ export const AuthProvider = ({ children }) => {
     try {
       if (!code) return false;
       const norm = code.toString().trim().toUpperCase();
+
+      // Delegovaný SUPERADMIN přes aktivní zastupování
+      if (norm === 'SUPERADMIN') {
+        if (substitutionDelegation?.hasSuperadminAccess) {
+          return true;
+        }
+      }
+
+      // Delegovaný ADMINISTRATOR přes aktivní zastupování
+      if (norm === 'ADMINISTRATOR') {
+        if (substitutionDelegation?.hasAdminAccess || substitutionDelegation?.hasSuperadminAccess) {
+          return true;
+        }
+      }
       
       // 🚨 SPECIÁLNÍ PŘÍPAD: 'ADMIN' není právo, ale alias pro kontrolu admin rolí!
       // Kontroluje, zda má uživatel roli SUPERADMIN nebo ADMINISTRATOR
       if (norm === 'ADMIN') {
+        if (substitutionDelegation?.hasAdminAccess || substitutionDelegation?.hasSuperadminAccess) {
+          return true;
+        }
+
         let ud = userDetail || {};
         // fallback: try persisted userDetail from localStorage
         try {
@@ -1262,6 +1332,9 @@ export const AuthProvider = ({ children }) => {
       
       // 2) fallback: precomputed userPermissions (bez hierarchie)
       if ((userPermissions || []).some(p => p === norm)) return true;
+      
+      // 3) efektivní práva ze zastupování (viditelnost modulů/sekcí)
+      if ((substitutionEffectivePermissions || []).some(p => p === norm)) return true;
       // 2) check raw userDetail direct_rights if present (array of objects or codes)
       let ud = userDetail || {};
       // fallback: try persisted userDetail from localStorage with PERSISTENT key
@@ -1305,16 +1378,96 @@ export const AuthProvider = ({ children }) => {
       }
       return false;
     } catch (e) { return false; }
-  }, [expandedPermissions, userPermissions, userDetail]); // 🔐 Závislost na expandedPermissions
+  }, [expandedPermissions, userPermissions, substitutionEffectivePermissions, substitutionDelegation, userDetail]); // 🔐 Závislost na expandedPermissions
+
+  // Kontrola pouze vlastních práv uživatele (bez přenosu práv ze zastupování)
+  const hasOwnPermission = useCallback((code) => {
+    try {
+      if (!code) return false;
+      const norm = code.toString().trim().toUpperCase();
+
+      if (norm === 'ADMIN') {
+        let ud = userDetail || {};
+        try {
+          if ((!ud || Object.keys(ud).length === 0) && typeof window !== 'undefined' && window.localStorage) {
+            const raw = localStorage.getItem('auth_user_detail_persistent');
+            if (raw) {
+              try {
+                ud = JSON.parse(raw) || ud;
+              } catch {
+                // ignore parse errors
+              }
+            }
+          }
+        } catch (e) {
+          /* ignore */
+        }
+
+        if (ud?.roles && Array.isArray(ud.roles)) {
+          return ud.roles.some(role =>
+            role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+          );
+        }
+        return false;
+      }
+
+      if ((expandedPermissions || []).some(p => p === norm)) return true;
+      if ((userPermissions || []).some(p => p === norm)) return true;
+
+      let ud = userDetail || {};
+      try {
+        if ((!ud || Object.keys(ud).length === 0) && typeof window !== 'undefined' && window.localStorage) {
+          const raw = localStorage.getItem('auth_user_detail_persistent');
+          if (raw) {
+            try {
+              ud = JSON.parse(raw) || ud;
+            } catch {
+              // ignore parse errors
+            }
+          }
+        }
+      } catch (e) {
+        /* ignore */
+      }
+
+      const direct = ud.direct_rights || ud.directRights || ud.direct_rights?.data || ud.directRights?.data;
+      if (Array.isArray(direct) && direct.length) {
+        for (const d of direct) {
+          if (!d) continue;
+          if (typeof d === 'string' && d.toUpperCase() === norm) return true;
+          if (typeof d === 'object') {
+            const codeCandidate = (d.kod_prava || d.code || d.kod || d.key || d.id || d.name || '').toString().trim().toUpperCase();
+            if (codeCandidate === norm) return true;
+          }
+        }
+      }
+
+      if (typeof ud === 'object') {
+        const flat = JSON.stringify(ud).toUpperCase();
+        const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const token = escapeRegExp(norm);
+        const re = new RegExp(`(^|[^A-Z0-9_])${token}($|[^A-Z0-9_])`);
+        if (re.test(flat)) return true;
+      }
+
+      return false;
+    } catch (e) {
+      return false;
+    }
+  }, [expandedPermissions, userPermissions, userDetail]);
 
   // Helper pro kontrolu admin role (SUPERADMIN nebo ADMINISTRATOR)
   // POZNÁMKA: 'ADMIN' NENÍ právo, je to alias pro kontrolu admin rolí!
   const hasAdminRole = useCallback(() => {
+    if (substitutionDelegation?.hasAdminAccess || substitutionDelegation?.hasSuperadminAccess) {
+      return true;
+    }
+
     if (!userDetail?.roles) return false;
     return userDetail.roles.some(role => 
       role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
     );
-  }, [userDetail]);
+  }, [userDetail, substitutionDelegation]);
 
   const username = user?.username || null;
 
@@ -1417,10 +1570,14 @@ export const AuthProvider = ({ children }) => {
       userDetail, 
       userPermissions,
       expandedPermissions, // 🔐 HIERARCHIE: Rozšířená práva
+      substitutionEffectivePermissions,
+      substitutionDelegation,
       authMethod, // 🔐 EntraID: Authentication method ('local' or 'entra_id')
       hasPermission, 
+      hasOwnPermission,
       hasAdminRole, 
       refreshUserDetail,
+      refreshSubstitutionEffectivePermissions,
       hierarchyStatus, // 🌲 HIERARCHIE WORKFLOW
       setHierarchyStatus, // 🌲 HIERARCHIE: Setter pro hierarchyStatus
       impersonationFeatureEnabled, // 🔐 USER IMPERSONATION: Feature flag

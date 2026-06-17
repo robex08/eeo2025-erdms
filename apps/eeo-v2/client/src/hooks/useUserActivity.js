@@ -85,13 +85,20 @@ export const useUserActivity = (token, username, onTokenRefresh = null) => {
 
       }
     } catch (error) {
-      // Úplně tichá chyba - keepalive není kritický
+      // Keepalive je non-critical: defaultně tiché selhání.
+      // Verbose debug lze zapnout v browseru přes localStorage:
+      // localStorage.setItem('debug_keepalive', '1')
       if (process.env.NODE_ENV === 'development') {
-        // Throttle: nezahlcovat konzoli (např. při dočasném výpadku BE)
-        const nowTs = Date.now();
-        if (!lastKeepaliveWarnRef.current || (nowTs - lastKeepaliveWarnRef.current) > 60000) {
-          lastKeepaliveWarnRef.current = nowTs;
-          console.warn('⚠️ Keepalive ping failed (non-critical):', error.message);
+        const debugKeepalive = (() => {
+          try { return localStorage.getItem('debug_keepalive') === '1'; } catch (_) { return false; }
+        })();
+        if (debugKeepalive) {
+          // Throttle: nezahlcovat konzoli při výpadku BE/proxy
+          const nowTs = Date.now();
+          if (!lastKeepaliveWarnRef.current || (nowTs - lastKeepaliveWarnRef.current) > 60000) {
+            lastKeepaliveWarnRef.current = nowTs;
+            console.warn('⚠️ Keepalive ping failed (non-critical):', error.message);
+          }
         }
       }
     }

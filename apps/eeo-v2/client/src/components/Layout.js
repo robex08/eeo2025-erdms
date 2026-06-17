@@ -2162,7 +2162,7 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod, impersonationFeatureEnabled, impersonationActive, originalAdminUser, startImpersonationContext, stopImpersonationContext } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus + impersonation
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasOwnPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod, impersonationFeatureEnabled, impersonationActive, originalAdminUser, startImpersonationContext, stopImpersonationContext } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus + impersonation
 
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
@@ -2614,7 +2614,7 @@ const Layout = ({ children }) => {
       }
 
       try {
-        const response = await cashbookAPI.listAssignments(user_id, true);
+        const response = await cashbookAPI.listAssignments(undefined, true);
         const assignments = Array.isArray(response?.data?.assignments)
           ? response.data.assignments
           : Array.isArray(response?.assignments)
@@ -4345,23 +4345,23 @@ const Layout = ({ children }) => {
                 <FontAwesomeIcon icon={faHome} style={{ marginRight: 0, fontSize: '1.05em' }} />
               </MenuLinkLeft>
             </SmartTooltip>
-            { hasPermission && (
-                hasPermission('USER_MANAGE') || 
-                hasPermission('DICT_MANAGE') || 
-                hasPermission('PHONEBOOK_MANAGE') ||
-                hasPermission('SUPPLIER_MANAGE') ||
-                hasPermission('LOCATIONS_MANAGE') || 
-                hasPermission('POSITIONS_MANAGE') || 
-                hasPermission('DEPARTMENTS_MANAGE') || 
-                hasPermission('ORGANIZATIONS_MANAGE') || 
-                hasPermission('STATES_MANAGE') || 
-                hasPermission('ROLES_MANAGE') || 
-                hasPermission('PERMISSIONS_MANAGE') || 
-                hasPermission('DOCX_TEMPLATES_MANAGE') || 
-                hasPermission('CASH_BOOKS_MANAGE') || 
-                hasPermission('CONTRACT_MANAGE') ||
+            { hasOwnPermission && (
+              hasOwnPermission('USER_MANAGE') || 
+              hasOwnPermission('DICT_MANAGE') || 
+              hasOwnPermission('PHONEBOOK_MANAGE') ||
+              hasOwnPermission('SUPPLIER_MANAGE') ||
+              hasOwnPermission('LOCATIONS_MANAGE') || 
+              hasOwnPermission('POSITIONS_MANAGE') || 
+              hasOwnPermission('DEPARTMENTS_MANAGE') || 
+              hasOwnPermission('ORGANIZATIONS_MANAGE') || 
+              hasOwnPermission('STATES_MANAGE') || 
+              hasOwnPermission('ROLES_MANAGE') || 
+              hasOwnPermission('PERMISSIONS_MANAGE') || 
+              hasOwnPermission('DOCX_TEMPLATES_MANAGE') || 
+              hasOwnPermission('CASH_BOOKS_MANAGE') || 
+              hasOwnPermission('CONTRACT_MANAGE') ||
                 (hasAdminRole && hasAdminRole()) ||
-                (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'))
+                (hasPermission && (hasPermission('SUPERADMIN') || hasPermission('ADMINISTRATOR')))
               ) && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
@@ -4396,7 +4396,7 @@ const Layout = ({ children }) => {
                   >
                     {(
                       hasAdminRole() ||
-                      hasPermission('SUPPLIER_MANAGE') || hasPermission('PHONEBOOK_MANAGE')
+                      hasOwnPermission('SUPPLIER_MANAGE') || hasOwnPermission('PHONEBOOK_MANAGE')
                     ) && (
                       <MenuDropdownItem 
                         to="/address-book" 
@@ -4407,17 +4407,17 @@ const Layout = ({ children }) => {
                     )}
                     {(
                       hasAdminRole() ||
-                      hasPermission('DICT_MANAGE') ||
-                      hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
-                      hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
-                      hasPermission('CONTRACT_VIEW') || hasPermission('CONTRACT_CREATE') || hasPermission('CONTRACT_EDIT') || hasPermission('CONTRACT_DELETE') ||
-                      hasPermission('ORGANIZATIONS_VIEW') || hasPermission('ORGANIZATIONS_CREATE') || hasPermission('ORGANIZATIONS_EDIT') || hasPermission('ORGANIZATIONS_DELETE') ||
-                      hasPermission('DEPARTMENTS_VIEW') || hasPermission('DEPARTMENTS_CREATE') || hasPermission('DEPARTMENTS_EDIT') || hasPermission('DEPARTMENTS_DELETE') ||
-                      hasPermission('STATES_VIEW') || hasPermission('STATES_CREATE') || hasPermission('STATES_EDIT') || hasPermission('STATES_DELETE') ||
-                      hasPermission('ROLES_VIEW') || hasPermission('ROLES_CREATE') || hasPermission('ROLES_EDIT') || hasPermission('ROLES_DELETE') ||
-                      hasPermission('PERMISSIONS_VIEW') || hasPermission('PERMISSIONS_CREATE') || hasPermission('PERMISSIONS_EDIT') || hasPermission('PERMISSIONS_DELETE') ||
-                      hasPermission('DOCX_TEMPLATES_VIEW') || hasPermission('DOCX_TEMPLATES_CREATE') || hasPermission('DOCX_TEMPLATES_EDIT') || hasPermission('DOCX_TEMPLATES_DELETE') ||
-                      hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE')
+                      hasOwnPermission('DICT_MANAGE') ||
+                      hasOwnPermission('LOCATIONS_VIEW') || hasOwnPermission('LOCATIONS_CREATE') || hasOwnPermission('LOCATIONS_EDIT') || hasOwnPermission('LOCATIONS_DELETE') ||
+                      hasOwnPermission('POSITIONS_VIEW') || hasOwnPermission('POSITIONS_CREATE') || hasOwnPermission('POSITIONS_EDIT') || hasOwnPermission('POSITIONS_DELETE') ||
+                      hasOwnPermission('CONTRACT_VIEW') || hasOwnPermission('CONTRACT_CREATE') || hasOwnPermission('CONTRACT_EDIT') || hasOwnPermission('CONTRACT_DELETE') ||
+                      hasOwnPermission('ORGANIZATIONS_VIEW') || hasOwnPermission('ORGANIZATIONS_CREATE') || hasOwnPermission('ORGANIZATIONS_EDIT') || hasOwnPermission('ORGANIZATIONS_DELETE') ||
+                      hasOwnPermission('DEPARTMENTS_VIEW') || hasOwnPermission('DEPARTMENTS_CREATE') || hasOwnPermission('DEPARTMENTS_EDIT') || hasOwnPermission('DEPARTMENTS_DELETE') ||
+                      hasOwnPermission('STATES_VIEW') || hasOwnPermission('STATES_CREATE') || hasOwnPermission('STATES_EDIT') || hasOwnPermission('STATES_DELETE') ||
+                      hasOwnPermission('ROLES_VIEW') || hasOwnPermission('ROLES_CREATE') || hasOwnPermission('ROLES_EDIT') || hasOwnPermission('ROLES_DELETE') ||
+                      hasOwnPermission('PERMISSIONS_VIEW') || hasOwnPermission('PERMISSIONS_CREATE') || hasOwnPermission('PERMISSIONS_EDIT') || hasOwnPermission('PERMISSIONS_DELETE') ||
+                      hasOwnPermission('DOCX_TEMPLATES_VIEW') || hasOwnPermission('DOCX_TEMPLATES_CREATE') || hasOwnPermission('DOCX_TEMPLATES_EDIT') || hasOwnPermission('DOCX_TEMPLATES_DELETE') ||
+                      hasOwnPermission('CASH_BOOKS_VIEW') || hasOwnPermission('CASH_BOOKS_CREATE') || hasOwnPermission('CASH_BOOKS_EDIT') || hasOwnPermission('CASH_BOOKS_DELETE')
                     ) && (
                       <MenuDropdownItem 
                         to="/dictionaries" 
@@ -4426,7 +4426,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faBook} /> Číselníky
                       </MenuDropdownItem>
                     )}
-                    {(hasPermission('USER_VIEW') || hasPermission('USER_MANAGE') || (hasAdminRole && hasAdminRole())) && (
+                    {(hasOwnPermission('USER_VIEW') || hasOwnPermission('USER_MANAGE') || (hasAdminRole && hasAdminRole())) && (
                       <MenuDropdownItem 
                         to="/users" 
                         onClick={() => setAdminMenuOpen(false)}
@@ -4434,7 +4434,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faUsers} /> Uživatelé
                       </MenuDropdownItem>
                     )}
-                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN')) && (
+                    {(hasPermission && hasPermission('SUPERADMIN')) && (
                       <MenuDropdownItem 
                         to="/organization-hierarchy" 
                         onClick={() => setAdminMenuOpen(false)}
@@ -4450,7 +4450,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faCalendarAlt} /> Plánování a rezervace
                       </MenuDropdownItem>
                     )}
-                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) && (
+                    {(hasAdminRole && hasAdminRole()) && (
                       <MenuDropdownItem 
                         to="/admin/audit-log" 
                         onClick={() => setAdminMenuOpen(false)}
@@ -4458,7 +4458,7 @@ const Layout = ({ children }) => {
                         <FontAwesomeIcon icon={faClipboardList} /> Audit log
                       </MenuDropdownItem>
                     )}
-                    {(userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) && (
+                    {(hasAdminRole && hasAdminRole()) && (
                       <MenuDropdownItem 
                         to="/app-settings" 
                         onClick={() => setAdminMenuOpen(false)}
@@ -5254,7 +5254,7 @@ const Layout = ({ children }) => {
 
           {/* Floating button pro správu pokladny - VLEVO od faktury */}
           {(
-            (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR')) ||
+            (hasAdminRole && hasAdminRole()) ||
             (hasPermission && (
               hasPermission('CASH_BOOK_MANAGE') ||
               hasPermission('CASH_BOOK_READ_ALL') ||

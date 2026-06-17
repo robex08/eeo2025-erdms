@@ -1547,6 +1547,49 @@ function handle_orders_v3_update($input, $config) {
             $payload['schvalovatel_id'] = $acting_user_id;
         }
 
+        // 🔁 NESTANDARDNÍ ROLLBACK Z BLOKU:
+        // pokud byla objednávka historicky SCHVALENA a nyní se vrací na schvalovací větev,
+        // je nutné zneplatnit navazující workflow stavy + metadata (kdo/kdy v dalších krocích).
+        $should_reset_followup_workflow = false;
+        if (isset($payload['stav_workflow_kod'])) {
+            $new_workflow_states = json_decode($payload['stav_workflow_kod'], true);
+
+            if (is_array($new_workflow_states)) {
+                $old_had_schvalena = in_array('SCHVALENA', $audit_old_workflow, true);
+                $new_has_schvalena = in_array('SCHVALENA', $new_workflow_states, true);
+                $new_is_approval_branch = in_array('ODESLANA_KE_SCHVALENI', $new_workflow_states, true)
+                    || in_array('CEKA_SE', $new_workflow_states, true)
+                    || in_array('ZAMITNUTA', $new_workflow_states, true);
+
+                if ($old_had_schvalena && !$new_has_schvalena && $new_is_approval_branch) {
+                    $should_reset_followup_workflow = true;
+
+                    // Backend guard: odstraň downstream stavy, které po rollbacku nesmí zůstat.
+                    $downstream_states = [
+                        'ODESLANA',
+                        'POTVRZENA',
+                        'K_UVEREJNENI_DO_REGISTRU',
+                        'UVEREJNENA',
+                        'FAKTURACE',
+                        'VECNA_SPRAVNOST',
+                        'ZKONTROLOVANA',
+                        'DOKONCENA'
+                    ];
+
+                    $sanitized_workflow = array_values(array_filter(
+                        $new_workflow_states,
+                        function ($state) use ($downstream_states) {
+                            return !in_array((string)$state, $downstream_states, true);
+                        }
+                    ));
+
+                    $payload['stav_workflow_kod'] = json_encode($sanitized_workflow, JSON_UNESCAPED_UNICODE);
+
+                    error_log("🔁 [V3 ORDER UPDATE] Rollback from SCHVALENA detected for order #$order_id - downstream workflow states sanitized");
+                }
+            }
+        }
+
         // Build UPDATE query dynamically podle payload
         $allowed_fields = [
             'stav_objednavky',
@@ -1579,6 +1622,28 @@ function handle_orders_v3_update($input, $config) {
 
             $update_parts[] = "`$field` = ?";
             $params[] = $value;
+        }
+
+        if ($should_reset_followup_workflow) {
+            $followup_null_fields = [
+                'odesilatel_id',
+                'dt_odeslani',
+                'dodavatel_potvrdil_id',
+                'dt_akceptace',
+                'zverejnil_id',
+                'dt_zverejneni',
+                'fakturant_id',
+                'potvrdil_vecnou_spravnost_id',
+                'dt_potvrzeni_vecne_spravnosti',
+                'dokoncil_id',
+                'dt_dokonceni'
+            ];
+
+            foreach ($followup_null_fields as $field) {
+                $update_parts[] = "`$field` = NULL";
+            }
+
+            error_log("🔁 [V3 ORDER UPDATE] Cleared downstream workflow metadata for order #$order_id due to rollback from SCHVALENA");
         }
 
         // ✅ SPRÁVA dt_schvaleni - dva režimy:

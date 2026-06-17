@@ -7,6 +7,7 @@
  *  POST substitution/deactivate   - zrušení zastupování
  *  POST substitution/current      - koho aktuálně zastupuji já
  *  POST substitution/candidates   - uživatelé způsobilí být zástupcem
+ *  POST substitution/cashbook-transfer-eligibility - ověření způsobilosti přenosu pokladny
  */
 
 const API_BASE = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
@@ -105,6 +106,43 @@ export async function fetchSubstitutionCandidates({ token, username, zastupovany
 export async function fetchCurrentlySubstituting({ token, username }) {
   const data = await _post('substitution/current', { token, username });
   return data.data || [];
+}
+
+/**
+ * Načte efektivní oprávnění převzatá z aktuálních zastupování.
+ */
+export async function fetchSubstitutionEffectivePermissions({ token, username }) {
+  const data = await _post('substitution/effective-permissions', { token, username });
+  return {
+    permissionCodes: data?.data?.permission_codes || [],
+    substitutions: data?.data?.substitutions || [],
+    delegation: {
+      hasAdminAccess: !!data?.data?.delegation?.has_admin_access,
+      hasSuperadminAccess: !!data?.data?.delegation?.has_superadmin_access,
+    },
+  };
+}
+
+/**
+ * Ověří, zda je možné pro zastupovaného uživatele povolit přenos pokladny.
+ */
+export async function fetchCashbookTransferEligibility({ token, username, zastupovany_id }) {
+  const payload = { token, username };
+  if (zastupovany_id) {
+    payload.zastupovany_id = zastupovany_id;
+  }
+  const data = await _post('substitution/cashbook-transfer-eligibility', payload);
+  return data?.data || {
+    eligible: false,
+    has_cashbook_rights: false,
+    has_cashbook_access: false,
+    has_global_cashbook_access: false,
+    cashbox_assignment_count: 0,
+    reason: 'Nelze ověřit přenos pokladny.',
+    can_order_approve: false,
+    has_order_approval_rights: false,
+    order_approve_reason: 'Nelze ověřit schvalovací oprávnění.',
+  };
 }
 
 /**

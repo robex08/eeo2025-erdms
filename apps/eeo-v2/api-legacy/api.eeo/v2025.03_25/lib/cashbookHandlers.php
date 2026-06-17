@@ -71,9 +71,46 @@ function handle_cashbook_list_post($config, $input) {
         // ✅ OPRAVA: Načíst pokladny uživatele místo filtru podle uzivatel_id
         $permissions = new CashbookPermissions($userData, $db);
         
-        // Pokud není explicitně zadán filtr pokladen ANI uživatele, načíst VŠECHNY pokladny uživatele
+        // Pokud není explicitně zadán filtr pokladen ANI uživatele, načíst dostupné pokladny
         if (empty($filters['pokladna_ids']) && empty($filters['uzivatel_id'])) {
+            if ($permissions->canSeeAllCashboxes()) {
+                // Uživatel má globální přístup (vlastní nebo delegovaný), nepoužívej restriktivní filtr pokladen.
+                $userPokladny = null;
+            } else {
+                $effectiveUserIds = array((int)$userData['id']);
+                if (function_exists('get_user_ids_with_substitution')) {
+                    try {
+                        $scopeInfo = null;
+                        $subIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('cashbook_transfer'), $scopeInfo);
+                        if (!is_array($subIds) || count($subIds) <= 1) {
+                            $subIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('module_visibility'), $scopeInfo);
+                        }
+                        if (!is_array($subIds) || count($subIds) <= 1) {
+                            $subIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('view'), $scopeInfo);
+                        }
+                        if (is_array($subIds) && !empty($subIds)) {
+                            $effectiveUserIds = array_values(array_unique(array_map('intval', $subIds)));
+                        }
+                    } catch (Exception $e) {
+                        error_log('handle_cashbook_list_post substitution lookup error: ' . $e->getMessage());
+                    }
+                }
+
+                $placeholders = implode(',', array_fill(0, count($effectiveUserIds), '?'));
+                $stmt = $db->prepare(
+                    "SELECT DISTINCT pokladna_id
+                     FROM " . TBL_POKLADNY_UZIVATELE . "
+                     WHERE uzivatel_id IN ($placeholders)
+                       AND (platne_do IS NULL OR platne_do >= CURDATE())"
+                );
+                $stmt->execute($effectiveUserIds);
+                $userPokladny = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            }
+
             // Načíst všechny pokladny, ke kterým má uživatel přístup
+            if (is_null($userPokladny)) {
+                // Bez filtru pokladen (globální přístup)
+            } else {
             $stmt = $db->prepare("
                 SELECT DISTINCT pokladna_id 
                 FROM " . TBL_POKLADNY_UZIVATELE . " 
@@ -81,9 +118,12 @@ function handle_cashbook_list_post($config, $input) {
                   AND (platne_do IS NULL OR platne_do >= CURDATE())
             ");
             $stmt->execute(array($userData['id']));
-            $userPokladny = $stmt->fetchAll(PDO::FETCH_COLUMN);
-            
             if (empty($userPokladny)) {
+                $userPokladny = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            }
+            }
+            
+            if (!is_null($userPokladny) && empty($userPokladny)) {
                 // Uživatel nemá přístup k žádné pokladně
                 return api_ok(array('books' => array(), 'pagination' => array(
                     'current_page' => 1, 'per_page' => 50, 'total_records' => 0, 'total_pages' => 0
@@ -91,7 +131,9 @@ function handle_cashbook_list_post($config, $input) {
             }
             
             // Filtrovat podle pokladen uživatele
-            $filters['pokladna_ids'] = $userPokladny;
+            if (!is_null($userPokladny)) {
+                $filters['pokladna_ids'] = $userPokladny;
+            }
         }
         
         // Načíst knihy

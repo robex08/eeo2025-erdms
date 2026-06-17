@@ -9,10 +9,158 @@ class CashbookPermissions {
     
     private $user;
     private $db;
+    private $delegatedPermissionCodes;
     
     public function __construct($user, $db) {
         $this->user = $user;
         $this->db = $db;
+        $this->delegatedPermissionCodes = null;
+    }
+
+    /**
+     * Načte kódy práv uživatele (přímá + z rolí).
+     *
+     * @param int $userId
+     * @return array
+     */
+    private function getPermissionCodesForUser($userId) {
+        $uid = (int)$userId;
+        if ($uid <= 0) {
+            return array();
+        }
+
+        if (function_exists('_substitution_get_permission_codes_for_user')) {
+            try {
+                return (array)_substitution_get_permission_codes_for_user($this->db, $uid);
+            } catch (Exception $e) {
+                error_log('CashbookPermissions::getPermissionCodesForUser helper error: ' . $e->getMessage());
+            }
+        }
+
+        $stmt = $this->db->prepare(
+            "SELECT DISTINCT p.kod_prava
+             FROM 25_prava p
+             WHERE p.aktivni = 1
+               AND (
+                 p.id IN (
+                   SELECT rp.pravo_id
+                   FROM 25_role_prava rp
+                   WHERE rp.user_id = :uid_direct
+                     AND rp.aktivni = 1
+                 )
+                 OR p.id IN (
+                   SELECT rp.pravo_id
+                   FROM 25_uzivatele_role ur
+                   JOIN 25_role_prava rp ON ur.role_id = rp.role_id AND rp.user_id = -1
+                   WHERE ur.uzivatel_id = :uid_role
+                     AND rp.aktivni = 1
+                 )
+               )"
+        );
+        $stmt->bindValue(':uid_direct', $uid, PDO::PARAM_INT);
+        $stmt->bindValue(':uid_role', $uid, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $codes = array();
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $code = strtoupper(trim((string)$row['kod_prava']));
+            if ($code !== '') {
+                $codes[] = $code;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+
+    /**
+     * Vrátí delegovaná cashbook oprávnění z aktivních zastupování.
+     * Přenos cashbook práv je možný jen pokud je povolen cashbook_transfer
+     * (fallback pro starší záznamy: module_visibility -> view).
+     *
+     * @return array
+     */
+    private function getDelegatedPermissionCodes() {
+        if (is_array($this->delegatedPermissionCodes)) {
+            return $this->delegatedPermissionCodes;
+        }
+
+        $this->delegatedPermissionCodes = array();
+
+        if (!isset($this->user['id']) || !function_exists('isSubstitutionEnabled') || !isSubstitutionEnabled($this->db)) {
+            return $this->delegatedPermissionCodes;
+        }
+
+        try {
+            $stmt = $this->db->prepare(
+                "SELECT z.zastupovany_id, z.opravneni
+                 FROM 25_uzivatele_zastupovani z
+                 WHERE z.zastupce_id = :uid
+                   AND z.aktivni = 1
+                   AND z.dt_od <= CURDATE()
+                   AND z.dt_do >= CURDATE()"
+            );
+            $stmt->bindValue(':uid', (int)$this->user['id'], PDO::PARAM_INT);
+            $stmt->execute();
+
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $opravneni = json_decode($row['opravneni'], true);
+                if (!is_array($opravneni)) {
+                    continue;
+                }
+
+                $canView = !empty($opravneni['view']);
+                $canModuleVisibility = array_key_exists('module_visibility', $opravneni)
+                    ? !empty($opravneni['module_visibility'])
+                    : $canView;
+                $canCashbookTransfer = array_key_exists('cashbook_transfer', $opravneni)
+                    ? !empty($opravneni['cashbook_transfer'])
+                    : $canModuleVisibility;
+                if (!$canModuleVisibility) {
+                    $canCashbookTransfer = false;
+                }
+
+                $canAdmin = !empty($opravneni['administrator']);
+                $canSuperadmin = !empty($opravneni['superadmin']);
+
+                if (!$canModuleVisibility && !$canAdmin && !$canSuperadmin) {
+                    continue;
+                }
+
+                $targetUserId = (int)$row['zastupovany_id'];
+                if ($targetUserId <= 0) {
+                    continue;
+                }
+
+                $codes = $this->getPermissionCodesForUser($targetUserId);
+                foreach ($codes as $code) {
+                    $norm = strtoupper(trim((string)$code));
+                    if ($norm === '') {
+                        continue;
+                    }
+
+                    $isCashbookCode = (bool)preg_match('/^(CASH_BOOK_|CASHBOOK_REPORTS_)/', $norm);
+                    if (!$isCashbookCode) {
+                        continue;
+                    }
+
+                    if ($canSuperadmin || $canAdmin) {
+                        $this->delegatedPermissionCodes[] = $norm;
+                        continue;
+                    }
+
+                    if ($canModuleVisibility && $canCashbookTransfer) {
+                        $this->delegatedPermissionCodes[] = $norm;
+                    }
+                }
+            }
+
+            $this->delegatedPermissionCodes = array_values(array_unique($this->delegatedPermissionCodes));
+        } catch (Exception $e) {
+            error_log('CashbookPermissions::getDelegatedPermissionCodes error: ' . $e->getMessage());
+            $this->delegatedPermissionCodes = array();
+        }
+
+        return $this->delegatedPermissionCodes;
     }
     
     /**
@@ -32,6 +180,11 @@ class CashbookPermissions {
      */
     public function hasPermission($permissionCode) {
         if (!isset($this->user['id'])) {
+            return false;
+        }
+
+        $normalizedCode = strtoupper(trim((string)$permissionCode));
+        if ($normalizedCode === '') {
             return false;
         }
         
@@ -59,8 +212,14 @@ class CashbookPermissions {
         ");
         $stmt->execute(array($permissionCode, $this->user['id'], $this->user['id']));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        return $result['count'] > 0;
+
+        if (!empty($result['count'])) {
+            return true;
+        }
+
+        // Fallback: delegovaná oprávnění přes aktivní zastupování.
+        // Používá se primárně pro CASH_BOOK_* / CASHBOOK_REPORTS_* oprávnění.
+        return in_array($normalizedCode, $this->getDelegatedPermissionCodes(), true);
     }
     
     /**
@@ -317,16 +476,46 @@ class CashbookPermissions {
         if (!isset($this->user['id'])) {
             return false;
         }
+
+        $effectiveUserIds = array((int)$this->user['id']);
+        if (function_exists('get_user_ids_with_substitution')) {
+            try {
+                $scopeInfo = null;
+                // Preferovat explicitní cashbook_transfer
+                $subIds = get_user_ids_with_substitution($this->db, (int)$this->user['id'], array('cashbook_transfer'), $scopeInfo);
+                if (!is_array($subIds) || count($subIds) <= 1) {
+                    // Kompatibilita: starší záznamy bez cashbook_transfer
+                    $subIds = get_user_ids_with_substitution($this->db, (int)$this->user['id'], array('module_visibility'), $scopeInfo);
+                }
+                if (!is_array($subIds) || count($subIds) <= 1) {
+                    // Legacy fallback pro nejstarší záznamy
+                    $subIds = get_user_ids_with_substitution($this->db, (int)$this->user['id'], array('view'), $scopeInfo);
+                }
+                if (is_array($subIds) && !empty($subIds)) {
+                    $effectiveUserIds = array_values(array_unique(array_map('intval', $subIds)));
+                }
+            } catch (Exception $e) {
+                error_log('CashbookPermissions::isOwnCashbox substitution lookup error: ' . $e->getMessage());
+            }
+        }
+
+        if (empty($effectiveUserIds)) {
+            return false;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($effectiveUserIds), '?'));
         
         // Aktivní přiřazení = platne_do je NULL nebo >= dnes
         $stmt = $this->db->prepare("
             SELECT COUNT(*) as count
             FROM 25a_pokladny_uzivatele
             WHERE pokladna_id = ? 
-              AND uzivatel_id = ? 
+              AND uzivatel_id IN ($placeholders)
               AND (platne_do IS NULL OR platne_do >= CURDATE())
         ");
-        $stmt->execute(array($pokladnaId, $this->user['id']));
+
+        $params = array_merge(array((int)$pokladnaId), $effectiveUserIds);
+        $stmt->execute($params);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         return $result['count'] > 0;
