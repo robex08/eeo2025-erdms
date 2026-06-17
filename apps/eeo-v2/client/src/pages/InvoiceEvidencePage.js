@@ -4870,8 +4870,8 @@ export default function InvoiceEvidencePage() {
         }
       }
 
-      // 🔥 Validace LP čerpání pro LP financování
-      if (orderData && orderData.financovani) {
+      // 🔥 Validace LP čerpání pro LP financování (POUZE při potvrzení)
+      if (status === VS_STATUS.POTVRZENA && orderData && orderData.financovani) {
         try {
           const fin = typeof orderData.financovani === 'string' 
             ? JSON.parse(orderData.financovani) 
@@ -4911,7 +4911,10 @@ export default function InvoiceEvidencePage() {
             const totalLP = validLpCerpani.length > 0 
               ? validLpCerpani.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0)
               : faCastka; // Pokud je auto-fill, celá částka jde na jediný LP
-            if (totalLP > faCastka) {
+            const exceedsInvoiceAmount = faCastka >= 0
+              ? totalLP > faCastka
+              : totalLP < faCastka;
+            if (exceedsInvoiceAmount) {
               showToast && showToast(`❌ Součet LP čerpání překračuje částku faktury`, 'error');
               setLoading(false);
               return;
@@ -4930,6 +4933,82 @@ export default function InvoiceEvidencePage() {
           showToast && showToast('Vysvětlete v poznámce, proč faktura překračuje max. cenu objednávky', 'error');
           setLoading(false);
           return;
+        }
+      }
+
+      // ✅ LP guard: před potvrzením věcné správnosti musí být LP rozklad fyzicky uložen v DB
+      if (status === VS_STATUS.POTVRZENA && orderData && orderData.financovani) {
+        const fin = typeof orderData.financovani === 'string'
+          ? JSON.parse(orderData.financovani)
+          : orderData.financovani;
+
+        if (fin?.typ === 'LP') {
+          const lpKodyFromOrder = Array.isArray(fin.lp_kody) ? fin.lp_kody : [];
+          const availableLPCodes = dictionaries?.data?.lpKodyOptions || [];
+          const filteredLPCodes = availableLPCodes.filter(lp => {
+            const lpCislo = lp.cislo_lp || lp.kod;
+            return lpKodyFromOrder.includes(lpCislo) || lpKodyFromOrder.includes(lp.id);
+          });
+
+          const faCastkaRaw = formData.fa_castka;
+          const faCastkaValid = faCastkaRaw !== null && faCastkaRaw !== undefined && faCastkaRaw !== '' && !isNaN(parseFloat(faCastkaRaw));
+          const faCastka = parseFloat(faCastkaRaw) || 0;
+          const hasAutoFill = filteredLPCodes.length === 1 && faCastkaValid;
+
+          let currentLpCerpani = lpCerpaniRef.current || lpCerpani || [];
+
+          if ((!Array.isArray(currentLpCerpani) || currentLpCerpani.length === 0) && hasAutoFill) {
+            const single = filteredLPCodes[0] || {};
+            currentLpCerpani = [{
+              id: 'auto-lp-0',
+              lp_id: single.id || null,
+              lp_cislo: single.cislo_lp || single.kod || String(single.id || ''),
+              castka: faCastka,
+              poznamka: ''
+            }];
+          }
+
+          const lpPayload = (Array.isArray(currentLpCerpani) ? currentLpCerpani : [])
+            .filter(row => {
+              const hasLpRef = (row.lp_id !== null && row.lp_id !== undefined && String(row.lp_id).trim() !== '')
+                || (row.lp_cislo !== null && row.lp_cislo !== undefined && String(row.lp_cislo).trim() !== '');
+              const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
+              return hasLpRef && hasCastka;
+            })
+            .map(row => {
+              const lpId = parseInt(row.lp_id, 10);
+              const lpCisloRaw = row.lp_cislo !== null && row.lp_cislo !== undefined
+                ? String(row.lp_cislo).trim()
+                : '';
+
+              let lpCodeForBackend = null;
+              if (Number.isFinite(lpId) && lpId > 0) {
+                lpCodeForBackend = lpId;
+              } else if (lpCisloRaw && /^\d+$/.test(lpCisloRaw)) {
+                const parsed = parseInt(lpCisloRaw, 10);
+                if (Number.isFinite(parsed) && parsed > 0) lpCodeForBackend = parsed;
+              } else if (lpCisloRaw) {
+                const opt = availableLPCodes.find(o => String(o.kod) === lpCisloRaw || String(o.cislo_lp) === lpCisloRaw);
+                const optId = parseInt(opt?.id, 10);
+                if (Number.isFinite(optId) && optId > 0) lpCodeForBackend = optId;
+              }
+
+              return {
+                lp_cislo: lpCodeForBackend,
+                lp_id: Number.isFinite(lpId) && lpId > 0 ? lpId : null,
+                castka: parseFloat(row.castka),
+                poznamka: row.poznamka || ''
+              };
+            })
+            .filter(row => row.lp_cislo !== null);
+
+          if (lpPayload.length === 0) {
+            showToast && showToast('⚠️ Pro LP financování nelze potvrdit věcnou správnost bez LP rozkladu.', 'error');
+            setLoading(false);
+            return;
+          }
+
+          await saveFakturaLPCerpani(editingInvoiceId, lpPayload, token, username);
         }
       }
 
@@ -5494,14 +5573,31 @@ export default function InvoiceEvidencePage() {
               const hasLpCislo = row.lp_cislo && String(row.lp_cislo).trim().length > 0;
               // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
               const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
-              return hasLpId && hasLpCislo && hasCastka;
+              return (hasLpId || hasLpCislo) && hasCastka;
             }).map(row => ({
-              // ✅ FIX: Backend validuje lp_cislo proti financovani.lp_kody = [140, 142] (číselné ID!)
-              lp_cislo: parseInt(row.lp_id, 10), // ✅ Pošli číselné ID (např. 140)
-              lp_id: parseInt(row.lp_id, 10),
+              // Backend validuje lp_cislo proti financovani.lp_kody (ID LP) → mapujeme na ID.
+              lp_cislo: (() => {
+                const lpId = parseInt(row.lp_id, 10);
+                if (Number.isFinite(lpId) && lpId > 0) return lpId;
+
+                const lpCisloRaw = row.lp_cislo ? String(row.lp_cislo).trim() : '';
+                if (lpCisloRaw && /^\d+$/.test(lpCisloRaw)) {
+                  const parsed = parseInt(lpCisloRaw, 10);
+                  if (Number.isFinite(parsed) && parsed > 0) return parsed;
+                }
+
+                const availableLPCodes = dictionaries?.data?.lpKodyOptions || [];
+                const opt = availableLPCodes.find(o => String(o.kod) === lpCisloRaw || String(o.cislo_lp) === lpCisloRaw);
+                const optId = parseInt(opt?.id, 10);
+                return Number.isFinite(optId) && optId > 0 ? optId : null;
+              })(),
+              lp_id: (() => {
+                const n = parseInt(row.lp_id, 10);
+                return Number.isFinite(n) && n > 0 ? n : null;
+              })(),
               castka: parseFloat(row.castka),
               poznamka: row.poznamka || ''
-            }));
+            })).filter(row => row.lp_cislo !== null);
             
             if (validLpCerpani.length > 0) {
               await saveFakturaLPCerpani(newInvoiceId, validLpCerpani, token, username);

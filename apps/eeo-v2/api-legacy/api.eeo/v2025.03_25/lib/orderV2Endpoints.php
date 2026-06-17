@@ -1345,6 +1345,34 @@ function handle_order_v2_update($input, $config, $queries) {
             error_log("Order V2 UPDATE: Partial update detected - skipping full data validation");
         }
         
+        // 🚨 DEBUG: Log potvrzeni_dokonceni_objednavky změny
+        if (isset($input['potvrzeni_dokonceni_objednavky'])) {
+            error_log("🔍 [ORDER-V2-UPDATE] potvrzeni_dokonceni_objednavky je v input: " . ($input['potvrzeni_dokonceni_objednavky'] ? '1' : '0'));
+            error_log("🔍 [ORDER-V2-UPDATE] Current workflow: " . json_encode($existingOrder['stav_workflow_kod'] ?? []));
+            
+            // ⚠️ KRITICKÁ KONTROLA: Pokud se nastavuje na 1 (true), objednávka MUSÍ být ZKONTROLOVANA
+            if ($input['potvrzeni_dokonceni_objednavky'] && is_array($existingOrder['stav_workflow_kod'])) {
+                if (!in_array('ZKONTROLOVANA', $existingOrder['stav_workflow_kod'])) {
+                    error_log("❌ [ORDER-V2-UPDATE] BLOKACE: Pokus o nastavení dokončení bez ZKONTROLOVANA! Workflow: " . json_encode($existingOrder['stav_workflow_kod']));
+                    http_response_code(400);
+                    echo json_encode(array(
+                        'status' => 'error',
+                        'message' => 'Objednávka MUSÍ být ve stavu ZKONTROLOVANA (Zkontrolovaná) před označením jako dokončená!',
+                        'current_workflow' => $existingOrder['stav_workflow_kod']
+                    ));
+                    return;
+                }
+                error_log("✅ [ORDER-V2-UPDATE] Objednávka je ve stavu ZKONTROLOVANA - POVOLENO dokončení");
+            }
+
+            if ($input['potvrzeni_dokonceni_objednavky']) {
+                $input['dokoncil_id'] = $current_user_id;
+                $input['dt_dokonceni'] = TimezoneHelper::getCzechDateTime();
+                $input['stav_objednavky'] = 'Dokončená';
+                error_log("🔄 [ORDER-V2-UPDATE] Completion metadata set from real DB columns only: dokoncil_id, dt_dokonceni, stav_objednavky");
+            }
+        }
+        
         // Transformace dat pro DB
         $dbData = $handler->transformToDB($input, true); // ✅ isUpdate = true
         
@@ -1443,11 +1471,37 @@ function handle_order_v2_update($input, $config, $queries) {
             $sql = "UPDATE " . get_orders_table_name() . " SET " . implode(', ', $setParts) . " WHERE id = :id";
             $values['id'] = $order_id;
             
+            // 🔍 DEBUG: Log všechny změny v UPDATE
+            error_log("🔄 [ORDER-V2-UPDATE] SQL UPDATE pro order {$order_id}:");
+            foreach ($values as $key => $val) {
+                if (in_array($key, ['stav_workflow_kod', 'stav_objednavky', 'potvrzeni_dokonceni_objednavky', 'dokoncil_id', 'dt_dokonceni', 'uzivatel_akt_id', 'dt_aktualizace'])) {
+                    error_log("   - {$key} = " . (is_array($val) ? json_encode($val) : $val));
+                }
+            }
+            
             $stmt = $db->prepare($sql);
             foreach ($values as $key => $value) {
                 $stmt->bindValue(":{$key}", $value);
             }
+            
+            error_log("🔄 [ORDER-V2-UPDATE] About to execute UPDATE statement");
             $stmt->execute();
+            error_log("✅ [ORDER-V2-UPDATE] UPDATE statement executed successfully");
+            
+            // Reload from DB to verify changes
+            $reload_stmt = $db->prepare("SELECT stav_objednavky, stav_workflow_kod, potvrzeni_dokonceni_objednavky, dokoncil_id, dt_dokonceni, uzivatel_akt_id, dt_aktualizace FROM " . get_orders_table_name() . " WHERE id = ?");
+            $reload_stmt->execute([$order_id]);
+            $reloaded_data = $reload_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            error_log("✅ [ORDER-V2-UPDATE] Data after UPDATE:");
+            error_log("   - stav_objednavky: " . $reloaded_data['stav_objednavky']);
+            error_log("   - stav_workflow_kod: " . $reloaded_data['stav_workflow_kod']);
+            error_log("   - potvrzeni_dokonceni_objednavky: " . $reloaded_data['potvrzeni_dokonceni_objednavky']);
+            error_log("   - dokoncil_id: " . $reloaded_data['dokoncil_id']);
+            error_log("   - dt_dokonceni: " . $reloaded_data['dt_dokonceni']);
+            error_log("   - uzivatel_akt_id: " . $reloaded_data['uzivatel_akt_id']);
+            error_log("   - dt_aktualizace: " . $reloaded_data['dt_aktualizace']);
+            
             
             // ========== UPDATE POLOŽEK OBJEDNÁVKY ==========
             // Zpracování položek podle vzoru z Order25 (saveOrderItems pattern)

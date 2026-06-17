@@ -6133,18 +6133,33 @@ function handle_orders25_complete_order($input, $config, $queries) {
             return;
         }
         
+        // DEBUG: Log workflow state PŘED kontrolami
+        error_log("🔍 [DOKONCIT] Order ID {$order_id} | Current workflow: {$order['stav_workflow_kod']} | stav_objednavky: {$order['stav_objednavky']}");
+        error_log("🔍 [DOKONCIT] User ID {$current_user_id} attempting to complete order");
+        
         // Kontrola stavu - nesmí být už dokončena nebo stornovaná
         if (strpos($order['stav_workflow_kod'], 'DOKONCENA') !== false) {
+            error_log("❌ [DOKONCIT] Order ID {$order_id} je již DOKONCENA");
             http_response_code(400);
             echo json_encode(['err' => 'Objednávka je již dokončena']);
             return;
         }
         
         if (strpos($order['stav_workflow_kod'], 'ZRUSENA') !== false) {
+            error_log("❌ [DOKONCIT] Order ID {$order_id} je ZRUSENA");
             http_response_code(400);
             echo json_encode(['err' => 'Stornovanou objednávku nelze dokončit']);
             return;
         }
+        
+        // ⚠️ KRITICKÁ KONTROLA: Objednávka MUSÍ být ve stavu ZKONTROLOVANA!
+        if (strpos($order['stav_workflow_kod'], 'ZKONTROLOVANA') === false) {
+            error_log("❌ [DOKONCIT] Order ID {$order_id} NENÍ ve stavu ZKONTROLOVANA! Aktuální: {$order['stav_workflow_kod']}");
+            http_response_code(400);
+            echo json_encode(['err' => 'Objednávka MUSÍ být ve stavu ZKONTROLOVANA před dokončením! Aktuální stav workflow: ' . $order['stav_workflow_kod']]);
+            return;
+        }
+        error_log("✅ [DOKONCIT] Order ID {$order_id} JE ve stavu ZKONTROLOVANA - povoleno dokončení");
         
         // Aktualizace workflow stavu - správně zpracovat JSON array formát
         $current_wf = $order['stav_workflow_kod'];
@@ -6152,16 +6167,21 @@ function handle_orders25_complete_order($input, $config, $queries) {
             // DB ukládá JSON pole: ["STATE1","STATE2",...]
             $states = json_decode($current_wf, true);
             if (!is_array($states)) $states = [];
+            error_log("🔄 [DOKONCIT] Parsed workflow states: " . json_encode($states));
             if (!in_array('DOKONCENA', $states)) {
                 $states[] = 'DOKONCENA';
+                error_log("🔄 [DOKONCIT] Added DOKONCENA state");
             }
             $new_workflow_code = json_encode($states, JSON_UNESCAPED_UNICODE);
+            error_log("🔄 [DOKONCIT] New workflow code: {$new_workflow_code}");
         } else {
             // Starý formát: STATE1+STATE2
             $new_workflow_code = addWorkflowState($current_wf, 'DOKONCENA');
+            error_log("🔄 [DOKONCIT] Using old workflow format, new: {$new_workflow_code}");
         }
         
         // Uložení změn
+        error_log("🔄 [DOKONCIT] About to execute UPDATE with: dokoncil_id={$current_user_id}, workflow={$new_workflow_code}, note={$note}");
         $stmt = $db->prepare(updateOrderCompleteQuery());
         $stmt->bindParam(':id', $order_id, PDO::PARAM_INT);
         $stmt->bindParam(':dokoncil_id', $current_user_id, PDO::PARAM_INT);
@@ -6170,6 +6190,18 @@ function handle_orders25_complete_order($input, $config, $queries) {
         $stmt->bindParam(':uzivatel_akt_id', $current_user_id, PDO::PARAM_INT);
         
         if ($stmt->execute()) {
+            // Reload order to confirm changes
+            $reload_stmt = $db->prepare("SELECT stav_objednavky, stav_workflow_kod, dokoncil_id, dt_dokonceni, uzivatel_akt_id FROM " . get_orders_table_name() . " WHERE id = ?");
+            $reload_stmt->execute([$order_id]);
+            $reloaded = $reload_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            error_log("✅ [DOKONCIT] Order ID {$order_id} SAVED! Status after UPDATE:");
+            error_log("   - stav_objednavky: {$reloaded['stav_objednavky']}");
+            error_log("   - stav_workflow_kod: {$reloaded['stav_workflow_kod']}");
+            error_log("   - dokoncil_id: {$reloaded['dokoncil_id']}");
+            error_log("   - dt_dokonceni: {$reloaded['dt_dokonceni']}");
+            error_log("   - uzivatel_akt_id: {$reloaded['uzivatel_akt_id']}");
+            
             echo json_encode([
                 'status' => 'ok',
                 'message' => 'Objednávka byla úspěšně dokončena',
@@ -6177,10 +6209,12 @@ function handle_orders25_complete_order($input, $config, $queries) {
                     'order_id' => $order_id,
                     'completed_by_user_id' => $current_user_id,
                     'note' => $note,
-                    'workflow_state' => $new_workflow_code
+                    'workflow_state' => $new_workflow_code,
+                    'stav_objednavky' => $reloaded['stav_objednavky']
                 ]
             ]);
         } else {
+            error_log("❌ [DOKONCIT] Order ID {$order_id} UPDATE FAILED!");
             http_response_code(500);
             echo json_encode(['err' => 'Chyba při ukládání změn']);
         }

@@ -15,6 +15,8 @@
 
 import { useMemo, useCallback, useState } from 'react';
 
+const WORKFLOW_MANAGER_DEBUG_LOGS = false;
+
 // Dedupe varování (spam) — zapamatujeme si už vypsaná varování a vypíšeme je pouze jednou.
 const _loggedWarnings = new Set();
 function warnOnce(id, msg, meta) {
@@ -876,11 +878,25 @@ export const handlePublishing = (currentWorkflow, hasDatum, hasIddt) => {
     states = addWorkflowState(states, 'FAKTURACE');
     // Odstranit vyšší fáze (pokud tam byly z předchozích změn)
     states = states.filter(s => !['VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s));
+    if (WORKFLOW_MANAGER_DEBUG_LOGS && typeof console !== 'undefined') {
+      console.info('🧭 [WorkflowManager:handlePublishing]', {
+        before: currentWorkflow,
+        after: states,
+        mode: 'UVEREJNENA + FAKTURACE',
+      });
+    }
   } else {
     // Smazáno → vrátit na UVEREJNIT
     states = removeWorkflowState(states, 'UVEREJNENA');
     states = states.filter(s => !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'].includes(s));
     states = addWorkflowState(states, 'UVEREJNIT');
+    if (WORKFLOW_MANAGER_DEBUG_LOGS && typeof console !== 'undefined') {
+      console.info('🧭 [WorkflowManager:handlePublishing]', {
+        before: currentWorkflow,
+        after: states,
+        mode: 'UVEREJNIT',
+      });
+    }
   }
   
   return states;
@@ -907,6 +923,14 @@ export const handleInvoiceChange = (currentWorkflow, hasInvoices, isPokladna = f
     
     // ✅ Přidat VECNA_SPRAVNOST (faktura přidána, čeká se na kontrolu věcné správnosti)
     states = addWorkflowState(states, 'VECNA_SPRAVNOST');
+    if (WORKFLOW_MANAGER_DEBUG_LOGS && typeof console !== 'undefined') {
+      console.info('🧭 [WorkflowManager:handleInvoiceChange]', {
+        before: currentWorkflow,
+        after: states,
+        hasInvoices: true,
+        isPokladna,
+      });
+    }
   } else {
     // ✅ DŮLEŽITÉ: Pokud je NEUVEREJNIT nebo UVEREJNENA, FAKTURACE zůstává (i bez faktur zatím)
     // NEUVEREJNIT → automaticky na FAKTURACE (čeká na přidání faktury)
@@ -919,6 +943,14 @@ export const handleInvoiceChange = (currentWorkflow, hasInvoices, isPokladna = f
     } else {
       // Žádné faktury a nejsme v NEUVEREJNIT/UVEREJNENA → odebrat FAKTURACE a vyšší
       states = states.filter(s => !['FAKTURACE', 'VECNA_SPRAVNOST', 'ZKONTROLOVANA'].includes(s));
+    }
+    if (WORKFLOW_MANAGER_DEBUG_LOGS && typeof console !== 'undefined') {
+      console.info('🧭 [WorkflowManager:handleInvoiceChange]', {
+        before: currentWorkflow,
+        after: states,
+        hasInvoices: false,
+        isPokladna,
+      });
     }
   }
   

@@ -119,6 +119,40 @@ function order_v2_normalize_money_to_decimal_string($raw, &$error) {
 }
 
 /**
+ * LP guard: při potvrzení věcné správnosti musí mít LP financovaná objednávka
+ * alespoň jeden řádek LP rozkladu u faktury.
+ *
+ * @throws Exception při porušení pravidla
+ */
+function ensure_order_v2_lp_split_exists_for_vs_approval($db, $invoice_id, $order_id) {
+    if (empty($order_id)) {
+        return;
+    }
+
+    $stmt_order_fin = $db->prepare("SELECT financovani FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1 LIMIT 1");
+    $stmt_order_fin->execute(array((int)$order_id));
+    $order_fin = $stmt_order_fin->fetch(PDO::FETCH_ASSOC);
+
+    if (!$order_fin || empty($order_fin['financovani'])) {
+        return;
+    }
+
+    $financovani = json_decode($order_fin['financovani'], true);
+    if (!is_array($financovani) || !isset($financovani['typ']) || $financovani['typ'] !== 'LP') {
+        return;
+    }
+
+    $stmt_lp = $db->prepare("\n        SELECT COUNT(*) AS cnt\n        FROM " . TBL_FAKTURY_LP_CERPANI . "\n        WHERE faktura_id = ?\n          AND (lp_cislo IS NOT NULL AND TRIM(lp_cislo) != '')\n          AND castka IS NOT NULL\n    ");
+    $stmt_lp->execute(array((int)$invoice_id));
+    $lp_count_row = $stmt_lp->fetch(PDO::FETCH_ASSOC);
+    $lp_count = $lp_count_row ? (int)$lp_count_row['cnt'] : 0;
+
+    if ($lp_count <= 0) {
+        throw new Exception('Pro LP financování nelze potvrdit věcnou správnost bez LP rozkladu faktury.');
+    }
+}
+
+/**
  * 🔄 Automaticky přepočítá čerpání smluv související s fakturou
  * 
  * Přepočítává čerpání pro:
@@ -922,6 +956,20 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             }
         }
         
+        // LP guard: potvrzení věcné správnosti u LP financování vyžaduje existenci LP rozkladu.
+        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+            try {
+                ensure_order_v2_lp_split_exists_for_vs_approval($db, $invoice_id, (int)$current_invoice['objednavka_id']);
+            } catch (Exception $lpGuardError) {
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error',
+                    'message' => $lpGuardError->getMessage()
+                ));
+                return;
+            }
+        }
+
         // ✅ AUTOMATIKA: Potvrzení nebo zamítnutí věcné správnosti → změnit stav POUZE pokud je aktuálně ZAEVIDOVANA
         if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] !== 0) {
             if ($current_invoice['stav'] === INVOICE_STATUS_REGISTERED) {

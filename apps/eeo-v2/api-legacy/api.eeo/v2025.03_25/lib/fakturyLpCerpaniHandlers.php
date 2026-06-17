@@ -16,9 +16,9 @@
  * - faktury/lp-cerpani/get   → Načíst LP čerpání pro fakturu
  * 
  * ✅ VALIDACE:
- * - Součet částek MUSÍ být ≤ fa_castka (nesmí překročit)
+ * - Součet částek nesmí překročit limit faktury (pro kladnou částku <=, pro zápornou >=)
  * - Pokud je financování typu LP, MUSÍ být min. 1 LP kód přiřazen
- * - Každá částka MUSÍ být > 0
+ * - Každá částka MUSÍ být číslo (0 i záporné hodnoty jsou povoleny)
  * 
  * Created: 2025-12-29
  */
@@ -153,13 +153,15 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
         }
         
         // 4. Validace: součet částek nesmí překročit fa_castka
+        // - pro kladné faktury: suma <= fa_castka
+        // - pro záporné faktury: suma >= fa_castka
         $suma = 0;
         foreach ($lp_cerpani as $item) {
-            // ✅ Akceptovat 0 jako validní hodnotu (zálohová faktura), ale odmítnout null/undefined/prázdné
-            if (!isset($item['castka']) || !is_numeric($item['castka']) || (float)$item['castka'] < 0) {
+            // ✅ Akceptovat 0 i záporné hodnoty (dobropisy), odmítnout jen null/undefined/prázdné/nečíselné
+            if (!isset($item['castka']) || !is_numeric($item['castka'])) {
                 $db->rollBack();
                 http_response_code(400);
-                echo json_encode(array('status' => 'error', 'message' => 'Částka musí být číslo >= 0 (0 je povoleno pro zálohové faktury)'));
+                echo json_encode(array('status' => 'error', 'message' => 'Částka musí být validní číslo (kladné, nulové i záporné)'));
                 return;
             }
             
@@ -173,12 +175,17 @@ function handle_save_faktura_lp_cerpani($input, $config, $queries) {
             $suma += (float)$item['castka'];
         }
         
-        if ($suma > $faktura['fa_castka']) {
+        $fa_castka = (float)$faktura['fa_castka'];
+        $is_exceeding = ($fa_castka >= 0)
+            ? ($suma > $fa_castka)
+            : ($suma < $fa_castka);
+
+        if ($is_exceeding) {
             $db->rollBack();
             http_response_code(400);
             echo json_encode(array(
                 'status' => 'error', 
-                'message' => 'Součet LP čerpání (' . number_format($suma, 2) . ' Kč) překračuje částku faktury (' . number_format($faktura['fa_castka'], 2) . ' Kč)'
+                'message' => 'Součet LP čerpání (' . number_format($suma, 2) . ' Kč) překračuje povolený rozsah částky faktury (' . number_format($fa_castka, 2) . ' Kč)'
             ));
             return;
         }
