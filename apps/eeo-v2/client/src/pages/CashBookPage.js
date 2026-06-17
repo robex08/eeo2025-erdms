@@ -1214,17 +1214,20 @@ const CashBookPage = () => {
   // 🆕 Může vidět všechny pokladny?
   // UPRAVENO: Selector se zobrazí i běžnému uživateli, pokud má více než 1 pokladnu přiřazenu
   const canSeeAllCashboxes = useMemo(() => {
-    // Admin/MANAGE může vidět všechny pokladny v systému
-    const hasAllPermissions = cashbookPermissions.canReadAll ||
-                              cashbookPermissions.canEditAll ||
-                              cashbookPermissions.canDeleteAll ||
-                              cashbookPermissions.canManage;
+    // Admin/MANAGE může vidět všechny pokladny v systému.
+    // DŮLEŽITÉ: hasPermission() zahrnuje i efektivní práva ze zastupování.
+    const hasAllPermissions =
+      hasPermission('CASH_BOOK_READ_ALL') ||
+      hasPermission('CASH_BOOK_EDIT_ALL') ||
+      hasPermission('CASH_BOOK_DELETE_ALL') ||
+      hasPermission('CASH_BOOK_MANAGE') ||
+      hasPermission('ADMIN');
 
     // Běžný uživatel s více než 1 pokladnou může přepínat mezi svými pokladnami
     const hasMultipleCashboxes = userAssignments && userAssignments.length > 1;
 
     return hasAllPermissions || hasMultipleCashboxes;
-  }, [cashbookPermissions, userAssignments]);
+  }, [hasPermission, userAssignments]);
 
   // =============================================================================
   // 🆕 DB SYNC HELPER FUNCTIONS (musí být před useEffect který je volá)
@@ -1995,7 +1998,7 @@ const CashBookPage = () => {
         setAssignmentLoading(true);
 
         // 1️⃣ VŽDY načíst vlastní přiřazení
-        const userResult = await cashbookAPI.listAssignments(userDetail.id, true);
+        const userResult = await cashbookAPI.listAssignments(undefined, true);
         const userAssignments = userResult.data?.assignments || [];
         setUserAssignments(userAssignments);
 
@@ -3540,7 +3543,11 @@ const CashBookPage = () => {
   }, [bookStatus, isSuperAdmin, hasManagePermission, canEditAll, canEditOwn, isCurrentUserCashbook]);
 
   // 🎯 Odvozené hodnoty z centrální funkce
-  const canViewCashBook = isSuperAdmin || hasManagePermission || canReadAll || (canReadOwn && isCurrentUserCashbook);
+  // Přístup ke čtení je povolen také při aktivním přiřazení pokladny.
+  // To je důležité pro scénář zastupování, kdy uživatel nemusí mít explicitní CASH_BOOK_READ_OWN,
+  // ale má platný přístup přes přiřazenou pokladnu zastupovaného.
+  const hasAssignedCashboxAccess = !!mainAssignment;
+  const canViewCashBook = isSuperAdmin || hasManagePermission || canReadAll || (canReadOwn && isCurrentUserCashbook) || hasAssignedCashboxAccess;
   const canActuallyEdit = isBookEditable;
   const canActuallyDelete = isBookEditable; // Stejná logika jako edit
   const canActuallyCreate = isBookEditable; // Stejná logika jako edit
@@ -3977,7 +3984,7 @@ const CashBookPage = () => {
           <div style={{ textAlign: 'center', padding: '2rem' }}>
             <FontAwesomeIcon icon={faInfoCircle} size="3x" style={{ color: '#dc2626', marginBottom: '1rem' }} />
             <h3>Nedostatečná oprávnění</h3>
-            <p>Pro přístup k pokladní knize potřebujete oprávnění CASH_BOOK_READ_OWN nebo vyšší.</p>
+            <p>Pro přístup k pokladní knize potřebujete oprávnění CASH_BOOK_READ_OWN nebo aktivní přiřazení pokladny.</p>
             <p>Kontaktujte správce systému pro udělení potřebných oprávnění.</p>
           </div>
         </InfoPanel>

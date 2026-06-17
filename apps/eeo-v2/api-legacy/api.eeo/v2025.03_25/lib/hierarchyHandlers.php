@@ -150,8 +150,8 @@ function handle_hierarchy_add_relation($data, $pdo) {
         
         // Kontrola existence uživatelů
         $stmt = $pdo->prepare("SELECT COUNT(*) FROM " . TBL_UZIVATELE . " WHERE id IN (:nadrizeny_id, :podrizeny_id) AND aktivni = 1");
-        $stmt->bindParam(':nadrizeny_id', $data['nadrizeny_id'], PDO::PARAM_INT);
-        $stmt->bindParam(':podrizeny_id', $data['podrizeny_id'], PDO::PARAM_INT);
+            $stmt->bindParam(':nadrizeny_id', $data['nadrizeny_id'], PDO::PARAM_INT);
+            $stmt->bindParam(':podrizeny_id', $data['podrizeny_id'], PDO::PARAM_INT);
         $stmt->execute();
         
         if ($stmt->fetchColumn() != 2) {
@@ -411,6 +411,10 @@ function handle_substitution_create($data, $pdo) {
     $dt_do = trim($data['dt_do']);
     $popis = isset($data['popis']) ? trim($data['popis']) : null;
 
+    if ($popis === null || $popis === '') {
+        return array('status' => 'error', 'message' => 'Poznámka / odůvodnění je povinná');
+    }
+
     // Validace: nesmí zastupovat sám sebe
     if ($zastupovany_id === $zastupce_id) {
         return array('status' => 'error', 'message' => 'Nemůžete nastavit sebe jako vlastního zástupce');
@@ -434,6 +438,25 @@ function handle_substitution_create($data, $pdo) {
     if (!is_array($opravneni_arr) || empty($opravneni_arr)) {
         return array('status' => 'error', 'message' => 'Pole opravneni musí být neprázdný objekt (např. {"view":1})');
     }
+
+    $module_visibility_enabled = !empty($opravneni_arr['module_visibility']);
+    $cashbook_transfer_enabled = !empty($opravneni_arr['cashbook_transfer']);
+    if ($cashbook_transfer_enabled && !$module_visibility_enabled) {
+        return array('status' => 'error', 'message' => 'Přenos pokladny vyžaduje zapnutý přenos viditelnosti modulů.');
+    }
+    if ($cashbook_transfer_enabled) {
+        $eligibility = _substitution_cashbook_transfer_eligibility($pdo, $zastupovany_id);
+        if (empty($eligibility['eligible'])) {
+            return array('status' => 'error', 'message' => !empty($eligibility['reason']) ? $eligibility['reason'] : 'Přenos pokladny nelze pro tohoto uživatele povolit.');
+        }
+    }
+    if (!empty($opravneni_arr['approve'])) {
+        $eligibility = _substitution_cashbook_transfer_eligibility($pdo, $zastupovany_id);
+        if (empty($eligibility['can_order_approve'])) {
+            return array('status' => 'error', 'message' => !empty($eligibility['order_approve_reason']) ? $eligibility['order_approve_reason'] : 'Schvalovací oprávnění nelze pro tohoto uživatele povolit.');
+        }
+    }
+
     $opravneni_json = json_encode($opravneni_arr, JSON_UNESCAPED_UNICODE);
 
     try {
@@ -589,6 +612,10 @@ function handle_substitution_update($data, $pdo) {
     $dt_do = trim($data['dt_do']);
     $popis = isset($data['popis']) ? trim($data['popis']) : null;
 
+    if ($popis === null || $popis === '') {
+        return array('status' => 'error', 'message' => 'Poznámka / odůvodnění je povinná');
+    }
+
     if ($zastupovany_id === $zastupce_id) {
         return array('status' => 'error', 'message' => 'Nemůžete nastavit sebe jako vlastního zástupce');
     }
@@ -601,6 +628,25 @@ function handle_substitution_update($data, $pdo) {
     if (!is_array($opravneni_arr) || empty($opravneni_arr)) {
         return array('status' => 'error', 'message' => 'Pole opravneni musí být neprázdný objekt');
     }
+
+    $module_visibility_enabled = !empty($opravneni_arr['module_visibility']);
+    $cashbook_transfer_enabled = !empty($opravneni_arr['cashbook_transfer']);
+    if ($cashbook_transfer_enabled && !$module_visibility_enabled) {
+        return array('status' => 'error', 'message' => 'Přenos pokladny vyžaduje zapnutý přenos viditelnosti modulů.');
+    }
+    if ($cashbook_transfer_enabled) {
+        $eligibility = _substitution_cashbook_transfer_eligibility($pdo, $zastupovany_id);
+        if (empty($eligibility['eligible'])) {
+            return array('status' => 'error', 'message' => !empty($eligibility['reason']) ? $eligibility['reason'] : 'Přenos pokladny nelze pro tohoto uživatele povolit.');
+        }
+    }
+    if (!empty($opravneni_arr['approve'])) {
+        $eligibility = _substitution_cashbook_transfer_eligibility($pdo, $zastupovany_id);
+        if (empty($eligibility['can_order_approve'])) {
+            return array('status' => 'error', 'message' => !empty($eligibility['order_approve_reason']) ? $eligibility['order_approve_reason'] : 'Schvalovací oprávnění nelze pro tohoto uživatele povolit.');
+        }
+    }
+
     $opravneni_json = json_encode($opravneni_arr, JSON_UNESCAPED_UNICODE);
 
     try {
@@ -893,6 +939,448 @@ function handle_substitution_current($data, $pdo) {
 }
 
 /**
+ * Pomocná funkce: vrátí všechny kódy práv uživatele (role + direct práva).
+ *
+ * @param PDO $pdo
+ * @param int $user_id
+ * @return array
+ */
+function _substitution_get_permission_codes_for_user($pdo, $user_id) {
+    $codes = array();
+
+    try {
+        $stmt_roles = $pdo->prepare("SELECT role_id FROM " . TBL_UZIVATELE_ROLE . " WHERE uzivatel_id = :user_id");
+        $stmt_roles->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+        $stmt_roles->execute();
+        $role_ids = $stmt_roles->fetchAll(PDO::FETCH_COLUMN, 0);
+
+        foreach ($role_ids as $role_id) {
+            $stmt_rights = $pdo->prepare(
+                "SELECT p.kod_prava
+                 FROM " . TBL_ROLE_PRAVA . " rp
+                 INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+                 WHERE rp.role_id = :role_id"
+            );
+            $stmt_rights->bindParam(':role_id', $role_id, PDO::PARAM_INT);
+            $stmt_rights->execute();
+            while ($row = $stmt_rights->fetch(PDO::FETCH_ASSOC)) {
+                if (!empty($row['kod_prava'])) {
+                    $codes[] = strtoupper(trim($row['kod_prava']));
+                }
+            }
+        }
+
+        $stmt_direct = $pdo->prepare(
+            "SELECT p.kod_prava
+             FROM " . TBL_ROLE_PRAVA . " rp
+             INNER JOIN " . TBL_PRAVA . " p ON p.id = rp.pravo_id
+             WHERE rp.user_id = :user_id"
+        );
+        $stmt_direct->bindParam(':user_id', $user_id, PDO::PARAM_INT);
+        $stmt_direct->execute();
+        while ($row = $stmt_direct->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($row['kod_prava'])) {
+                $codes[] = strtoupper(trim($row['kod_prava']));
+            }
+        }
+    } catch (PDOException $e) {
+        error_log("substitution_effective_permissions rights fetch error for user " . (int)$user_id . ": " . $e->getMessage());
+    }
+
+    return array_values(array_unique($codes));
+}
+
+/**
+ * Pomocná funkce: určí, zda je právo business/modulové (bez admin řízení systému).
+ *
+ * @param string $code
+ * @return bool
+ */
+function _substitution_is_business_permission($code) {
+    $c = strtoupper(trim((string)$code));
+    if ($c === '') {
+        return false;
+    }
+
+    $business_patterns = array(
+        '/^ORDER_/',
+        '/^INVOICE_/',
+        '/^ANNUAL_FEES_/',
+        '/^CASH_BOOK_/',
+        '/^CASHBOOK_REPORTS_/',
+        '/^SUPPLIER_/',
+        '/^PHONEBOOK_/',
+        '/^DICT_/',
+        '/^ASSET_/',
+        '/^REPORT_/',
+        '/^STATISTICS_/',
+        '/^STATS_/',
+        '/^SPENDING_/',
+        '/^LP_/',
+        '/^CONTRACT_/',
+        '/^ATTACHMENTS_/',
+        '/^PIVOT_/',
+        '/^EDUCATION_/',
+        '/^FIN_CONTROL_/',
+        '/^DASHBOARD_/',
+        '/^CERPANI_/'
+    );
+
+    foreach ($business_patterns as $pattern) {
+        if (preg_match($pattern, $c)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Pomocná funkce: určí, zda je právo cashbookové.
+ *
+ * @param string $code
+ * @return bool
+ */
+function _substitution_is_cashbook_permission($code) {
+    $c = strtoupper(trim((string)$code));
+    if ($c === '') {
+        return false;
+    }
+
+    if (preg_match('/^CASH_BOOK_/', $c)) {
+        return true;
+    }
+    if (preg_match('/^CASHBOOK_REPORTS_/', $c)) {
+        return true;
+    }
+
+    return false;
+}
+
+/**
+ * Pomocná funkce: filtruje práva dle scope zástupu.
+ *
+ * @param array $codes
+ * @param bool $can_view
+ * @param bool $can_approve
+ * @param bool $can_confirm
+ * @param bool $can_cashbook_transfer
+ * @return array
+ */
+function _substitution_filter_permissions_by_scope($codes, $can_view, $can_approve, $can_confirm, $can_cashbook_transfer = false) {
+    $filtered = array();
+
+    foreach ((array)$codes as $code) {
+        $norm = strtoupper(trim((string)$code));
+        if ($norm === '') {
+            continue;
+        }
+
+        if ($can_view) {
+            if (_substitution_is_business_permission($norm)) {
+                if (_substitution_is_cashbook_permission($norm) && !$can_cashbook_transfer) {
+                    continue;
+                }
+                $filtered[] = $norm;
+            }
+            continue;
+        }
+
+        if ($can_approve && preg_match('/^ORDER_/', $norm)) {
+            $filtered[] = $norm;
+            continue;
+        }
+
+        if ($can_confirm && preg_match('/^INVOICE_/', $norm)) {
+            $filtered[] = $norm;
+            continue;
+        }
+    }
+
+    return array_values(array_unique($filtered));
+}
+
+/**
+ * Interní helper: zjistí způsobilost uživatele pro přenos pokladen.
+ *
+ * Podmínky:
+ * - uživatel má cashbook práva
+ * - a má přístup do pokladen (globální ALL/MANAGE nebo aktivní přiřazení)
+ *
+ * @param PDO $pdo
+ * @param int $user_id
+ * @return array
+ */
+function _substitution_cashbook_transfer_eligibility($pdo, $user_id) {
+    $uid = (int)$user_id;
+    $result = array(
+        'eligible' => false,
+        'has_cashbook_rights' => false,
+        'has_cashbook_access' => false,
+        'has_global_cashbook_access' => false,
+        'cashbox_assignment_count' => 0,
+        'reason' => 'Uživatel nemá potřebná práva k pokladně.',
+        'can_order_approve' => false,
+        'has_order_approval_rights' => false,
+        'order_approve_reason' => 'Zastupovaný uživatel nemá schvalovací oprávnění pro objednávky.'
+    );
+
+    if ($uid <= 0) {
+        $result['reason'] = 'Neplatné ID uživatele.';
+        return $result;
+    }
+
+    $codes = _substitution_get_permission_codes_for_user($pdo, $uid);
+    $has_rights = false;
+    $has_global = false;
+
+    foreach ((array)$codes as $code) {
+        $norm = strtoupper(trim((string)$code));
+        if ($norm === '') {
+            continue;
+        }
+
+        if (_substitution_is_cashbook_permission($norm)) {
+            $has_rights = true;
+        }
+
+        if ($norm === 'CASH_BOOK_READ_ALL' || $norm === 'CASH_BOOK_MANAGE') {
+            $has_global = true;
+            $has_rights = true;
+        }
+    }
+
+    // Schvalovací oprávnění: role PRIKAZCE nebo ORDER_APPROVE* právo.
+    $roles = function_exists('getUserRoles') ? (array)getUserRoles($uid, $pdo) : array();
+    $is_prikazce = in_array('PRIKAZCE', (array)$roles, true);
+    $has_order_approve = false;
+    foreach ((array)$codes as $code) {
+        $norm = strtoupper(trim((string)$code));
+        if (preg_match('/^ORDER_APPROVE/', $norm)) {
+            $has_order_approve = true;
+            break;
+        }
+    }
+    $result['has_order_approval_rights'] = ($is_prikazce || $has_order_approve);
+    $result['can_order_approve'] = $result['has_order_approval_rights'];
+    if ($result['has_order_approval_rights']) {
+        $result['order_approve_reason'] = 'OK';
+    }
+
+    $result['has_cashbook_rights'] = $has_rights;
+    $result['has_global_cashbook_access'] = $has_global;
+
+    if ($has_global) {
+        $result['has_cashbook_access'] = true;
+        $result['eligible'] = true;
+        // Globální přístup implikuje použitelné cashbook oprávnění.
+        $result['has_cashbook_rights'] = true;
+        $result['reason'] = 'OK';
+        return $result;
+    }
+
+    try {
+        $stmt = $pdo->prepare(
+            "SELECT COUNT(*)
+             FROM " . TBL_POKLADNY_UZIVATELE . " pu
+             WHERE pu.uzivatel_id = :user_id
+               AND (pu.platne_do IS NULL OR pu.platne_do >= CURDATE())"
+        );
+        $stmt->bindParam(':user_id', $uid, PDO::PARAM_INT);
+        $stmt->execute();
+        $cnt = (int)$stmt->fetchColumn();
+        $result['cashbox_assignment_count'] = $cnt;
+
+        if ($cnt > 0) {
+            $result['has_cashbook_access'] = true;
+            // Aktivní přiřazení do pokladny bereme jako implicitní způsobilost k přenosu pokladny.
+            if (!$result['has_cashbook_rights']) {
+                $result['has_cashbook_rights'] = true;
+            }
+            $result['eligible'] = true;
+            $result['reason'] = 'OK';
+        } else {
+            if (!$has_rights) {
+                $result['reason'] = 'Zastupovaný uživatel nemá cashbook oprávnění ani aktivní přiřazení do pokladen.';
+            } else {
+                $result['reason'] = 'Zastupovaný uživatel nemá aktivní přiřazení do pokladen.';
+            }
+        }
+    } catch (PDOException $e) {
+        error_log('_substitution_cashbook_transfer_eligibility DB error: ' . $e->getMessage());
+        $result['reason'] = 'Nepodařilo se ověřit přístupy do pokladen.';
+    }
+
+    return $result;
+}
+
+/**
+ * POST substitution/cashbook-transfer-eligibility
+ * Vrátí, zda je možné povolit přenos pokladen pro zastupovaného uživatele.
+ */
+function handle_substitution_cashbook_transfer_eligibility($data, $pdo) {
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    $target_user_id = (int)$token_data['id'];
+    if (!empty($data['zastupovany_id']) && (int)$data['zastupovany_id'] > 0) {
+        $requested_id = (int)$data['zastupovany_id'];
+        if (!$token_data['is_admin'] && $requested_id !== $target_user_id) {
+            return array('status' => 'error', 'message' => 'Nemáte oprávnění ověřovat jiného uživatele');
+        }
+        $target_user_id = $requested_id;
+    }
+
+    try {
+        $eligibility = _substitution_cashbook_transfer_eligibility($pdo, $target_user_id);
+        return array(
+            'status' => 'ok',
+            'data' => array_merge($eligibility, array('zastupovany_id' => $target_user_id))
+        );
+    } catch (Exception $e) {
+        error_log('substitution_cashbook_transfer_eligibility error: ' . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při ověřování přenosu pokladen');
+    }
+}
+
+/**
+ * POST substitution/effective-permissions
+ * Vrátí efektivní kódy oprávnění převzaté z aktivních zastupování.
+ *
+ * Cíl: sjednotit FE viditelnost modulů/sekcí mezi menu a route guardy.
+ */
+function handle_substitution_effective_permissions($data, $pdo) {
+    $token_data = _substitution_auth($data, $pdo);
+    if (!$token_data) {
+        return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
+    }
+
+    if (!isSubstitutionEnabled($pdo)) {
+        return array(
+            'status' => 'ok',
+            'data' => array(
+                'permission_codes' => array(),
+                'substitutions' => array(),
+                'delegation' => array(
+                    'has_admin_access' => false,
+                    'has_superadmin_access' => false,
+                ),
+            )
+        );
+    }
+
+    try {
+        TimezoneHelper::setMysqlTimezone($pdo);
+
+        $user_id = (int)$token_data['id'];
+        $stmt = $pdo->prepare(
+            "SELECT z.id, z.zastupovany_id, z.opravneni, u.username
+             FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+             LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = z.zastupovany_id
+             WHERE z.zastupce_id = :zastupce_id
+               AND z.aktivni = 1
+               AND z.dt_od <= CURDATE()
+               AND z.dt_do >= CURDATE()"
+        );
+        $stmt->bindParam(':zastupce_id', $user_id, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $permission_codes = array();
+        $substitutions = array();
+        $delegation = array(
+            'has_admin_access' => false,
+            'has_superadmin_access' => false,
+        );
+
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $opravneni = _substitution_decode_opravneni($row['opravneni']);
+            $can_view = !empty($opravneni['view']);
+            // Nový explicitní check pro přenos viditelnosti modulů.
+            // Fallback: staré záznamy bez module_visibility používají hodnotu view.
+            $can_module_visibility = array_key_exists('module_visibility', (array)$opravneni)
+                ? !empty($opravneni['module_visibility'])
+                : $can_view;
+            // Nový explicitní check pro přenos pokladny.
+            // Fallback kompatibility: staré záznamy bez cashbook_transfer používají module_visibility.
+            $can_cashbook_transfer = array_key_exists('cashbook_transfer', (array)$opravneni)
+                ? !empty($opravneni['cashbook_transfer'])
+                : $can_module_visibility;
+            if (!$can_module_visibility) {
+                $can_cashbook_transfer = false;
+            }
+            $can_approve = !empty($opravneni['approve']);
+            $can_confirm = !empty($opravneni['confirm']);
+            $can_admin = !empty($opravneni['administrator']);
+            $can_superadmin = !empty($opravneni['superadmin']);
+
+            if (!$can_view && !$can_module_visibility && !$can_cashbook_transfer && !$can_approve && !$can_confirm && !$can_admin && !$can_superadmin) {
+                continue;
+            }
+
+            $zastupovany_id = (int)$row['zastupovany_id'];
+            $codes_for_user = _substitution_get_permission_codes_for_user($pdo, $zastupovany_id);
+            $transferred_codes = array();
+
+            if ($can_superadmin) {
+                $delegation['has_superadmin_access'] = true;
+                $delegation['has_admin_access'] = true;
+                $transferred_codes = $codes_for_user;
+            } elseif ($can_admin) {
+                $delegation['has_admin_access'] = true;
+                $transferred_codes = $codes_for_user;
+            } else {
+                // Modulová viditelnost přenášej pouze podle view/approve/confirm checků
+                $transferred_codes = _substitution_filter_permissions_by_scope(
+                    $codes_for_user,
+                    $can_module_visibility,
+                    $can_approve,
+                    $can_confirm,
+                    $can_cashbook_transfer
+                );
+            }
+
+            if (!empty($transferred_codes)) {
+                $permission_codes = array_merge($permission_codes, $transferred_codes);
+            }
+
+            $substitutions[] = array(
+                'id' => (int)$row['id'],
+                'zastupovany_id' => $zastupovany_id,
+                'zastupovany_username' => $row['username'],
+                'opravneni' => $opravneni,
+                'permission_codes_count' => count($transferred_codes),
+                'delegation' => array(
+                    'view' => $can_view,
+                    'module_visibility' => $can_module_visibility,
+                    'cashbook_transfer' => $can_cashbook_transfer,
+                    'approve' => $can_approve,
+                    'confirm' => $can_confirm,
+                    'administrator' => $can_admin,
+                    'superadmin' => $can_superadmin,
+                ),
+            );
+        }
+
+        $permission_codes = array_values(array_unique($permission_codes));
+
+        return array(
+            'status' => 'ok',
+            'data' => array(
+                'permission_codes' => $permission_codes,
+                'substitutions' => $substitutions,
+                'delegation' => $delegation,
+            ),
+            'count' => count($permission_codes),
+        );
+    } catch (PDOException $e) {
+        error_log("substitution_effective_permissions DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání efektivních oprávnění zastupování');
+    }
+}
+
+/**
  * POST substitution/candidates
  * Vrátí seznam uživatelů, kteří mohou být zástupcem dle vazební tabulky možností zastupování.
  * Pro admina je možné poslat zastupovany_id, aby dostal kandidáty pro konkrétního uživatele.
@@ -953,9 +1441,9 @@ function handle_substitution_admin_list($data, $pdo) {
         return array('status' => 'error', 'message' => 'Neplatný nebo chybějící token');
     }
 
-    if (!$token_data['is_admin']) {
-        return array('status' => 'error', 'message' => 'Přístup zamítnut – pouze administrátor');
-    }
+    // Read-only přehled – přístupný každému přihlášenému uživateli.
+    // Citlivá pole (e-mail, telefon) jsou vracena pouze adminům.
+    $is_admin = !empty($token_data['is_admin']);
 
     try {
         TimezoneHelper::setMysqlTimezone($pdo);
@@ -978,14 +1466,14 @@ function handle_substitution_admin_list($data, $pdo) {
                 'dt_ukonceni'           => $row['dt_ukonceni'] ?? null,
                 'zastupovany_username'  => $row['zastupovany_username'],
                 'zastupovany_jmeno'     => trim($row['zastupovany_jmeno'] . ' ' . $row['zastupovany_prijmeni']),
-                'zastupovany_email'     => $row['zastupovany_email'] ?? '',
-                'zastupovany_telefon'   => $row['zastupovany_telefon'] ?? '',
+                'zastupovany_email'     => $is_admin ? ($row['zastupovany_email'] ?? '') : '',
+                'zastupovany_telefon'   => $is_admin ? ($row['zastupovany_telefon'] ?? '') : '',
                 'zastupce_username'     => $row['zastupce_username'],
                 'zastupce_jmeno'        => trim($row['zastupce_jmeno'] . ' ' . $row['zastupce_prijmeni']),
-                'zastupce_email'        => $row['zastupce_email'] ?? '',
-                'zastupce_telefon'      => $row['zastupce_telefon'] ?? '',
-                'vytvoril_username'     => $row['vytvoril_username'],
-                'vytvoril_jmeno'        => trim($row['vytvoril_jmeno'] . ' ' . $row['vytvoril_prijmeni']),
+                'zastupce_email'        => $is_admin ? ($row['zastupce_email'] ?? '') : '',
+                'zastupce_telefon'      => $is_admin ? ($row['zastupce_telefon'] ?? '') : '',
+                'vytvoril_username'     => $is_admin ? $row['vytvoril_username'] : '',
+                'vytvoril_jmeno'        => $is_admin ? trim($row['vytvoril_jmeno'] . ' ' . $row['vytvoril_prijmeni']) : '',
             );
         }
 
@@ -1293,9 +1781,7 @@ function handle_substitution_all_users_for_admin($data, $pdo) {
     }
 
     try {
-        $current_user_id = (int)$token_data['id'];
         $stmt = $pdo->prepare($queries['substitution_all_users_for_admin']);
-        $stmt->bindParam(':current_user_id', $current_user_id, PDO::PARAM_INT);
         $stmt->execute();
 
         $users = array();
@@ -1726,11 +2212,13 @@ function handle_moznosti_zastupovani_list($data, $pdo) {
 
         $rules = array();
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $is_global_all_users = (int)($row['global_all_users'] ?? 0) === 1;
             $rule = array(
                 'id' => (int)$row['id'],
                 'zastupovany_id' => (int)$row['zastupovany_id'],
                 'typ_zastupce' => $row['typ_zastupce'],
-                'poznamka' => $row['poznamka'],
+                'poznamka' => (string)($row['poznamka'] ?? ''),
+                'global_all_users' => $is_global_all_users,
                 'aktivni' => (int)$row['aktivni'],
                 'dt_vytvoreni' => $row['dt_vytvoreni'],
                 'dt_aktualizace' => $row['dt_aktualizace'],
@@ -1743,8 +2231,10 @@ function handle_moznosti_zastupovani_list($data, $pdo) {
                     $rule['zastupce_display'] = trim($row['zastupce_user_jmeno'] . ' ' . $row['zastupce_user_prijmeni']) . ' (' . $row['zastupce_user_username'] . ')';
                     break;
                 case 'role':
-                    $rule['zastupce_role_id'] = (int)$row['zastupce_role_id'];
-                    $rule['zastupce_display'] = $row['zastupce_role_nazev'] . ' (' . $row['zastupce_role_kod'] . ')';
+                    $rule['zastupce_role_id'] = $row['zastupce_role_id'] ? (int)$row['zastupce_role_id'] : null;
+                    $rule['zastupce_display'] = $row['zastupce_role_id']
+                        ? ($row['zastupce_role_nazev'] . ' (' . $row['zastupce_role_kod'] . ')')
+                        : 'Všichni uživatelé';
                     break;
                 case 'usek':
                     $rule['zastupce_usek_id'] = (int)$row['zastupce_usek_id'];
@@ -1792,15 +2282,31 @@ function handle_moznosti_zastupovani_create($data, $pdo) {
     $zastupce_usek_id = !empty($data['zastupce_usek_id']) ? (int)$data['zastupce_usek_id'] : null;
     $zastupce_lokalita_id = !empty($data['zastupce_lokalita_id']) ? (int)$data['zastupce_lokalita_id'] : null;
     $poznamka = isset($data['poznamka']) ? trim($data['poznamka']) : '';
+
     $vytvoril_user_id = (int)$token_data['id'];
+    $is_global_all_users = ($zastupovany_id === 0);
+    $global_all_users = $is_global_all_users ? 1 : 0;
+
+    // Alias "all" -> globální pravidlo (bez konkrétní skupiny)
+    if ($typ_zastupce === 'all') {
+        $typ_zastupce = 'role';
+        $zastupce_user_id = null;
+        $zastupce_role_id = null;
+        $zastupce_usek_id = null;
+        $zastupce_lokalita_id = null;
+    }
 
     // Validace
-    if ($zastupovany_id <= 0) {
+    if ($zastupovany_id < 0) {
         return array('status' => 'error', 'message' => 'Neplatné zastupovany_id');
     }
 
     if (!in_array($typ_zastupce, ['user', 'role', 'usek', 'lokalita'])) {
         return array('status' => 'error', 'message' => 'Neplatný typ_zastupce');
+    }
+    // Pro globální pravidlo je povolena pouze role/usek/lokalita/all
+    if ($is_global_all_users && $typ_zastupce === 'user') {
+        return array('status' => 'error', 'message' => 'Globální pravidlo nelze nastavit pro konkrétního uživatele');
     }
 
     // Kontrola, že odpovídající ID je vyplněné/správné
@@ -1819,18 +2325,37 @@ function handle_moznosti_zastupovani_create($data, $pdo) {
     }
 
     try {
-        // Kontrola duplikátu
-        $stmt_dup = $pdo->prepare($queries['moznosti_zastupovani_check_duplicate']);
-        $stmt_dup->execute([
-            ':zastupovany_id' => $zastupovany_id,
-            ':typ_zastupce' => $typ_zastupce,
-            ':zastupce_user_id' => $zastupce_user_id,
-            ':zastupce_role_id' => $zastupce_role_id,
-            ':zastupce_usek_id' => $zastupce_usek_id,
-            ':zastupce_lokalita_id' => $zastupce_lokalita_id,
-            ':exclude_id' => 0, // při create nechceme nic vyloučit
-        ]);
-        $dup_result = $stmt_dup->fetch(PDO::FETCH_ASSOC);
+        if ($is_global_all_users) {
+            // Globální pravidlo ukládáme jako 1 řádek s validním FK.
+            // FK proto míří na uživatele, který pravidlo vytvořil.
+            $stmt_dup = $pdo->prepare("\n                SELECT COUNT(*) as cnt\n                FROM " . TBL_MOZNOSTI_ZASTUPOVANI . "\n                WHERE aktivni = 1\n                  AND global_all_users = 1\n                  AND typ_zastupce = :typ_zastupce\n                  AND (\n                    (typ_zastupce = 'user' AND zastupce_user_id = :zastupce_user_id) OR\n                    (typ_zastupce = 'role' AND ((:zastupce_role_id IS NULL AND zastupce_role_id IS NULL) OR (:zastupce_role_id IS NOT NULL AND zastupce_role_id = :zastupce_role_id))) OR\n                    (typ_zastupce = 'usek' AND ((:zastupce_usek_id IS NULL AND zastupce_usek_id IS NULL) OR (:zastupce_usek_id IS NOT NULL AND zastupce_usek_id = :zastupce_usek_id))) OR\n                    (typ_zastupce = 'lokalita' AND ((:zastupce_lokalita_id IS NULL AND zastupce_lokalita_id IS NULL) OR (:zastupce_lokalita_id IS NOT NULL AND zastupce_lokalita_id = :zastupce_lokalita_id)))\n                  )\n            ");
+            $stmt_dup->execute([
+                ':typ_zastupce' => $typ_zastupce,
+                ':zastupce_user_id' => $zastupce_user_id,
+                ':zastupce_role_id' => $zastupce_role_id,
+                ':zastupce_usek_id' => $zastupce_usek_id,
+                ':zastupce_lokalita_id' => $zastupce_lokalita_id,
+            ]);
+            $dup_result = $stmt_dup->fetch(PDO::FETCH_ASSOC);
+
+            // FK-safe hodnoty pro INSERT
+            $zastupovany_id = $vytvoril_user_id;
+        } else {
+            $global_all_users = 0;
+
+            // Kontrola duplikátu pro běžná pravidla
+            $stmt_dup = $pdo->prepare($queries['moznosti_zastupovani_check_duplicate']);
+            $stmt_dup->execute([
+                ':zastupovany_id' => $zastupovany_id,
+                ':typ_zastupce' => $typ_zastupce,
+                ':zastupce_user_id' => $zastupce_user_id,
+                ':zastupce_role_id' => $zastupce_role_id,
+                ':zastupce_usek_id' => $zastupce_usek_id,
+                ':zastupce_lokalita_id' => $zastupce_lokalita_id,
+                ':exclude_id' => 0, // při create nechceme nic vyloučit
+            ]);
+            $dup_result = $stmt_dup->fetch(PDO::FETCH_ASSOC);
+        }
 
         if ($dup_result && (int)$dup_result['cnt'] > 0) {
             return array('status' => 'error', 'message' => 'Toto pravidlo již existuje');
@@ -1840,6 +2365,7 @@ function handle_moznosti_zastupovani_create($data, $pdo) {
         $stmt = $pdo->prepare($queries['moznosti_zastupovani_create']);
         $stmt->execute([
             ':zastupovany_id' => $zastupovany_id,
+            ':global_all_users' => $global_all_users,
             ':typ_zastupce' => $typ_zastupce,
             ':zastupce_user_id' => $zastupce_user_id,
             ':zastupce_role_id' => $zastupce_role_id,
@@ -1851,7 +2377,7 @@ function handle_moznosti_zastupovani_create($data, $pdo) {
 
         $new_id = (int)$pdo->lastInsertId();
 
-        error_log("✅ MOŽNOST ZASTUPOVÁNÍ VYTVOŘENA: ID=$new_id, zastupovany=$zastupovany_id, typ=$typ_zastupce, vytvoril=$vytvoril_user_id");
+        error_log("✅ MOŽNOST ZASTUPOVÁNÍ VYTVOŘENA: ID=$new_id, zastupovany=$zastupovany_id, typ=$typ_zastupce, global=" . ($is_global_all_users ? '1' : '0') . ", vytvoril=$vytvoril_user_id");
 
         return array('status' => 'ok', 'message' => 'Možnost zastupování vytvořena', 'id' => $new_id);
 
@@ -1926,17 +2452,48 @@ function handle_moznosti_zastupovani_update($data, $pdo) {
     $zastupce_lokalita_id = !empty($data['zastupce_lokalita_id']) ? (int)$data['zastupce_lokalita_id'] : null;
     $poznamka = isset($data['poznamka']) ? trim($data['poznamka']) : '';
 
+    // Alias "all" -> globální pravidlo (bez konkrétní skupiny)
+    if ($typ_zastupce === 'all') {
+        $typ_zastupce = 'role';
+        $zastupce_user_id = null;
+        $zastupce_role_id = null;
+        $zastupce_usek_id = null;
+        $zastupce_lokalita_id = null;
+    }
+
     // Validace
     if ($id <= 0) {
         return array('status' => 'error', 'message' => 'Neplatné ID');
     }
 
-    if ($zastupovany_id <= 0) {
-        return array('status' => 'error', 'message' => 'Neplatné zastupovany_id');
-    }
-
     if (!in_array($typ_zastupce, ['user', 'role', 'usek', 'lokalita'])) {
         return array('status' => 'error', 'message' => 'Neplatný typ_zastupce');
+    }
+
+    try {
+        $stmt_existing = $pdo->prepare("SELECT zastupovany_id, global_all_users FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " WHERE id = :id LIMIT 1");
+        $stmt_existing->execute([':id' => $id]);
+        $existing_rule = $stmt_existing->fetch(PDO::FETCH_ASSOC);
+        if (!$existing_rule) {
+            return array('status' => 'error', 'message' => 'Pravidlo nebylo nalezeno');
+        }
+        $existing_is_global = (int)($existing_rule['global_all_users'] ?? 0) === 1;
+    } catch (PDOException $e) {
+        error_log("moznosti_zastupovani_update load-existing DB error: " . $e->getMessage());
+        return array('status' => 'error', 'message' => 'Chyba při načítání pravidla');
+    }
+
+    if ($existing_is_global) {
+        // Globální pravidlo musí zůstat globální.
+        $zastupovany_id = (int)$existing_rule['zastupovany_id'];
+        $global_all_users = 1;
+        if ($typ_zastupce === 'user') {
+            return array('status' => 'error', 'message' => 'Globální pravidlo nelze nastavit pro konkrétního uživatele');
+        }
+    } elseif ($zastupovany_id <= 0) {
+        return array('status' => 'error', 'message' => 'Neplatné zastupovany_id');
+    } else {
+        $global_all_users = 0;
     }
 
     // Kontrola, že odpovídající ID je vyplněné/správné
@@ -1961,6 +2518,7 @@ function handle_moznosti_zastupovani_update($data, $pdo) {
         $stmt->execute([
             ':id' => $id,
             ':zastupovany_id' => $zastupovany_id,
+            ':global_all_users' => $global_all_users,
             ':typ_zastupce' => $typ_zastupce,
             ':zastupce_user_id' => $zastupce_user_id,
             ':zastupce_role_id' => $zastupce_role_id,
@@ -2063,15 +2621,19 @@ function handle_moznosti_zastupovani_list_all($data, $pdo) {
 
         $rules = array();
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $is_global_all_users = (int)($row['global_all_users'] ?? 0) === 1;
             $rule = array(
                 'id' => (int)$row['id'],
                 'zastupovany_id' => (int)$row['zastupovany_id'],
                 'zastupovany_username' => $row['zastupovany_username'],
                 'zastupovany_jmeno' => $row['zastupovany_jmeno'],
                 'zastupovany_prijmeni' => $row['zastupovany_prijmeni'],
-                'zastupovany_display' => trim($row['zastupovany_jmeno'] . ' ' . $row['zastupovany_prijmeni']) . ' (' . $row['zastupovany_username'] . ')',
+                'zastupovany_display' => $is_global_all_users
+                    ? '🌐 Všichni uživatelé (globální pravidlo)'
+                    : trim($row['zastupovany_jmeno'] . ' ' . $row['zastupovany_prijmeni']) . ' (' . $row['zastupovany_username'] . ')',
+                'global_all_users' => $is_global_all_users,
                 'typ_zastupce' => $row['typ_zastupce'],
-                'poznamka' => $row['poznamka'],
+                'poznamka' => (string)($row['poznamka'] ?? ''),
                 'aktivni' => (int)$row['aktivni'],
                 'dt_vytvoreni' => $row['dt_vytvoreni'],
             );
@@ -2089,7 +2651,7 @@ function handle_moznosti_zastupovani_list_all($data, $pdo) {
                     $rule['zastupce_role_id'] = $row['zastupce_role_id'] ? (int)$row['zastupce_role_id'] : null;
                     $rule['zastupce_role_kod'] = $row['zastupce_role_kod'];
                     $rule['zastupce_role_nazev'] = $row['zastupce_role_nazev'];
-                    $rule['zastupce_display'] = $row['zastupce_role_id'] ? ($row['zastupce_role_nazev'] . ' (' . $row['zastupce_role_kod'] . ')') : 'Všechny role';
+                    $rule['zastupce_display'] = $row['zastupce_role_id'] ? ($row['zastupce_role_nazev'] . ' (' . $row['zastupce_role_kod'] . ')') : 'Všichni uživatelé';
                     break;
                 case 'usek':
                     $rule['zastupce_usek_id'] = $row['zastupce_usek_id'] ? (int)$row['zastupce_usek_id'] : null;

@@ -1498,7 +1498,7 @@ $queries['substitution_candidates'] = "
         SELECT 1
         FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
         WHERE m.aktivni = 1
-          AND m.zastupovany_id = :zastupovany_id2
+          AND (m.zastupovany_id = :zastupovany_id2 OR m.global_all_users = 1)
           AND (
             (m.typ_zastupce = 'user' AND m.zastupce_user_id = u.id)
             OR (m.typ_zastupce = 'role' AND m.zastupce_role_id IS NOT NULL AND m.zastupce_role_id IN (
@@ -1523,7 +1523,7 @@ $queries['substitution_validate_candidate_pair'] = "
           SELECT 1
           FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
           WHERE m.aktivni = 1
-            AND m.zastupovany_id = :zastupovany_id2
+            AND (m.zastupovany_id = :zastupovany_id2 OR m.global_all_users = 1)
             AND (
               (m.typ_zastupce = 'user' AND m.zastupce_user_id = u.id)
               OR (m.typ_zastupce = 'role' AND m.zastupce_role_id IS NOT NULL AND m.zastupce_role_id IN (
@@ -1591,7 +1591,6 @@ $queries['substitution_all_users_for_admin'] = "
         u.id, u.username, u.jmeno, u.prijmeni, u.titul_pred, u.titul_za, u.email
     FROM " . TBL_UZIVATELE . " u
     WHERE u.aktivni = 1
-    AND u.id != :current_user_id
     ORDER BY u.prijmeni, u.jmeno
 ";
 
@@ -1615,7 +1614,7 @@ $queries['moznosti_zastupovani_list'] = "
     LEFT JOIN " . TBL_ROLE . " r ON m.zastupce_role_id = r.id
     LEFT JOIN " . TBL_USEKY . " us ON m.zastupce_usek_id = us.id
     LEFT JOIN " . TBL_LOKALITY . " l ON m.zastupce_lokalita_id = l.id
-    WHERE m.zastupovany_id = :zastupovany_id
+    WHERE (m.zastupovany_id = :zastupovany_id OR m.global_all_users = 1)
     AND m.aktivni = 1
     ORDER BY m.typ_zastupce, m.id
 ";
@@ -1637,20 +1636,20 @@ $queries['moznosti_zastupovani_list_all'] = "
         l.nazev AS zastupce_lokalita_nazev,
         l.kod AS zastupce_lokalita_kod
     FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
-    JOIN " . TBL_UZIVATELE . " zu ON m.zastupovany_id = zu.id
+    LEFT JOIN " . TBL_UZIVATELE . " zu ON m.zastupovany_id = zu.id AND m.zastupovany_id > 0
     LEFT JOIN " . TBL_UZIVATELE . " u_user ON m.zastupce_user_id = u_user.id
     LEFT JOIN " . TBL_ROLE . " r ON m.zastupce_role_id = r.id
     LEFT JOIN " . TBL_USEKY . " us ON m.zastupce_usek_id = us.id
     LEFT JOIN " . TBL_LOKALITY . " l ON m.zastupce_lokalita_id = l.id
     WHERE m.aktivni = 1
-    ORDER BY zu.prijmeni, zu.jmeno, m.typ_zastupce
+    ORDER BY m.zastupovany_id ASC, zu.prijmeni, zu.jmeno, m.typ_zastupce
 ";
 
 // Vytvoření nové možnosti zastupování
 $queries['moznosti_zastupovani_create'] = "
     INSERT INTO " . TBL_MOZNOSTI_ZASTUPOVANI . "
-    (zastupovany_id, typ_zastupce, zastupce_user_id, zastupce_role_id, zastupce_usek_id, zastupce_lokalita_id, poznamka, vytvoril_user_id, dt_vytvoreni)
-    VALUES (:zastupovany_id, :typ_zastupce, :zastupce_user_id, :zastupce_role_id, :zastupce_usek_id, :zastupce_lokalita_id, :poznamka, :vytvoril_user_id, NOW())
+    (zastupovany_id, global_all_users, typ_zastupce, zastupce_user_id, zastupce_role_id, zastupce_usek_id, zastupce_lokalita_id, poznamka, vytvoril_user_id, dt_vytvoreni)
+    VALUES (:zastupovany_id, :global_all_users, :typ_zastupce, :zastupce_user_id, :zastupce_role_id, :zastupce_usek_id, :zastupce_lokalita_id, :poznamka, :vytvoril_user_id, NOW())
 ";
 
 // Smazání možnosti zastupování (soft delete)
@@ -1665,6 +1664,7 @@ $queries['moznosti_zastupovani_update'] = "
     UPDATE " . TBL_MOZNOSTI_ZASTUPOVANI . "
     SET 
         zastupovany_id = :zastupovany_id,
+        global_all_users = :global_all_users,
         typ_zastupce = :typ_zastupce,
         zastupce_user_id = :zastupce_user_id,
         zastupce_role_id = :zastupce_role_id,
@@ -1717,6 +1717,7 @@ $queries['moznosti_zastupovani_is_candidate'] = "
             SELECT u.lokalita_id FROM " . TBL_UZIVATELE . " u WHERE u.id = :user_id4 AND u.aktivni = 1 AND u.lokalita_id IS NOT NULL
         ))
         OR (m.typ_zastupce IN ('role','usek','lokalita') AND m.zastupce_role_id IS NULL AND m.zastupce_usek_id IS NULL AND m.zastupce_lokalita_id IS NULL)
+        OR m.global_all_users = 1
     )
 ";
 

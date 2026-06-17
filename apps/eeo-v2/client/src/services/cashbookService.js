@@ -348,7 +348,7 @@ const cashbookAPI = {
 
   /**
    * 1️⃣2️⃣ Získání seznamu přiřazení pokladen
-   * @param {number|null} userId - ID uživatele (0 = všechna pro admina, null = jen aktuální uživatel)
+   * @param {number|null|undefined} userId - ID uživatele (undefined = aktuální + zastupovaní, null = všechna pro admina)
    * @param {boolean} activeOnly - Pouze aktivní přiřazení (default: true)
    * @returns {Promise<Object>} Response s polem assignments
    */
@@ -357,9 +357,14 @@ const cashbookAPI = {
       const auth = await getAuthData();
       const payload = {
         ...auth,
-        active_only: activeOnly,
-        uzivatel_id: userId  // null = všechna přiřazení
+        active_only: activeOnly
       };
+
+      // undefined => backend vrátí aktuálního uživatele + aktivně zastupované
+      // null => backend vrátí všechna přiřazení (jen pro správce)
+      if (userId !== undefined) {
+        payload.uzivatel_id = userId;
+      }
 
       const response = await api2.post('cashbox-assignments-list', payload);
       return response.data;

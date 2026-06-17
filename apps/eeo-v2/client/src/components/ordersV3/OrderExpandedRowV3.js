@@ -907,11 +907,11 @@ const resolveApprovalSubstitutionInfo = (source) => {
 };
 
 const getApprovalActionLabel = (source) => {
-  if (!source) return 'Schváleno';
+  if (!source) return 'Schvalovatel';
 
   const statusByCheckbox = String(source.stav_schvaleni || '').toLowerCase();
   if (statusByCheckbox === 'neschvaleno') return 'Zamítnuto';
-  if (statusByCheckbox === 'ceka_se') return 'Vráceno';
+  if (statusByCheckbox === 'ceka_se') return 'Čeká se';
 
   const states = parseWorkflowStates(source.stav_workflow_kod)
     .map((state) => {
@@ -922,8 +922,8 @@ const getApprovalActionLabel = (source) => {
 
   const lastState = states.length > 0 ? states[states.length - 1] : '';
   if (lastState === 'ZAMITNUTA') return 'Zamítnuto';
-  if (lastState === 'CEKA_SE') return 'Vráceno';
-  return 'Schváleno';
+  if (lastState === 'CEKA_SE') return 'Čeká se';
+  return 'Schvalovatel';
 };
 
 const getLastOrderChangeDate = (source) => {
@@ -1486,6 +1486,20 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
     [detail?.substitution_info?.schvalovatel, detail?.zastupovani_akce]
   );
   const approvalActionLabel = useMemo(() => getApprovalActionLabel(detail), [detail?.stav_schvaleni, detail?.stav_workflow_kod]);
+  const approvalRowColor = useMemo(() => {
+    const lastState = workflowStates.length > 0 ? workflowStates[workflowStates.length - 1] : '';
+    const statusByCheckbox = String(detail?.stav_schvaleni || '').toLowerCase();
+
+    if (lastState === 'ZAMITNUTA' || statusByCheckbox === 'neschvaleno') {
+      return '#dc2626'; // červená: zamítnuto
+    }
+
+    if (lastState === 'CEKA_SE' || statusByCheckbox === 'ceka_se') {
+      return '#2563eb'; // modrá: čeká se
+    }
+
+    return '#059669'; // zelená: schváleno (výchozí)
+  }, [workflowStates, detail?.stav_schvaleni]);
   
   // 📥 Download/Preview handler pro přílohy - detekce typu a zobrazení ve vieweru
   const handleDownloadAttachment = async (attachment, orderId) => {
@@ -2481,13 +2495,13 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                 </div>
               )}
 
-              {/* 2. Schválil */}
+              {/* 2. Schvalovatel */}
               {(detail.schvalovatel_jmeno || detail.schvalovatel_prijmeni) && detail.dt_schvaleni && (
                 <div style={{ marginBottom: '0.75rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '0.5rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Jméno */}
-                    <div style={{ fontWeight: 600, fontSize: '0.8rem', color: '#059669' }}>
-                      2. Schválil {approvalSubstitutionInfo ? '(v zástupu)' : ''}
+                    <div style={{ fontWeight: 600, fontSize: '0.8rem', color: approvalRowColor }}>
+                      2. Schvalovatel {approvalSubstitutionInfo ? '(v zástupu)' : ''}
                     </div>
                     <div style={{ fontSize: '0.875rem', fontWeight: 600, color: '#1e293b' }}>
                       {formatUserName(detail.schvalovatel_jmeno, detail.schvalovatel_prijmeni, detail.schvalovatel_titul_pred, detail.schvalovatel_titul_za)}

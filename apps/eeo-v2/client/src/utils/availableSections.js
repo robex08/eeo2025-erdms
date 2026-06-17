@@ -12,9 +12,8 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   const sections = [];
   
   // Helper pro kontrolu admin role
-  const isAdmin = userDetail?.roles && userDetail.roles.some(role => 
-    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
-  );
+  const isAdmin = !!(hasPermission && hasPermission('ADMIN'));
+  const isSuperAdmin = !!(hasPermission && hasPermission('SUPERADMIN'));
 
   // 🏠 DASHBOARD - vždy dostupný pro všechny přihlášené
   sections.push({ value: 'dashboard', label: 'Domovská stránka' });
@@ -85,7 +84,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   }
   
   // DEBUG - pouze pro SUPERADMIN
-  if (userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN')) {
+  if (isSuperAdmin) {
     sections.push({ value: 'debug', label: 'Debug panel' });
   }
   

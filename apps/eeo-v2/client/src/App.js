@@ -1209,9 +1209,9 @@ function App() {
                       hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
                     ))
                   ) && <Route path="/material-overview" element={<Navigate to="/majetek-overview" replace />} />}
-                  {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/app-settings" element={<AppSettings />} />}
-                  {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR') && <Route path="/admin/audit-log" element={<AuditLogPage />} />}
-                  {isLoggedIn && userDetail?.roles && userDetail.roles.some(role => role.kod_role === 'SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
+                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/app-settings" element={<AppSettings />} />}
+                  {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/admin/audit-log" element={<AuditLogPage />} />}
+                  {isLoggedIn && hasPermission && hasPermission('SUPERADMIN') && <Route path="/organization-hierarchy" element={<OrganizationHierarchy />} />}
                   {isLoggedIn && hasPermission && hasPermission('PLANNING_MANAGE') && <Route path="/planning" element={<PlanningAdminPage />} />}
                   {isLoggedIn && (
                     (hasAdminRole && hasAdminRole()) ||

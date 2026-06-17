@@ -5854,6 +5854,9 @@ const Invoices25List = () => {
                                   .trim()
                                   .toLowerCase();
 
+                              const substitutionInfo = invoice.substitution_info?.potvrdil_vecnou_spravnost;
+                              const isSubstitutionConfirm = !!(substitutionInfo && substitutionInfo.is_substitution);
+
                               const confirmedId = invoice.potvrdil_vecnou_spravnost_id;
                               const assignedId = invoice.fa_predana_zam_id;
                               const confirmedNormalized = normalize(invoice.potvrdil_vecnou_spravnost_zkracene);
@@ -5873,10 +5876,10 @@ const Invoices25List = () => {
                                   <FontAwesomeIcon icon={faUser} style={{ color: '#64748b', fontSize: '0.7rem' }} />
                                   <strong
                                     style={{
-                                      background: isDifferent ? '#ffedd5' : 'transparent',
-                                      borderRadius: isDifferent ? '6px' : '0',
-                                      padding: isDifferent ? '1px 5px' : '0',
-                                      color: isDifferent ? '#9a3412' : 'inherit',
+                                      background: isSubstitutionConfirm ? '#fef3c7' : (isDifferent ? '#ffedd5' : 'transparent'),
+                                      borderRadius: (isSubstitutionConfirm || isDifferent) ? '6px' : '0',
+                                      padding: (isSubstitutionConfirm || isDifferent) ? '1px 5px' : '0',
+                                      color: isSubstitutionConfirm ? '#111827' : (isDifferent ? '#9a3412' : 'inherit'),
                                       whiteSpace: 'nowrap',
                                       display: 'inline-block'
                                     }}

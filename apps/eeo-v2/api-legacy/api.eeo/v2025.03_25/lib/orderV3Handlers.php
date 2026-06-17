@@ -401,6 +401,82 @@ function safeJsonDecode($json, $default = null) {
 }
 
 /**
+ * Vrátí prioritní seznam typů schvalovací akce pro objednávku.
+ * Potřeba pro korektní dohledání zastupování u stavů SCHVALENA/ZAMITNUTA/CEKA_SE.
+ *
+ * @param array $order
+ * @return array
+ */
+function resolveOrderApprovalActionTypesForSubstitution(array $order) {
+    $last_state = '';
+    if (!empty($order['stav_workflow_kod'])) {
+        $workflow = $order['stav_workflow_kod'];
+        if (is_string($workflow)) {
+            $workflow = safeJsonDecode($workflow, array());
+        }
+
+        if (is_array($workflow) && !empty($workflow)) {
+            $last = end($workflow);
+            if (is_string($last)) {
+                $last_state = strtoupper(trim($last));
+            } elseif (is_array($last)) {
+                $last_state = strtoupper(trim((string)($last['kod_stavu'] ?? $last['nazev_stavu'] ?? '')));
+            }
+        } elseif (is_string($workflow)) {
+            $last_state = strtoupper(trim($workflow));
+        }
+    }
+
+    $approval_status = strtolower(trim((string)($order['stav_schvaleni'] ?? '')));
+
+    if ($last_state === 'ZAMITNUTA' || $approval_status === 'neschvaleno') {
+        return array('REJECT', 'APPROVE', 'CONFIRM', 'POSTPONE');
+    }
+
+    if ($last_state === 'CEKA_SE' || $approval_status === 'ceka_se') {
+        return array('CONFIRM', 'POSTPONE', 'APPROVE', 'REJECT');
+    }
+
+    if ($last_state === 'SCHVALENA' || $approval_status === 'schvaleno') {
+        return array('APPROVE', 'CONFIRM', 'REJECT', 'POSTPONE');
+    }
+
+    return array('APPROVE', 'REJECT', 'CONFIRM', 'POSTPONE');
+}
+
+/**
+ * Dohledá substitution info pro schvalovatele objednávky s fallbackem napříč typy akcí.
+ *
+ * @param PDO $db
+ * @param array $order
+ * @return array|bool
+ */
+function resolveOrderApprovalSubstitutionInfo($db, array $order) {
+    if (empty($order['schvalovatel_id']) || empty($order['dt_schvaleni']) || empty($order['id'])) {
+        return false;
+    }
+
+    $action_types = resolveOrderApprovalActionTypesForSubstitution($order);
+
+    foreach ($action_types as $action_type) {
+        $sub_info = get_substitution_info_for_action(
+            $db,
+            (int)$order['schvalovatel_id'],
+            $action_type,
+            'OBJEDNAVKA',
+            (int)$order['id'],
+            $order['dt_schvaleni']
+        );
+
+        if (!empty($sub_info)) {
+            return $sub_info;
+        }
+    }
+
+    return false;
+}
+
+/**
  * Normalizuje text pro diakritiku + lowercase (CZE)
  * @param string|null $value
  * @return string
@@ -2641,19 +2717,10 @@ function handle_order_v3_list($input, $config, $queries) {
             // Inicializuj pole pro substitution info
             $order['substitution_info'] = [];
             
-            // Schválení objednávky (schvalovatel_id + dt_schvaleni)
-            if (!empty($order['schvalovatel_id']) && !empty($order['dt_schvaleni'])) {
-                $sub_info = get_substitution_info_for_action(
-                    $db,
-                    (int)$order['schvalovatel_id'],
-                    'APPROVE',
-                    'OBJEDNAVKA',
-                    (int)$order['id'],
-                    $order['dt_schvaleni']
-                );
-                if ($sub_info) {
-                    $order['substitution_info']['schvalovatel'] = $sub_info;
-                }
+            // Schvalovatel objednávky (schválení/zamítnutí/čeká se) - s fallbackem typů akcí
+            $sub_info = resolveOrderApprovalSubstitutionInfo($db, $order);
+            if ($sub_info) {
+                $order['substitution_info']['schvalovatel'] = $sub_info;
             }
             
             // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)

@@ -4,7 +4,7 @@ import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import {
   UserCheck, Plus, Trash2, Calendar, RefreshCw, AlertCircle, CheckCircle,
-  X, Info, Users, Clock, Shield, Eye, Loader, Star, Bell, Edit2, ChevronRight, XCircle,
+  X, Info, Users, Clock, Shield, Eye, Loader, Star, Bell, Edit2, ChevronRight, XCircle, Wallet2,
 } from 'lucide-react';
 import ConfirmDialog from './ConfirmDialog';
 import { CustomSelect } from './CustomSelect';
@@ -20,14 +20,15 @@ import {
   fetchAllSubstitutionsAdmin,
   fetchSubstitutionAuditLog,
   fetchManageableUsers,
+  fetchCashbookTransferEligibility,
 } from '../services/apiSubstitution';
 import OrdersPaginationV3 from './ordersV3/OrdersPaginationV3';
 
 // ─── Animace ──────────────────────────────────────────────────────────────────
-const spinAnim   = keyframes`from{transform:rotate(0deg);}to{transform:rotate(360deg);}`;
 const fadeInUp   = keyframes`from{opacity:0;transform:translateY(16px);}to{opacity:1;transform:translateY(0);}`;
 const fadeInBg   = keyframes`from{opacity:0;}to{opacity:1;}`;
 const slideInUp  = keyframes`from{opacity:0;transform:translateY(32px) scale(.97);}to{opacity:1;transform:translateY(0) scale(1);}`;
+const spinAnim   = keyframes`from{transform:rotate(0deg);}to{transform:rotate(360deg);}`;
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 const Container = styled.div`
@@ -295,7 +296,7 @@ const ModalBox = styled.div`
   background: white;
   border-radius: 16px;
   width: 100%;
-  max-width: 620px;
+  max-width: 760px;
   max-height: 92vh;
   overflow: hidden;
   display: flex;
@@ -401,6 +402,29 @@ const ToggleText = styled.div`
   .td { display: block; font-size: .72rem; color: #64748b; margin-top: 1px; }
 `;
 
+const ToggleFooterWarning = styled.div`
+  width: 100%;
+  margin-top: 0;
+  padding: 0.45rem 0.7rem;
+  border: 1.5px solid #fda4af;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  background: #fff1f2;
+  color: #b91c1c;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+
+  svg {
+    width: 13px;
+    height: 13px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+`;
+
 const Track = styled.div`
   width: 40px; height: 22px; border-radius: 11px; flex-shrink: 0;
   background: ${({ $on, $c }) => $on ? ($c || '#6366f1') : '#cbd5e1'};
@@ -416,7 +440,19 @@ const Thumb = styled.div`
 `;
 
 const ToggleGrid = styled.div`
-  display: flex; flex-direction: column; gap: 0.45rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+
+  @media (max-width: 700px) {
+    grid-template-columns: 1fr;
+  }
+`;
+
+const ToggleCard = styled.div`
+  width: 100%;
+  display: flex;
+  flex-direction: column;
 `;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -485,14 +521,26 @@ const OPRAVNENI_META = [
     visible: () => true,
   },
   {
-    key: 'approve', label: 'Schvalovat',
-    desc: 'Zástupce může schvalovat doklady vaším jménem',
+    key: 'module_visibility', label: 'Přenést viditelnost modulů',
+    desc: 'Přenese viditelnost modulů (menu/sekce) ze zastupovaného na zástupce',
+    icon: Eye, iconColor: '#0ea5e9', trackColor: '#0ea5e9', bg: '#ecfeff', borderColor: '#a5f3fc',
+    visible: () => true,
+  },
+  {
+    key: 'cashbook_transfer', label: 'Přenést pokladnu',
+    desc: 'Přenese pokladny zastupovaného v rozsahu jeho oprávnění',
+    icon: Wallet2, iconColor: '#0284c7', trackColor: '#0284c7', bg: '#eff6ff', borderColor: '#bfdbfe',
+    visible: () => true,
+  },
+  {
+    key: 'approve', label: 'Schvalovat objednávky',
+    desc: 'Týká se schvalování objednávek (Příkazce operace)',
     icon: CheckCircle, iconColor: '#10b981', trackColor: '#10b981', bg: '#f0fdf4', borderColor: '#86efac',
     visible: () => true,
   },
   {
-    key: 'confirm', label: 'Potvrzovat',
-    desc: 'Zástupce může potvrzovat doklady vaším jménem',
+    key: 'confirm', label: 'Potvrzovat faktury (věcná správnost)',
+    desc: 'Týká se potvrzení faktury ve věcné správnosti',
     icon: Shield, iconColor: '#f59e0b', trackColor: '#f59e0b', bg: '#fffbeb', borderColor: '#fde68a',
     visible: () => true,
   },
@@ -514,7 +562,7 @@ const EMPTY_FORM = () => ({
   zastupce_id: '',
   dt_od: today(),
   dt_do: '',
-  opravneni: { view: true, approve: false, confirm: false, administrator: false, superadmin: false },
+  opravneni: { view: true, module_visibility: true, cashbook_transfer: false, approve: false, confirm: false, administrator: false, superadmin: false },
   send_notification: true,
   popis: '',
 });
@@ -524,7 +572,7 @@ const EMPTY_ADMIN_FORM = () => ({
   zastupce_id: '',
   dt_od: today(),
   dt_do: '',
-  opravneni: { view: true, approve: false, confirm: false },
+  opravneni: { view: true, module_visibility: true, cashbook_transfer: false, approve: false, confirm: false },
   popis: '',
 });
 
@@ -569,6 +617,17 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
   const [adminForm, setAdminForm]   = useState(EMPTY_ADMIN_FORM());
   const [adminFormSaving, setAdminFormSaving] = useState(false);
   const [adminFormError, setAdminFormError]   = useState('');
+  const [cashbookTransferEligibility, setCashbookTransferEligibility] = useState({
+    eligible: false,
+    has_cashbook_rights: false,
+    has_cashbook_access: false,
+    has_global_cashbook_access: false,
+    cashbox_assignment_count: 0,
+    reason: '',
+    can_order_approve: false,
+    has_order_approval_rights: false,
+    order_approve_reason: '',
+  });
 
   // CustomSelect state
   const [selectStates, setSelectStates]               = useState({});
@@ -678,6 +737,73 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     loadAdminCandidates();
   }, [isAdmin, modal, adminForm.zastupovany_id, token, username]);
 
+  // Eligibility pro přenos pokladny podle zastupovaného uživatele
+  useEffect(() => {
+    const loadCashbookEligibility = async () => {
+      if (!modal) return;
+
+      const isAdminModal = modal === 'admin';
+      const isEditModal = modal === 'edit';
+      const targetUserId = isAdminModal
+        ? parseInt(adminForm.zastupovany_id || '', 10)
+        : (isEditModal
+          ? parseInt(editingSub?.zastupovany?.id || editingSub?.zastupovany_id || '', 10)
+          : null);
+      const hasExplicitTarget = !!targetUserId && !Number.isNaN(targetUserId);
+      const shouldUseSelfTarget = !isAdminModal && !isEditModal;
+
+      if (!shouldUseSelfTarget && !hasExplicitTarget) {
+        setCashbookTransferEligibility(prev => ({
+          ...prev,
+          eligible: false,
+          can_order_approve: false,
+          reason: isAdminModal ? 'Vyberte zastupovaného uživatele.' : 'Přenos pokladny je dostupný při úpravě konkrétního zastupování.',
+          order_approve_reason: isAdminModal ? 'Vyberte zastupovaného uživatele.' : 'Schvalování je dostupné při úpravě konkrétního zastupování.',
+        }));
+        return;
+      }
+
+      try {
+        const request = { token, username };
+        if (hasExplicitTarget) {
+          request.zastupovany_id = targetUserId;
+        }
+        const eligibility = await fetchCashbookTransferEligibility(request);
+        setCashbookTransferEligibility(eligibility);
+
+        if (!eligibility.eligible) {
+          if (isAdminModal) {
+            setAdminForm(p => ({ ...p, opravneni: { ...p.opravneni, cashbook_transfer: false } }));
+          } else {
+            setForm(p => ({ ...p, opravneni: { ...p.opravneni, cashbook_transfer: false } }));
+          }
+        }
+
+        if (!eligibility.can_order_approve) {
+          if (isAdminModal) {
+            setAdminForm(p => ({ ...p, opravneni: { ...p.opravneni, approve: false } }));
+          } else {
+            setForm(p => ({ ...p, opravneni: { ...p.opravneni, approve: false } }));
+          }
+        }
+      } catch (e) {
+        setCashbookTransferEligibility({
+          eligible: false,
+          has_cashbook_rights: false,
+          has_cashbook_access: false,
+          has_global_cashbook_access: false,
+          cashbox_assignment_count: 0,
+          reason: 'Nepodařilo se ověřit přenos pokladny.',
+          can_order_approve: false,
+          has_order_approval_rights: false,
+          order_approve_reason: 'Nepodařilo se ověřit schvalovací oprávnění.',
+        });
+      }
+    };
+
+    loadCashbookEligibility();
+  }, [modal, adminForm.zastupovany_id, editingSub, token, username]);
+
   // Zavření modalu
   function closeModal() {
     setModal(null);
@@ -686,6 +812,17 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     setAdminFormError('');
     setForm(EMPTY_FORM());
     setAdminForm(EMPTY_ADMIN_FORM());
+    setCashbookTransferEligibility({
+      eligible: false,
+      has_cashbook_rights: false,
+      has_cashbook_access: false,
+      has_global_cashbook_access: false,
+      cashbox_assignment_count: 0,
+      reason: '',
+      can_order_approve: false,
+      has_order_approval_rights: false,
+      order_approve_reason: '',
+    });
     setSelectStates({});
     setSearchStates({});
   }
@@ -717,6 +854,8 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
       dt_do: sub.dt_do || '',
       opravneni: {
         view:          !!perms.view,
+        module_visibility: (typeof perms.module_visibility !== 'undefined') ? !!perms.module_visibility : !!perms.view,
+        cashbook_transfer: (typeof perms.cashbook_transfer !== 'undefined') ? !!perms.cashbook_transfer : false,
         approve:       !!perms.approve,
         confirm:       !!perms.confirm,
         administrator: !!perms.administrator,
@@ -754,8 +893,23 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     if (!form.dt_od || !form.dt_do) { setFormError('Vyplňte datum začátku i konce zastupování.'); return; }
     if (modal !== 'edit' && form.dt_od < today()) { setFormError('Datum začátku nesmí být v minulosti.'); return; }
     if (form.dt_od >= form.dt_do) { setFormError('Datum začátku musí být před datem konce.'); return; }
+    if (!form.popis || !form.popis.trim()) {
+      setFormError('Poznámka / odůvodnění je povinná.');
+      return;
+    }
     const opravneni = {};
     Object.keys(form.opravneni).forEach(k => { opravneni[k] = form.opravneni[k] ? 1 : 0; });
+    if (!opravneni.module_visibility) {
+      opravneni.cashbook_transfer = 0;
+    }
+    if (opravneni.cashbook_transfer && !cashbookTransferEligibility.eligible) {
+      setFormError(cashbookTransferEligibility.reason || 'Přenos pokladny nelze pro tohoto uživatele povolit.');
+      return;
+    }
+    if (opravneni.approve && !cashbookTransferEligibility.can_order_approve) {
+      setFormError(cashbookTransferEligibility.order_approve_reason || 'Schvalovací oprávnění nelze pro tohoto uživatele povolit.');
+      return;
+    }
     opravneni.notify_zastupce = form.send_notification ? 1 : 0;
     const baseKeys = ['view', 'approve', 'confirm', 'administrator', 'superadmin'];
     if (!baseKeys.some(k => opravneni[k] === 1)) {
@@ -799,8 +953,20 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     if (adminForm.zastupovany_id === adminForm.zastupce_id) { setAdminFormError('Zastupovaný a zástupce nesmí být stejný uživatel.'); return; }
     if (!adminForm.dt_od || !adminForm.dt_do) { setAdminFormError('Vyplňte datum začátku i konce.'); return; }
     if (adminForm.dt_od >= adminForm.dt_do) { setAdminFormError('Datum začátku musí být před datem konce.'); return; }
+    if (!adminForm.popis || !adminForm.popis.trim()) { setAdminFormError('Poznámka / odůvodnění je povinná.'); return; }
     const opravneni = {};
     Object.keys(adminForm.opravneni).forEach(k => { opravneni[k] = adminForm.opravneni[k] ? 1 : 0; });
+    if (!opravneni.module_visibility) {
+      opravneni.cashbook_transfer = 0;
+    }
+    if (opravneni.cashbook_transfer && !cashbookTransferEligibility.eligible) {
+      setAdminFormError(cashbookTransferEligibility.reason || 'Přenos pokladny nelze pro tohoto uživatele povolit.');
+      return;
+    }
+    if (opravneni.approve && !cashbookTransferEligibility.can_order_approve) {
+      setAdminFormError(cashbookTransferEligibility.order_approve_reason || 'Schvalovací oprávnění nelze pro tohoto uživatele povolit.');
+      return;
+    }
     setAdminFormSaving(true);
     try {
       await createSubstitutionAdmin({
@@ -964,7 +1130,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
               ) : rows.map(sub => {
                 const status = getSubstStatus(sub);
                 const perms  = decodeOpravneni(sub.opravneni);
-                const canEdit   = canManageOwn && isFuture(sub);
+                const canEdit   = canManageOwn && (status === 'active' || status === 'future');
                 const canDelete = canManageOwn && (status === 'active' || status === 'future');
                 const initials  = getInitials(sub.zastupce?.jmeno, sub.zastupce?.prijmeni);
                 return (
@@ -1289,8 +1455,36 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     };
 
     const togglePerm = (k, checked) => {
-      if (isAdminModal) setAdminForm(p => ({ ...p, opravneni: { ...p.opravneni, [k]: checked } }));
-      else setForm(p => ({ ...p, opravneni: { ...p.opravneni, [k]: checked } }));
+      if (k === 'cashbook_transfer' && checked && !cashbookTransferEligibility.eligible) {
+        const msg = cashbookTransferEligibility.reason || 'Přenos pokladny nelze pro tohoto uživatele povolit.';
+        if (isAdminModal) setAdminFormError(msg);
+        else setFormError(msg);
+        return;
+      }
+      if (k === 'approve' && checked && !cashbookTransferEligibility.can_order_approve) {
+        const msg = cashbookTransferEligibility.order_approve_reason || 'Schvalovací oprávnění nelze pro tohoto uživatele povolit.';
+        if (isAdminModal) setAdminFormError(msg);
+        else setFormError(msg);
+        return;
+      }
+
+      if (isAdminModal) {
+        setAdminForm(p => {
+          const next = { ...p, opravneni: { ...p.opravneni, [k]: checked } };
+          if (k === 'module_visibility' && !checked) {
+            next.opravneni.cashbook_transfer = false;
+          }
+          return next;
+        });
+      } else {
+        setForm(p => {
+          const next = { ...p, opravneni: { ...p.opravneni, [k]: checked } };
+          if (k === 'module_visibility' && !checked) {
+            next.opravneni.cashbook_transfer = false;
+          }
+          return next;
+        });
+      }
     };
 
     const visiblePerms = OPRAVNENI_META.filter(m => {
@@ -1311,7 +1505,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
               ) : isEditModal ? (
                 <>
                   <h3>Upravit zastupování</h3>
-                  <p>Změna je možná pouze u plánovaných zastupování (ještě nezačala)</p>
+                  <p>Změna je možná u aktivních i plánovaných zastupování</p>
                 </>
               ) : (
                 <>
@@ -1422,20 +1616,61 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                     {visiblePerms.map((meta) => {
                       const Icon = meta.icon;
                       const on = !!currentForm.opravneni[meta.key];
+                      const approveFooterOn = meta.key === 'approve' && on;
+                      const moduleVisibilityOn = !!currentForm.opravneni.module_visibility;
+                      const cashbookDisabled = meta.key === 'cashbook_transfer' && (!moduleVisibilityOn || !cashbookTransferEligibility.eligible);
+                      const approveDisabled = meta.key === 'approve' && !cashbookTransferEligibility.can_order_approve;
+                      const toggleDisabled = cashbookDisabled || approveDisabled;
+                      const cashbookTitle = meta.key === 'cashbook_transfer' && cashbookDisabled
+                        ? (cashbookTransferEligibility.reason || 'Přenos pokladny není dostupný pro tohoto uživatele.')
+                        : undefined;
+                      const approveTitle = meta.key === 'approve' && approveDisabled
+                        ? (cashbookTransferEligibility.order_approve_reason || 'Schvalovat objednávky lze jen když je zastupovaný schvalovatel/příkazce.')
+                        : undefined;
+                      const toggleTitle = cashbookTitle || approveTitle;
                       return (
-                        <ToggleRow key={meta.key} $on={on} $c={meta.borderColor} $bg={on ? meta.bg : undefined}>
-                          <input type="checkbox" checked={on} onChange={e => togglePerm(meta.key, e.target.checked)} />
-                          <ToggleLeft>
-                            <ToggleIcon $on={on} $c={on ? meta.iconColor : undefined}>
-                              <Icon />
-                            </ToggleIcon>
-                            <ToggleText>
-                              <span className="tl">{meta.label}</span>
-                              <span className="td">{meta.desc}</span>
-                            </ToggleText>
-                          </ToggleLeft>
-                          <Track $on={on} $c={meta.trackColor}><Thumb $on={on} /></Track>
-                        </ToggleRow>
+                        <ToggleCard key={meta.key}>
+                          <ToggleRow
+                            $on={on}
+                            $c={meta.borderColor}
+                            $bg={on ? meta.bg : undefined}
+                            style={{
+                              ...(toggleDisabled ? { opacity: 0.6, cursor: 'not-allowed' } : {}),
+                              ...(approveFooterOn ? { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderBottom: 'none' } : {}),
+                            }}
+                            title={toggleTitle}
+                          >
+                            <input type="checkbox" checked={on} disabled={toggleDisabled} onChange={e => togglePerm(meta.key, e.target.checked)} />
+                            <ToggleLeft>
+                              <ToggleIcon $on={on} $c={on ? meta.iconColor : undefined}>
+                                <Icon />
+                              </ToggleIcon>
+                              <ToggleText>
+                                <span className="tl">{meta.label}</span>
+                                <span className="td">{meta.desc}</span>
+                              </ToggleText>
+                            </ToggleLeft>
+                            <Track $on={on} $c={meta.trackColor}><Thumb $on={on} /></Track>
+                          </ToggleRow>
+                          {approveFooterOn && (
+                            <ToggleFooterWarning>
+                              <AlertCircle />
+                              Pokud předáváte schvalovací pravomoc (Příkazce operace), zástup musí disponovat platným pověřením.
+                            </ToggleFooterWarning>
+                          )}
+                          {meta.key === 'cashbook_transfer' && cashbookDisabled && (
+                            <Alert $t="info" style={{ margin: '0.15rem 0 0.3rem' }}>
+                              <Info size={15} />
+                              {cashbookTransferEligibility.reason || 'Přenos pokladny je dostupný jen pokud zastupovaný má cashbook práva a přístup do pokladen.'}
+                            </Alert>
+                          )}
+                          {meta.key === 'approve' && approveDisabled && (
+                            <Alert $t="info" style={{ margin: '0.15rem 0 0.3rem' }}>
+                              <Info size={15} />
+                              {cashbookTransferEligibility.order_approve_reason || 'Schvalovat objednávky lze jen pokud je zastupovaný schvalovatel/příkazce.'}
+                            </Alert>
+                          )}
+                        </ToggleCard>
                       );
                     })}
                   </ToggleGrid>
@@ -1466,11 +1701,11 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
 
                 {/* Poznámka */}
                 <FormField style={{ gridColumn: '1 / -1' }}>
-                  <Label><Info size={11} /> Poznámka <span style={{ fontWeight: 400, textTransform: 'none' }}>(volitelně)</span></Label>
+                  <Label $req><Info size={11} /> Poznámka / odůvodnění</Label>
                   <Textarea
                     value={currentForm.popis}
                     onChange={e => setField('popis', e.target.value)}
-                    placeholder="Např. dovolená, nemoc, pracovní cesta…"
+                    placeholder="Např. dovolená, nemoc, pracovní cesta, důvod předání pravomoci…"
                     rows={2}
                   />
                 </FormField>
