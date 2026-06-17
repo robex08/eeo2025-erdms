@@ -5003,20 +5003,45 @@ function OrderForm25() {
     datum_vytvoreni: ''
   });
 
-  // 🐛 DEBUG: Interceptor pro setFormData - trackuje všechna volání
-  const setFormData = useCallback((newData) => {
-    const stack = new Error().stack;
-    const caller = stack.split('\n')[2]?.trim() || 'unknown';
+  const DB_DEBUG_FIELDS = [
+    'id',
+    'stav_objednavky',
+    'stav_workflow_kod',
+    'potvrzeni_dokonceni_objednavky',
+    'dokoncil_id',
+    'dt_dokonceni',
+    'uzivatel_akt_id',
+    'dt_aktualizace',
+  ];
 
-    if (typeof newData === 'function') {
-      _setFormData(prev => {
-        const result = newData(prev);
-        // DEBUG: FORMDATA UPDATE logging removed for performance
-        return result;
-      });
-    } else {
-      _setFormData(newData);
-    }
+  const SAVE_WORKFLOW_ONLY_FIELDS = [
+    'stav_objednavky',
+    'stav_workflow_kod',
+  ];
+
+  const logDbColumns = useCallback((label, payload) => {
+    if (typeof console === 'undefined') return;
+
+    const debugFields = (label === 'save-before-update' || label === 'save-after-update')
+      ? SAVE_WORKFLOW_ONLY_FIELDS
+      : DB_DEBUG_FIELDS;
+
+    const rows = {};
+    debugFields.forEach((field) => {
+      if (payload && Object.prototype.hasOwnProperty.call(payload, field)) {
+        rows[field] = payload[field];
+      }
+    });
+
+    console.info(`🗄️ [OrderForm25:${label}]`, rows);
+  }, []);
+
+  // 🐛 DEBUG: Interceptor pro setFormData - bez logování, pouze pro interní stav
+  const setFormData = useCallback((newData) => {
+    _setFormData(prev => {
+      const result = typeof newData === 'function' ? newData(prev) : newData;
+      return result;
+    });
   }, []);
 
   // 🔒 Registrace aktivní objednávky (pro detekci konfliktu v InvoiceEvidencePage)
@@ -8708,24 +8733,22 @@ function OrderForm25() {
 
   // 📊 Kompaktní debug logging pro workflow tracking
   const addDebugLog = (level, category, action, data) => {
-    const styles = {
-      workflow: 'background: #4CAF50; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;',
-      autosave: 'background: #2196F3; color: white; padding: 2px 6px; border-radius: 3px;',
-      db: 'background: #FF9800; color: white; padding: 2px 6px; border-radius: 3px; font-weight: bold;',
-      error: 'background: #f44336; color: white; padding: 2px 6px; border-radius: 3px;',
-    };
+    const prefix = `[OrderForm25:${category}:${action}]`;
 
-    // Workflow stavy - VŽDY zobrazuj
-    if (category === 'WORKFLOW' || category === 'DB-RESPONSE') {
+    // 🔕 Režim čisté konzole při ukládání:
+    // Necháváme jen explicitní logDbColumns('save-before-update'/'save-after-update').
+    const isSuppressedCategory = ['WORKFLOW', 'DB-RESPONSE', 'DB', 'SAVE', 'SAVE-V2'].includes(category);
+    if (isSuppressedCategory) {
+      return;
     }
-    // Autosave - pouze důležité události
-    else if (category === 'AUTOSAVE' && (action === 'saved' || action === 'triggered')) {
+
+    if (level === 'error') {
+      console.error(prefix, data);
+      return;
     }
-    // DB response - strukturovaný výpis
-    else if (category === 'DB' || category === 'SAVE') {
-    }
-    // Chyby - vždy
-    else if (level === 'error') {
+
+    if (category === 'AUTOSAVE' && (action === 'saved' || action === 'triggered')) {
+      console.info(prefix, data);
     }
   };
 
@@ -9125,12 +9148,27 @@ function OrderForm25() {
       const hasCastka = row.castka !== null && row.castka !== undefined && row.castka !== '' && !isNaN(parseFloat(row.castka));
       return hasLpRef && hasCastka;
     }).map(row => ({
-      // Backend validuje lp_cislo (string) vůči financovani.lp_kody.
-      // ✅ FIX: Backend validuje lp_cislo proti financovani.lp_kody = [140, 142] (číselné ID!)
-      // lp_id je primary, lp_cislo je textový (LPIT1) - ale backend chce číselné ID v lp_cislo
+      // Backend validuje lp_cislo proti financovani.lp_kody (ID LP), proto mapujeme vždy na ID.
       lp_cislo: (() => {
         const lpId = parseInt(row.lp_id, 10);
-        return Number.isFinite(lpId) && lpId > 0 ? lpId : null;
+        if (Number.isFinite(lpId) && lpId > 0) return lpId;
+
+        const lpCisloRaw = row.lp_cislo !== null && row.lp_cislo !== undefined
+          ? String(row.lp_cislo).trim()
+          : '';
+
+        if (lpCisloRaw && /^\d+$/.test(lpCisloRaw)) {
+          const numericCode = parseInt(lpCisloRaw, 10);
+          if (Number.isFinite(numericCode) && numericCode > 0) return numericCode;
+        }
+
+        if (lpCisloRaw) {
+          const opt = lpKodyOptions.find(o => String(o.kod) === lpCisloRaw || String(o.cislo_lp) === lpCisloRaw);
+          const optId = parseInt(opt?.id, 10);
+          if (Number.isFinite(optId) && optId > 0) return optId;
+        }
+
+        return null;
       })(),
       lp_id: (() => {
         const n = parseInt(row.lp_id, 10);
@@ -9138,7 +9176,7 @@ function OrderForm25() {
       })(),
       castka: parseFloat(row.castka),
       poznamka: row.poznamka || ''
-    }));
+    })).filter(row => row.lp_cislo !== null);
 
     // 🔥 DŮLEŽITÉ: Pokud není žádný validní řádek, neodesílat!
     // Backend vyžaduje min. 1 LP kód pro LP financování
@@ -9165,7 +9203,7 @@ function OrderForm25() {
       console.error('❌ [LP] Odeslané data byly:', JSON.stringify(validRows, null, 2));
       throw error;
     }
-  }, [token, username]);
+  }, [token, username, lpKodyOptions]);
 
   // 💰 LP ČERPÁNÍ: Uložit všechny LP čerpání při zavření objednávky
   const saveAllFakturyLPCerpani = useCallback(async () => {
@@ -9292,25 +9330,90 @@ function OrderForm25() {
           })
         : [];
 
-      // 🔍 DETEKCE ZMĚN: Kontrola zda se změnily klíčové údaje faktury
-      // DŮLEŽITÉ: fa_vema_kod (prefix FA/VPD) se NEKONTROLUJE - je to jen administrativní změna
+      // 🔍 DETEKCE ZMĚN: Věcnou správnost rušíme jen při změnách mimo povolené
+      // editace z app settings (stejně jako v modulu evidence faktur).
       let shouldResetVecnaSpravnost = false;
       
-      if (editingFaktura && formData.faktury) {
-        const originalInvoice = formData.faktury.find(inv => inv.id === editingFaktura.id);
-        
-        if (originalInvoice && originalInvoice.vecna_spravnost_potvrzeno === 1) {
-          // Kontrola změny POUZE klíčových polí (fa_vema_kod se NEKONTROLUJE!)
-          const keyFieldsChanged = (
-            String(originalInvoice.fa_castka || '') !== String(fakturaFormData.fa_castka || '') ||
-            String(originalInvoice.fa_cislo_vema || '') !== String(fakturaFormData.fa_cislo_vema || '') ||
-            String(originalInvoice.fa_datum_doruceni || '') !== String(fakturaFormData.fa_datum_doruceni || '') ||
-            String(originalInvoice.fa_datum_vystaveni || '') !== String(fakturaFormData.fa_datum_vystaveni || '') ||
-            String(originalInvoice.fa_datum_splatnosti || originalInvoice.fa_splatnost || '') !== String(fakturaFormData.fa_splatnost || '')
-          );
-          
-          if (keyFieldsChanged) {
+      if (editingFaktura) {
+        const cachedSettingsRaw = typeof localStorage !== 'undefined'
+          ? (localStorage.getItem('app_moduleSettings') || localStorage.getItem('globalSettings'))
+          : null;
+
+        let invoiceSettings = {};
+        if (cachedSettingsRaw) {
+          try {
+            invoiceSettings = JSON.parse(cachedSettingsRaw) || {};
+          } catch {
+            invoiceSettings = {};
+          }
+        }
+
+        const isAccountantEditEnabled = !!invoiceSettings.invoice_accountant_edit_enabled;
+        const originalInvoice = Array.isArray(formData.faktury)
+          ? formData.faktury.find(inv => inv.id === editingFaktura.id)
+          : null;
+        const sourceInvoice = originalInvoice || editingFaktura;
+
+        if (sourceInvoice && Number(sourceInvoice.vecna_spravnost_potvrzeno) !== 0) {
+          const changedFields = [];
+
+          if (parseFloat(sourceInvoice.fa_castka) !== parseFloat(fakturaFormData.fa_castka)) {
+            changedFields.push('fa_castka');
+          }
+
+          if (sourceInvoice.fa_cislo_vema !== fakturaFormData.fa_cislo_vema) {
+            if (!isAccountantEditEnabled || !invoiceSettings.invoice_accountant_edit_variabilni_symbol) {
+              changedFields.push('fa_cislo_vema');
+            }
+          }
+
+          if ((sourceInvoice.fa_datum_doruceni || '') !== (fakturaFormData.fa_datum_doruceni || '')) {
+            if (!isAccountantEditEnabled || !invoiceSettings.invoice_accountant_edit_datum_doruceni) {
+              changedFields.push('fa_datum_doruceni');
+            }
+          }
+
+          if ((sourceInvoice.fa_datum_vystaveni || '') !== (fakturaFormData.fa_datum_vystaveni || '')) {
+            if (!isAccountantEditEnabled || !invoiceSettings.invoice_accountant_edit_datum_vystaveni) {
+              changedFields.push('fa_datum_vystaveni');
+            }
+          }
+
+          if ((sourceInvoice.fa_datum_splatnosti || '') !== (fakturaFormData.fa_splatnost || '')) {
+            if (!isAccountantEditEnabled || !invoiceSettings.invoice_accountant_edit_datum_splatnosti) {
+              changedFields.push('fa_datum_splatnosti');
+            }
+          }
+
+          if ((sourceInvoice.fa_typ || '') !== (fakturaFormData.fa_typ || '')) {
+            if (!isAccountantEditEnabled || !invoiceSettings.invoice_accountant_edit_typ_faktury) {
+              changedFields.push('fa_typ');
+            }
+          }
+
+          const originalStrediska = JSON.stringify(sourceInvoice.fa_strediska_kod || []);
+          const currentStrediska = JSON.stringify(cleanedStrediska || []);
+          if (originalStrediska !== currentStrediska) {
+            if (!isAccountantEditEnabled || !invoiceSettings.invoice_accountant_edit_strediska) {
+              changedFields.push('fa_strediska_kod');
+            }
+          }
+
+          if ((sourceInvoice.fa_poznamka || '') !== (fakturaFormData.fa_poznamka || '')) {
+            if (!isAccountantEditEnabled || !invoiceSettings.invoice_accountant_edit_poznamka) {
+              changedFields.push('fa_poznamka');
+            }
+          }
+
+          if (changedFields.length > 0) {
             shouldResetVecnaSpravnost = true;
+            console.info('🧭 [OrderForm25:faktura-edit] vecna reset', {
+              invoiceId: editingFaktura.id,
+              orderId: formData.id,
+              previousVecna: sourceInvoice.vecna_spravnost_potvrzeno,
+              changedFields,
+              accountantEditEnabled: isAccountantEditEnabled,
+            });
           }
         }
       }
@@ -9327,8 +9430,8 @@ function OrderForm25() {
         fa_strediska_kod: JSON.stringify(cleanedStrediska),
         fa_poznamka: fakturaFormData.fa_poznamka || null,
         rozsirujici_data: fakturaFormData.rozsirujici_data || null,
-        // ✅ ZRUŠENÍ VĚCNÉ SPRÁVNOSTI: JEN pokud se změnily klíčové údaje (částka, číslo FA, datumy)
-        // ⚠️ fa_vema_kod (prefix) se NEKONTROLUJE - není to podstatná změna!
+        // ✅ ZRUŠENÍ VĚCNÉ SPRÁVNOSTI: Jakmile se upravuje už potvrzená faktura,
+        // musí se potvrzení vynulovat, aby backend i UI znovu vyžadovaly kontrolu.
         vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_umisteni_majetku || ''),
         vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_poznamka || ''),
         vecna_spravnost_duvod: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_duvod || ''),
@@ -9353,6 +9456,12 @@ function OrderForm25() {
               ...faktura,
               ...fakturaFormData,
               fa_strediska_kod: cleanedStrediska,
+              vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_umisteni_majetku || ''),
+              vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_poznamka || ''),
+              vecna_spravnost_duvod: shouldResetVecnaSpravnost ? '' : (fakturaFormData.vecna_spravnost_duvod || ''),
+              vecna_spravnost_potvrzeno: shouldResetVecnaSpravnost ? 0 : (fakturaFormData.vecna_spravnost_potvrzeno || 0),
+              potvrdil_vecnou_spravnost_id: shouldResetVecnaSpravnost ? null : (fakturaFormData.potvrdil_vecnou_spravnost_id || null),
+              dt_potvrzeni_vecne_spravnosti: shouldResetVecnaSpravnost ? null : (fakturaFormData.dt_potvrzeni_vecne_spravnosti || null),
               // 🔥 FIX: Použít lokální český čas místo UTC
               dt_aktualizace: (() => {
                 const now = new Date();
@@ -11324,18 +11433,22 @@ function OrderForm25() {
         addDebugLog('info', 'SAVE', 'workflow', `✅ WorkflowManager.handleInvoiceChange(hasInvoices=${hasRealInvoices}, isPokladna=${isPokladna})`);
       }
 
-      // 8.5. ZKONTROLOVANA - ❌ ODSTRANĚNO - workflow se řídí POUZE backendem
-      // Frontend nemá aktuální stav věcné správnosti faktur (může být zastaralý z cache)
-      // ZKONTROLOVANA se přidává/odebírá automaticky v invoiceCheckHandlers.php
-      // při potvrzení/zamítnutí věcné správnosti faktury
-      
-      // ⚠️ DEPRECATED FRONTEND LOGIC - způsobovala race conditions:
-      // const allFakturyVecneSpravny = (formData.faktury || []).length > 0 && 
-      //   (formData.faktury || []).every(f => f.vecna_spravnost_potvrzeno === 1 || f.vecna_spravnost_potvrzeno === true);
-      // workflowStates = workflowManager.handleQualityConfirmation(workflowStates, allFakturyVecneSpravny);
-      
-      // Backend má authoritative stav - frontend jen ZOBRAZUJE
-      addDebugLog('info', 'SAVE', 'workflow', '⚠️ ZKONTROLOVANA workflow managed by BACKEND only (invoiceCheckHandlers.php)');
+      // 8.5. ZKONTROLOVANA - rozhoduje se podle aktuálního stavu všech faktur
+      // 1 = potvrzeno, 0 = nic, 2 = zamítnuto. Jakmile není všechno potvrzené,
+      // workflow nesmí postoupit do ZKONTROLOVANA.
+      const fakturyProVecnouKontrolu = Array.isArray(formData.faktury) ? formData.faktury : [];
+      const allFakturyVecneSpravny = fakturyProVecnouKontrolu.length > 0 && fakturyProVecnouKontrolu.every(f => Number(f.vecna_spravnost_potvrzeno) === 1);
+      const hasVecnaSpravnostRejection = fakturyProVecnouKontrolu.some(f => Number(f.vecna_spravnost_potvrzeno) === 2);
+
+      workflowStates = workflowManager.handleQualityConfirmation(workflowStates, allFakturyVecneSpravny);
+
+      if (allFakturyVecneSpravny) {
+        addDebugLog('info', 'SAVE', 'workflow', `✅ Všechny faktury mají potvrzenou věcnou správnost (${fakturyProVecnouKontrolu.length}x) → ZKONTROLOVANA`);
+      } else if (hasVecnaSpravnostRejection) {
+        addDebugLog('warning', 'SAVE', 'workflow', '⛔ Některá faktura má věcnou správnost zamítnutou (2) → workflow zůstává na VECNA_SPRAVNOST');
+      } else {
+        addDebugLog('info', 'SAVE', 'workflow', 'ℹ️ Ne všechny faktury mají potvrzenou věcnou správnost → ZKONTROLOVANA se nepřidá');
+      }
 
       // 9. DOKONCENA - ✅ CENTRALIZOVÁNO v WorkflowManageru
       const jeDokonceniPotvrzeno = formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
@@ -12513,6 +12626,54 @@ function OrderForm25() {
           }
         }
 
+        // LP guard: pro LP financování nelze uložit potvrzenou věcnou správnost bez uloženého LP rozkladu.
+        const isLpFinancingForVecna = (() => {
+          if (formData?.financovani?.typ === 'LP') return true;
+          const zf = String(formData?.zpusob_financovani || '').toUpperCase();
+          return zf === 'LP' || zf === 'LIMITOVANY_PRISLIB';
+        })();
+        const approvedLpInvoices = isLpFinancingForVecna
+          ? (Array.isArray(formData?.faktury) ? formData.faktury : []).filter(f => Number(f?.vecna_spravnost_potvrzeno) === 1)
+          : [];
+
+        if (approvedLpInvoices.length > 0) {
+          const selectedLpValues = Array.isArray(formData.lp_kod) ? formData.lp_kod : [];
+
+          const missingCoverage = approvedLpInvoices.filter((faktura) => {
+            const fakturaId = faktura?.id;
+            if (!fakturaId || String(fakturaId).startsWith('temp-')) return false;
+
+            const lpRows = fakturyLPCerpani[String(fakturaId)]?.lpCerpani || fakturyLPCerpani[fakturaId]?.lpCerpani || [];
+            const validRows = Array.isArray(lpRows)
+              ? lpRows.filter(r => {
+                  const hasLp = (r?.lp_id !== null && r?.lp_id !== undefined && String(r.lp_id).trim() !== '')
+                    || (r?.lp_cislo !== null && r?.lp_cislo !== undefined && String(r.lp_cislo).trim() !== '');
+                  const hasCastka = r?.castka !== null && r?.castka !== undefined && r?.castka !== '' && !isNaN(parseFloat(r.castka));
+                  return hasLp && hasCastka;
+                })
+              : [];
+
+            const castkaRaw = faktura?.fa_castka;
+            const hasAutoFill = validRows.length === 0
+              && selectedLpValues.length === 1
+              && castkaRaw !== null
+              && castkaRaw !== undefined
+              && castkaRaw !== ''
+              && !isNaN(parseFloat(castkaRaw));
+
+            return validRows.length === 0 && !hasAutoFill;
+          });
+
+          if (missingCoverage.length > 0) {
+            throw new Error('Pro LP financování musíte před uložením přiřadit LP rozklad u všech potvrzených faktur.');
+          }
+
+          const lpSaveResultBeforeUpdate = await saveAllFakturyLPCerpani();
+          if ((lpSaveResultBeforeUpdate.failed || 0) > 0) {
+            throw new Error('Nepodařilo se uložit LP rozklad. Potvrzení věcné správnosti nelze dokončit.');
+          }
+        }
+
         // ⚠️ prepareDataForAPI() se volá automaticky uvnitř updateOrderV2() - NEMĚNIT ZNOVU!
         // const preparedData = prepareDataForAPI(orderData);  ❌ DUPLICITNÍ - již se dělá v updateOrderV2()
 
@@ -12527,6 +12688,8 @@ function OrderForm25() {
           orderData.audit_unlock_note = pendingAuditUnlockAction.note || '';
         }
 
+        logDbColumns('save-before-update', orderData);
+
         result = await updateOrderV2(formData.id, orderData, token, username);
         setPendingAuditUnlockAction(null);
 
@@ -12534,14 +12697,7 @@ function OrderForm25() {
 
         // DB RESPONSE LOGGING (UPDATE)
         // 🔧 V2 API: Backend vrací cislo_objednavky (ne ev_cislo)
-        addDebugLog('info', 'DB-RESPONSE', 'UPDATE-complete', {
-          orderId: result.id,
-          orderNumber: result.cislo_objednavky || result.ev_cislo,
-          workflow: result.stav_workflow_kod,
-          fieldsCount: Object.keys(result).length,
-          polozky: result.polozky?.length || 0,
-          faktury: result.faktury?.length || 0
-        });
+        logDbColumns('save-after-update', result);
 
         // 🔐 CONFLICT DETECTION: Aktualizovat server timestamp po úspěšném uložení
         if (result.dt_aktualizace) {
@@ -18346,6 +18502,8 @@ function OrderForm25() {
     // 🎯 DELEGACE NA WORKFLOWMANAGER
     const { updatedFormData, unlockState, newPhase } = workflowManager.unlockPhase2();
 
+    logDbColumns(`unlock-${unlockState}-payload`, updatedFormData);
+
     // Aktualizuj formData state okamžitě
     setFormData(updatedFormData);
     markPendingUnlockAudit('phase2', 'Odemčení FÁZE 2 (Přílohy)');
@@ -18366,6 +18524,8 @@ function OrderForm25() {
   const handleResetToPhase3Workflow = async () => {
     // 🎯 DELEGACE NA WORKFLOWMANAGER
     const { updatedFormData, unlockState, newPhase } = workflowManager.unlockPhase3();
+
+    logDbColumns(`unlock-${unlockState}-payload`, updatedFormData);
 
     // 🔓 KRITICKÉ: Nastav unlock state pro FÁZI 3 PŘED změnou formData!
     setIsPhase3SectionsUnlocked(true);
@@ -18403,6 +18563,8 @@ function OrderForm25() {
         // 🎯 DELEGACE NA WORKFLOWMANAGER
         const { updatedFormData, unlockState, newPhase } = workflowManager.unlockPhase4();
         markPendingUnlockAudit('phase4', 'Odemčení FÁZE 4 (Potvrzení dodavatele)');
+
+        logDbColumns(`unlock-${unlockState}-payload`, updatedFormData);
 
         // 🔓 KRITICKÉ: Nastav unlock state pro potvrzení PŘED změnou formData!
         workflowManager.unlockSection('potvrzeni');
@@ -26865,7 +27027,10 @@ function OrderForm25() {
                                                       }
                                                       
                                                       const totalLP = effectiveLpRows.reduce((sum, lp) => sum + (parseFloat(lp.castka) || 0), 0);
-                                                      if (totalLP > fakturaCastka) {
+                                                      const exceedsInvoiceAmount = fakturaCastka >= 0
+                                                        ? totalLP > fakturaCastka
+                                                        : totalLP < fakturaCastka;
+                                                      if (exceedsInvoiceAmount) {
                                                         showToast && showToast(`Součet LP čerpání (${totalLP.toLocaleString('cs-CZ')} Kč) překračuje částku faktury (${fakturaCastka.toLocaleString('cs-CZ')} Kč)`, 'error');
                                                         return;
                                                       }
@@ -30003,6 +30168,11 @@ function OrderForm25() {
       onConfirm={() => {
         setShowUnlockFakturaceConfirm(false);
         markPendingUnlockAudit('fakturace', 'Odemčení sekce Fakturace');
+        console.info('🔓 [OrderForm25:unlock-fakturace] clicked', {
+          id: formData?.id || null,
+          currentWorkflow: formData?.stav_workflow_kod || null,
+          currentStatus: formData?.stav_objednavky || null,
+        });
         workflowManager.unlockSection('fakturace');
 
         // ✅ Odebrat VŠE CO JE VÝŠE NEŽ FAKTURACE → vrátit na FÁZI 6 (FAKTURACE)
@@ -30019,6 +30189,19 @@ function OrderForm25() {
         if (!updatedStates.includes('FAKTURACE')) {
           updatedStates.push('FAKTURACE');
         }
+
+        console.info('🧭 [OrderForm25:unlock-fakturace] transition', {
+          before: formData?.stav_workflow_kod || null,
+          after: updatedStates,
+          removed: ['VECNA_SPRAVNOST', 'ZKONTROLOVANA', 'DOKONCENA'],
+          kept: 'FAKTURACE',
+        });
+
+        console.info('🗄️ [OrderForm25:unlock-fakturace-db] payload', {
+          id: formData?.id || null,
+          stav_workflow_kod: JSON.stringify(updatedStates),
+          stav_objednavky: 'Fakturace',
+        });
 
         setFormData(prev => ({
           ...prev,

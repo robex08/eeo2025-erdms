@@ -84,6 +84,8 @@ const DocxGeneratorModal = lazy(() => import('../components/DocxGeneratorModal')
 //  PERFORMANCE: Lazy load FinancialControlModal
 const FinancialControlModal = lazy(() => import('../components/FinancialControlModal'));
 
+const AUDIT_API_BASE = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/+$/, '');
+
 // =============================================================================
 // KEYFRAMES FOR ANIMATIONS
 // =============================================================================
@@ -4733,11 +4735,66 @@ const Orders25List = () => {
   // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních objednávek (aktivni = 0)
   // Checkbox viditelný pouze pro ADMIN role
   const [showOnlyInactive, setShowOnlyInactive] = useState(false); // NEVER persisted to localStorage
+
+  // Poslední audit akce pro rozbalené objednávky (jen ADMIN)
+  const [lastAuditByOrderId, setLastAuditByOrderId] = useState({});
+  const requestedLastAuditOrderIdsRef = useRef(new Set());
   
   // Check if user is ADMIN (SUPERADMIN or ADMINISTRATOR role)
   const isAdmin = useMemo(() => {
     return hasAdminRole && hasAdminRole();
   }, [hasAdminRole]);
+
+  const getLastAuditSummaryText = useCallback((row) => {
+    if (!row || typeof row !== 'object') {
+      return '';
+    }
+
+    const actionType = String(row.akce_typ || '').toUpperCase();
+    const changedField = String(row.pole || '').toLowerCase();
+    const note = String(row.poznamka || '').trim();
+
+    if (actionType === 'UNLOCK') {
+      return 'Odemčení bloku fakturace';
+    }
+
+    if (actionType === 'CREATE') {
+      return 'Vytvoření objednávky';
+    }
+
+    if (actionType === 'DELETE') {
+      return 'Smazání objednávky';
+    }
+
+    if (actionType === 'APPROVE') {
+      return 'Schválení objednávky';
+    }
+
+    if (actionType === 'REJECT') {
+      return 'Zamítnutí objednávky';
+    }
+
+    if (changedField === 'stav_workflow_kod' || changedField === 'stav_objednavky') {
+      return 'Uložení objednávky se změnou stavu';
+    }
+
+    if (actionType === 'UPDATE') {
+      if (changedField) {
+        return 'Uložení objednávky se změnou údajů';
+      }
+
+      if (note) {
+        if (note.toLowerCase().includes('beze zmen')) {
+          return 'Uložení objednávky beze změn';
+        }
+        return note;
+      }
+
+      return 'Uložení objednávky beze změn';
+    }
+
+    return note || 'Úprava objednávky';
+  }, []);
 
   // Výběr objednávek pro hromadné akce (React Table format: { '0': true, '2': true })
   const [rowSelection, setRowSelection] = useState(() => {
@@ -9077,6 +9134,78 @@ const Orders25List = () => {
     }, 100); // Krátké čekání aby se stihla vykreslit tabulka
   }, [filteredData]); // Spustí se když je filteredData připravené
 
+  // Načti poslední audit akci pro rozbalené objednávky (jen ADMIN role)
+  useEffect(() => {
+    if (!isAdmin || !token || !username || !Array.isArray(filteredData) || filteredData.length === 0) {
+      return;
+    }
+
+    const expandedOrderIds = Object.keys(expanded)
+      .filter((indexKey) => expanded[indexKey])
+      .map((indexKey) => filteredData[Number(indexKey)]?.id)
+      .filter((orderId) => Number.isFinite(Number(orderId)) && Number(orderId) > 0);
+
+    if (expandedOrderIds.length === 0) {
+      return;
+    }
+
+    const idsToFetch = expandedOrderIds.filter((orderId) => {
+      const numericId = Number(orderId);
+      return !requestedLastAuditOrderIdsRef.current.has(numericId) && !lastAuditByOrderId[numericId];
+    });
+
+    if (idsToFetch.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const fetchLastAuditForOrder = async (orderId) => {
+      const numericId = Number(orderId);
+      requestedLastAuditOrderIdsRef.current.add(numericId);
+
+      try {
+        const response = await fetch(`${AUDIT_API_BASE}/audit/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            username,
+            objekt_typ: 'OBJEDNAVKA',
+            objekt_id: numericId,
+            limit: 1,
+            offset: 0
+          })
+        });
+
+        const json = await response.json();
+        const latestAuditRow = (json?.status === 'success' && Array.isArray(json?.data) && json.data.length > 0)
+          ? json.data[0]
+          : null;
+
+        if (cancelled) {
+          return;
+        }
+
+        const summaryText = getLastAuditSummaryText(latestAuditRow);
+        if (summaryText) {
+          setLastAuditByOrderId((prev) => ({
+            ...prev,
+            [numericId]: summaryText
+          }));
+        }
+      } catch (error) {
+        // Non-fatal: endpoint je dostupný pouze pro admin role, při chybě nic nezobrazuj
+      }
+    };
+
+    Promise.all(idsToFetch.map((orderId) => fetchLastAuditForOrder(orderId)));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [expanded, filteredData, isAdmin, token, username, lastAuditByOrderId, getLastAuditSummaryText]);
+
   // 🎬 INITIALIZATION: Kontroluj dokončení všech kroků a skryj splash screen
   //  REVERT: Vrácen původní polling přístup (funguje spolehlivě)
   // Event-driven přístup by vyžadoval přepis všech míst kde se nastavuje initStepsCompleted.current
@@ -13395,6 +13524,16 @@ const Orders25List = () => {
                     <div style={{ fontSize: '0.85em', color: '#64748b' }}>
                       {order.uzivatel_akt.cele_jmeno}
                     </div>
+                    {isAdmin && lastAuditByOrderId[Number(order.id)] && (
+                      <div style={{
+                        marginTop: '4px',
+                        fontSize: '0.8em',
+                        color: '#475569',
+                        lineHeight: 1.35
+                      }}>
+                        {lastAuditByOrderId[Number(order.id)]}
+                      </div>
+                    )}
                   </div>
                   {order.uzivatel_akt.datum && (
                     <div style={{

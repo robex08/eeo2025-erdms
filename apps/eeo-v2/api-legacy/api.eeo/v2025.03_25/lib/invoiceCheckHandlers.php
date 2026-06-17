@@ -78,6 +78,41 @@ function isFakturaLockedForVS($faktura) {
 }
 
 /**
+ * Validace LP rozkladu před potvrzením věcné správnosti faktury.
+ * Pravidlo: pokud je objednávka financována z LP, musí existovat alespoň 1 řádek
+ * v 25a_faktury_lp_cerpani pro danou fakturu.
+ *
+ * @throws Exception při porušení pravidla
+ */
+function ensureLpSplitExistsForVsApproval($db, $faktura_id, $objednavka_id) {
+    if (empty($objednavka_id)) {
+        return;
+    }
+
+    $stmt_order_fin = $db->prepare("SELECT financovani FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1 LIMIT 1");
+    $stmt_order_fin->execute(array((int)$objednavka_id));
+    $order_fin = $stmt_order_fin->fetch(PDO::FETCH_ASSOC);
+
+    if (!$order_fin || empty($order_fin['financovani'])) {
+        return;
+    }
+
+    $financovani = json_decode($order_fin['financovani'], true);
+    if (!is_array($financovani) || !isset($financovani['typ']) || $financovani['typ'] !== 'LP') {
+        return;
+    }
+
+    $stmt_lp = $db->prepare("\n        SELECT COUNT(*) AS cnt\n        FROM " . TBL_FAKTURY_LP_CERPANI . "\n        WHERE faktura_id = ?\n          AND (lp_cislo IS NOT NULL AND TRIM(lp_cislo) != '')\n          AND castka IS NOT NULL\n    ");
+    $stmt_lp->execute(array((int)$faktura_id));
+    $lp_count_row = $stmt_lp->fetch(PDO::FETCH_ASSOC);
+    $lp_count = $lp_count_row ? (int)$lp_count_row['cnt'] : 0;
+
+    if ($lp_count <= 0) {
+        throw new Exception('Pro LP financování nelze potvrdit věcnou správnost bez LP rozkladu faktury.');
+    }
+}
+
+/**
  * POST - Přepne stav kontroly faktury NEBO nastaví stav věcné správnosti
  * 
  * 🆕 ROZŠÍŘENO O ZAMÍTNUTÍ VĚCNÉ SPRÁVNOSTI (status 0/1/2)
@@ -476,6 +511,19 @@ function handle_invoice_toggle_check($input, $config) {
         }
 
         // 7. START TRANSAKCE - všechny změny v jedné transakci
+        if ($status === VS_STATUS_POTVRZENA) {
+            try {
+                ensureLpSplitExistsForVsApproval($db, $faktura_id, (int)$faktura['objednavka_id']);
+            } catch (Exception $lpGuardError) {
+                http_response_code(400);
+                echo json_encode(array(
+                    'status' => 'error',
+                    'message' => $lpGuardError->getMessage()
+                ));
+                return;
+            }
+        }
+
         $db->beginTransaction();
         
         try {

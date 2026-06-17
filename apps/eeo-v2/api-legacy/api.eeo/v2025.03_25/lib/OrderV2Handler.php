@@ -236,6 +236,8 @@ class OrderV2Handler {
             'enriched_data',        // Virtuální pole (JOIN data)
             'items',                // Alias pro polozky
             'attachments',          // Alias pro prilohy
+            '_existing_order',      // Interní helper pro validace při UPDATE
+            '_current_user_id',     // Interní helper pro validace při UPDATE
             'storno_provedl',       // 🛑 DEPRECATED: Pole neexistuje v DB (používáme odesilatel_id)
             'datum_storna',         // 🛑 DEPRECATED: Pole neexistuje v DB (používáme dt_odeslani)
             'stav_stornovano',      // 🛑 DEPRECATED: Pole neexistuje v DB (používáme workflow ZRUSENA)
@@ -505,12 +507,18 @@ class OrderV2Handler {
             }
         }
         
-        // ========== NOVÁ POLE Z DB ANALÝZY ==========
-        
-        // Základní stav objednávky
-        if (isset($standardData['stav_objednavky'])) {
-            $result['stav_objednavky'] = $standardData['stav_objednavky'];
+        // Přidej do result jako tinyint
+        if (array_key_exists('potvrzeni_dokonceni_objednavky', $standardData)) {
+            $result['potvrzeni_dokonceni_objednavky'] = $standardData['potvrzeni_dokonceni_objednavky'] ? 1 : 0;
+            error_log("💾 [DB] potvrzeni_dokonceni_objednavky bude uloženo jako: " . ($result['potvrzeni_dokonceni_objednavky'] ? '1' : '0'));
         }
+        
+        // Přidej do result pokud je nastaveno
+        if (isset($standardData['dokoncil_id'])) {
+            $result['dokoncil_id'] = $standardData['dokoncil_id'];
+            error_log("💾 [DB] dokoncil_id bude uloženo jako: {$result['dokoncil_id']}");
+        }
+        
         
         // Zveřejnění
         if (isset($standardData['zverejnit'])) {

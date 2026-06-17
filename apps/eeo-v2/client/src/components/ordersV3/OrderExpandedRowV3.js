@@ -1067,6 +1067,39 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
   return parts.length > 0 ? parts.join(' ') : '---';
 };
 
+const AUDIT_API_BASE = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/+$/, '');
+
+const getLastAuditSummaryText = (row) => {
+  if (!row || typeof row !== 'object') {
+    return '';
+  }
+
+  const actionType = String(row.akce_typ || '').toUpperCase();
+  const changedField = String(row.pole || '').toLowerCase();
+  const note = String(row.poznamka || '').trim();
+
+  if (actionType === 'UNLOCK') return 'Odemčení bloku fakturace';
+  if (actionType === 'CREATE') return 'Vytvoření objednávky';
+  if (actionType === 'DELETE') return 'Smazání objednávky';
+  if (actionType === 'APPROVE') return 'Schválení objednávky';
+  if (actionType === 'REJECT') return 'Zamítnutí objednávky';
+
+  if (changedField === 'stav_workflow_kod' || changedField === 'stav_objednavky') {
+    return 'Uložení objednávky se změnou stavu';
+  }
+
+  if (actionType === 'UPDATE') {
+    if (changedField) return 'Uložení objednávky se změnou údajů';
+    if (note) {
+      if (note.toLowerCase().includes('beze zmen')) return 'Uložení objednávky beze změn';
+      return note;
+    }
+    return 'Uložení objednávky beze změn';
+  }
+
+  return note || 'Úprava objednávky';
+};
+
 // =============================================================================
 // MAIN COMPONENT
 // =============================================================================
@@ -1104,6 +1137,9 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
 
   // 🔎 Vyhledávání v inline komentářích (autor + text)
   const [commentsSearchQuery, setCommentsSearchQuery] = useState('');
+
+  const [lastAuditSummary, setLastAuditSummary] = useState('');
+  const [lastAuditLoading, setLastAuditLoading] = useState(false);
 
   // 🏢 Načtení středisek při mount (token a username jsou už v props)
   const [strediskaOptions, setStrediskaOptions] = useState([]);
@@ -1181,6 +1217,58 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
       isCancelled = true;
     };
   }, [token, username]);
+
+  useEffect(() => {
+    const orderId = Number(detail?.id || order?.id);
+    if (!token || !username || !orderId) {
+      setLastAuditSummary('');
+      setLastAuditLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadLastAudit = async () => {
+      setLastAuditLoading(true);
+      try {
+        const response = await fetch(`${AUDIT_API_BASE}/audit/history`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            token,
+            username,
+            objekt_typ: 'OBJEDNAVKA',
+            objekt_id: orderId,
+            limit: 1,
+            offset: 0
+          })
+        });
+
+        const json = await response.json().catch(() => null);
+
+        const row = (json?.status === 'success' && Array.isArray(json?.data) && json.data.length > 0)
+          ? json.data[0]
+          : null;
+
+        if (cancelled) return;
+
+        setLastAuditSummary(getLastAuditSummaryText(row));
+      } catch (e) {
+        if (cancelled) return;
+        setLastAuditSummary('');
+      } finally {
+        if (!cancelled) {
+          setLastAuditLoading(false);
+        }
+      }
+    };
+
+    loadLastAudit();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, username, detail?.id, order?.id]);
 
   // 🏢 Načtení středisek při mount
   useEffect(() => {
@@ -2592,7 +2680,7 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
               )}
 
               {/* POSLEDNÍ ZMĚNA - BEZ ČÍSLA */}
-              {(detail.uzivatel_aktualizace_jmeno || detail.uzivatel_aktualizace_prijmeni) && detail.dt_aktualizace && (
+              {(detail || order) && (
                 <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '2px solid #e2e8f0' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.25rem 1rem', alignItems: 'start' }}>
                     {/* Řádek 1: Název | Datum */}
@@ -2608,7 +2696,15 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                       {formatUserName(detail.uzivatel_aktualizace_jmeno, detail.uzivatel_aktualizace_prijmeni, detail.uzivatel_aktualizace_titul_pred, detail.uzivatel_aktualizace_titul_za)}
                     </div>
                     <div style={{ fontSize: '0.75rem', color: '#94a3b8', textAlign: 'right' }}>
-                      {formatTimeOnly(detail.dt_aktualizace)}
+                      {formatTimeOnly(detail.dt_aktualizace) || '---'}
+                    </div>
+
+                    <div style={{ gridColumn: '1 / -1', marginTop: '2px', fontSize: '0.8rem', color: '#475569' }}>
+                      {lastAuditLoading
+                        ? 'Načítám poslední auditní akci...'
+                        : lastAuditSummary
+                          ? lastAuditSummary
+                          : 'Bez auditní akce'}
                     </div>
                   </div>
                 </div>
