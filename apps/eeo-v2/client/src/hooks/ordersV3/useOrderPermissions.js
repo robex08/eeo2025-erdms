@@ -24,6 +24,9 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
   const substitutedMaterialCheckerIds = Array.isArray(options.substitutedMaterialCheckerIds)
     ? options.substitutedMaterialCheckerIds
     : [];
+  const substitutedViewerIds = Array.isArray(options.substitutedViewerIds)
+    ? options.substitutedViewerIds
+    : [];
 
   // ✅ OPTIMALIZACE: Memoizuj permission funkce - zavolají se pouze při změně hasPermission nebo userId
   const permissionFunctions = useMemo(() => {
@@ -47,6 +50,11 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
     );
     const substitutedMaterialCheckerIdSet = new Set(
       substitutedMaterialCheckerIds
+        .filter(id => id !== null && id !== undefined)
+        .map(id => String(id))
+    );
+    const substitutedViewerIdSet = new Set(
+      substitutedViewerIds
         .filter(id => id !== null && id !== undefined)
         .map(id => String(id))
     );
@@ -85,6 +93,31 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
         const approvalStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
         if (workflowStates.some(state => approvalStates.includes(state))) {
           return true;
+        }
+      }
+
+      // ✅ SUBSTITUCE: Aktivní zástupce běžného účastníka objednávky může formulář
+      // otevřít v editačním režimu i bez přímých ORDER_EDIT práv, ale pouze mimo
+      // pending schvalovací stav. Pending approval zůstává vyhrazené přímému/zmocněnému příkazci.
+      if (substitutedViewerIdSet.size > 0) {
+        const workflowStates = parseWorkflowStates(order.stav_workflow_kod);
+        const pendingApprovalStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE'];
+        const delegatedWorkflowParticipantIds = [
+          order.objednatel_id,
+          order.uzivatel_id,
+          order.garant_uzivatel_id,
+          order.garant_id,
+          order.prikazce_id,
+        ]
+          .filter(id => id !== null && id !== undefined)
+          .map(id => String(id));
+
+        const hasDelegatedWorkflowAccess = delegatedWorkflowParticipantIds.some(id => substitutedViewerIdSet.has(id));
+        if (hasDelegatedWorkflowAccess) {
+          const isPendingApproval = workflowStates.some(state => pendingApprovalStates.includes(state));
+          if (!isPendingApproval || substitutedApproverIdSet.has(String(order.prikazce_id))) {
+            return true;
+          }
         }
       }
 
@@ -256,7 +289,7 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
       canViewDetails,
       canGenerateFinancialControl,
     };
-  }, [hasPermission, userId, substitutedApproverIds, substitutedMaterialCheckerIds]);
+  }, [hasPermission, userId, substitutedApproverIds, substitutedMaterialCheckerIds, substitutedViewerIds]);
 
   return permissionFunctions;
 }

@@ -410,8 +410,6 @@ function handle_order_v2_list($input, $config, $queries) {
             
             // 1️⃣ ROLE-BASED FILTER (12 polí) - ZÁKLAD pro všechny
             // ========================================================
-            error_log("📋 VISIBILITY: Building role-based filter (BASE) for user $current_user_id");
-            
             $roleBasedCondition = "(
                 o.uzivatel_id = :role_user_id
                 OR o.objednatel_id = :role_user_id
@@ -429,21 +427,14 @@ function handle_order_v2_list($input, $config, $queries) {
             
             $visibilityConditions[] = $roleBasedCondition;
             $params['role_user_id'] = $current_user_id;
-            error_log("✅ VISIBILITY: Role-based filter added as BASE");
-            
             // 2️⃣ HIERARCHIE - ROZŠÍŘENÍ (pokud je aktivní a uživatel v profilu)
             // ========================================================
-            error_log("🔍 HIERARCHY CHECK: Checking if user $current_user_id is in hierarchy profile");
             global $HIERARCHY_DEBUG_INFO;
             $hierarchyFilter = applyHierarchyFilterToOrders($current_user_id, $db);
-            error_log("🔍 HIERARCHY CHECK: Result=" . ($hierarchyFilter === null ? 'NULL' : 'FILTER'));
             
             if ($hierarchyFilter !== null) {
                 $visibilityConditions[] = $hierarchyFilter;
                 $hierarchyApplied = true;
-                error_log("✅ HIERARCHY: Filter ADDED as OR extension (expands visibility)");
-            } else {
-                error_log("ℹ️ HIERARCHY: Not applied (user not in profile or no relationships)");
             }
             
             // 3️⃣ DEPARTMENT SUBORDINATE - ROZŠÍŘENÍ (pokud má právo)
@@ -452,7 +443,6 @@ function handle_order_v2_list($input, $config, $queries) {
             $hasOrderEditSubordinate = in_array('ORDER_EDIT_SUBORDINATE', $user_permissions);
             
             if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
-                error_log("🔍 DEPARTMENT CHECK: User has subordinate permissions");
                 $departmentColleagueIds = getUserDepartmentColleagueIds($current_user_id, $db);
                 
                 if (!empty($departmentColleagueIds)) {
@@ -475,11 +465,6 @@ function handle_order_v2_list($input, $config, $queries) {
                     
                     $visibilityConditions[] = $departmentCondition;
                     $departmentFilterApplied = true;
-                    
-                    $permission_type = $hasOrderEditSubordinate ? 'ORDER_EDIT_SUBORDINATE' : 'ORDER_READ_SUBORDINATE';
-                    error_log("✅ DEPARTMENT: Filter ADDED as OR extension for " . count($departmentColleagueIds) . " colleagues ($permission_type)");
-                } else {
-                    error_log("ℹ️ DEPARTMENT: User has no colleagues in department");
                 }
             }
             
@@ -490,31 +475,18 @@ function handle_order_v2_list($input, $config, $queries) {
                 if (count($visibilityConditions) == 1) {
                     // Jen role-based (žádné rozšíření)
                     $whereConditions[] = $visibilityConditions[0];
-                    error_log("📊 VISIBILITY RESULT: Only role-based filter (no extensions)");
                 } else {
                     // Role-based + rozšíření (hierarchie/department) spojené s OR
                     $combinedFilter = "(" . implode(" OR ", $visibilityConditions) . ")";
                     $whereConditions[] = $combinedFilter;
-                    error_log("📊 VISIBILITY RESULT: Combined " . count($visibilityConditions) . " filters with OR logic");
-                    error_log("   - Role-based: YES");
-                    error_log("   - Hierarchy: " . ($hierarchyApplied ? 'YES (extends)' : 'NO'));
-                    error_log("   - Department: " . ($departmentFilterApplied ? 'YES (extends)' : 'NO'));
                 }
             }
             
-        } else if ($isFullAdmin) {
-            error_log("✅ ADMIN BYPASS: SUPERADMIN/ADMINISTRATOR - SKIPPING all visibility filters");
-        } else if ($hasReadAllPermissions) {
-            error_log("✅ READ_ALL BYPASS: User has ORDER_READ_ALL/VIEW_ALL - SKIPPING all visibility filters");
         }
         // ============================================================================
         
         // 🔥 Kontrola parametru archivovano z FE
         $includeArchived = isset($input['archivovano']) && $input['archivovano'] == 1;
-        
-        error_log("Order V2 LIST: Permission check - ORDER_MANAGE: " . ($hasOrderManage ? 'YES' : 'NO') . 
-                  ", ORDER_APPROVE_ALL: " . ($hasOrderApproveAll ? 'YES' : 'NO') .
-                  ", ORDER_OLD: " . ($hasOrderOld ? 'YES' : 'NO'));
         
         if ($hasOrderOld && $includeArchived) {
             // 🔥 ORDER_OLD + archivovano=1 = Vidí VŠECHNY archivované objednávky BEZ role filtru
@@ -1345,11 +1317,7 @@ function handle_order_v2_update($input, $config, $queries) {
             error_log("Order V2 UPDATE: Partial update detected - skipping full data validation");
         }
         
-        // 🚨 DEBUG: Log potvrzeni_dokonceni_objednavky změny
         if (isset($input['potvrzeni_dokonceni_objednavky'])) {
-            error_log("🔍 [ORDER-V2-UPDATE] potvrzeni_dokonceni_objednavky je v input: " . ($input['potvrzeni_dokonceni_objednavky'] ? '1' : '0'));
-            error_log("🔍 [ORDER-V2-UPDATE] Current workflow: " . json_encode($existingOrder['stav_workflow_kod'] ?? []));
-            
             // ⚠️ KRITICKÁ KONTROLA: Pokud se nastavuje na 1 (true), objednávka MUSÍ být ZKONTROLOVANA
             if ($input['potvrzeni_dokonceni_objednavky'] && is_array($existingOrder['stav_workflow_kod'])) {
                 if (!in_array('ZKONTROLOVANA', $existingOrder['stav_workflow_kod'])) {
@@ -1362,14 +1330,12 @@ function handle_order_v2_update($input, $config, $queries) {
                     ));
                     return;
                 }
-                error_log("✅ [ORDER-V2-UPDATE] Objednávka je ve stavu ZKONTROLOVANA - POVOLENO dokončení");
             }
 
             if ($input['potvrzeni_dokonceni_objednavky']) {
                 $input['dokoncil_id'] = $current_user_id;
                 $input['dt_dokonceni'] = TimezoneHelper::getCzechDateTime();
                 $input['stav_objednavky'] = 'Dokončená';
-                error_log("🔄 [ORDER-V2-UPDATE] Completion metadata set from real DB columns only: dokoncil_id, dt_dokonceni, stav_objednavky");
             }
         }
         
@@ -1445,9 +1411,6 @@ function handle_order_v2_update($input, $config, $queries) {
         
         try {
             // ========== UPDATE HLAVNÍ OBJEDNÁVKY ==========
-            // 🔍 DEBUG: Log schvalovatel_id a dt_schvaleni v payloadu
-            error_log("Order V2 UPDATE [{$order_id}]: schvalovatel_id=" . var_export($dbData['schvalovatel_id'] ?? '(NOT SET)', true) . ", dt_schvaleni=" . var_export($dbData['dt_schvaleni'] ?? '(NOT SET)', true));
-            
             $setParts = array();
             $values = array();
             $excludedUpdateKeys = array(
@@ -1471,63 +1434,16 @@ function handle_order_v2_update($input, $config, $queries) {
             $sql = "UPDATE " . get_orders_table_name() . " SET " . implode(', ', $setParts) . " WHERE id = :id";
             $values['id'] = $order_id;
             
-            // 🔍 DEBUG: Log všechny změny v UPDATE
-            error_log("🔄 [ORDER-V2-UPDATE] SQL UPDATE pro order {$order_id}:");
-            foreach ($values as $key => $val) {
-                if (in_array($key, ['stav_workflow_kod', 'stav_objednavky', 'potvrzeni_dokonceni_objednavky', 'dokoncil_id', 'dt_dokonceni', 'uzivatel_akt_id', 'dt_aktualizace'])) {
-                    error_log("   - {$key} = " . (is_array($val) ? json_encode($val) : $val));
-                }
-            }
-            
             $stmt = $db->prepare($sql);
             foreach ($values as $key => $value) {
                 $stmt->bindValue(":{$key}", $value);
             }
             
-            error_log("🔄 [ORDER-V2-UPDATE] About to execute UPDATE statement");
             $stmt->execute();
-            error_log("✅ [ORDER-V2-UPDATE] UPDATE statement executed successfully");
-            
-            // Reload from DB to verify changes
-            $reload_stmt = $db->prepare("SELECT stav_objednavky, stav_workflow_kod, potvrzeni_dokonceni_objednavky, dokoncil_id, dt_dokonceni, uzivatel_akt_id, dt_aktualizace FROM " . get_orders_table_name() . " WHERE id = ?");
-            $reload_stmt->execute([$order_id]);
-            $reloaded_data = $reload_stmt->fetch(PDO::FETCH_ASSOC);
-            
-            error_log("✅ [ORDER-V2-UPDATE] Data after UPDATE:");
-            error_log("   - stav_objednavky: " . $reloaded_data['stav_objednavky']);
-            error_log("   - stav_workflow_kod: " . $reloaded_data['stav_workflow_kod']);
-            error_log("   - potvrzeni_dokonceni_objednavky: " . $reloaded_data['potvrzeni_dokonceni_objednavky']);
-            error_log("   - dokoncil_id: " . $reloaded_data['dokoncil_id']);
-            error_log("   - dt_dokonceni: " . $reloaded_data['dt_dokonceni']);
-            error_log("   - uzivatel_akt_id: " . $reloaded_data['uzivatel_akt_id']);
-            error_log("   - dt_aktualizace: " . $reloaded_data['dt_aktualizace']);
-            
-            
             // ========== UPDATE POLOŽEK OBJEDNÁVKY ==========
             // Zpracování položek podle vzoru z Order25 (saveOrderItems pattern)
             $items_processed = 0;
             $items_updated = false;
-            
-            // � DEBUG: Zalogovat informace o položkách v inputu
-            $has_polozky = array_key_exists('polozky', $input);
-            $has_polozky_objednavky = array_key_exists('polozky_objednavky', $input);
-            error_log("Order V2 UPDATE [{$order_id}]: DEBUG položky - has_polozky=" . ($has_polozky ? 'YES' : 'NO') . ", has_polozky_objednavky=" . ($has_polozky_objednavky ? 'YES' : 'NO'));
-            
-            if ($has_polozky) {
-                $polozky_count = is_array($input['polozky']) ? count($input['polozky']) : 'NOT_ARRAY';
-                error_log("Order V2 UPDATE [{$order_id}]: polozky count = {$polozky_count}");
-                if (is_array($input['polozky']) && count($input['polozky']) > 0) {
-                    error_log("Order V2 UPDATE [{$order_id}]: polozky[0] = " . json_encode($input['polozky'][0]));
-                }
-            }
-            
-            if ($has_polozky_objednavky) {
-                $polozky_objednavky_count = is_array($input['polozky_objednavky']) ? count($input['polozky_objednavky']) : 'NOT_ARRAY';
-                error_log("Order V2 UPDATE [{$order_id}]: polozky_objednavky count = {$polozky_objednavky_count}");
-                if (is_array($input['polozky_objednavky']) && count($input['polozky_objednavky']) > 0) {
-                    error_log("Order V2 UPDATE [{$order_id}]: polozky_objednavky[0] = " . json_encode($input['polozky_objednavky'][0]));
-                }
-            }
             
             // �🔥 SKIP validace položek pro partial updates (admin mění zamčenou objednávku)
             if ($skip_items_validation) {
@@ -1657,9 +1573,6 @@ function handle_order_v2_update($input, $config, $queries) {
                             aktivni
                         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
                         
-                        // 🔍 DEBUG fa_vema_kod
-                        error_log("🔍 [INVOICE CREATE] fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
-                        
                         $stmt_insert = $db->prepare($sql_insert);
                         $stmt_insert->execute(array(
                             $order_id,
@@ -1712,7 +1625,6 @@ function handle_order_v2_update($input, $config, $queries) {
                             ");
                             $stmt_update_order->execute(array($current_user_id, $current_user_id, $order_id));
                             
-                            error_log("✅ [FAKTURA] Nastaven fakturant_id={$current_user_id} pro objednávku ID={$order_id}");
                         }
                         
                     } else {
@@ -1723,9 +1635,6 @@ function handle_order_v2_update($input, $config, $queries) {
                             $audit_old_invoice_stmt->execute(array($faktura_id));
                             $audit_invoice_old_map[$faktura_id] = $audit_old_invoice_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
                         }
-                        
-                        // 🔍 DEBUG fa_vema_kod
-                        error_log("🔍 [INVOICE UPDATE] invoice_id={$faktura['id']}, fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
                         
                         // ⚠️ Načíst PŮVODNÍ stav faktury pro detekci změn ve věcné správnosti
                         $stmt_orig = $db->prepare("SELECT vecna_spravnost_potvrzeno, fa_predana_zam_id FROM `{$faktury_table}` WHERE id = ?");
@@ -2268,10 +2177,6 @@ function handle_order_v2_update($input, $config, $queries) {
         enrichOrderWithCodebooks($db, $updatedOrder);
         
         // === NOTIFIKAČNÍ SYSTÉM ===
-        error_log("Order V2 UPDATE: Starting notification check for order ID $order_id");
-        
-        // 🔥 DEBUG: Force immediate debug info
-        file_put_contents('/var/www/erdms-dev/logs/debug_order_update.log', date('Y-m-d H:i:s') . " - Starting notification check for order ID $order_id\n", FILE_APPEND);
         
         // Zjistit, jaká událost nastala podle změny workflow stavu
         require_once __DIR__ . '/notificationHandlers.php';
@@ -2288,12 +2193,6 @@ function handle_order_v2_update($input, $config, $queries) {
             $decoded = json_decode($dbData['stav_workflow_kod'], true);
             $new_workflow_array = is_array($decoded) ? $decoded : array();
         }
-        
-        error_log("Order V2 UPDATE: Old workflow: " . json_encode($old_workflow_array));
-        error_log("Order V2 UPDATE: New workflow: " . json_encode($new_workflow_array));
-        
-        // 🔥 DEBUG: Force immediate debug info
-        file_put_contents('/var/www/erdms-dev/logs/debug_order_update.log', date('Y-m-d H:i:s') . " - Old workflow: " . json_encode($old_workflow_array) . " | New workflow: " . json_encode($new_workflow_array) . "\n", FILE_APPEND);
         
         // Helper funkce pro detekci workflow stavu v array
         $hasWorkflowState = function($workflow_array, $state_to_find) {

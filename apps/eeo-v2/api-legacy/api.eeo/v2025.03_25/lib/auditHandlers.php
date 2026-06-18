@@ -74,19 +74,41 @@ function handle_audit_history($input, $config) {
             $params[':uzivatel_id'] = $uzivatel_id;
         }
         if ($q !== '') {
+            $q_like = '%' . $q . '%';
             $where[] = '(
-                a.username_snapshot LIKE :q
-                OR a.jmeno_snapshot LIKE :q
-                OR a.prijmeni_snapshot LIKE :q
-                OR a.objekt_typ LIKE :q
-                OR CAST(a.objekt_id AS CHAR) LIKE :q
-                OR a.endpoint LIKE :q
-                OR a.pole LIKE :q
-                OR a.poznamka LIKE :q
-                OR a.stara_hodnota_json LIKE :q
-                OR a.nova_hodnota_json LIKE :q
+                a.username_snapshot LIKE :q_username
+                OR a.jmeno_snapshot LIKE :q_jmeno
+                OR a.prijmeni_snapshot LIKE :q_prijmeni
+                OR CONCAT(a.jmeno_snapshot, \' \', a.prijmeni_snapshot) LIKE :q_fullname
+                OR CONCAT(a.prijmeni_snapshot, \' \', a.jmeno_snapshot) LIKE :q_fullname_rev
+                OR a.akce_typ LIKE :q_akce
+                OR a.objekt_typ LIKE :q_objekt_typ
+                OR CAST(a.objekt_id AS CHAR) LIKE :q_objekt_id
+                OR a.endpoint LIKE :q_endpoint
+                OR a.pole LIKE :q_pole
+                OR a.poznamka LIKE :q_poznamka
+                OR a.stara_hodnota_json LIKE :q_old
+                OR a.nova_hodnota_json LIKE :q_new
+                OR o.cislo_objednavky LIKE :q_objednavka
+                OR f.fa_vema_kod LIKE :q_fa_kod
+                OR f.fa_cislo_vema LIKE :q_fa_cislo
             )';
-            $params[':q'] = '%' . $q . '%';
+            $params[':q_username'] = $q_like;
+            $params[':q_jmeno'] = $q_like;
+            $params[':q_prijmeni'] = $q_like;
+            $params[':q_fullname'] = $q_like;
+            $params[':q_fullname_rev'] = $q_like;
+            $params[':q_akce'] = $q_like;
+            $params[':q_objekt_typ'] = $q_like;
+            $params[':q_objekt_id'] = $q_like;
+            $params[':q_endpoint'] = $q_like;
+            $params[':q_pole'] = $q_like;
+            $params[':q_poznamka'] = $q_like;
+            $params[':q_old'] = $q_like;
+            $params[':q_new'] = $q_like;
+            $params[':q_objednavka'] = $q_like;
+            $params[':q_fa_kod'] = $q_like;
+            $params[':q_fa_cislo'] = $q_like;
         }
         if ($akce_typ) {
             $where[] = 'a.akce_typ = :akce_typ';
@@ -122,7 +144,12 @@ function handle_audit_history($input, $config) {
 
         // COUNT
         $count_stmt = $db->prepare("
-            SELECT COUNT(*) FROM `" . TBL_AUDIT_ZMEN . "` a
+            SELECT COUNT(*)
+            FROM `" . TBL_AUDIT_ZMEN . "` a
+            LEFT JOIN `" . TBL_OBJEDNAVKY . "` o
+                ON a.objekt_typ = 'OBJEDNAVKA' AND a.objekt_id = o.id
+            LEFT JOIN `" . TBL_FAKTURY . "` f
+                ON a.objekt_typ = 'FAKTURA' AND a.objekt_id = f.id
             WHERE $where_sql
         ");
         $count_stmt->execute($params);

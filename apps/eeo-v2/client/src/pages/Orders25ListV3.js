@@ -826,6 +826,20 @@ function Orders25ListV3() {
       .map(id => String(id));
   }, [activeSubstitutions]);
 
+  const substitutedViewerIds = useMemo(() => {
+    return activeSubstitutions
+      .filter(item => {
+        const perms = decodeOpravneni(item?.opravneni);
+        const canView = toBool(perms?.view ?? item?.view ?? item?.can_view);
+        const canApprove = toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+        const canConfirm = toBool(perms?.confirm ?? perms?.material_check ?? perms?.materialCorrectness ?? item?.confirm ?? item?.can_confirm);
+        return canView || canApprove || canConfirm;
+      })
+      .map(item => item?.zastupovany_id)
+      .filter(id => id !== null && id !== undefined)
+      .map(id => String(id));
+  }, [activeSubstitutions]);
+
   const substitutedApproverIdSet = useMemo(() => new Set(substitutedApproverIds), [substitutedApproverIds]);
 
   // ✅ OPTIMALIZACE: Memoizované permission funkce místo inline definic
@@ -840,6 +854,7 @@ function Orders25ListV3() {
   } = useOrderPermissions(hasPermission, currentUserId, {
     substitutedApproverIds,
     substitutedMaterialCheckerIds,
+    substitutedViewerIds,
   });
 
   // ✅ Permission funkce nyní v useOrderPermissions hook

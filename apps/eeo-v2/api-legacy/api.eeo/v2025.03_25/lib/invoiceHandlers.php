@@ -272,6 +272,12 @@ function handle_invoices25_by_order($input, $config, $queries) {
             foreach ($faktury as &$faktura) {
                 $fid = (int)$faktura['id'];
                 $faktura['lp_cerpani'] = isset($lp_cerpani_map[$fid]) ? $lp_cerpani_map[$fid] : array();
+                $faktura['substitution_info'] = array();
+
+                $sub_info = resolveInvoiceMaterialCheckSubstitutionInfo($db, $faktura);
+                if ($sub_info) {
+                    $faktura['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
+                }
             }
             unset($faktura);
         }
@@ -1633,6 +1639,12 @@ function handle_invoices25_by_id($input, $config, $queries) {
             // Příjmení + zkrácené jméno
             $predana_jmeno_cele = trim($faktura['fa_predana_zam_prijmeni'] . ' ' . $jmeno_zkracene);
             $faktura['fa_predana_zam_jmeno'] = $predana_jmeno_cele;
+        }
+
+        $faktura['substitution_info'] = array();
+        $sub_info = resolveInvoiceMaterialCheckSubstitutionInfo($db, $faktura);
+        if ($sub_info) {
+            $faktura['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
         }
 
         // � FIX: Ošetření nevalidních UTF-8 znaků před json_encode
@@ -3406,18 +3418,9 @@ function handle_invoices25_list($input, $config, $queries) {
             $faktura['substitution_info'] = [];
             
             // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)
-            if (!empty($faktura['potvrdil_vecnou_spravnost_id']) && !empty($faktura['dt_potvrzeni_vecne_spravnosti'])) {
-                $sub_info = get_substitution_info_for_action(
-                    $db,
-                    (int)$faktura['potvrdil_vecnou_spravnost_id'],
-                    'CONFIRM',
-                    'FAKTURA',
-                    (int)$faktura['id'],
-                    $faktura['dt_potvrzeni_vecne_spravnosti']
-                );
-                if ($sub_info) {
-                    $faktura['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
-                }
+            $sub_info = resolveInvoiceMaterialCheckSubstitutionInfo($db, $faktura);
+            if ($sub_info) {
+                $faktura['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
             }
         }
         unset($faktura); // ⚠️ KRITICKÉ: Unset reference

@@ -142,11 +142,22 @@ const WIDGET_REGISTRY = {
   weather:             { title: 'Počasí',                      icon: faCloud,              color: '#1e40af', requires: 'DASHBOARD_WEATHER' },
   finance_markets:     { title: 'Finanční trhy',               icon: faChartLine,          color: '#059669', requires: 'DASHBOARD_FINANCE_MARKETS' },
   calendar:            { title: 'Kalendář',                    icon: faCalendarAlt,        color: '#0891b2', requires: 'DASHBOARD_CALENDAR' },
-  planned_substitutions:{ title: 'Plánovaná zastupování',      icon: faUserFriends,        color: '#0f766e', requires: 'DASHBOARD_CALENDAR' },
+  planned_substitutions:{ title: 'Plánovaná a aktivní zastupování', icon: faUserFriends,     color: '#0f766e', requires: 'DASHBOARD_CALENDAR' },
   active_users_admin:  { title: 'Přehled aktivit uživatelů',   icon: faUsers,              color: '#1d4ed8', requires: 'DASHBOARD_ACTIVE_USERS', alwaysOn: true, alwaysLast: true }
 };
 
-const DEFAULT_TILES = Object.keys(WIDGET_REGISTRY);
+const DEFAULT_TILES = (() => {
+  const tiles = Object.keys(WIDGET_REGISTRY);
+  const plannedIdx = tiles.indexOf('planned_substitutions');
+
+  // Pro uživatele bez uloženého layoutu zobrazit zastupování hned za Přehledem.
+  if (plannedIdx > 1) {
+    tiles.splice(plannedIdx, 1);
+    tiles.splice(1, 0, 'planned_substitutions');
+  }
+
+  return tiles;
+})();
 
 const CHART_COLORS = ['#1d4ed8', '#7c3aed', '#06b6d4', '#f97316', '#f43f5e', '#10b981', '#0ea5e9', '#f59e0b'];
 
@@ -1324,12 +1335,12 @@ const ListItem = styled.div`
   align-items: center;
   justify-content: space-between;
   padding: 0.55rem 0.5rem;
-  border-bottom: 1px solid #e5e7eb;
+  border: 1px solid ${p => p.$borderColor || '#e5e7eb'};
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, border-color 0.15s;
   border-radius: 6px;
-  background: #f8fafc;
-  &:hover { background: #edf2f7; }
+  background: ${p => p.$bg || '#f8fafc'};
+  &:hover { background: ${p => p.$hoverBg || '#edf2f7'}; }
   &:last-child { border-bottom: none; }
 `;
 
@@ -3727,6 +3738,7 @@ const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear()
 function PlannedSubstitutionsWidget({ token, username, onHeaderButton }) {
   const MONTH_KEY = 'dashboardSubstitutionsWidgetMonth';
   const MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
+  const [statusFilter, setStatusFilter] = useState('all'); // all | planned | active | past | cancelled
 
   const parseDate = (value) => {
     if (!value) return null;
@@ -3802,13 +3814,25 @@ function PlannedSubstitutionsWidget({ token, username, onHeaderButton }) {
   const monthItems = useMemo(() => {
     const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
     const monthEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const pastCutoff = new Date(todayStart);
+    pastCutoff.setMonth(pastCutoff.getMonth() - 1);
+
     return allSubstitutions
       .filter(s => {
-        if (!s.aktivni) return false;
         const start = parseDate(s.dt_od);
         const end = parseDate(s.dt_do || s.dt_od);
         if (!start || !end) return false;
-        return start <= monthEnd && end >= monthStart;
+
+        const overlapsMonth = start <= monthEnd && end >= monthStart;
+        if (!overlapsMonth) return false;
+
+        // Proběhlá (ukončená) zastupování zobrazíme max. 1 měsíc zpět.
+        const isPast = !s.aktivni || end < todayStart;
+        if (isPast && end < pastCutoff) return false;
+
+        return true;
       })
       .map(s => ({
         id: s.id,
@@ -3818,6 +3842,8 @@ function PlannedSubstitutionsWidget({ token, username, onHeaderButton }) {
         zastupce_username: s.zastupce_username || '',
         dt_od: s.dt_od,
         dt_do: s.dt_do,
+        dt_ukonceni: s.dt_ukonceni || null,
+        aktivni: Boolean(s.aktivni),
         opravneni: s.opravneni || {},
         popis: s.popis || '',
       }))
@@ -3838,24 +3864,80 @@ function PlannedSubstitutionsWidget({ token, username, onHeaderButton }) {
     return labels.length > 0 ? labels.join(' · ') : null;
   };
 
-  const getStatusMeta = (item) => {
+  const getStatusKey = (item) => {
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const start = parseDate(item.dt_od);
     const end = parseDate(item.dt_do || item.dt_od);
 
-    if (!start || !end) {
-      return { label: 'Neznámý stav', bg: '#e2e8f0', color: '#475569' };
+    if (!start || !end) return 'unknown';
+    if (todayStart > end) return 'past';
+    if (!item.aktivni && todayStart <= end) return 'cancelled';
+    if (todayStart < start) return 'planned';
+    return 'active';
+  };
+
+  const getStatusMeta = (item) => {
+    const statusKey = getStatusKey(item);
+
+    if (statusKey === 'unknown') {
+      return {
+        label: 'Neznámý stav',
+        bg: '#e2e8f0',
+        color: '#475569',
+        rowBg: '#f8fafc',
+        rowHover: '#f1f5f9',
+        border: '#e2e8f0',
+      };
     }
 
-    if (todayStart < start) {
-      return { label: 'Plánováno', bg: '#e0f2fe', color: '#0369a1' };
+    if (statusKey === 'past') {
+      return {
+        label: 'Proběhlo',
+        bg: '#f1f5f9',
+        color: '#64748b',
+        rowBg: '#f8fafc',
+        rowHover: '#f1f5f9',
+        border: '#e2e8f0',
+      };
     }
-    if (todayStart > end) {
-      return { label: 'Ukončeno', bg: '#fee2e2', color: '#991b1b' };
+
+    if (statusKey === 'cancelled') {
+      return {
+        label: 'Zrušeno',
+        bg: '#fee2e2',
+        color: '#991b1b',
+        rowBg: '#fff1f2',
+        rowHover: '#ffe4e6',
+        border: '#fecdd3',
+      };
     }
-    return { label: 'Aktivní', bg: '#dcfce7', color: '#166534' };
+
+    if (statusKey === 'planned') {
+      return {
+        label: 'Plánováno',
+        bg: '#e0f2fe',
+        color: '#0369a1',
+        rowBg: '#f0f9ff',
+        rowHover: '#e0f2fe',
+        border: '#bae6fd',
+      };
+    }
+
+    return {
+      label: 'Aktivní',
+      bg: '#dcfce7',
+      color: '#166534',
+      rowBg: '#f0fdf4',
+      rowHover: '#dcfce7',
+      border: '#bbf7d0',
+    };
   };
+
+  const filteredItems = useMemo(() => {
+    if (statusFilter === 'all') return monthItems;
+    return monthItems.filter(item => getStatusKey(item) === statusFilter);
+  }, [monthItems, statusFilter]);
 
   const renderSubstitutionTooltip = (item, opLabel) => {
     const statusMeta = getStatusMeta(item);
@@ -3963,12 +4045,60 @@ function PlannedSubstitutionsWidget({ token, username, onHeaderButton }) {
         </button>
       </div>
 
-      {/* Počet celkem */}
-      <div style={{ display: 'flex', gap: '0.45rem', marginBottom: '0.75rem' }}>
-        <WidgetBadge $bg="#e0f2fe" $color="#0369a1">
-          Celkem: {loadingAll ? '…' : monthItems.length}
-        </WidgetBadge>
-      </div>
+      {/* Souhrn + Stavový filtr */}
+      {!loadingAll && !loadError && monthItems.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', marginBottom: '0.75rem', flexWrap: 'wrap' }}>
+          <WidgetBadge
+            $bg="#e0f2fe"
+            $color="#0369a1"
+            title="Celkem zastupování"
+            style={{
+              minWidth: '2.9rem',
+              height: '2rem',
+              padding: '0 0.75rem',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '0.95rem',
+              fontWeight: 800,
+            }}
+          >
+            {loadingAll ? '…' : filteredItems.length}
+          </WidgetBadge>
+          {[
+            { key: 'all', label: 'Vše', icon: faGripVertical, color: '#334155', bg: '#f1f5f9', border: '#cbd5e1' },
+            { key: 'planned', label: 'Plánované', icon: faClock, color: '#0369a1', bg: '#e0f2fe', border: '#bae6fd' },
+            { key: 'active', label: 'Aktivní', icon: faCheckCircle, color: '#166534', bg: '#dcfce7', border: '#bbf7d0' },
+            { key: 'past', label: 'Proběhlé', icon: faHistory, color: '#64748b', bg: '#f1f5f9', border: '#e2e8f0' },
+            { key: 'cancelled', label: 'Zrušené', icon: faTimes, color: '#991b1b', bg: '#fee2e2', border: '#fecdd3' },
+          ].map(opt => {
+            const isActiveFilter = statusFilter === opt.key;
+            return (
+              <button
+                key={opt.key}
+                onClick={() => setStatusFilter(opt.key)}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.3rem',
+                  borderRadius: '999px',
+                  border: `1px solid ${isActiveFilter ? opt.border : '#e2e8f0'}`,
+                  background: isActiveFilter ? opt.bg : '#ffffff',
+                  color: isActiveFilter ? opt.color : '#475569',
+                  cursor: 'pointer',
+                  fontSize: '0.7rem',
+                  fontWeight: isActiveFilter ? 700 : 600,
+                  padding: '0.18rem 0.55rem',
+                }}
+                title={opt.label}
+              >
+                <FontAwesomeIcon icon={opt.icon} style={{ fontSize: '0.62rem' }} />
+                <span>{opt.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Stavy načítání / chyby */}
       {loadingAll && (
@@ -3983,24 +4113,34 @@ function PlannedSubstitutionsWidget({ token, username, onHeaderButton }) {
         <EmptyState>V tomto měsíci nejsou žádná zastupování v systému.</EmptyState>
       )}
 
+      {!loadingAll && !loadError && monthItems.length > 0 && filteredItems.length === 0 && (
+        <EmptyState>Pro vybraný filtr nejsou dostupná žádná zastupování.</EmptyState>
+      )}
+
       {/* Seznam */}
-      {!loadingAll && !loadError && monthItems.map(item => {
+      {!loadingAll && !loadError && filteredItems.map(item => {
         const opLabel = formatOpravneni(item.opravneni);
+        const statusMeta = getStatusMeta(item);
+        const isPast = statusMeta.label === 'Proběhlo';
+        const isCancelled = statusMeta.label === 'Zrušeno';
         const row = (
-          <ListItem>
+          <ListItem $bg={statusMeta.rowBg} $hoverBg={statusMeta.rowHover} $borderColor={statusMeta.border}>
             <ListItemLeft>
               {/* Zastupovaný → Zástupce */}
               <ListItemTitle style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                <span style={{ color: '#1e293b' }}>{item.zastupovany}</span>
+                <span style={{ color: isPast ? '#64748b' : isCancelled ? '#7f1d1d' : '#1e293b' }}>{item.zastupovany}</span>
                 <FontAwesomeIcon icon={faChevronRight} style={{ fontSize: '0.65rem', color: '#94a3b8', flexShrink: 0 }} />
-                <span style={{ color: '#0f766e', fontWeight: 600 }}>{item.zastupce}</span>
+                <span style={{ color: isPast ? '#6b7280' : isCancelled ? '#b91c1c' : '#0f766e', fontWeight: 600 }}>{item.zastupce}</span>
               </ListItemTitle>
-              <ListItemSub>
+              <ListItemSub style={{ color: isPast ? '#6b7280' : isCancelled ? '#7f1d1d' : '#374151' }}>
                 {formatDate(item.dt_od)} – {formatDate(item.dt_do)}
                 {opLabel && <span style={{ marginLeft: '0.4rem', color: '#94a3b8' }}>· {opLabel}</span>}
                 {item.popis && <span style={{ marginLeft: '0.4rem', color: '#94a3b8' }}>· {item.popis}</span>}
               </ListItemSub>
             </ListItemLeft>
+            <ListItemRight>
+              <Badge $bg={statusMeta.bg} $color={statusMeta.color}>{statusMeta.label}</Badge>
+            </ListItemRight>
           </ListItem>
         );
 
@@ -5118,32 +5258,6 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
   );
   const hasBeingSubstituted = activeBeingSubstituted.length > 0;
 
-  // ✅ Tooltip pro zastupování (fialová) - koho já zastupuji
-  const substitutionTooltip = activeSubstitutions.map(s => {
-    const jmeno = s.zastupovany_jmeno
-      ? `${s.zastupovany_jmeno} ${s.zastupovany_prijmeni || ''}`.trim()
-      : `id#${s.zastupovany_id || '?'}`;
-    const email = s.zastupovany_email || '';
-    const telefon = s.zastupovany_telefon || '';
-    let line = `Zastupuji: ${jmeno}\nOd: ${formatCzDate(s.dt_od)} Do: ${formatCzDate(s.dt_do)}`;
-    if (email) line += `\nEmail: ${email}`;
-    if (telefon) line += `\nTelefon: ${telefon}`;
-    return line;
-  }).join('\n\n');
-
-  // ✅ Tooltip pro zastupovaného (tyrkysová) - kdo mne zastupuje
-  const beingSubstitutedTooltip = activeBeingSubstituted.map(s => {
-    const jmeno = s.zastupce?.jmeno
-      ? `${s.zastupce.jmeno} ${s.zastupce.prijmeni || ''}`.trim()
-      : `id#${s.zastupce?.id || s.zastupce_id || '?'}`;
-    const email = s.zastupce?.email || '';
-    const telefon = s.zastupce?.telefon || '';
-    let line = `Zástupce: ${jmeno}\nOd: ${formatCzDate(s.dt_od)} Do: ${formatCzDate(s.dt_do)}`;
-    if (email) line += `\nEmail: ${email}`;
-    if (telefon) line += `\nTelefon: ${telefon}`;
-    return line;
-  }).join('\n\n');
-
   const today = new Date();
   const dayNames = ['Neděle', 'Pondělí', 'Úterý', 'Středa', 'Čtvrtek', 'Pátek', 'Sobota'];
 
@@ -5459,6 +5573,100 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
   const legacyItems = newsSinceLogin?.items || (Array.isArray(newsSinceLogin) ? newsSinceLogin : []);
   const sinceFormatted = newsSinceLogin?.since_formatted || '';
 
+  // ✅ Renderování SmartTooltip obsahu pro zastupování (kdy já zastupuji)
+  const renderSubstitutionTooltip = (subs) => {
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '0.95rem' }}>👥</span>
+          <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Aktivní zastupování</span>
+          <span style={{
+            marginLeft: 'auto',
+            background: '#c084fc',
+            color: '#581c87',
+            borderRadius: '999px',
+            padding: '0.08rem 0.5rem',
+            fontSize: '0.62rem',
+            fontWeight: 700
+          }}>
+            Zastupuji
+          </span>
+        </div>
+        {subs.map((s, idx) => {
+          const jmeno = s.zastupovany_jmeno
+            ? `${s.zastupovany_jmeno} ${s.zastupovany_prijmeni || ''}`.trim()
+            : `id#${s.zastupovany_id || '?'}`;
+          const email = s.zastupovany_email || '';
+          const telefon = s.zastupovany_telefon || '';
+          
+          return (
+            <div key={idx} style={{ 
+              marginTop: idx > 0 ? '0.65rem' : 0,
+              paddingTop: idx > 0 ? '0.65rem' : 0,
+              borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.14)' : 'none'
+            }}>
+              <div style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+                {jmeno}
+              </div>
+              <div style={{ color: '#cbd5e1', fontSize: '0.73rem', lineHeight: 1.5 }}>
+                <div><span style={{ color: '#94a3b8' }}>Období:</span> {formatCzDate(s.dt_od)} – {formatCzDate(s.dt_do)}</div>
+                {email && <div><span style={{ color: '#94a3b8' }}>Email:</span> {email}</div>}
+                {telefon && <div><span style={{ color: '#94a3b8' }}>Tel:</span> {telefon}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // ✅ Renderování SmartTooltip obsahu pro zastupovaného (kdy mne někdo zastupuje)
+  const renderBeingSubstitutedTooltip = (subs) => {
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+          <span style={{ fontSize: '0.95rem' }}>👤</span>
+          <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Aktivní zastupování</span>
+          <span style={{
+            marginLeft: 'auto',
+            background: '#06b6d4',
+            color: '#164e63',
+            borderRadius: '999px',
+            padding: '0.08rem 0.5rem',
+            fontSize: '0.62rem',
+            fontWeight: 700
+          }}>
+            Zastoupen
+          </span>
+        </div>
+        {subs.map((s, idx) => {
+          const jmeno = s.zastupce?.jmeno
+            ? `${s.zastupce.jmeno} ${s.zastupce.prijmeni || ''}`.trim()
+            : `id#${s.zastupce?.id || s.zastupce_id || '?'}`;
+          const email = s.zastupce?.email || '';
+          const telefon = s.zastupce?.telefon || '';
+          
+          return (
+            <div key={idx} style={{ 
+              marginTop: idx > 0 ? '0.65rem' : 0,
+              paddingTop: idx > 0 ? '0.65rem' : 0,
+              borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.14)' : 'none'
+            }}>
+              <div style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+                {jmeno}
+              </div>
+              <div style={{ color: '#cbd5e1', fontSize: '0.73rem', lineHeight: 1.5 }}>
+                <div><span style={{ color: '#94a3b8' }}>Období:</span> {formatCzDate(s.dt_od)} – {formatCzDate(s.dt_do)}</div>
+                {email && <div><span style={{ color: '#94a3b8' }}>Email:</span> {email}</div>}
+                {telefon && <div><span style={{ color: '#94a3b8' }}>Tel:</span> {telefon}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <>
     <WidgetBody>
@@ -5470,30 +5678,46 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
           <WelcomeName>
             Dobrý den, {user?.jmeno} {user?.prijmeni}
             {hasActiveSubstitution && (
-              <FontAwesomeIcon 
-                icon={faUserFriends} 
-                title={substitutionTooltip}
-                style={{ 
-                  marginLeft: '0.5rem', 
-                  color: '#a855f7', 
-                  fontSize: '0.9em',
-                  verticalAlign: 'middle',
-                  cursor: 'help'
-                }} 
-              />
+              <SmartTooltip
+                text={renderSubstitutionTooltip(activeSubstitutions)}
+                icon="none"
+                multiline
+                preferredPosition="bottom"
+                maxWidth="380px"
+                interactive
+              >
+                <FontAwesomeIcon 
+                  icon={faUserFriends} 
+                  style={{ 
+                    marginLeft: '0.5rem', 
+                    color: '#a855f7', 
+                    fontSize: '0.9em',
+                    verticalAlign: 'middle',
+                    cursor: 'help'
+                  }} 
+                />
+              </SmartTooltip>
             )}
             {hasBeingSubstituted && (
-              <FontAwesomeIcon 
-                icon={faUserFriends} 
-                title={beingSubstitutedTooltip}
-                style={{ 
-                  marginLeft: '0.5rem', 
-                  color: '#0891b2', 
-                  fontSize: '0.9em',
-                  verticalAlign: 'middle',
-                  cursor: 'help'
-                }} 
-              />
+              <SmartTooltip
+                text={renderBeingSubstitutedTooltip(activeBeingSubstituted)}
+                icon="none"
+                multiline
+                preferredPosition="bottom"
+                maxWidth="380px"
+                interactive
+              >
+                <FontAwesomeIcon 
+                  icon={faUserFriends} 
+                  style={{ 
+                    marginLeft: '0.5rem', 
+                    color: '#0891b2', 
+                    fontSize: '0.9em',
+                    verticalAlign: 'middle',
+                    cursor: 'help'
+                  }} 
+                />
+              </SmartTooltip>
             )}
           </WelcomeName>
           <WelcomeRole>
@@ -8813,6 +9037,8 @@ export default function DashboardPage() {
       .filter(([id, cfg]) => {
         // Widget pouze pro SUPERADMIN
         if (cfg.requiresSuperAdmin) return superAdmin;
+        // Widget přehledu zastupování má být dostupný všem zaměstnancům
+        if (id === 'planned_substitutions') return true;
         // Widgety bez 'requires' → viditelné vždy (welcome)
         if (!cfg.requires) return true;
         // RSS widget: kontrola permission + rss_enabled flag

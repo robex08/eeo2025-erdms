@@ -2162,7 +2162,7 @@ const Layout = ({ children }) => {
     return () => clearInterval(interval);
   }, [selectedDbSource]);
 
-  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasOwnPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod, impersonationFeatureEnabled, impersonationActive, originalAdminUser, startImpersonationContext, stopImpersonationContext } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus + impersonation
+  const { isLoggedIn, logout, fullName, user_id, userDetail, hasPermission, hasOwnPermission, hasAdminRole, user, token, username, hierarchyStatus, expandedPermissions, authMethod, impersonationFeatureEnabled, impersonationActive, originalAdminUser, startImpersonationContext, stopImpersonationContext, refreshSubstitutionEffectivePermissions } = useContext(AuthContext); // Přidán user_id pro filtrování draftu a hierarchyStatus + impersonation
 
   const toastCtx = useContext(ToastContext);
   const showToast = (msg, opts) => { try { toastCtx?.showToast?.(msg, opts); } catch {} };
@@ -2820,6 +2820,10 @@ const Layout = ({ children }) => {
         if (!cancelled) {
           setMySubstitutions(Array.isArray(mine) ? mine : []);
           setSubstituting(Array.isArray(current) ? current : []);
+          // Refresh delegated permissions when substitution list is known
+          if (typeof refreshSubstitutionEffectivePermissions === 'function') {
+            refreshSubstitutionEffectivePermissions();
+          }
         }
       } catch (_) {
         if (!cancelled) {
@@ -2833,7 +2837,7 @@ const Layout = ({ children }) => {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, token, username, substitutionEnabled]);
+  }, [isLoggedIn, token, username, substitutionEnabled, refreshSubstitutionEffectivePermissions]);
 
   // Check maintenance mode status periodically
   useEffect(() => {

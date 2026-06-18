@@ -169,6 +169,20 @@ const SearchBtn = styled.button`
   }
 `;
 
+const ResetFiltersBtn = styled(SearchBtn)`
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  border-color: #dc2626;
+
+  &:hover:not(:disabled) {
+    box-shadow: 0 6px 14px rgba(220, 38, 38, 0.28);
+  }
+
+  &:disabled {
+    background: #94a3b8;
+    border-color: #94a3b8;
+  }
+`;
+
 const ResultInfo = styled.div`
   font-size: 0.82rem;
   color: #64748b;
@@ -717,6 +731,13 @@ const DEFAULT_LIMIT = 10;
 const OBJECT_VIEW_FETCH_LIMIT = 500;
 const PIVOT_LIMIT = 1000;
 const AUDIT_UI_STATE_KEY = 'eeo.auditLog.uiState.v1';
+const DEFAULT_FILTERS = {
+  objekt_typ: '',
+  q: '',
+  akce_typ: '',
+  od: '',
+  do: '',
+};
 
 function getPersistedAuditUiState() {
   if (typeof window === 'undefined') return null;
@@ -1279,11 +1300,8 @@ const AuditLogPage = () => {
   const persistedState = getPersistedAuditUiState();
 
   const [filters, setFilters] = useState(() => ({
-    objekt_typ: persistedState?.filters?.objekt_typ || '',
-    q: persistedState?.filters?.q || '',
-    akce_typ: persistedState?.filters?.akce_typ || '',
-    od: persistedState?.filters?.od || '',
-    do: persistedState?.filters?.do || '',
+    ...DEFAULT_FILTERS,
+    ...(persistedState?.filters || {}),
   }));
   const [showNoChangeActions, setShowNoChangeActions] = useState(() => Boolean(persistedState?.showNoChangeActions));
   const [timelineRows, setTimelineRows] = useState([]);
@@ -1618,13 +1636,27 @@ const AuditLogPage = () => {
     setOpenTimelineBatchId(null);
     if (viewMode === 'objekt') {
       fetchHistory(0, 'objekt');
-    } else {
+    } else if (viewMode === 'timeline') {
       fetchHistory(0, 'timeline');
-    }
-    if (viewMode === 'pivot' || viewMode === 'vizual') {
+    } else if (viewMode === 'pivot' || viewMode === 'vizual') {
       fetchPivotData();
     }
   };
+
+  const handleResetFilters = useCallback(() => {
+    setOpenObjectKey(null);
+    setOpenTimelineBatchId(null);
+    setFilters(DEFAULT_FILTERS);
+    setShowNoChangeActions(false);
+    setTimelineOffset(0);
+    setObjectOffset(0);
+    setTimelineSearched(false);
+    setObjectSearched(false);
+    setPivotRows([]);
+    setPivotTotal(0);
+    setError(null);
+    setPivotError(null);
+  }, []);
 
   useEffect(() => {
     if (viewMode === 'objekt' && !objectSearched && !loading) {
@@ -2376,7 +2408,7 @@ const AuditLogPage = () => {
           <label>Fulltext</label>
           <input
             type="text"
-            placeholder="Uživatel, objekt, endpoint, pole, poznámka..."
+            placeholder="Uživatel, č. objednávky/faktury, akce, endpoint, pole, hodnota..."
             value={filters.q}
             onChange={e => setFilters(f => ({ ...f, q: e.target.value }))}
           />
@@ -2424,6 +2456,15 @@ const AuditLogPage = () => {
           <FontAwesomeIcon icon={faSearch} />
           {loading ? 'Načítám...' : 'Vyhledat'}
         </SearchBtn>
+
+        <ResetFiltersBtn
+          type="button"
+          onClick={handleResetFilters}
+          disabled={loading || pivotLoading}
+          title="Vymazat všechny filtry"
+        >
+          Zrušit filtr
+        </ResetFiltersBtn>
       </FiltersBar>
 
       <ViewSwitchBar>

@@ -71,6 +71,21 @@ const HeaderActions = styled.div`
   align-items: center;
 `;
 
+const TopToolbar = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+`;
+
+const TopToolbarRight = styled.div`
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+`;
+
 // ─── View switcher (Moje / Systém) ────────────────────────────────────────────
 const ViewSwitcher = styled.div`
   display: flex;
@@ -78,7 +93,6 @@ const ViewSwitcher = styled.div`
   border-radius: 10px;
   padding: 3px;
   gap: 2px;
-  margin-bottom: 1.25rem;
   width: fit-content;
 `;
 
@@ -257,6 +271,27 @@ const Btn = styled.button`
 `;
 
 const SpinIcon = styled(RefreshCw)`animation: ${spinAnim} 0.9s linear infinite;`;
+
+const AddCtaBtn = styled(Btn)`
+  padding: 0.68rem 1.35rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  border-radius: 12px;
+  letter-spacing: 0.01em;
+  background: linear-gradient(135deg, #f97316, #ef4444);
+  box-shadow: 0 12px 24px rgba(239, 68, 68, 0.34);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+    background: linear-gradient(135deg, #fb923c, #f43f5e);
+    box-shadow: 0 14px 28px rgba(239, 68, 68, 0.42);
+  }
+
+  @media (max-width: 700px) {
+    width: 100%;
+    justify-content: center;
+  }
+`;
 
 // ─── Info banner (kdo mě zastupuje) ──────────────────────────────────────────
 const InfoBanner = styled.div`
@@ -1094,11 +1129,6 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
               </StatusPill>
             )}
           </CardTitle>
-          {canManageOwn && (
-            <Btn $v="primary" $sm onClick={openCreate}>
-              <Plus size={14} /> Přidat
-            </Btn>
-          )}
         </CardHeader>
         <div style={{ overflowX: 'auto' }}>
           <Table>
@@ -1241,11 +1271,6 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
             >
               <RefreshCw size={13} style={{ animation: (showAudit ? adminAuditLoading : adminLoading) ? `${spinAnim} .9s linear infinite` : 'none' }} />
             </ActionBtn>
-            {!showAudit && (
-              <Btn $v="danger" $sm onClick={openAdminCreate} style={{ borderColor: 'transparent' }}>
-                <Plus size={14} /> Přidat
-              </Btn>
-            )}
           </div>
         </CardHeader>
 
@@ -1312,7 +1337,14 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
                       <Td><PermPill>{row.akce_typ || '—'}</PermPill></Td>
                       <Td style={{ whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.objekt_typ || '—'}</Td>
                       <Td style={{ whiteSpace: 'nowrap', fontSize: '.78rem' }}>{row.objekt_identifikator || row.objekt_reference || row.objekt_id || '—'}</Td>
-                      <Td style={{ fontSize: '.78rem', color: '#475569' }}>{row.popis_akce || '—'}</Td>
+                      <Td style={{ fontSize: '.78rem', color: '#475569' }}>
+                        {row.popis_akce || '—'}
+                        {row.popis_akce_raw && row.popis_akce_raw !== row.popis_akce ? (
+                          <div style={{ marginTop: '.2rem', fontSize: '.72rem', color: '#64748b' }}>
+                            {row.popis_akce_raw}
+                          </div>
+                        ) : null}
+                      </Td>
                     </Tr>
                   ))}
                 </tbody>
@@ -1785,18 +1817,33 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
         </InfoBanner>
       )}
 
-      {/* View přepínač pro adminy */}
-      {isAdmin && (
-        <ViewSwitcher>
-          <ViewTab $active={view === 'mine'} onClick={() => setView('mine')}>
-            <UserCheck size={14} /> Moje zastupování
-          </ViewTab>
-          <ViewTab $active={view === 'system'} onClick={() => setView('system')}>
-            <Shield size={14} color={view === 'system' ? '#dc2626' : undefined} />
-            Přehled systému
-          </ViewTab>
-        </ViewSwitcher>
-      )}
+      <TopToolbar>
+        {isAdmin ? (
+          <ViewSwitcher>
+            <ViewTab $active={view === 'mine'} onClick={() => setView('mine')}>
+              <UserCheck size={14} /> Moje zastupování
+            </ViewTab>
+            <ViewTab $active={view === 'system'} onClick={() => setView('system')}>
+              <Shield size={14} color={view === 'system' ? '#dc2626' : undefined} />
+              Přehled systému
+            </ViewTab>
+          </ViewSwitcher>
+        ) : (
+          <div />
+        )}
+
+        <TopToolbarRight>
+          {((view === 'mine' && canManageOwn) || (isAdmin && view === 'system' && systemSection !== 'audit')) && (
+            <AddCtaBtn
+              $v="primary"
+              onClick={view === 'mine' ? openCreate : openAdminCreate}
+              title="Vytvořit nové zastupování"
+            >
+              <UserCheck size={16} /> Nové zastupování
+            </AddCtaBtn>
+          )}
+        </TopToolbarRight>
+      </TopToolbar>
 
       {/* Tabulka */}
       {view === 'mine' ? renderMyTable() : renderAdminTable()}
