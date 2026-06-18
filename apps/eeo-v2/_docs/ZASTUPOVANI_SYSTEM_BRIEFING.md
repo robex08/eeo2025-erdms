@@ -2,8 +2,92 @@
 
 > **Projekt:** ERDMS / EEO v2  
 > **Větev:** `feature/v3-development`  
-> **Aktualizováno:** 13. 6. 2026  
+> **Aktualizováno:** 18. 6. 2026  
 > **Stav:** Plná integrace do dashboardu, notifikací a UI systému ✅
+
+---
+
+## 🆕 AKTUALIZACE 18/06/2026 – SmartTooltip vylepšení na dashboard badge ikonách
+
+### Dashboard Přehled – Vylepšené tooltips u ikon zastupování
+
+**Umístění:** [DashboardPage.js](../client/src/pages/DashboardPage.js) – funkce `WelcomeWidget`
+
+**Co se změnilo:**
+- ❌ **ODSTRANĚNO:** Jednoduché `title` atributy (prohlížečový tooltip)
+- ✅ **PŘIDÁNO:** SmartTooltip komponenta s strukturovaným formátem
+- ✅ **PŘIDÁNO:** `renderSubstitutionTooltip()` – tooltip pro "Zastupuji"
+- ✅ **PŘIDÁNO:** `renderBeingSubstitutedTooltip()` – tooltip pro "Jsem zastoupen"
+- ✅ **VYLEPŠENO:** Konzistentní design s widgetem plánování zastupování
+
+**Nový tooltip formát (SmartTooltip):**
+
+```
+┌───────────────────────────────────────────────────────┐
+│ 👥 Aktivní zastupování        [Zastupuji]      (badge)│  ← Ikona + název + status badge
+│ ─────────────────────────────────────────────────────  │
+│ Jméno Příjmení                              (bold 0.8em)│
+│ Období: 12.06.2026 – 30.06.2026             (0.73em)  │
+│ Email: jmeno@example.cz                     (0.73em)  │
+│ Tel: +420 123 456 789                       (0.73em)  │
+│ ─────────────────────────────────────────────────────  │
+│ Jméno 2 Příjmení 2                          (při více) │
+│ ...                                                     │
+└───────────────────────────────────────────────────────┘
+```
+
+**Implementace:**
+```jsx
+// Typ 1: Zastupuji (fialová ikona 👥)
+{hasActiveSubstitution && (
+  <SmartTooltip
+    text={renderSubstitutionTooltip(activeSubstitutions)}
+    icon="none"
+    multiline
+    preferredPosition="bottom"
+    maxWidth="380px"
+    interactive
+  >
+    <FontAwesomeIcon icon={faUserFriends} style={{ color: '#a855f7' }} />
+  </SmartTooltip>
+)}
+
+// Typ 2: Jsem zastoupen (tyrkysová ikona 👤)
+{hasBeingSubstituted && (
+  <SmartTooltip
+    text={renderBeingSubstitutedTooltip(activeBeingSubstituted)}
+    icon="none"
+    multiline
+    preferredPosition="bottom"
+    maxWidth="380px"
+    interactive
+  >
+    <FontAwesomeIcon icon={faUserFriends} style={{ color: '#0891b2' }} />
+  </SmartTooltip>
+)}
+```
+
+**Vlastnosti SmartTooltip:**
+| Vlastnost | Hodnota | Důvod |
+|-----------|---------|-------|
+| `icon="none"` | Bez emoji | Máme svou 👥/👤 v textu |
+| `multiline=true` | Multi-line | Může být více zástupců |
+| `preferredPosition="bottom"` | Dole | Umístění vedle jména |
+| `maxWidth="380px"` | 380px | Čitelnost u více osob |
+| `interactive=true` | Interaktivní | Lze najet myší na tooltip |
+
+**Barevné schéma tooltipů:**
+```javascript
+// Zastupuji badge
+badge background: '#c084fc' (purple-300)
+badge color: '#581c87' (purple-900)
+
+// Jsem zastoupen badge
+badge background: '#06b6d4' (cyan-500)
+badge color: '#164e63' (cyan-900)
+```
+
+**Commit:** `93cc4f14` - "Dashboard: Vylepšení tooltipů u badge ikon zastupování"
 
 ---
 
@@ -89,30 +173,39 @@ NotifikaceDashboardPage.js, App.js, modály
 🔵 = Někdo mě zastupuje (tyrkysová #0891b2)
 ```
 
-#### Duální ikona systém
-```
-🟣 Fialová ikona (faUserFriends) – Když ZASTUPUJI někoho jiného
-    Tooltip formát:
-    ┌─────────────────────────────────────┐
-    │ Zastupuji: Jan Novák                │
-    │ Od: 12.04.2026 Do: 15.04.2026       │
-    │ Email: jan.novak@example.cz         │
-    │ Telefon: +420 123 456 789           │
-    └─────────────────────────────────────┘
+#### Duální ikona systém (AKTUALIZOVÁNO 18.6.2026)
 
-🔵 Tyrkysová ikona (faUserFriends) – Když MĚ někdo zastupuje
-    Tooltip formát:
-    ┌─────────────────────────────────────┐
-    │ Zástupce: Petr Svoboda              │
-    │ Od: 12.04.2026 Do: 15.04.2026       │
-    │ Email: petr.svoboda@example.cz      │
-    │ Telefon: +420 987 654 321           │
-    └─────────────────────────────────────┘
+🟣 **Fialová ikona (faUserFriends)** – Když ZASTUPUJI někoho jiného
+
+**SmartTooltip formát:**
+```
+┌────────────────────────────────────────────┐
+│ 👥 Aktivní zastupování        [Zastupuji]  │
+│ ────────────────────────────────────────── │
+│ Jan Novák                                  │
+│ Období: 12.06.2026 – 30.06.2026            │
+│ Email: jan.novak@example.cz                │
+│ Tel: +420 123 456 789                      │
+└────────────────────────────────────────────┘
+```
+
+🔵 **Tyrkysová ikona (faUserFriends)** – Když MĚ někdo zastupuje
+
+**SmartTooltip formát:**
+```
+┌────────────────────────────────────────────┐
+│ 👤 Aktivní zastupování      [Zastoupen]    │
+│ ────────────────────────────────────────── │
+│ Petr Svoboda                               │
+│ Období: 12.06.2026 – 30.06.2026            │
+│ Email: petr.svoboda@example.cz             │
+│ Tel: +420 987 654 321                      │
+└────────────────────────────────────────────┘
 ```
 
 **Obě ikony mohou být zobrazeny současně** (uživatel může současně zastupovat i být zastupován)
 
-#### Implementační detaily
+#### Implementační detaily (AKTUALIZOVÁNO 18.6.2026)
 ```javascript
 // Props komponenty:
 function WelcomeWidget({ 
@@ -128,25 +221,82 @@ const activeSubstitutions = (substituting || []).filter(s =>
 const activeBeingSubstituted = (mySubstitutions || []).filter(s => 
   s.aktivni && todayStr >= s.dt_od && todayStr <= s.dt_do
 );
+const hasActiveSubstitution = activeSubstitutions.length > 0;
+const hasBeingSubstituted = activeBeingSubstituted.length > 0;
 
 // Tooltip helper:
 const formatCzDate = (isoDateStr) => {
   if (!isoDateStr) return '';
-  const [y, m, d] = isoDateStr.split('T')[0].split('-');
+  const [y, m, d] = isoDateStr.split('-');
   return `${d}.${m}.${y}`;
 };
 
-// Display:
-<FontAwesomeIcon 
-  icon={faUserFriends} 
-  title={substitutionTooltip}
-  style={{ marginLeft: '0.5rem', color: '#a855f7', cursor: 'help' }}  // fialová
-/>
-<FontAwesomeIcon 
-  icon={faUserFriends} 
-  title={beingSubstitutedTooltip}
-  style={{ marginLeft: '0.5rem', color: '#0891b2', cursor: 'help' }}  // tyrkysová
-/>
+// Tooltip rendery (SmartTooltip komponenta):
+const renderSubstitutionTooltip = (subs) => (
+  <div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+      <span style={{ fontSize: '0.95rem' }}>👥</span>
+      <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Aktivní zastupování</span>
+      <span style={{ marginLeft: 'auto', background: '#c084fc', color: '#581c87', borderRadius: '999px', 
+                     padding: '0.08rem 0.5rem', fontSize: '0.62rem', fontWeight: 700 }}>
+        Zastupuji
+      </span>
+    </div>
+    {subs.map((s, idx) => (
+      <div key={idx} style={{ marginTop: idx > 0 ? '0.65rem' : 0, paddingTop: idx > 0 ? '0.65rem' : 0,
+                              borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.14)' : 'none' }}>
+        <div style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+          {s.zastupovany_jmeno}
+        </div>
+        <div style={{ color: '#cbd5e1', fontSize: '0.73rem', lineHeight: 1.5 }}>
+          <div><span style={{ color: '#94a3b8' }}>Období:</span> {formatCzDate(s.dt_od)} – {formatCzDate(s.dt_do)}</div>
+          {s.zastupovany_email && <div><span style={{ color: '#94a3b8' }}>Email:</span> {s.zastupovany_email}</div>}
+          {s.zastupovany_telefon && <div><span style={{ color: '#94a3b8' }}>Tel:</span> {s.zastupovany_telefon}</div>}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+const renderBeingSubstitutedTooltip = (subs) => (
+  <div>
+    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.5rem' }}>
+      <span style={{ fontSize: '0.95rem' }}>👤</span>
+      <span style={{ color: 'white', fontSize: '0.85rem', fontWeight: 700 }}>Aktivní zastupování</span>
+      <span style={{ marginLeft: 'auto', background: '#06b6d4', color: '#164e63', borderRadius: '999px',
+                     padding: '0.08rem 0.5rem', fontSize: '0.62rem', fontWeight: 700 }}>
+        Zastoupen
+      </span>
+    </div>
+    {subs.map((s, idx) => (
+      <div key={idx} style={{ marginTop: idx > 0 ? '0.65rem' : 0, paddingTop: idx > 0 ? '0.65rem' : 0,
+                              borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.14)' : 'none' }}>
+        <div style={{ color: '#e2e8f0', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.3rem' }}>
+          {s.zastupce?.jmeno}
+        </div>
+        <div style={{ color: '#cbd5e1', fontSize: '0.73rem', lineHeight: 1.5 }}>
+          <div><span style={{ color: '#94a3b8' }}>Období:</span> {formatCzDate(s.dt_od)} – {formatCzDate(s.dt_do)}</div>
+          {s.zastupce?.email && <div><span style={{ color: '#94a3b8' }}>Email:</span> {s.zastupce.email}</div>}
+          {s.zastupce?.telefon && <div><span style={{ color: '#94a3b8' }}>Tel:</span> {s.zastupce.telefon}</div>}
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+// Display s SmartTooltip:
+{hasActiveSubstitution && (
+  <SmartTooltip text={renderSubstitutionTooltip(activeSubstitutions)} icon="none" multiline 
+    preferredPosition="bottom" maxWidth="380px" interactive>
+    <FontAwesomeIcon icon={faUserFriends} style={{ marginLeft: '0.5rem', color: '#a855f7', cursor: 'help' }} />
+  </SmartTooltip>
+)}
+{hasBeingSubstituted && (
+  <SmartTooltip text={renderBeingSubstitutedTooltip(activeBeingSubstituted)} icon="none" multiline 
+    preferredPosition="bottom" maxWidth="380px" interactive>
+    <FontAwesomeIcon icon={faUserFriends} style={{ marginLeft: '0.5rem', color: '#0891b2', cursor: 'help' }} />
+  </SmartTooltip>
+)}
 ```
 
 ---
@@ -1057,3 +1207,34 @@ Po vytvoření zastupování zkontrolovat `opravneni.notify_zastupce === 1` → 
 Pracuj vždy v DEV prostředí (`/var/www/erdms-dev/apps`).  
 Používej prepared statements, české error messages, POST metodu.  
 Čti tento soubor pro detaily architektury před každou změnou v oblasti zastupování.
+
+---
+
+## 📊 POSLEDNÍ UPDATE: 18. ČERVNA 2026
+
+### ⭐ SmartTooltip Vylepšení na Dashboard
+
+**Commit:** `93cc4f14`  
+**Soubor:** `eeo-v2/client/src/pages/DashboardPage.js`
+
+**Změny:**
+- ✅ Nahrazeny `title` atributy za `SmartTooltip` komponentu
+- ✅ Nová funkce: `renderSubstitutionTooltip()` pro "Zastupuji"
+- ✅ Nová funkce: `renderBeingSubstitutedTooltip()` pro "Jsem zastoupen"
+- ✅ Strukturovaný formát: Jméno → Období → Email → Tel
+- ✅ Barevné schéma: Purple (#a855f7) vs. Cyan (#06b6d4)
+- ✅ Multi-line support pro více zástupců
+- ✅ Interactive tooltip (lze najet bez zavření)
+
+**Výsledek:** Jednotný, čitelný a uživatelsky přívětivý design tooltipů na dashboard widgetu zastupování.
+
+**Testování:**
+```bash
+# Build a test v dashboardu
+cd /var/www/erdms-dev/apps/eeo-v2/client
+npm run build:dev:explicit
+# → Najeď na 👥 ikonu vedle jména → SmartTooltip se má zobrazit
+```
+
+**Dokumentace:** Tento soubor je aktualizován se všemi detaily implementace.
+
