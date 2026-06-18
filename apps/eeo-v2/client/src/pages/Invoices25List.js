@@ -5474,15 +5474,17 @@ const Invoices25List = () => {
                     
                     <TableCell className="center">
                       <span className={`${invoice.stav === 'STORNO' ? 'storno-content' : ''} ${!invoice.aktivni ? 'inactive-content' : ''}`}>
-                        {invoice.dt_aktualizace ? (
+                        {(invoice.dt_aktualizace || invoice.dt_vytvoreni) ? (
                           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                            <span>{formatDateOnly(invoice.dt_aktualizace)}</span>
+                            <span>{formatDateOnly(invoice.dt_aktualizace || invoice.dt_vytvoreni)}</span>
                             <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>
-                              {new Date(invoice.dt_aktualizace).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(invoice.dt_aktualizace || invoice.dt_vytvoreni).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}
                             </span>
-                            {invoice.aktualizoval_prijmeni && (
+                            {(invoice.aktualizoval_prijmeni || invoice.vytvoril_uzivatel_zkracene) && (
                               <span style={{ fontSize: '0.65rem', color: '#9ca3af', fontStyle: 'italic' }}>
-                                {invoice.aktualizoval_prijmeni} {invoice.aktualizoval_jmeno ? invoice.aktualizoval_jmeno.charAt(0) + '.' : ''}
+                                {invoice.aktualizoval_prijmeni
+                                  ? `${invoice.aktualizoval_prijmeni} ${invoice.aktualizoval_jmeno ? invoice.aktualizoval_jmeno.charAt(0) + '.' : ''}`
+                                  : invoice.vytvoril_uzivatel_zkracene}
                               </span>
                             )}
                           </div>

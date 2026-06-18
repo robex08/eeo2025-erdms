@@ -330,11 +330,12 @@ function handle_invoices25_create($input, $config, $queries) {
             rozsirujici_data,
             stav,
             vytvoril_uzivatel_id,
+            aktualizoval_uzivatel_id,
             dt_vytvoreni,
             dt_aktualizace,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -432,6 +433,7 @@ function handle_invoices25_create($input, $config, $queries) {
             $vecna_spravnost_potvrzeno,
             $rozsirujici_data,
             $stav,
+            $token_data['id'],
             $token_data['id']
         ]);
 
@@ -1690,10 +1692,11 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             fa_poznamka,
             rozsirujici_data,
             vytvoril_uzivatel_id,
+            aktualizoval_uzivatel_id,
             dt_vytvoreni,
             dt_aktualizace,
             aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
 
         $stmt_faktura = $db->prepare($sql_faktura);
         
@@ -1718,6 +1721,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             $fa_strediska_kod,
             $fa_poznamka,
             $rozsirujici_data,
+            $token_data['id'],
             $token_data['id']
         ));
 

@@ -2472,6 +2472,17 @@ function Orders25ListV3() {
     return false;
   }, [currentUserId, hasAdminRole, userDetail, substitutedApproverIdSet]);
 
+  const isApprovalViaSubstitution = useCallback((order) => {
+    if (!order) return false;
+    const prikazceId = String(order.prikazce_id || '');
+    if (!prikazceId) return false;
+
+    return (
+      substitutedApproverIdSet.has(prikazceId) &&
+      prikazceId !== String(currentUserId)
+    );
+  }, [substitutedApproverIdSet, currentUserId]);
+
   return (
     <>
       {/* Initialization Overlay - zobrazí se při prvním načtení */}
@@ -2756,6 +2767,7 @@ function Orders25ListV3() {
         canGenerateFinancialControl={canGenerateFinancialControl()}
         showApproveColumn={true}
         canApproveOrder={canApprove}
+        isApprovalViaSubstitution={isApprovalViaSubstitution}
         canCancelOrder={canCancelOrder}
         isBudgetManagerRole={isBudgetManagerRole}
         isAdmin={isAdmin}

@@ -1648,9 +1648,11 @@ function handle_order_v2_update($input, $config, $queries) {
                             potvrdil_vecnou_spravnost_id,
                             dt_potvrzeni_vecne_spravnosti,
                             vytvoril_uzivatel_id,
+                            aktualizoval_uzivatel_id,
                             dt_vytvoreni,
+                            dt_aktualizace,
                             aktivni
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 1)";
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
                         
                         // 🔍 DEBUG fa_vema_kod
                         error_log("🔍 [INVOICE CREATE] fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
@@ -1673,6 +1675,7 @@ function handle_order_v2_update($input, $config, $queries) {
                             isset($faktura['vecna_spravnost_potvrzeno']) ? (int)$faktura['vecna_spravnost_potvrzeno'] : 0,
                             isset($faktura['potvrdil_vecnou_spravnost_id']) ? (int)$faktura['potvrdil_vecnou_spravnost_id'] : null,
                             isset($faktura['dt_potvrzeni_vecne_spravnosti']) ? $faktura['dt_potvrzeni_vecne_spravnosti'] : null,
+                            $current_user_id,
                             $current_user_id
                         ));
 

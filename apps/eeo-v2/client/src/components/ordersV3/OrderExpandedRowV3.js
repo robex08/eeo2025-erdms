@@ -1104,7 +1104,7 @@ const getLastAuditSummaryText = (row) => {
 // MAIN COMPONENT
 // =============================================================================
 
-const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog, canApproveOrder, onLoadComments, onAddComment, onDeleteComment }) => {
+const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRefresh, colSpan, token, username, onActionClick, canEdit, showToast, setOrderToApprove, setApprovalComment, setShowApprovalDialog, canApproveOrder, isApprovalViaSubstitution, onLoadComments, onAddComment, onDeleteComment }) => {
   const { userDetail, hasAdminRole } = useContext(AuthContext);
   const navigate = useNavigate();
   
@@ -1718,7 +1718,11 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
                     }
                     
                     const tooltipText = canApproveThisOrder
-                      ? (isPending ? "Schválit objednávku (ke schválení)" : "Zobrazit schválení (vyřízeno)")
+                      ? (isPending
+                        ? ((Boolean(approvalSubstitutionInfo) || (isApprovalViaSubstitution ? Boolean(isApprovalViaSubstitution(detail)) : false))
+                          ? "Schválit objednávku v zástupu (ke schválení)"
+                          : "Schválit objednávku (ke schválení)")
+                        : "Zobrazit schválení (vyřízeno)")
                       : "Nemůžete schválit objednávku – je určena jinému příkazci.";
 
                     const tooltipIcon = canApproveThisOrder

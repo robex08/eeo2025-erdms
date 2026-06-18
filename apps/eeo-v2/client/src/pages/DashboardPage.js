@@ -3724,7 +3724,7 @@ const CAL_MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červ
 const CAL_DAYS   = ['Po','Út','St','Čt','Pá','So','Ne'];
 const CAL_YEARS  = Array.from({ length: 11 }, (_, i) => new Date().getFullYear() - 5 + i);
 
-function PlannedSubstitutionsWidget({ token, username }) {
+function PlannedSubstitutionsWidget({ token, username, onHeaderButton }) {
   const MONTH_KEY = 'dashboardSubstitutionsWidgetMonth';
   const MONTHS = ['Leden','Únor','Březen','Duben','Květen','Červen','Červenec','Srpen','Září','Říjen','Listopad','Prosinec'];
 
@@ -3792,6 +3792,13 @@ function PlannedSubstitutionsWidget({ token, username }) {
     });
   };
 
+  const goToToday = () => {
+    const now = new Date();
+    const d = new Date(now.getFullYear(), now.getMonth(), 1);
+    setViewDate(d);
+    saveMonth(d);
+  };
+
   const monthItems = useMemo(() => {
     const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
     const monthEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
@@ -3831,9 +3838,103 @@ function PlannedSubstitutionsWidget({ token, username }) {
     return labels.length > 0 ? labels.join(' · ') : null;
   };
 
+  const getStatusMeta = (item) => {
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const start = parseDate(item.dt_od);
+    const end = parseDate(item.dt_do || item.dt_od);
+
+    if (!start || !end) {
+      return { label: 'Neznámý stav', bg: '#e2e8f0', color: '#475569' };
+    }
+
+    if (todayStart < start) {
+      return { label: 'Plánováno', bg: '#e0f2fe', color: '#0369a1' };
+    }
+    if (todayStart > end) {
+      return { label: 'Ukončeno', bg: '#fee2e2', color: '#991b1b' };
+    }
+    return { label: 'Aktivní', bg: '#dcfce7', color: '#166534' };
+  };
+
+  const renderSubstitutionTooltip = (item, opLabel) => {
+    const statusMeta = getStatusMeta(item);
+    const viewScope = item?.opravneni?.view_scope;
+
+    return (
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginBottom: '0.35rem' }}>
+          <span style={{ fontSize: '0.95rem' }}>👥</span>
+          <span style={{ color: 'white', fontSize: '0.8rem', fontWeight: 700 }}>Detail zastupování</span>
+          <span style={{
+            marginLeft: 'auto',
+            background: statusMeta.bg,
+            color: statusMeta.color,
+            borderRadius: '999px',
+            padding: '0.08rem 0.5rem',
+            fontSize: '0.62rem',
+            fontWeight: 700
+          }}>
+            {statusMeta.label}
+          </span>
+        </div>
+
+        <div style={{ color: '#e2e8f0', fontSize: '0.73rem' }}>
+          <div><span style={{ color: '#94a3b8' }}>Zastupovaný:</span> {item.zastupovany}{item.zastupovany_username ? ` (${item.zastupovany_username})` : ''}</div>
+          <div><span style={{ color: '#94a3b8' }}>Zástupce:</span> {item.zastupce}{item.zastupce_username ? ` (${item.zastupce_username})` : ''}</div>
+          <div><span style={{ color: '#94a3b8' }}>Období:</span> {formatDate(item.dt_od)} – {formatDate(item.dt_do)}</div>
+        </div>
+
+        <div style={{ borderTop: '1px solid rgba(255,255,255,0.14)', marginTop: '0.45rem', paddingTop: '0.35rem' }}>
+          <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '0.2rem' }}>Oprávnění</div>
+          <div style={{ color: '#e2e8f0', fontSize: '0.73rem' }}>{opLabel || 'Bez explicitních oprávnění'}</div>
+          {viewScope && (
+            <div style={{ color: '#cbd5e1', fontSize: '0.7rem', marginTop: '0.2rem' }}>
+              Scope zobrazení: {String(viewScope)}
+            </div>
+          )}
+        </div>
+
+        {item.popis && (
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.14)', marginTop: '0.45rem', paddingTop: '0.35rem' }}>
+            <div style={{ color: '#94a3b8', fontSize: '0.7rem', marginBottom: '0.2rem' }}>Poznámka</div>
+            <div style={{ color: '#e2e8f0', fontSize: '0.73rem' }}>{item.popis}</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const isCurrentMonth =
     viewDate.getFullYear() === new Date().getFullYear() &&
     viewDate.getMonth() === new Date().getMonth();
+
+  const onHeaderButtonRef = React.useRef(onHeaderButton);
+  onHeaderButtonRef.current = onHeaderButton;
+
+  useEffect(() => {
+    if (onHeaderButtonRef.current) {
+      const headerButton = (
+        <button onClick={goToToday} style={{
+          background: 'transparent',
+          border: 'none',
+          cursor: 'pointer',
+          color: '#0f766e',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          padding: '0.3rem 0.75rem',
+          borderRadius: '6px',
+          transition: 'background 0.12s, opacity 0.12s',
+          opacity: isCurrentMonth ? 0.4 : 0.8
+        }}
+          onMouseEnter={e => { if (!isCurrentMonth) { e.currentTarget.style.background = '#ecfeff'; e.currentTarget.style.opacity = '1'; } }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = isCurrentMonth ? '0.4' : '0.8'; }}
+          title={isCurrentMonth ? 'Již jste v aktuálním měsíci' : 'Zpět na dnešní měsíc'}
+        >Zpět na dnešek</button>
+      );
+      onHeaderButtonRef.current(headerButton);
+    }
+  }, [viewDate, isCurrentMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <WidgetBody>
@@ -3851,20 +3952,6 @@ function PlannedSubstitutionsWidget({ token, username }) {
           <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>
             {MONTHS[viewDate.getMonth()]} {viewDate.getFullYear()}
           </span>
-          {!isCurrentMonth && (
-            <button
-              onClick={() => {
-                const now = new Date();
-                const d = new Date(now.getFullYear(), now.getMonth(), 1);
-                setViewDate(d);
-                saveMonth(d);
-              }}
-              style={{ fontSize: '0.68rem', padding: '1px 6px', border: '1px solid #cbd5e1', borderRadius: '6px', background: 'transparent', color: '#64748b', cursor: 'pointer' }}
-              title="Přejít na aktuální měsíc"
-            >
-              dnes
-            </button>
-          )}
         </div>
 
         <button
@@ -3899,8 +3986,8 @@ function PlannedSubstitutionsWidget({ token, username }) {
       {/* Seznam */}
       {!loadingAll && !loadError && monthItems.map(item => {
         const opLabel = formatOpravneni(item.opravneni);
-        return (
-          <ListItem key={item.id}>
+        const row = (
+          <ListItem>
             <ListItemLeft>
               {/* Zastupovaný → Zástupce */}
               <ListItemTitle style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -3915,6 +4002,21 @@ function PlannedSubstitutionsWidget({ token, username }) {
               </ListItemSub>
             </ListItemLeft>
           </ListItem>
+        );
+
+        return (
+          <SmartTooltip
+            key={item.id}
+            text={renderSubstitutionTooltip(item, opLabel)}
+            icon="none"
+            multiline
+            preferredPosition="right"
+            maxWidth="430px"
+            interactive
+            stretch
+          >
+            {row}
+          </SmartTooltip>
         );
       })}
     </WidgetBody>
@@ -9471,7 +9573,14 @@ export default function DashboardPage() {
         headerExtra = widgetHeaderExtras.calendar;
         break;
       case 'planned_substitutions':
-        content = <PlannedSubstitutionsWidget token={token} username={username} />;
+        content = <PlannedSubstitutionsWidget
+          token={token}
+          username={username}
+          onHeaderButton={(btn) => {
+            setWidgetHeaderExtras(prev => ({ ...prev, planned_substitutions: btn }));
+          }}
+        />;
+        headerExtra = widgetHeaderExtras.planned_substitutions;
         break;
       default:
         return null;

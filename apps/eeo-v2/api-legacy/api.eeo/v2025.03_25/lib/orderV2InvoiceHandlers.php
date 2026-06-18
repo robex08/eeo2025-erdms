@@ -328,8 +328,8 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
             objednavka_id, smlouva_id, fa_dorucena, fa_castka, fa_cislo_vema, fa_vema_kod,
             fa_datum_vystaveni, fa_datum_splatnosti, fa_datum_doruceni,
             fa_strediska_kod, fa_poznamka, rozsirujici_data,
-            vytvoril_uzivatel_id, dt_vytvoreni, dt_aktualizace, aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
+            vytvoril_uzivatel_id, aktualizoval_uzivatel_id, dt_vytvoreni, dt_aktualizace, aktivni
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
         
         $stmt_insert = $db->prepare($sql_insert);
         $stmt_insert->execute(array(
@@ -345,7 +345,8 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
             isset($input['fa_strediska_kod']) ? $input['fa_strediska_kod'] : null,
             isset($input['fa_poznamka']) ? $input['fa_poznamka'] : null,
             isset($input['rozsirujici_data']) ? json_encode($input['rozsirujici_data']) : null,
-            $token_data['id']  // Použít ID z tokenu
+            $token_data['id'],  // Použít ID z tokenu
+            $token_data['id']
         ));
         
         $invoice_id = $db->lastInsertId();
@@ -544,8 +545,8 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
             potvrdil_vecnou_spravnost_id, dt_potvrzeni_vecne_spravnosti,
             vecna_spravnost_umisteni_majetku, vecna_spravnost_poznamka, vecna_spravnost_potvrzeno,
             rozsirujici_data, fa_predana_zam_id, fa_datum_predani_zam, fa_datum_vraceni_zam,
-            vytvoril_uzivatel_id, dt_vytvoreni, dt_aktualizace, aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
+            vytvoril_uzivatel_id, aktualizoval_uzivatel_id, dt_vytvoreni, dt_aktualizace, aktivni
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
         
         $stmt_insert = $db->prepare($sql_insert);
         $stmt_insert->execute(array(
@@ -571,7 +572,8 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
             isset($input['fa_predana_zam_id']) && !empty($input['fa_predana_zam_id']) ? (int)$input['fa_predana_zam_id'] : null,
             isset($input['fa_datum_predani_zam']) ? $input['fa_datum_predani_zam'] : null,
             isset($input['fa_datum_vraceni_zam']) ? $input['fa_datum_vraceni_zam'] : null,
-            $token_data['id']  // Použít ID z tokenu
+            $token_data['id'],  // Použít ID z tokenu
+            $token_data['id']
         ));
         
         $invoice_id = $db->lastInsertId();
