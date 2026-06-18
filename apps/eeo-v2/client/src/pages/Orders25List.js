@@ -4745,17 +4745,77 @@ const Orders25List = () => {
     return hasAdminRole && hasAdminRole();
   }, [hasAdminRole]);
 
+  const isTechnicalAuditRow = useCallback((row) => {
+    if (!row || typeof row !== 'object') return true;
+
+    const actionType = String(row.akce_typ || '').toUpperCase();
+    const note = String(row.poznamka || '').toLowerCase();
+    const endpoint = String(row.endpoint || '').toLowerCase();
+
+    if (actionType === 'UNLOCK' && (note.includes('orderform25') || note.includes('sekce='))) {
+      return true;
+    }
+
+    if (actionType === 'UPDATE' && !row.pole && note.includes('beze zmen')) {
+      return true;
+    }
+
+    if (actionType === 'UNLOCK' && endpoint.includes('/unlock')) {
+      return true;
+    }
+
+    return false;
+  }, []);
+
+  const pickBestLastAuditRow = useCallback((rows) => {
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    const meaningfulRows = rows.filter((row) => !isTechnicalAuditRow(row));
+    if (meaningfulRows.length === 0) {
+      return rows[0] || null;
+    }
+
+    const invoicePriorityRows = meaningfulRows.filter((row) => String(row.objekt_typ || '').toUpperCase() === 'FAKTURA');
+    if (invoicePriorityRows.length > 0) {
+      return invoicePriorityRows[0];
+    }
+
+    return meaningfulRows[0];
+  }, [isTechnicalAuditRow]);
+
   const getLastAuditSummaryText = useCallback((row) => {
     if (!row || typeof row !== 'object') {
       return '';
     }
 
+    const objectType = String(row.objekt_typ || '').toUpperCase();
     const actionType = String(row.akce_typ || '').toUpperCase();
     const changedField = String(row.pole || '').toLowerCase();
     const note = String(row.poznamka || '').trim();
 
+    if (objectType === 'FAKTURA') {
+      if (actionType === 'CREATE') return 'Přidání faktury';
+      if (actionType === 'DELETE') return 'Smazání faktury';
+      if (actionType === 'APPROVE') return 'Potvrzení věcné správnosti faktury';
+      if (actionType === 'REJECT') return 'Zamítnutí věcné správnosti faktury';
+      if (actionType === 'RESET') return 'Reset věcné správnosti faktury';
+      if (actionType === 'UPDATE') {
+        if (changedField) return 'Uložení změn faktury';
+        if (note) return note;
+        return 'Úprava faktury';
+      }
+      return note || 'Úprava faktury';
+    }
+
     if (actionType === 'UNLOCK') {
-      return 'Odemčení bloku fakturace';
+      const lowerNote = note.toLowerCase();
+      if (lowerNote.includes('sekce=fakturace') || lowerNote.includes('sekce fakturace')) {
+        return 'Odemčení sekce Fakturace';
+      }
+      if (note) {
+        return note;
+      }
+      return 'Odemčení zámku objednávky';
     }
 
     if (actionType === 'CREATE') {
@@ -9171,17 +9231,17 @@ const Orders25List = () => {
           body: JSON.stringify({
             token,
             username,
-            objekt_typ: 'OBJEDNAVKA',
-            objekt_id: numericId,
-            limit: 1,
+            related_objednavka_id: numericId,
+            limit: 30,
             offset: 0
           })
         });
 
         const json = await response.json();
-        const latestAuditRow = (json?.status === 'success' && Array.isArray(json?.data) && json.data.length > 0)
-          ? json.data[0]
-          : null;
+        const auditRows = (json?.status === 'success' && Array.isArray(json?.data))
+          ? json.data
+          : [];
+        const latestAuditRow = pickBestLastAuditRow(auditRows);
 
         if (cancelled) {
           return;
@@ -9204,7 +9264,7 @@ const Orders25List = () => {
     return () => {
       cancelled = true;
     };
-  }, [expanded, filteredData, isAdmin, token, username, lastAuditByOrderId, getLastAuditSummaryText]);
+  }, [expanded, filteredData, isAdmin, token, username, lastAuditByOrderId, getLastAuditSummaryText, pickBestLastAuditRow]);
 
   // 🎬 INITIALIZATION: Kontroluj dokončení všech kroků a skryj splash screen
   //  REVERT: Vrácen původní polling přístup (funguje spolehlivě)

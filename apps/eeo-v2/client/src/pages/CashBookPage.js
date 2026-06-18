@@ -162,6 +162,7 @@ const PageContainer = styled.div`
 `;
 
 const Header = styled.div`
+  position: relative;
   background: linear-gradient(135deg, #1e40af, #3b82f6);
   color: white;
   padding: 2rem;
@@ -173,7 +174,7 @@ const Header = styled.div`
   h1 {
     font-size: 2.5rem;
     font-weight: 700;
-    margin: 0 0 0.5rem 0;
+    margin: 0;
     display: flex;
     align-items: center;
     gap: 1rem;
@@ -190,6 +191,39 @@ const Header = styled.div`
     h1 {
       font-size: 2rem;
     }
+  }
+`;
+
+const HeaderTopRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+
+  @media (max-width: 768px) {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.65rem;
+  }
+`;
+
+const SubstitutionInfoBanner = styled.div`
+  flex-shrink: 0;
+  max-width: min(55%, 720px);
+  padding: 0.6rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.96), rgba(220, 38, 38, 0.95));
+  color: #fff7ed;
+  font-size: 0.9rem;
+  font-weight: 700;
+  text-align: left;
+  line-height: 1.35;
+  box-shadow: 0 10px 24px rgba(127, 29, 29, 0.35);
+
+  @media (max-width: 768px) {
+    max-width: 100%;
   }
 `;
 
@@ -2044,6 +2078,14 @@ const CashBookPage = () => {
           if (saved) {
             const savedData = JSON.parse(saved);
             selectedAssignment = allAvailableAssignments.find(a => a.id === savedData.id);
+
+            // Fallback match přes pokladnu pro případy, kdy se změní assignment ID
+            // (např. ukončené/střídající se přiřazení ve stejném čísle pokladny).
+            if (!selectedAssignment && savedData && savedData.cislo_pokladny !== undefined) {
+              selectedAssignment = allAvailableAssignments.find(
+                a => String(a.cislo_pokladny) === String(savedData.cislo_pokladny)
+              );
+            }
             
             // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
             if (!selectedAssignment) {
@@ -2056,9 +2098,14 @@ const CashBookPage = () => {
         }
 
         // Fallback na hlavní nebo první (když není cache nebo cache je neplatná)
+        // Priorita: pokladny aktuálního uživatele (vč. aktivního zastupování) → až pak globální seznam.
         if (!selectedAssignment) {
-          const main = allAvailableAssignments.find(a => a.je_hlavni === 1);
-          selectedAssignment = main || allAvailableAssignments[0];
+          const primaryPool = (userAssignments && userAssignments.length > 0)
+            ? userAssignments
+            : allAvailableAssignments;
+
+          const main = primaryPool.find(a => parseInt(a.je_hlavni, 10) === 1);
+          selectedAssignment = main || primaryPool[0] || allAvailableAssignments[0];
         }
 
         if (selectedAssignment) {
@@ -2694,7 +2741,7 @@ const CashBookPage = () => {
     }
     
     showToast(
-      `Přepnuto na pokladnu ${newAssignment.cislo_pokladny} - ${newAssignment.nazev_pracoviste || newAssignment.nazev}`, 
+      `Přepnuto na pokladnu ${newAssignment.cislo_pokladny || '?'} - ${newAssignment.nazev_pracoviste || newAssignment.nazev || 'Bez názvu'}`,
       'success'
     );
   }, [mainAssignment, userDetail, showToast, clearCashbookCacheForAssignment]);
@@ -3513,13 +3560,28 @@ const CashBookPage = () => {
     // Kontrola 1: Je uživatel vlastníkem této pokladny?
     const isOwner = String(mainAssignment.uzivatel_id) === String(userDetail.id);
 
-    // Kontrola 2: Je uživatel přiřazen k této pokladně (hlavní nebo zástupce)?
+    // Kontrola 2: Je pokladna v seznamu dostupných přiřazení aktuálního uživatele?
+    // userAssignments už obsahují i pokladny dostupné přes aktivní zastupování,
+    // proto zde nesmíme filtrovat podle assignment.uzivatel_id === userDetail.id.
     const isAssignedToThisCashbox = userAssignments?.some(assignment => {
-      return String(assignment.pokladna_id) === String(mainAssignment.pokladna_id) &&
-             String(assignment.uzivatel_id) === String(userDetail.id);
+      return String(assignment.pokladna_id) === String(mainAssignment.pokladna_id);
     });
 
     return isOwner || isAssignedToThisCashbox;
+  }, [mainAssignment, userDetail, userAssignments]);
+
+  // Informační režim pro UI: uživatel pracuje v pokladně zastupovaného.
+  const isWorkingInSubstitution = useMemo(() => {
+    if (!mainAssignment || !userDetail) return false;
+
+    const isOwner = String(mainAssignment.uzivatel_id) === String(userDetail.id);
+    if (isOwner) return false;
+
+    const hasAssignmentForCurrentCashbox = userAssignments?.some(assignment => {
+      return String(assignment.pokladna_id) === String(mainAssignment.pokladna_id);
+    });
+
+    return !!hasAssignmentForCurrentCashbox;
   }, [mainAssignment, userDetail, userAssignments]);
 
   // 🎯 CENTRÁLNÍ FUNKCE PRO KONTROLU EDITOVATELNOSTI
@@ -4036,10 +4098,21 @@ const CashBookPage = () => {
       <Global styles={printStyles} />
       <PageContainer>
         <Header className="no-print">
-          <h1>
-            <FontAwesomeIcon icon={faCalculator} />
-            Pokladní kniha
-          </h1>
+          <HeaderTopRow>
+            <h1>
+              <FontAwesomeIcon icon={faCalculator} />
+              Pokladní kniha
+            </h1>
+
+            {isWorkingInSubstitution && (
+              <SubstitutionInfoBanner>
+                Pracujete v režimu zastupování{(currentBookData?.uzivatel_jmeno_plne || mainAssignment?.uzivatel_cele_jmeno)
+                  ? ` za ${(currentBookData?.uzivatel_jmeno_plne || mainAssignment?.uzivatel_cele_jmeno)}.`
+                  : '.'} Změny ukládáte do pokladní knihy zastupovaného uživatele.
+              </SubstitutionInfoBanner>
+            )}
+          </HeaderTopRow>
+
           <p className="subtitle">
             {(() => {
               // ✅ Získat informace o vlastníkovi pokladny z book objektu (currentBookData)

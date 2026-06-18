@@ -21,6 +21,9 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
   const substitutedApproverIds = Array.isArray(options.substitutedApproverIds)
     ? options.substitutedApproverIds
     : [];
+  const substitutedMaterialCheckerIds = Array.isArray(options.substitutedMaterialCheckerIds)
+    ? options.substitutedMaterialCheckerIds
+    : [];
 
   // ✅ OPTIMALIZACE: Memoizuj permission funkce - zavolají se pouze při změně hasPermission nebo userId
   const permissionFunctions = useMemo(() => {
@@ -39,6 +42,11 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
 
     const substitutedApproverIdSet = new Set(
       substitutedApproverIds
+        .filter(id => id !== null && id !== undefined)
+        .map(id => String(id))
+    );
+    const substitutedMaterialCheckerIdSet = new Set(
+      substitutedMaterialCheckerIds
         .filter(id => id !== null && id !== undefined)
         .map(id => String(id))
     );
@@ -77,6 +85,39 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
         const approvalStates = ['ODESLANA_KE_SCHVALENI', 'CEKA_SE', 'SCHVALENA', 'ZAMITNUTA'];
         if (workflowStates.some(state => approvalStates.includes(state))) {
           return true;
+        }
+      }
+
+      // ✅ SUBSTITUCE: Aktivní zástupce pro věcnou správnost může otevřít objednávku
+      // v editačním režimu ve workflow fázích fakturace/věcné správnosti.
+      if (substitutedMaterialCheckerIdSet.size > 0) {
+        const workflowStates = parseWorkflowStates(order.stav_workflow_kod);
+        const materialCheckStates = ['FAKTURACE', 'VECNA_SPRAVNOST', 'V_RESENI', 'ZKONTROLOVANA'];
+        const isMaterialCheckState = workflowStates.some(state => materialCheckStates.includes(state));
+
+        if (isMaterialCheckState) {
+          const relatedUserIds = [
+            order.objednatel_id,
+            order.uzivatel_id,
+            order.garant_uzivatel_id,
+            order.garant_id,
+            order.schvalovatel_id,
+            order.prikazce_id,
+            order.uzivatel_akt_id,
+            order.odesilatel_id,
+            order.dodavatel_potvrdil_id,
+            order.zverejnil_id,
+            order.fakturant_id,
+            order.dokoncil_id,
+            order.potvrdil_vecnou_spravnost_id,
+          ]
+            .filter(id => id !== null && id !== undefined)
+            .map(id => String(id));
+
+          const hasDelegatedMaterialAccess = relatedUserIds.some(id => substitutedMaterialCheckerIdSet.has(id));
+          if (hasDelegatedMaterialAccess) {
+            return true;
+          }
         }
       }
 
@@ -215,7 +256,7 @@ export function useOrderPermissions(hasPermission, userId, options = {}) {
       canViewDetails,
       canGenerateFinancialControl,
     };
-  }, [hasPermission, userId, substitutedApproverIds]);
+  }, [hasPermission, userId, substitutedApproverIds, substitutedMaterialCheckerIds]);
 
   return permissionFunctions;
 }

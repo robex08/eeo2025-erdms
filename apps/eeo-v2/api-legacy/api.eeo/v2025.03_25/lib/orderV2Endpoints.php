@@ -1647,12 +1647,15 @@ function handle_order_v2_update($input, $config, $queries) {
                             vecna_spravnost_potvrzeno,
                             potvrdil_vecnou_spravnost_id,
                             dt_potvrzeni_vecne_spravnosti,
+                            fa_predana_zam_id,
+                            fa_datum_predani_zam,
+                            fa_datum_vraceni_zam,
                             vytvoril_uzivatel_id,
                             aktualizoval_uzivatel_id,
                             dt_vytvoreni,
                             dt_aktualizace,
                             aktivni
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
                         
                         // 🔍 DEBUG fa_vema_kod
                         error_log("🔍 [INVOICE CREATE] fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
@@ -1675,6 +1678,9 @@ function handle_order_v2_update($input, $config, $queries) {
                             isset($faktura['vecna_spravnost_potvrzeno']) ? (int)$faktura['vecna_spravnost_potvrzeno'] : 0,
                             isset($faktura['potvrdil_vecnou_spravnost_id']) ? (int)$faktura['potvrdil_vecnou_spravnost_id'] : null,
                             isset($faktura['dt_potvrzeni_vecne_spravnosti']) ? $faktura['dt_potvrzeni_vecne_spravnosti'] : null,
+                            isset($faktura['fa_predana_zam_id']) && !empty($faktura['fa_predana_zam_id']) ? (int)$faktura['fa_predana_zam_id'] : null,
+                            isset($faktura['fa_datum_predani_zam']) ? $faktura['fa_datum_predani_zam'] : null,
+                            isset($faktura['fa_datum_vraceni_zam']) ? $faktura['fa_datum_vraceni_zam'] : null,
                             $current_user_id,
                             $current_user_id
                         ));
@@ -1785,6 +1791,21 @@ function handle_order_v2_update($input, $config, $queries) {
                             $update_fields[] = 'fa_poznamka = ?';
                             $update_values[] = $faktura['fa_poznamka'];
                         }
+
+                        if (array_key_exists('fa_predana_zam_id', $faktura)) {
+                            $update_fields[] = 'fa_predana_zam_id = ?';
+                            $update_values[] = !empty($faktura['fa_predana_zam_id']) ? (int)$faktura['fa_predana_zam_id'] : null;
+                        }
+
+                        if (array_key_exists('fa_datum_predani_zam', $faktura)) {
+                            $update_fields[] = 'fa_datum_predani_zam = ?';
+                            $update_values[] = !empty($faktura['fa_datum_predani_zam']) ? $faktura['fa_datum_predani_zam'] : null;
+                        }
+
+                        if (array_key_exists('fa_datum_vraceni_zam', $faktura)) {
+                            $update_fields[] = 'fa_datum_vraceni_zam = ?';
+                            $update_values[] = !empty($faktura['fa_datum_vraceni_zam']) ? $faktura['fa_datum_vraceni_zam'] : null;
+                        }
                         
                         // ✅ VĚCNÁ SPRÁVNOST - 6 polí (1:1 DB mapping)
                         if (isset($faktura['vecna_spravnost_umisteni_majetku'])) {
@@ -1870,6 +1891,48 @@ function handle_order_v2_update($input, $config, $queries) {
                             $invoices_updated = true;
                         }
                     }
+                }
+
+                // Udržovat fakturace tracking objednávky v souladu s realitou faktur.
+                try {
+                    $orders_table = get_orders_table_name();
+
+                    $sql_count_active = "SELECT COUNT(*) AS cnt FROM `{$faktury_table}` WHERE objednavka_id = ? AND aktivni = 1";
+                    $stmt_count_active = $db->prepare($sql_count_active);
+                    $stmt_count_active->execute(array($order_id));
+                    $active_invoices_count = (int)$stmt_count_active->fetchColumn();
+
+                    if ($active_invoices_count === 0) {
+                        $sql_reset_tracking = "UPDATE `{$orders_table}`
+                                               SET fakturant_id = NULL,
+                                                   dt_faktura_pridana = NULL,
+                                                   dt_aktualizace = NOW(),
+                                                   uzivatel_akt_id = ?
+                                               WHERE id = ?";
+                        $stmt_reset_tracking = $db->prepare($sql_reset_tracking);
+                        $stmt_reset_tracking->execute(array($current_user_id, $order_id));
+                        error_log("🔄 [FAKTURACE TRACKING] Order #{$order_id}: reset fakturant_id/dt_faktura_pridana (0 aktivních faktur)");
+                    } else {
+                        $sql_current_tracking = "SELECT fakturant_id, dt_faktura_pridana FROM `{$orders_table}` WHERE id = ? LIMIT 1";
+                        $stmt_current_tracking = $db->prepare($sql_current_tracking);
+                        $stmt_current_tracking->execute(array($order_id));
+                        $current_tracking = $stmt_current_tracking->fetch(PDO::FETCH_ASSOC);
+
+                        $missing_tracking = !$current_tracking || empty($current_tracking['fakturant_id']) || empty($current_tracking['dt_faktura_pridana']);
+                        if ($missing_tracking) {
+                            $sql_init_tracking = "UPDATE `{$orders_table}`
+                                                  SET fakturant_id = ?,
+                                                      dt_faktura_pridana = NOW(),
+                                                      dt_aktualizace = NOW(),
+                                                      uzivatel_akt_id = ?
+                                                  WHERE id = ?";
+                            $stmt_init_tracking = $db->prepare($sql_init_tracking);
+                            $stmt_init_tracking->execute(array($current_user_id, $current_user_id, $order_id));
+                            error_log("🔄 [FAKTURACE TRACKING] Order #{$order_id}: inicializace fakturant_id/dt_faktura_pridana (chybějící metadata)");
+                        }
+                    }
+                } catch (Exception $tracking_sync_error) {
+                    error_log("⚠️ [FAKTURACE TRACKING] Sync chyba u objednávky #{$order_id}: " . $tracking_sync_error->getMessage());
                 }
             }
             

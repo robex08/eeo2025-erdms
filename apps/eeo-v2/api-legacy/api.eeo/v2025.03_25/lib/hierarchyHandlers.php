@@ -290,10 +290,11 @@ function _substitution_decode_opravneni($opravneni_raw) {
 
 /**
  * Pomocná funkce: může uživatel spravovat své zastupování?
- * Ano pokud má USER_SUBSTITUTE_SET, je admin, nebo má v tabulce možností aktivní vlastní pravidla.
+ * Ano pokud je admin, nebo má v tabulce možností aktivní vlastní pravidla
+ * (včetně globálních pravidel pro všechny uživatele).
  */
 function _substitution_can_manage_own($token_data, $pdo, $queries) {
-    if (!empty($token_data['is_admin']) || _substitution_has_right($token_data, 'USER_SUBSTITUTE_SET')) {
+    if (!empty($token_data['is_admin'])) {
         return true;
     }
 
@@ -373,7 +374,7 @@ function handle_substitution_list($data, $pdo) {
 
 /**
  * POST substitution/create
- * Uživatel nastaví svého zástupce. Vyžaduje právo USER_SUBSTITUTE_SET.
+ * Uživatel nastaví svého zástupce. Vyžaduje oprávnění dle vazební tabulky možností zastupování.
  * zastupovany_id MUSÍ odpovídat přihlášenému uživateli.
  * Povinná pole: zastupce_id, dt_od, dt_do, opravneni (objekt)
  */
@@ -2025,46 +2026,87 @@ function get_active_substitution_for_action($pdo, $zastupce_id, $required_permis
     }
     
     try {
-                $sql = "
-                        SELECT z.id, z.zastupovany_id, z.opravneni
-                        FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
-                        WHERE z.zastupce_id = :zastupce_id
-                            AND z.aktivni = 1
-                            AND z.dt_od <= CURDATE()
-                            AND z.dt_do >= CURDATE()";
+        $permission_aliases = [
+            'approve' => ['approve'],
+            'view' => ['view'],
+            'confirm' => ['confirm', 'material_check', 'materialCorrectness'],
+            'administrator' => ['administrator'],
+            'superadmin' => ['superadmin'],
+        ];
 
-                $params = [':zastupce_id' => $zastupce_id];
+        $is_truthy = static function($value) {
+            if (is_bool($value)) {
+                return $value;
+            }
+            if (is_int($value) || is_float($value)) {
+                return (int)$value === 1;
+            }
+            if (is_string($value)) {
+                $normalized = strtolower(trim($value));
+                return in_array($normalized, ['1', 'true', 'yes', 'ano'], true);
+            }
+            return false;
+        };
 
-                if ($target_zastupovany_id !== null && (int)$target_zastupovany_id > 0) {
-                        $sql .= " AND z.zastupovany_id = :target_zastupovany_id";
-                        $params[':target_zastupovany_id'] = (int)$target_zastupovany_id;
+        $has_required_permission = static function($opravneni, $required_permission) use ($permission_aliases, $is_truthy) {
+            if (!is_array($opravneni)) {
+                return false;
+            }
+
+            $keys = $permission_aliases[$required_permission] ?? [$required_permission];
+            foreach ($keys as $key) {
+                if (array_key_exists($key, $opravneni) && $is_truthy($opravneni[$key])) {
+                    return true;
                 }
+            }
 
-                $sql .= " LIMIT 1";
+            return false;
+        };
 
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$row) {
+        $sql = "
+                SELECT z.id, z.zastupovany_id, z.opravneni
+                FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+                WHERE z.zastupce_id = :zastupce_id
+                    AND z.aktivni = 1
+                    AND z.dt_od <= CURDATE()
+                    AND z.dt_do >= CURDATE()";
+
+        $params = [':zastupce_id' => $zastupce_id];
+
+        if ($target_zastupovany_id !== null && (int)$target_zastupovany_id > 0) {
+            $sql .= " AND z.zastupovany_id = :target_zastupovany_id";
+            $params[':target_zastupovany_id'] = (int)$target_zastupovany_id;
+        }
+
+        $sql .= " ORDER BY z.dt_od DESC, z.id DESC";
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!$rows || count($rows) === 0) {
             return null; // Neexistuje aktivní zastupování
         }
-        
-        $opravneni = json_decode($row['opravneni'], true);
-        if (!is_array($opravneni) || empty($opravneni[$required_permission])) {
-            error_log("🔍 SUBSTITUTION: User $zastupce_id zastupuje, ale NEMÁ oprávnění '$required_permission'" .
-                (($target_zastupovany_id !== null) ? " pro user " . (int)$target_zastupovany_id : ""));
-            return null; // Nemá požadované oprávnění
+
+        foreach ($rows as $row) {
+            $opravneni = json_decode($row['opravneni'], true);
+            if (!$has_required_permission($opravneni, $required_permission)) {
+                continue;
+            }
+
+            error_log("✅ SUBSTITUTION: User $zastupce_id aktivně zastupuje user " . $row['zastupovany_id'] . " s oprávněním '$required_permission'");
+
+            return [
+                'zastupovani_id' => (int)$row['id'],
+                'zastupovany_id' => (int)$row['zastupovany_id'],
+                'opravneni' => $opravneni
+            ];
         }
-        
-        error_log("✅ SUBSTITUTION: User $zastupce_id aktivně zastupuje user " . $row['zastupovany_id'] . " s oprávněním '$required_permission'");
-        
-        return [
-            'zastupovani_id' => (int)$row['id'],
-            'zastupovany_id' => (int)$row['zastupovany_id'],
-            'opravneni' => $opravneni
-        ];
-        
+
+        error_log("🔍 SUBSTITUTION: User $zastupce_id má aktivní zastupování, ale žádný záznam neobsahuje oprávnění '$required_permission'" .
+            (($target_zastupovany_id !== null) ? " pro user " . (int)$target_zastupovany_id : ""));
+        return null;
+
     } catch (PDOException $e) {
         error_log("❌ SUBSTITUTION: Chyba při kontrole aktivního zastupování: " . $e->getMessage());
         return null;
@@ -2143,17 +2185,44 @@ function log_substitution_action($pdo, $zastupovani_id, $zastupce_id, $zastupova
  * @param string $objekt_typ Typ objektu (OBJEDNAVKA, FAKTURA, SMLOUVA, LP...)
  * @param int|null $objekt_id ID objektu (číslo objednávky, faktury apod.)
  * @param string $popis_akce Textový popis akce
+ * @param int|null $target_zastupovany_id Volitelně konkrétní uživatel, za kterého akce probíhá
  * @return bool TRUE pokud byla akce v zastoupení (logováno), FALSE pokud uživatel jednal sám
  */
-function check_and_log_substitution_action($pdo, $token_data, $akce_typ, $objekt_typ, $objekt_id = null, $popis_akce = '') {
+function check_and_log_substitution_action($pdo, $token_data, $akce_typ, $objekt_typ, $objekt_id = null, $popis_akce = '', $target_zastupovany_id = null) {
     if (!$pdo || !$token_data || empty($token_data['id'])) {
         return false; // Chybí data
     }
     
     $zastupce_id = (int)$token_data['id'];
+
+    $resolved_target_zastupovany_id = (int)$target_zastupovany_id;
+    if ($resolved_target_zastupovany_id <= 0) {
+        $candidate_keys = array('audit_target_user_id', 'target_zastupovany_id', 'zastupovany_id', 'pro_uzivatele_id');
+        foreach ($candidate_keys as $candidate_key) {
+            if (isset($token_data[$candidate_key]) && (int)$token_data[$candidate_key] > 0) {
+                $resolved_target_zastupovany_id = (int)$token_data[$candidate_key];
+                break;
+            }
+        }
+
+        if ($resolved_target_zastupovany_id <= 0 && isset($token_data['substitution_context']) && is_array($token_data['substitution_context'])) {
+            if (isset($token_data['substitution_context']['zastupovany_id']) && (int)$token_data['substitution_context']['zastupovany_id'] > 0) {
+                $resolved_target_zastupovany_id = (int)$token_data['substitution_context']['zastupovany_id'];
+            }
+        }
+
+        if ($resolved_target_zastupovany_id <= 0 && isset($token_data['delegation']) && is_array($token_data['delegation'])) {
+            if (isset($token_data['delegation']['zastupovany_id']) && (int)$token_data['delegation']['zastupovany_id'] > 0) {
+                $resolved_target_zastupovany_id = (int)$token_data['delegation']['zastupovany_id'];
+            }
+        }
+    }
+    if ($resolved_target_zastupovany_id <= 0) {
+        $resolved_target_zastupovany_id = null;
+    }
     
     // Detekce aktivního zastupování s oprávněním 'approve' (používá se v akcích)
-    $substitution = get_active_substitution_for_action($pdo, $zastupce_id, 'approve');
+    $substitution = get_active_substitution_for_action($pdo, $zastupce_id, 'approve', $resolved_target_zastupovany_id);
     
     if (!$substitution) {
         // Žádné aktivní zastupování → uživatel jedná sám

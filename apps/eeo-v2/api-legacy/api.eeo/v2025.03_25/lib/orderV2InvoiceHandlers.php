@@ -119,6 +119,174 @@ function order_v2_normalize_money_to_decimal_string($raw, &$error) {
 }
 
 /**
+ * Najde aktivní fakturu podle čísla VEMA.
+ */
+function order_v2_find_active_invoice_by_number($db, $fa_cislo_vema) {
+    $sql = "SELECT id, objednavka_id, smlouva_id, fa_castka, fa_datum_vystaveni, vytvoril_uzivatel_id, dt_vytvoreni
+            FROM " . TBL_FAKTURY . "
+            WHERE fa_cislo_vema = ? AND aktivni = 1
+            ORDER BY id DESC
+            LIMIT 1";
+    $stmt = $db->prepare($sql);
+    $stmt->execute(array($fa_cislo_vema));
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+/**
+ * Heuristika idempotentního retry create requestu.
+ *
+ * Vrací true pouze když je to velmi pravděpodobně stejný request:
+ * - stejný uživatel
+ * - stejné vazby objednávka/smlouva
+ * - stejná částka a datum vystavení
+ * - vytvořeno nedávno (výchozí 180s)
+ */
+function order_v2_is_probable_idempotent_create_retry($existing_invoice, $token_data, $input, $order_id, $window_seconds) {
+    if (!$existing_invoice) {
+        return false;
+    }
+
+    $window_seconds = (int)$window_seconds;
+    if ($window_seconds <= 0) {
+        $window_seconds = 180;
+    }
+
+    $existing_user_id = isset($existing_invoice['vytvoril_uzivatel_id']) ? (int)$existing_invoice['vytvoril_uzivatel_id'] : 0;
+    $current_user_id = isset($token_data['id']) ? (int)$token_data['id'] : 0;
+    if ($existing_user_id <= 0 || $current_user_id <= 0 || $existing_user_id !== $current_user_id) {
+        return false;
+    }
+
+    $requested_order_id = ($order_id !== null && (int)$order_id > 0) ? (int)$order_id : 0;
+    $existing_order_id = !empty($existing_invoice['objednavka_id']) ? (int)$existing_invoice['objednavka_id'] : 0;
+    if ($requested_order_id !== $existing_order_id) {
+        return false;
+    }
+
+    $requested_smlouva_id = (isset($input['smlouva_id']) && (int)$input['smlouva_id'] > 0) ? (int)$input['smlouva_id'] : 0;
+    $existing_smlouva_id = !empty($existing_invoice['smlouva_id']) ? (int)$existing_invoice['smlouva_id'] : 0;
+    if ($requested_smlouva_id !== $existing_smlouva_id) {
+        return false;
+    }
+
+    $requested_ts = isset($input['fa_datum_vystaveni']) ? strtotime($input['fa_datum_vystaveni']) : false;
+    $existing_date_ts = !empty($existing_invoice['fa_datum_vystaveni']) ? strtotime($existing_invoice['fa_datum_vystaveni']) : false;
+    if ($requested_ts === false || $existing_date_ts === false) {
+        return false;
+    }
+
+    $requested_date = date('Y-m-d', $requested_ts);
+    $existing_date = date('Y-m-d', $existing_date_ts);
+    if ($requested_date !== $existing_date) {
+        return false;
+    }
+
+    $requested_amount = number_format((float)$input['fa_castka'], 2, '.', '');
+    $existing_amount = number_format((float)$existing_invoice['fa_castka'], 2, '.', '');
+    if ($requested_amount !== $existing_amount) {
+        return false;
+    }
+
+    $existing_ts = !empty($existing_invoice['dt_vytvoreni']) ? strtotime($existing_invoice['dt_vytvoreni']) : false;
+    if ($existing_ts === false) {
+        return false;
+    }
+
+    $age_seconds = time() - (int)$existing_ts;
+    if ($age_seconds < 0 || $age_seconds > $window_seconds) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * Standardní response při detekci duplicity čísla faktury.
+ */
+function order_v2_emit_duplicate_create_response($existing_invoice, $is_idempotent_retry) {
+    $existing_id = isset($existing_invoice['id']) ? (int)$existing_invoice['id'] : null;
+
+    if ($is_idempotent_retry && $existing_id) {
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'ok',
+            'message' => 'Faktura již byla vytvořena (idempotentní opakování požadavku).',
+            'data' => array(
+                'invoice_id' => $existing_id,
+                'idempotent_reused' => true
+            )
+        ));
+        return;
+    }
+
+    http_response_code(409);
+    echo json_encode(array(
+        'status' => 'error',
+        'message' => 'Faktura s tímto číslem již existuje.',
+        'error_code' => 'INVOICE_DUPLICATE',
+        'existing_invoice' => array(
+            'id' => $existing_id,
+            'objednavka_id' => isset($existing_invoice['objednavka_id']) && $existing_invoice['objednavka_id'] !== null ? (int)$existing_invoice['objednavka_id'] : null,
+            'smlouva_id' => isset($existing_invoice['smlouva_id']) && $existing_invoice['smlouva_id'] !== null ? (int)$existing_invoice['smlouva_id'] : null,
+            'fa_castka' => isset($existing_invoice['fa_castka']) ? $existing_invoice['fa_castka'] : null,
+            'fa_datum_vystaveni' => isset($existing_invoice['fa_datum_vystaveni']) ? $existing_invoice['fa_datum_vystaveni'] : null
+        )
+    ));
+}
+
+/**
+ * Udržuje fakturant metadata objednávky v souladu s aktivními fakturami.
+ * - pokud objednávka nemá aktivní faktury: vynuluje fakturant_id + dt_faktura_pridana
+ * - pokud má aktivní faktury, ale chybí metadata: inicializuje je aktuálním uživatelem
+ */
+function sync_order_v2_invoice_tracking_metadata($db, $order_id, $current_user_id) {
+    $order_id = (int)$order_id;
+    $current_user_id = (int)$current_user_id;
+
+    if ($order_id <= 0) {
+        return;
+    }
+
+    $orders_table = get_orders_table_name();
+
+    $sql_count = "SELECT COUNT(*) AS cnt FROM " . TBL_FAKTURY . " WHERE objednavka_id = ? AND aktivni = 1";
+    $stmt_count = $db->prepare($sql_count);
+    $stmt_count->execute(array($order_id));
+    $active_count = (int)$stmt_count->fetchColumn();
+
+    if ($active_count === 0) {
+        $sql_reset = "UPDATE `{$orders_table}`
+                      SET fakturant_id = NULL,
+                          dt_faktura_pridana = NULL,
+                          dt_aktualizace = NOW(),
+                          uzivatel_akt_id = ?
+                      WHERE id = ?";
+        $stmt_reset = $db->prepare($sql_reset);
+        $stmt_reset->execute(array($current_user_id, $order_id));
+        error_log("🔄 [FAKTURACE TRACKING] Order #{$order_id}: reset fakturant_id/dt_faktura_pridana (0 aktivních faktur)");
+        return;
+    }
+
+    $sql_current = "SELECT fakturant_id, dt_faktura_pridana FROM `{$orders_table}` WHERE id = ? LIMIT 1";
+    $stmt_current = $db->prepare($sql_current);
+    $stmt_current->execute(array($order_id));
+    $current_tracking = $stmt_current->fetch(PDO::FETCH_ASSOC);
+
+    $missing_tracking = !$current_tracking || empty($current_tracking['fakturant_id']) || empty($current_tracking['dt_faktura_pridana']);
+    if ($missing_tracking) {
+        $sql_init = "UPDATE `{$orders_table}`
+                     SET fakturant_id = ?,
+                         dt_faktura_pridana = NOW(),
+                         dt_aktualizace = NOW(),
+                         uzivatel_akt_id = ?
+                     WHERE id = ?";
+        $stmt_init = $db->prepare($sql_init);
+        $stmt_init->execute(array($current_user_id, $current_user_id, $order_id));
+        error_log("🔄 [FAKTURACE TRACKING] Order #{$order_id}: inicializace fakturant_id/dt_faktura_pridana (chybějící metadata)");
+    }
+}
+
+/**
  * LP guard: při potvrzení věcné správnosti musí mít LP financovaná objednávka
  * alespoň jeden řádek LP rozkladu u faktury.
  *
@@ -317,6 +485,15 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
     
     try {
         $db = get_db($config);
+
+        // 🔒 DUPLICATE GUARD + IDEMPOTENCE (server-side)
+        $fa_cislo_vema = trim($input['fa_cislo_vema']);
+        $existing_invoice = order_v2_find_active_invoice_by_number($db, $fa_cislo_vema);
+        if ($existing_invoice) {
+            $is_idempotent_retry = order_v2_is_probable_idempotent_create_retry($existing_invoice, $token_data, $input, $order_id, 180);
+            order_v2_emit_duplicate_create_response($existing_invoice, $is_idempotent_retry);
+            return;
+        }
         
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
@@ -502,6 +679,15 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
     
     try {
         $db = get_db($config);
+
+        // 🔒 DUPLICATE GUARD + IDEMPOTENCE (server-side)
+        $fa_cislo_vema = trim($input['fa_cislo_vema']);
+        $existing_invoice = order_v2_find_active_invoice_by_number($db, $fa_cislo_vema);
+        if ($existing_invoice) {
+            $is_idempotent_retry = order_v2_is_probable_idempotent_create_retry($existing_invoice, $token_data, $input, $order_id, 180);
+            order_v2_emit_duplicate_create_response($existing_invoice, $is_idempotent_retry);
+            return;
+        }
         
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
@@ -1269,6 +1455,12 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
                 error_log("⚠️ UNLINK: Chyba při aktualizaci workflow po odpojení faktury: " . $unlink_error->getMessage());
                 // Neblokovat úspěch faktury, jen zalogovat chybu
             }
+
+            try {
+                sync_order_v2_invoice_tracking_metadata($db, $detached_from_order_id, (int)$token_data['id']);
+            } catch (Exception $tracking_error) {
+                error_log("⚠️ UNLINK: Chyba při synchronizaci fakturace metadata objednávky #{$detached_from_order_id}: " . $tracking_error->getMessage());
+            }
         }
         
         // =========================================================================
@@ -1859,6 +2051,14 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
             }
         } catch (Exception $lp_error) {
             error_log("⚠️ [Invoice Delete] Chyba při přepočtu LP: " . $lp_error->getMessage());
+        }
+
+        if (!empty($invoice['objednavka_id'])) {
+            try {
+                sync_order_v2_invoice_tracking_metadata($db, (int)$invoice['objednavka_id'], $current_user_id);
+            } catch (Exception $tracking_error) {
+                error_log("⚠️ [Invoice Delete] Chyba při synchronizaci fakturace metadata objednávky #" . (int)$invoice['objednavka_id'] . ": " . $tracking_error->getMessage());
+            }
         }
         
         $db->commit();

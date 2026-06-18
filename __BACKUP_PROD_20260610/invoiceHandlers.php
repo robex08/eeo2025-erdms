@@ -114,61 +114,6 @@ if (!function_exists('invoices25_normalize_money_to_decimal_string')) {
     }
 }
 
-if (!function_exists('invoices25_sync_order_invoice_tracking_metadata')) {
-    /**
-     * Udržuje fakturant metadata objednávky v souladu s aktivními fakturami.
-     * - pokud objednávka nemá aktivní faktury: vynuluje fakturant_id + dt_faktura_pridana
-     * - pokud má aktivní faktury, ale chybí metadata: inicializuje je aktuálním uživatelem
-     */
-    function invoices25_sync_order_invoice_tracking_metadata($db, $order_id, $current_user_id) {
-        $order_id = (int)$order_id;
-        $current_user_id = (int)$current_user_id;
-
-        if ($order_id <= 0) {
-            return;
-        }
-
-        $orders_table = get_orders_table_name();
-        $faktury_table = get_invoices_table_name();
-
-        $sql_count = "SELECT COUNT(*) AS cnt FROM `{$faktury_table}` WHERE objednavka_id = ? AND aktivni = 1";
-        $stmt_count = $db->prepare($sql_count);
-        $stmt_count->execute(array($order_id));
-        $active_count = (int)$stmt_count->fetchColumn();
-
-        if ($active_count === 0) {
-            $sql_reset = "UPDATE `{$orders_table}`
-                          SET fakturant_id = NULL,
-                              dt_faktura_pridana = NULL,
-                              dt_aktualizace = NOW(),
-                              uzivatel_akt_id = ?
-                          WHERE id = ?";
-            $stmt_reset = $db->prepare($sql_reset);
-            $stmt_reset->execute(array($current_user_id, $order_id));
-            error_log("🔄 [INVOICES25 TRACKING] Order #{$order_id}: reset fakturant_id/dt_faktura_pridana (0 aktivních faktur)");
-            return;
-        }
-
-        $sql_current = "SELECT fakturant_id, dt_faktura_pridana FROM `{$orders_table}` WHERE id = ? LIMIT 1";
-        $stmt_current = $db->prepare($sql_current);
-        $stmt_current->execute(array($order_id));
-        $current_tracking = $stmt_current->fetch(PDO::FETCH_ASSOC);
-
-        $missing_tracking = !$current_tracking || empty($current_tracking['fakturant_id']) || empty($current_tracking['dt_faktura_pridana']);
-        if ($missing_tracking) {
-            $sql_init = "UPDATE `{$orders_table}`
-                         SET fakturant_id = ?,
-                             dt_faktura_pridana = NOW(),
-                             dt_aktualizace = NOW(),
-                             uzivatel_akt_id = ?
-                         WHERE id = ?";
-            $stmt_init = $db->prepare($sql_init);
-            $stmt_init->execute(array($current_user_id, $current_user_id, $order_id));
-            error_log("🔄 [INVOICES25 TRACKING] Order #{$order_id}: inicializace fakturant_id/dt_faktura_pridana (chybějící metadata)");
-        }
-    }
-}
-
 /**
  * POST - Načte faktury pro konkrétní objednávku
  * Endpoint: invoices25/by-order
@@ -385,12 +330,11 @@ function handle_invoices25_create($input, $config, $queries) {
             rozsirujici_data,
             stav,
             vytvoril_uzivatel_id,
-            aktualizoval_uzivatel_id,
             dt_vytvoreni,
             dt_aktualizace,
             aktivni
         ) VALUES (
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1
         )";
 
         $stmt = $db->prepare($sql);
@@ -488,32 +432,10 @@ function handle_invoices25_create($input, $config, $queries) {
             $vecna_spravnost_potvrzeno,
             $rozsirujici_data,
             $stav,
-            $token_data['id'],
             $token_data['id']
         ]);
 
         $new_id = $db->lastInsertId();
-
-        // AUDIT LOG: CREATE faktury včetně počátečních hodnot (fail-safe)
-        try {
-            if (function_exists('audit_log_create_with_data')) {
-                $created_faktura_stmt = $db->prepare("SELECT * FROM `{$faktury_table}` WHERE id = ? LIMIT 1");
-                $created_faktura_stmt->execute([(int)$new_id]);
-                $created_faktura = $created_faktura_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-
-                audit_log_create_with_data(
-                    $db,
-                    $token_data,
-                    'FAKTURA',
-                    (int)$new_id,
-                    'invoices25/create',
-                    (array)$created_faktura,
-                    'Vytvoření nové faktury'
-                );
-            }
-        } catch (Exception $ae) {
-            error_log('[AUDIT] invoice create audit error: ' . $ae->getMessage());
-        }
 
         // 🔔 TRIGGER: INVOICE_MATERIAL_CHECK_REQUESTED - pokud má faktura objednávku NEBO předáno komu (s datem) NEBO smlouvu
         // ⚠️ DŮLEŽITÉ: Stav faktury NEkontrolujeme - faktura NEMÁ workflow! (stav je jen informační poznámka)
@@ -589,13 +511,13 @@ function handle_invoices25_update($input, $config, $queries) {
         
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
-        
+
         // Ověř, že faktura existuje + načti aktuální data pro detekci změn
         $faktury_table = get_invoices_table_name();
         $check_stmt = $db->prepare("
             SELECT id, stav, objednavka_id, vecna_spravnost_potvrzeno,
                    fa_castka, fa_datum_vystaveni, fa_datum_splatnosti, fa_datum_doruceni,
-                   fa_cislo_vema, fa_typ, fa_strediska_kod, fa_predana_zam_id
+                   fa_cislo_vema, fa_typ, fa_strediska_kod
             FROM `$faktury_table` 
             WHERE id = ? AND aktivni = 1
         ");
@@ -607,21 +529,6 @@ function handle_invoices25_update($input, $config, $queries) {
             echo json_encode(['err' => 'Faktura nenalezena']);
             return;
         }
-
-        // ✨ LOGOVÁNÍ ZASTUPOVÁNÍ: Detekce a zaznamenání akcí v zastoupení
-        $substitutionTargetUserId = null;
-        if (!empty($oldInvoiceData['fa_predana_zam_id']) && (int)$oldInvoiceData['fa_predana_zam_id'] > 0) {
-            $substitutionTargetUserId = (int)$oldInvoiceData['fa_predana_zam_id'];
-        }
-        check_and_log_substitution_action(
-            $db,
-            $token_data,
-            'UPDATE',
-            'FAKTURA',
-            $faktura_id,
-            'Úprava faktury (potvrz. věcné správnosti)',
-            $substitutionTargetUserId
-        );
 
         // ⚠️ DETEKCE ZMĚN pro automatické zrušení věcné správnosti
         $resetVecnaSpravnost = false;
@@ -803,13 +710,9 @@ function handle_invoices25_update($input, $config, $queries) {
         $fields = [];
         $values = [];
 
-        $old_order_id = !empty($oldInvoiceData['objednavka_id']) ? (int)$oldInvoiceData['objednavka_id'] : 0;
-        $new_order_id = $old_order_id;
-
         if (isset($input['objednavka_id'])) {
             $fields[] = 'objednavka_id = ?';
-            $new_order_id = !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : 0;
-            $values[] = $new_order_id > 0 ? $new_order_id : null;
+            $values[] = !empty($input['objednavka_id']) ? (int)$input['objednavka_id'] : null;
         }
         if (isset($input['smlouva_id'])) {
             $fields[] = 'smlouva_id = ?';
@@ -1018,103 +921,8 @@ function handle_invoices25_update($input, $config, $queries) {
         $stmt = $db->prepare($sql);
         $stmt->execute($values);
 
-        if (isset($input['objednavka_id'])) {
-            $sync_order_ids = array();
-            if ($old_order_id > 0) {
-                $sync_order_ids[$old_order_id] = true;
-            }
-            if ($new_order_id > 0) {
-                $sync_order_ids[$new_order_id] = true;
-            }
-
-            foreach (array_keys($sync_order_ids) as $sync_order_id) {
-                try {
-                    invoices25_sync_order_invoice_tracking_metadata($db, (int)$sync_order_id, (int)$token_data['id']);
-                } catch (Exception $tracking_error) {
-                    error_log("⚠️ [INVOICES25 TRACKING] Sync chyba u objednávky #{$sync_order_id}: " . $tracking_error->getMessage());
-                }
-            }
-        }
-
-        // === AUDIT LOG: field-level diff faktury (fail-safe) ===
-        try {
-            if (function_exists('audit_log_field_changes')) {
-                $audit_new_stmt = $db->prepare("SELECT * FROM `$faktury_table` WHERE id = ? LIMIT 1");
-                $audit_new_stmt->execute(array($faktura_id));
-                $audit_new_invoice = $audit_new_stmt->fetch(PDO::FETCH_ASSOC) ?: array();
-
-                $audit_batch = audit_log_field_changes(
-                    $db,
-                    $token_data,
-                    'FAKTURA',
-                    $faktura_id,
-                    'invoices25/update',
-                    (array)$oldInvoiceData,
-                    (array)$audit_new_invoice
-                );
-
-                // Pokud se explicitně změnila věcná správnost, zalogovat i jako akci APPROVE/REJECT
-                $audit_incomingVecna = isset($input['vecna_spravnost_potvrzeno']) ? (int)$input['vecna_spravnost_potvrzeno'] : null;
-                $audit_oldVecna = (int)($oldInvoiceData['vecna_spravnost_potvrzeno'] ?? 0);
-                if ($audit_incomingVecna !== null && $audit_incomingVecna !== $audit_oldVecna && function_exists('audit_log_action')) {
-                    if ($audit_incomingVecna === 1) {
-                        audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'APPROVE', 'invoices25/update', 'Potvrzení věcné správnosti', $audit_batch);
-                    } elseif ($audit_incomingVecna === 2) {
-                        audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'REJECT', 'invoices25/update', 'Zamítnutí věcné správnosti', $audit_batch);
-                    } elseif ($audit_incomingVecna === 0) {
-                        audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'RESET', 'invoices25/update', 'Reset věcné správnosti', $audit_batch);
-                    }
-                } elseif ($resetVecnaSpravnost && function_exists('audit_log_action')) {
-                    audit_log_action($db, $token_data, 'FAKTURA', $faktura_id, 'RESET', 'invoices25/update', 'Automatický reset věcné správnosti (změna kritického pole)', $audit_batch);
-                }
-
-                // Klíčové stavové přechody faktury - explicitní akce
-                $old_status = strtoupper(trim((string)($oldInvoiceData['stav'] ?? '')));
-                $new_status = strtoupper(trim((string)($audit_new_invoice['stav'] ?? '')));
-                if ($new_status !== '' && $new_status !== $old_status && function_exists('audit_log_action')) {
-                    $status_action = 'RESET';
-                    if (in_array($new_status, array('VECNA_SPRAVNOST', 'ZAEVIDOVANA'), true)) {
-                        $status_action = 'APPROVE';
-                    } elseif (in_array($new_status, array('VRACENA', 'K_DOPLNENI', 'V_RESENI'), true)) {
-                        $status_action = 'REJECT';
-                    }
-
-                    audit_log_action(
-                        $db,
-                        $token_data,
-                        'FAKTURA',
-                        $faktura_id,
-                        $status_action,
-                        'invoices25/update',
-                        'Změna stavu faktury: ' . $old_status . ' -> ' . $new_status,
-                        $audit_batch
-                    );
-                }
-
-                // Předání PO (fa_predana_zam_id / fa_datum_predani_zam) - explicitní audit
-                $old_predana_id = (string)($oldInvoiceData['fa_predana_zam_id'] ?? '');
-                $new_predana_id = (string)($audit_new_invoice['fa_predana_zam_id'] ?? '');
-                $old_predana_dt = (string)($oldInvoiceData['fa_datum_predani_zam'] ?? '');
-                $new_predana_dt = (string)($audit_new_invoice['fa_datum_predani_zam'] ?? '');
-                if (($old_predana_id !== $new_predana_id || $old_predana_dt !== $new_predana_dt) && function_exists('audit_log_action')) {
-                    audit_log_action(
-                        $db,
-                        $token_data,
-                        'FAKTURA',
-                        $faktura_id,
-                        'RESET',
-                        'invoices25/update',
-                        'Změna předání PO: ID ' . $old_predana_id . ' -> ' . $new_predana_id . ', datum ' . $old_predana_dt . ' -> ' . $new_predana_dt,
-                        $audit_batch
-                    );
-                }
-            }
-        } catch (Exception $ae) {
-            error_log('[AUDIT] invoices25_update audit error: ' . $ae->getMessage());
-        }
-
         // ==========================================
-        // 🔄 LP PŘEPOČET po změně věcné správnosti
+        // � LP PŘEPOČET po změně věcné správnosti
         // Faktura s LP rozpisem / odborovým přiřazením musí přepočítat
         // čerpání → mezi "v procesu" (predpoklad) a "skutečně"
         // ==========================================
@@ -1341,20 +1149,6 @@ function handle_invoices25_update($input, $config, $queries) {
             'message' => 'Faktura byla úspěšně aktualizována'
         ]);
 
-        // AUDIT LOG: field-level diff faktury (po odpovědi, fail-safe)
-        try {
-            if (function_exists('audit_log_field_changes') && !empty($oldInvoiceData)) {
-                $fa_after_stmt = $db->prepare("SELECT * FROM `$faktury_table` WHERE id = ? LIMIT 1");
-                $fa_after_stmt->execute([$faktura_id]);
-                $fa_after = $fa_after_stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-                audit_log_field_changes(
-                    $db, $token_data, 'FAKTURA', $faktura_id,
-                    'invoices25/update',
-                    (array)$oldInvoiceData, (array)$fa_after
-                );
-            }
-        } catch (Exception $ae) { error_log('[AUDIT] invoice update audit error: ' . $ae->getMessage()); }
-
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['err' => 'Chyba při aktualizaci faktury: ' . $e->getMessage()]);
@@ -1405,21 +1199,6 @@ function handle_invoices25_delete($input, $config, $queries) {
             return;
         }
 
-        $faktury_table = get_invoices_table_name();
-
-        $sql_invoice_meta = "SELECT objednavka_id FROM `{$faktury_table}` WHERE id = ? LIMIT 1";
-        $stmt_invoice_meta = $db->prepare($sql_invoice_meta);
-        $stmt_invoice_meta->execute(array($faktura_id));
-        $invoice_meta = $stmt_invoice_meta->fetch(PDO::FETCH_ASSOC);
-
-        if (!$invoice_meta) {
-            http_response_code(404);
-            echo json_encode(['err' => 'Faktura nenalezena']);
-            return;
-        }
-
-        $affected_order_id = !empty($invoice_meta['objednavka_id']) ? (int)$invoice_meta['objednavka_id'] : 0;
-
         // Začni transakci
         $db->beginTransaction();
 
@@ -1445,6 +1224,7 @@ function handle_invoices25_delete($input, $config, $queries) {
             }
 
             // 4. Smaž fakturu z databáze (HARD DELETE)
+            $faktury_table = get_invoices_table_name();
             $sql = "DELETE FROM `$faktury_table` WHERE id = ?";
             $stmt = $db->prepare($sql);
             $stmt->execute(array($faktura_id));
@@ -1461,6 +1241,7 @@ function handle_invoices25_delete($input, $config, $queries) {
         } else {
             // ========== SOFT DELETE (default) ==========
             // 1. Soft delete faktury - nastavení aktivni = 0
+            $faktury_table = get_invoices_table_name();
             $sql = "UPDATE `$faktury_table` SET aktivni = 0, dt_aktualizace = NOW() WHERE id = ? AND aktivni = 1";
             
             $stmt = $db->prepare($sql);
@@ -1482,36 +1263,8 @@ function handle_invoices25_delete($input, $config, $queries) {
             $message = 'Faktura byla označena jako neaktivní (přílohy zůstaly v DB)';
         }
 
-        if ($affected_order_id > 0) {
-            try {
-                invoices25_sync_order_invoice_tracking_metadata($db, $affected_order_id, (int)$token_data['id']);
-            } catch (Exception $tracking_error) {
-                error_log("⚠️ [INVOICES25 TRACKING] Chyba při synchronizaci objednávky #{$affected_order_id}: " . $tracking_error->getMessage());
-            }
-        }
-
         // Commit transakce
         $db->commit();
-
-        // AUDIT LOG: DELETE faktury (fail-safe)
-        try {
-            if (function_exists('audit_log_action')) {
-                $delete_note = ($hard_delete === 1)
-                    ? 'Hard delete faktury (včetně příloh)'
-                    : 'Soft delete faktury (aktivni=0)';
-                audit_log_action(
-                    $db,
-                    $token_data,
-                    'FAKTURA',
-                    (int)$faktura_id,
-                    'DELETE',
-                    'invoices25/delete',
-                    $delete_note
-                );
-            }
-        } catch (Exception $ae) {
-            error_log('[AUDIT] invoice delete audit error: ' . $ae->getMessage());
-        }
 
         http_response_code(200);
         echo json_encode([
@@ -1802,11 +1555,10 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             fa_poznamka,
             rozsirujici_data,
             vytvoril_uzivatel_id,
-            aktualizoval_uzivatel_id,
             dt_vytvoreni,
             dt_aktualizace,
             aktivni
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), 1)";
 
         $stmt_faktura = $db->prepare($sql_faktura);
         
@@ -1831,7 +1583,6 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
             $fa_strediska_kod,
             $fa_poznamka,
             $rozsirujici_data,
-            $token_data['id'],
             $token_data['id']
         ));
 
@@ -3399,28 +3150,6 @@ function handle_invoices25_list($input, $config, $queries) {
             }
             unset($faktura); // ⚠️ KRITICKÉ: Unset reference
         }
-
-        // 🎯 SUBSTITUTION INFO - Přidej informace o zastoupení ke každé faktuře
-        foreach ($faktury as &$faktura) {
-            // Inicializuj pole pro substitution info
-            $faktura['substitution_info'] = [];
-            
-            // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)
-            if (!empty($faktura['potvrdil_vecnou_spravnost_id']) && !empty($faktura['dt_potvrzeni_vecne_spravnosti'])) {
-                $sub_info = get_substitution_info_for_action(
-                    $db,
-                    (int)$faktura['potvrdil_vecnou_spravnost_id'],
-                    'CONFIRM',
-                    'FAKTURA',
-                    (int)$faktura['id'],
-                    $faktura['dt_potvrzeni_vecne_spravnosti']
-                );
-                if ($sub_info) {
-                    $faktura['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
-                }
-            }
-        }
-        unset($faktura); // ⚠️ KRITICKÉ: Unset reference
 
         // Vypočítat pagination metadata
         $total_pages = $use_pagination ? (int)ceil($total_count / $per_page) : 1;
