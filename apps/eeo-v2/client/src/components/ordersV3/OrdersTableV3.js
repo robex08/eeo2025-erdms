@@ -2591,6 +2591,7 @@ const OrdersTableV3 = ({
   canGenerateFinancialControl = true, // 🔒 Kontrola oprávnění pro finanční kontrolu
   showApproveColumn = false,
   canApproveOrder = null,
+  isApprovalViaSubstitution = null,
   canCancelOrder = null,
   onRefreshOrders = null,
   isBudgetManagerRole = false, // 🆕 Je uživatel správce rozpočtu?
@@ -3731,6 +3732,10 @@ const OrdersTableV3 = ({
         ),
         cell: ({ row }) => {
           const order = row.original;
+          const approvalSubstitutionInfo = resolveApprovalSubstitutionInfo(order);
+          const isApprovalInSubstitution =
+            Boolean(approvalSubstitutionInfo) ||
+            (isApprovalViaSubstitution ? Boolean(isApprovalViaSubstitution(order)) : false);
 
           const canApproveThisOrder = canApproveOrder ? canApproveOrder(order) : true;
           const canCancelThisOrder = canCancelOrder ? canCancelOrder(order) : true;
@@ -3819,7 +3824,11 @@ const OrdersTableV3 = ({
           }
           
           const approvalTooltipText = canApproveThisOrder
-            ? (isPending ? 'Schválit objednávku (ke schválení)' : 'Zobrazit schválení (vyřízeno)')
+            ? (isPending
+              ? (isApprovalInSubstitution
+                ? 'Schválit objednávku v zástupu (ke schválení)'
+                : 'Schválit objednávku (ke schválení)')
+              : 'Zobrazit schválení (vyřízeno)')
             : 'Nemůžete schválit objednávku – je určena jinému příkazci.';
 
           const approvalTooltipIcon = canApproveThisOrder
@@ -5125,7 +5134,7 @@ const OrdersTableV3 = ({
     }
     
     return filtered;
-  }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded, showApproveColumn, canApproveOrder, canCancelOrder, onRefreshOrders, isLoading]);
+  }, [visibleColumns, columnOrder, handleRowExpand, handleToggleAllRows, onActionClick, canEdit, canCreateInvoice, canExportDocument, isExpanded, showApproveColumn, canApproveOrder, isApprovalViaSubstitution, canCancelOrder, onRefreshOrders, isLoading]);
 
   // Filtrovat data podle columnFilters (lokální filtr v tabulce)
   // ⚠️ VYPNUTO - Filtrování se provádí na backendu v API
@@ -5669,6 +5678,7 @@ const OrdersTableV3 = ({
                       setApprovalComment={setApprovalComment}
                       setShowApprovalDialog={setShowApprovalDialog}
                       canApproveOrder={canApproveOrder}
+                      isApprovalViaSubstitution={isApprovalViaSubstitution}
                     />
                   )}
                 </React.Fragment>

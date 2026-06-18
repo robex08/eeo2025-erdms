@@ -9469,6 +9469,8 @@ function OrderForm25() {
                 const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
                 return `${y}-${m}-${d} ${h}:${min}:${s}`;
               })(),
+              aktualizoval_uzivatel_id: user_id,
+              aktualizoval_jmeno: getUserNameById(user_id),
               fa_dorucena: 1,
               fa_datum_doruceni: fakturaFormData.fa_datum_doruceni,
               fa_datum_vystaveni: fakturaFormData.fa_datum_vystaveni || fakturaFormData.fa_datum_doruceni,
@@ -9545,6 +9547,8 @@ function OrderForm25() {
               const h = String(now.getHours()).padStart(2,'0'), min = String(now.getMinutes()).padStart(2,'0'), s = String(now.getSeconds()).padStart(2,'0');
               return `${y}-${m}-${d} ${h}:${min}:${s}`;
             })(),
+            aktualizoval_uzivatel_id: user_id,
+            aktualizoval_jmeno: getUserNameById(user_id),
             _isdoc_parsed: true,
             _isdoc_polozky: isdocData._isdoc_polozky,
             _isdoc_dodavatel: isdocData._isdoc_dodavatel,
@@ -10061,6 +10065,14 @@ function OrderForm25() {
             ? {
                 ...f,
                 id: realFakturaId,
+                dt_aktualizace: f.dt_aktualizace || f.dt_vytvoreni || (() => {
+                  const now = new Date();
+                  const y = now.getFullYear(), m = String(now.getMonth() + 1).padStart(2, '0'), d = String(now.getDate()).padStart(2, '0');
+                  const h = String(now.getHours()).padStart(2, '0'), min = String(now.getMinutes()).padStart(2, '0'), s = String(now.getSeconds()).padStart(2, '0');
+                  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+                })(),
+                aktualizoval_uzivatel_id: user_id,
+                aktualizoval_jmeno: f.aktualizoval_jmeno || f.vytvoril_jmeno || username,
                 _isNew: false // Už není nová, je v DB
               }
             : f
@@ -26314,6 +26326,34 @@ function OrderForm25() {
                                         </FakturaTooltipValue>
                                       </FakturaTooltipRow>
                                       <FakturaTooltipRow>
+                                        <FakturaTooltipLabel>Zaevidoval FA:</FakturaTooltipLabel>
+                                        <FakturaTooltipValue>
+                                          {faktura.vytvoril_jmeno || getUserNameById(faktura.vytvoril_uzivatel_id) || '---'}
+                                        </FakturaTooltipValue>
+                                      </FakturaTooltipRow>
+                                      <FakturaTooltipRow>
+                                        <FakturaTooltipLabel>Datum evidence:</FakturaTooltipLabel>
+                                        <FakturaTooltipValue>
+                                          {faktura.dt_vytvoreni ? prettyDate(faktura.dt_vytvoreni) : '---'}
+                                        </FakturaTooltipValue>
+                                      </FakturaTooltipRow>
+                                      <FakturaTooltipRow>
+                                        <FakturaTooltipLabel>Naposledy aktualizoval:</FakturaTooltipLabel>
+                                        <FakturaTooltipValue>
+                                          {faktura.aktualizoval_jmeno
+                                            || getUserNameById(faktura.aktualizoval_uzivatel_id)
+                                            || faktura.vytvoril_jmeno
+                                            || getUserNameById(faktura.vytvoril_uzivatel_id)
+                                            || '---'}
+                                        </FakturaTooltipValue>
+                                      </FakturaTooltipRow>
+                                      <FakturaTooltipRow>
+                                        <FakturaTooltipLabel>Datum aktualizace:</FakturaTooltipLabel>
+                                        <FakturaTooltipValue>
+                                          {prettyDate(faktura.dt_aktualizace || faktura.dt_vytvoreni)}
+                                        </FakturaTooltipValue>
+                                      </FakturaTooltipRow>
+                                      <FakturaTooltipRow>
                                         <FakturaTooltipLabel>Věcná správnost:</FakturaTooltipLabel>
                                         <FakturaTooltipValue>
                                           {faktura.vecna_spravnost_potvrzeno === 'ANO' && (
@@ -27345,14 +27385,21 @@ function OrderForm25() {
                                   marginTop: '0.75rem',
                                   fontSize: '0.75rem',
                                   color: '#9ca3af',
-                                  display: 'flex',
-                                  justifyContent: 'space-between'
+                                  display: 'grid',
+                                  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+                                  gap: '0.25rem 1rem'
                                 }}>
                                   <div>
                                     <strong>Zaevidoval FA:</strong> {faktura.vytvoril_jmeno || getUserNameById(faktura.vytvoril_uzivatel_id)}
                                   </div>
                                   <div>
-                                    <strong>Datum:</strong> {prettyDate(faktura.dt_vytvoreni)}
+                                    <strong>Datum evidence:</strong> {prettyDate(faktura.dt_vytvoreni)}
+                                  </div>
+                                  <div>
+                                    <strong>Naposledy aktualizoval:</strong> {faktura.aktualizoval_jmeno || getUserNameById(faktura.aktualizoval_uzivatel_id) || faktura.vytvoril_jmeno || getUserNameById(faktura.vytvoril_uzivatel_id)}
+                                  </div>
+                                  <div>
+                                    <strong>Datum aktualizace:</strong> {prettyDate(faktura.dt_aktualizace || faktura.dt_vytvoreni)}
                                   </div>
                                 </div>
                               )}
