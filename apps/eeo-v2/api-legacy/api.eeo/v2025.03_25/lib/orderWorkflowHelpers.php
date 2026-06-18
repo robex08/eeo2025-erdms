@@ -76,6 +76,63 @@ function hasWorkflowState($workflowCode, $state) {
 }
 
 /**
+ * Bezpečně zapíše audit změny workflow objednávky (field diff + akce), pokud je audit dostupný.
+ * Nemění business logiku: při chybě pouze loguje a vrací se.
+ */
+function audit_log_order_workflow_transition_safe($db, $token_data, $orderId, $endpoint, array $old_order, $batch_id = '', $action_type = 'UPDATE', $note = '') {
+    if (!$db || !$token_data || (int)$orderId <= 0) {
+        return;
+    }
+
+    if (!function_exists('audit_log_field_changes') && !function_exists('audit_log_action')) {
+        return;
+    }
+
+    try {
+        $orders_table = get_orders_table_name();
+        $stmt = $db->prepare("SELECT * FROM `{$orders_table}` WHERE id = ? LIMIT 1");
+        $stmt->execute(array((int)$orderId));
+        $new_order = $stmt->fetch(PDO::FETCH_ASSOC) ?: array();
+
+        $audit_batch = $batch_id;
+        if (function_exists('audit_log_field_changes')) {
+            $audit_batch = audit_log_field_changes(
+                $db,
+                $token_data,
+                'OBJEDNAVKA',
+                (int)$orderId,
+                $endpoint,
+                (array)$old_order,
+                (array)$new_order,
+                $batch_id,
+                $note
+            );
+        }
+
+        if (function_exists('audit_log_action')) {
+            $safe_action = strtoupper(trim((string)$action_type));
+            if ($safe_action === '') {
+                $safe_action = 'UPDATE';
+            }
+
+            $action_note = $note ? $note : 'Změna workflow objednávky';
+            audit_log_action(
+                $db,
+                $token_data,
+                'OBJEDNAVKA',
+                (int)$orderId,
+                $safe_action,
+                $endpoint,
+                $action_note,
+                $audit_batch
+            );
+        }
+    } catch (Exception $auditEx) {
+        error_log('[AUDIT] order workflow transition audit error: ' . $auditEx->getMessage());
+    }
+}
+
+/**
  * Aktualizuje workflow stav objednávky po přidání faktury
  * 
  * Replika logiky z OrderForm25.js řádky 10010-10040:
@@ -356,10 +413,10 @@ function updateWorkflowAfterRegistrFilled($db, $orderId, $updateData = []) {
  * @param int $orderId - ID objednávky
  * @return bool - Úspěch aktualizace
  */
-function updateWorkflowAfterVecnaSpravnostApproved($db, $orderId) {
+function updateWorkflowAfterVecnaSpravnostApproved($db, $orderId, $auditContext = array()) {
     try {
         // Načíst aktuální objednávku
-        $stmt = $db->prepare("SELECT stav_workflow_kod FROM " . get_orders_table_name() . " WHERE id = :id");
+        $stmt = $db->prepare("SELECT id, stav_workflow_kod, stav_objednavky FROM " . get_orders_table_name() . " WHERE id = :id");
         $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
         $stmt->execute();
         $order = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -456,6 +513,33 @@ function updateWorkflowAfterVecnaSpravnostApproved($db, $orderId) {
         
         if ($result) {
             error_log("✅ [VECNA-SPRAVNOST-SUCCESS] Order ID {$orderId} workflow updated, now has ZKONTROLOVANA");
+
+            $audit_token_data = (isset($auditContext['token_data']) && is_array($auditContext['token_data']))
+                ? $auditContext['token_data']
+                : null;
+            $audit_endpoint = !empty($auditContext['endpoint'])
+                ? (string)$auditContext['endpoint']
+                : 'workflow/vecna-spravnost-approved';
+            $audit_batch_id = !empty($auditContext['batch_id'])
+                ? (string)$auditContext['batch_id']
+                : '';
+            $audit_action_type = !empty($auditContext['action_type'])
+                ? (string)$auditContext['action_type']
+                : 'APPROVE';
+            $audit_note = !empty($auditContext['note'])
+                ? (string)$auditContext['note']
+                : 'Workflow objednávky: přidán stav ZKONTROLOVANA po potvrzení věcné správnosti faktury';
+
+            audit_log_order_workflow_transition_safe(
+                $db,
+                $audit_token_data,
+                (int)$orderId,
+                $audit_endpoint,
+                (array)$order,
+                $audit_batch_id,
+                $audit_action_type,
+                $audit_note
+            );
         } else {
             error_log("❌ [VECNA-SPRAVNOST-ERROR] Order ID {$orderId} - UPDATE FAILED");
         }
@@ -478,10 +562,10 @@ function updateWorkflowAfterVecnaSpravnostApproved($db, $orderId) {
  * @param int $orderId - ID objednávky
  * @return bool - Úspěch aktualizace
  */
-function removeZkontrolovanaFromWorkflow($db, $orderId) {
+function removeZkontrolovanaFromWorkflow($db, $orderId, $auditContext = array()) {
     try {
         // Načíst aktuální objednávku včetně completion checkboxu
-        $stmt = $db->prepare("SELECT stav_workflow_kod, potvrzeni_dokonceni_objednavky, dokoncil_id, dt_dokonceni
+        $stmt = $db->prepare("SELECT id, stav_workflow_kod, stav_objednavky, potvrzeni_dokonceni_objednavky, dokoncil_id, dt_dokonceni
                               FROM " . get_orders_table_name() . " WHERE id = :id");
         $stmt->bindParam(':id', $orderId, PDO::PARAM_INT);
         $stmt->execute();
@@ -563,6 +647,34 @@ function removeZkontrolovanaFromWorkflow($db, $orderId) {
             error_log("   - potvrzeni_dokonceni_objednavky: " . $reloaded['potvrzeni_dokonceni_objednavky']);
             error_log("   - dokoncil_id: " . ($reloaded['dokoncil_id'] ? $reloaded['dokoncil_id'] : "NULL"));
             error_log("   - dt_dokonceni: " . ($reloaded['dt_dokonceni'] ? $reloaded['dt_dokonceni'] : "NULL"));
+
+            $audit_token_data = (isset($auditContext['token_data']) && is_array($auditContext['token_data']))
+                ? $auditContext['token_data']
+                : null;
+            $audit_endpoint = !empty($auditContext['endpoint'])
+                ? (string)$auditContext['endpoint']
+                : 'workflow/vecna-spravnost-reset';
+            $audit_batch_id = !empty($auditContext['batch_id'])
+                ? (string)$auditContext['batch_id']
+                : '';
+            $audit_action_type = !empty($auditContext['action_type'])
+                ? (string)$auditContext['action_type']
+                : 'RESET';
+            $audit_note = !empty($auditContext['note'])
+                ? (string)$auditContext['note']
+                : 'Workflow objednávky: odebrán stav ZKONTROLOVANA/DOKONCENA po změně věcné správnosti faktury';
+
+            audit_log_order_workflow_transition_safe(
+                $db,
+                $audit_token_data,
+                (int)$orderId,
+                $audit_endpoint,
+                (array)$order,
+                $audit_batch_id,
+                $audit_action_type,
+                $audit_note
+            );
+
             return true;
         } else {
             $errorInfo = $stmt->errorInfo();

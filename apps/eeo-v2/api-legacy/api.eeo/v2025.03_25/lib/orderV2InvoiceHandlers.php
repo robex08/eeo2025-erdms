@@ -1479,11 +1479,23 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         if ($order_id > 0 && $detached_from_order_id === null) {
             try {
                 if ($incoming_vecna_status === 1) {
-                    updateWorkflowAfterVecnaSpravnostApproved($db, $order_id);
+                    updateWorkflowAfterVecnaSpravnostApproved($db, $order_id, array(
+                        'token_data' => $token_data,
+                        'endpoint' => 'order-v2/invoices/update',
+                        'action_type' => 'APPROVE',
+                        'note' => 'Workflow objednávky po potvrzení věcné správnosti faktury v modulu Faktury'
+                    ));
                     $skip_legacy_order_workflow_update = true;
                     error_log("✅ INVOICE MODULE: Workflow helper potvrzení VS spuštěn pro objednávku #{$order_id} po potvrzení faktury #{$invoice_id}");
                 } elseif ($incoming_vecna_status === 2 || $incoming_vecna_status === 0 || $requires_reapproval) {
-                    removeZkontrolovanaFromWorkflow($db, $order_id);
+                    removeZkontrolovanaFromWorkflow($db, $order_id, array(
+                        'token_data' => $token_data,
+                        'endpoint' => 'order-v2/invoices/update',
+                        'action_type' => ($incoming_vecna_status === 2 ? 'REJECT' : 'RESET'),
+                        'note' => ($incoming_vecna_status === 2)
+                            ? 'Workflow objednávky po zamítnutí věcné správnosti faktury v modulu Faktury'
+                            : 'Workflow objednávky po resetu věcné správnosti faktury v modulu Faktury'
+                    ));
                     $skip_legacy_order_workflow_update = true;
                     error_log("🔄 INVOICE MODULE: Workflow helper resetu VS spuštěn pro objednávku #{$order_id} po změně faktury #{$invoice_id} (status=" . ($incoming_vecna_status === null ? 'NULL' : $incoming_vecna_status) . ", requires_reapproval=" . ($requires_reapproval ? 'true' : 'false') . ")");
                 }
