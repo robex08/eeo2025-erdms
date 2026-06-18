@@ -671,6 +671,7 @@ function handle_invoice_toggle_check($input, $config) {
             }
 
             // 8d. Nový audit trail (25a_audit_zmen) s cíleným zastupovaným, pokud je znám.
+            $audit_batch = '';
             try {
                 if (function_exists('audit_log_field_changes') || function_exists('audit_log_action')) {
                     $audit_token_data = $token_data;
@@ -681,8 +682,6 @@ function handle_invoice_toggle_check($input, $config) {
                     $stmt_audit_new = $db->prepare("SELECT * FROM " . TBL_FAKTURY . " WHERE id = ? LIMIT 1");
                     $stmt_audit_new->execute(array($faktura_id));
                     $audit_new_invoice = $stmt_audit_new->fetch(PDO::FETCH_ASSOC) ?: array();
-
-                    $audit_batch = '';
                     if (function_exists('audit_log_field_changes') && !empty($audit_old_invoice) && !empty($audit_new_invoice)) {
                         $audit_batch = audit_log_field_changes(
                             $db,
@@ -736,14 +735,28 @@ function handle_invoice_toggle_check($input, $config) {
                 if ($status === VS_STATUS_POTVRZENA) {
                     // ✅ POTVRZENO - zkontrolovat, zda jsou všechny faktury potvrzeny
                     // Pokud ano, přidat ZKONTROLOVANA do workflow a změnit stav na "Zkontrolována"
-                    updateWorkflowAfterVecnaSpravnostApproved($db, $objednavka_id);
+                    updateWorkflowAfterVecnaSpravnostApproved($db, $objednavka_id, array(
+                        'token_data' => isset($audit_token_data) ? $audit_token_data : $token_data,
+                        'endpoint' => 'invoices/toggle-check',
+                        'batch_id' => $audit_batch,
+                        'action_type' => 'APPROVE',
+                        'note' => 'Workflow objednávky po potvrzení věcné správnosti faktury'
+                    ));
                     error_log("✅ Spuštěna aktualizace workflow pro objednávku #{$objednavka_id} po potvrzení VS faktury #{$faktura_id}");
                     
                 } elseif ($status === VS_STATUS_ZAMITNUTA || $status === VS_STATUS_NEPOTVRZENA) {
                     // ❌ ZAMÍTNUTO nebo RESETOVÁNO - zkontrolovat, zda ještě nejsou všechny faktury potvrzeny
                     // Pokud ne, odebrat ZKONTROLOVANA z workflow a vrátit stav na "Věcná správnost"
                     error_log("🔍 [CONDITION] elseif (status === VS_STATUS_ZAMITNUTA || status === VS_STATUS_NEPOTVRZENA) -> SPLNĚNA! Status=$status");
-                    removeZkontrolovanaFromWorkflow($db, $objednavka_id);
+                    removeZkontrolovanaFromWorkflow($db, $objednavka_id, array(
+                        'token_data' => isset($audit_token_data) ? $audit_token_data : $token_data,
+                        'endpoint' => 'invoices/toggle-check',
+                        'batch_id' => $audit_batch,
+                        'action_type' => ($status === VS_STATUS_ZAMITNUTA ? 'REJECT' : 'RESET'),
+                        'note' => ($status === VS_STATUS_ZAMITNUTA)
+                            ? 'Workflow objednávky po zamítnutí věcné správnosti faktury'
+                            : 'Workflow objednávky po resetu věcné správnosti faktury'
+                    ));
                     error_log("🔍 [BEFORE CALL] Volám removeZkontrolovanaFromWorkflow(\$db, {$objednavka_id})");
                     error_log("🔄 Spuštěna revize workflow pro objednávku #{$objednavka_id} po zamítnutí/resetu VS faktury #{$faktura_id}");
                     error_log("🔍 [AFTER CALL] removeZkontrolovanaFromWorkflow() dokončena");

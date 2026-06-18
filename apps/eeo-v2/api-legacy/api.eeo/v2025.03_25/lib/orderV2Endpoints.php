@@ -1728,10 +1728,13 @@ function handle_order_v2_update($input, $config, $queries) {
                         error_log("🔍 [INVOICE UPDATE] invoice_id={$faktura['id']}, fa_vema_kod received: " . (isset($faktura['fa_vema_kod']) ? "'{$faktura['fa_vema_kod']}'" : 'NOT SET'));
                         
                         // ⚠️ Načíst PŮVODNÍ stav faktury pro detekci změn ve věcné správnosti
-                        $stmt_orig = $db->prepare("SELECT vecna_spravnost_potvrzeno FROM `{$faktury_table}` WHERE id = ?");
+                        $stmt_orig = $db->prepare("SELECT vecna_spravnost_potvrzeno, fa_predana_zam_id FROM `{$faktury_table}` WHERE id = ?");
                         $stmt_orig->execute(array($faktura_id));
                         $original_invoice = $stmt_orig->fetch(PDO::FETCH_ASSOC);
                         $original_vs_status = $original_invoice ? (int)$original_invoice['vecna_spravnost_potvrzeno'] : 0;
+
+                        // Kontext zastoupení pro VS změnu (pokud je akce provedena za předaného uživatele)
+                        $substitution_context_for_vs = null;
                         
                         $update_fields = array();
                         $update_values = array();
@@ -1831,6 +1834,31 @@ function handle_order_v2_update($input, $config, $queries) {
                             // Detekce změny stavu
                             if ($new_vs_status !== $original_vs_status) {
                                 error_log("⚠️ [VS CHANGE] Invoice #{$faktura_id}: {$original_vs_status} → {$new_vs_status}");
+
+                                // Pokus o dohledání aktivního zastoupení vůči uživateli, kterému je faktura předaná
+                                $target_zastupovany_id = 0;
+                                if (isset($faktura['fa_predana_zam_id']) && !empty($faktura['fa_predana_zam_id'])) {
+                                    $target_zastupovany_id = (int)$faktura['fa_predana_zam_id'];
+                                } elseif ($original_invoice && !empty($original_invoice['fa_predana_zam_id'])) {
+                                    $target_zastupovany_id = (int)$original_invoice['fa_predana_zam_id'];
+                                }
+
+                                if ($target_zastupovany_id > 0
+                                    && $target_zastupovany_id !== (int)$current_user_id
+                                    && function_exists('get_active_substitution_for_action')) {
+                                    try {
+                                        $substitution_context_for_vs = get_active_substitution_for_action($db, (int)$current_user_id, 'confirm', $target_zastupovany_id);
+                                        if (!$substitution_context_for_vs) {
+                                            $substitution_context_for_vs = get_active_substitution_for_action($db, (int)$current_user_id, 'approve', $target_zastupovany_id);
+                                        }
+                                        if (!$substitution_context_for_vs) {
+                                            $substitution_context_for_vs = get_active_substitution_for_action($db, (int)$current_user_id, 'view', $target_zastupovany_id);
+                                        }
+                                    } catch (Exception $subEx) {
+                                        error_log("⚠️ [VS SUBSTITUTION CHECK] invoice #{$faktura_id}: " . $subEx->getMessage());
+                                        $substitution_context_for_vs = null;
+                                    }
+                                }
                                 
                                 $vs_status_changed = true; // Zaznamenat změnu pro workflow management
                                 
@@ -1886,6 +1914,40 @@ function handle_order_v2_update($input, $config, $queries) {
                             $sql_update = "UPDATE `{$faktury_table}` SET " . implode(', ', $update_fields) . " WHERE id = ?";
                             $stmt_update = $db->prepare($sql_update);
                             $stmt_update->execute($update_values);
+
+                            // Audit log pro VS akci provedenou v zastoupení (OrderForm cesta)
+                            if ($substitution_context_for_vs
+                                && $new_vs_status !== null
+                                && function_exists('log_substitution_action')) {
+                                $sub_akce_typ = 'UPDATE';
+                                $sub_popis = 'Úprava věcné správnosti faktury (OrderForm)';
+
+                                if ($new_vs_status === VS_STATUS_POTVRZENA) {
+                                    $sub_akce_typ = 'CONFIRM';
+                                    $sub_popis = 'Potvrzení věcné správnosti faktury (OrderForm)';
+                                } elseif ($new_vs_status === VS_STATUS_ZAMITNUTA) {
+                                    $sub_akce_typ = 'REJECT';
+                                    $sub_popis = 'Zamítnutí věcné správnosti faktury (OrderForm)';
+                                } elseif ($new_vs_status === VS_STATUS_NEPOTVRZENA) {
+                                    $sub_akce_typ = 'UPDATE';
+                                    $sub_popis = 'Reset věcné správnosti faktury (OrderForm)';
+                                }
+
+                                $logged_sub = log_substitution_action(
+                                    $db,
+                                    (int)$substitution_context_for_vs['zastupovani_id'],
+                                    (int)$current_user_id,
+                                    (int)$substitution_context_for_vs['zastupovany_id'],
+                                    $sub_akce_typ,
+                                    'FAKTURA',
+                                    (int)$faktura_id,
+                                    $sub_popis
+                                );
+
+                                if (!$logged_sub) {
+                                    error_log("⚠️ [VS SUBSTITUTION AUDIT] Nepodařilo se zapsat audit log pro fakturu #{$faktura_id}");
+                                }
+                            }
                             
                             $invoices_processed++;
                             $invoices_updated = true;
@@ -1943,13 +2005,23 @@ function handle_order_v2_update($input, $config, $queries) {
                 
                 if ($any_vs_approved) {
                     // Nějaká faktura byla potvrzena → zkontrolovat jestli jsou všechny potvrzeny
-                    updateWorkflowAfterVecnaSpravnostApproved($db, $order_id);
+                    updateWorkflowAfterVecnaSpravnostApproved($db, $order_id, array(
+                        'token_data' => $auth_result,
+                        'endpoint' => 'order-v2/update',
+                        'action_type' => 'APPROVE',
+                        'note' => 'Workflow objednávky po potvrzení věcné správnosti faktury při uložení objednávky'
+                    ));
                     error_log("✅ [WORKFLOW] Called updateWorkflowAfterVecnaSpravnostApproved for order #{$order_id}");
                 }
                 
                 if ($any_vs_rejected_or_reset) {
                     // Nějaká faktura byla zamítnuta nebo resetována → zkontrolovat jestli ještě jsou všechny potvrzeny
-                    removeZkontrolovanaFromWorkflow($db, $order_id);
+                    removeZkontrolovanaFromWorkflow($db, $order_id, array(
+                        'token_data' => $auth_result,
+                        'endpoint' => 'order-v2/update',
+                        'action_type' => 'RESET',
+                        'note' => 'Workflow objednávky po zamítnutí/resetu věcné správnosti faktury při uložení objednávky'
+                    ));
                     error_log("✅ [WORKFLOW] Called removeZkontrolovanaFromWorkflow for order #{$order_id}");
                 }
             }
