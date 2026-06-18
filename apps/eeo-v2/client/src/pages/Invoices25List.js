@@ -2073,7 +2073,7 @@ const VecnaSpravnostCell = ({ invoice }) => {
                           {invoice.potvrdil_vecnou_spravnost_jmeno}
                           <SubstitutionBadge 
                             substitutionInfo={invoice.substitution_info?.potvrdil_vecnou_spravnost} 
-                            actionLabel="Potvrzeno" 
+                            actionLabel={status === 2 ? 'Zamítnuto' : 'Potvrzeno'} 
                           />
                         </td>
                       </tr>
@@ -2486,9 +2486,23 @@ const Invoices25List = () => {
     isOpen: false,
     title: '',
     message: '',
+    confirmText: 'Ano, potvrdit',
+    cancelText: 'Zrušit',
     onConfirm: null,
     onCancel: null
   });
+
+  const resetConfirmDialog = useCallback(() => {
+    setConfirmDialog({
+      isOpen: false,
+      title: '',
+      message: '',
+      confirmText: 'Ano, potvrdit',
+      cancelText: 'Zrušit',
+      onConfirm: null,
+      onCancel: null
+    });
+  }, []);
   
   // 🔒 State pro LOCK dialog system
   const [showLockedOrderDialog, setShowLockedOrderDialog] = useState(false);
@@ -2984,16 +2998,22 @@ const Invoices25List = () => {
   }, [selectedPeriod, columnFilters, filters, activeFilterStatus, globalSearchTerm, showDashboard, currentPage, itemsPerPage, sortField, sortDirection, saveToLS]);
 
   // Load data
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (options = {}) => {
+    const { silent = false } = options;
+
     if (!token || !username) {
-      setError('Není k dispozici autentizační token');
-      setLoading(false);
+      if (!silent) {
+        setError('Není k dispozici autentizační token');
+        setLoading(false);
+      }
       return;
     }
 
     try {
-      setLoading(true);
-      showProgress?.();
+      if (!silent) {
+        setLoading(true);
+        showProgress?.();
+      }
 
       // 📥 Sestavení API parametrů podle BE dokumentace (flat struktura)
       const apiParams = {
@@ -3421,6 +3441,11 @@ const Invoices25List = () => {
       setError(null);
 
     } catch (err) {
+      if (silent) {
+        console.warn('⚠️ Tichý refresh faktur selhal:', err);
+        return;
+      }
+
       console.error('❌ Chyba při načítání faktur:', err);
       
       // Speciální handling pro 404 - endpoint ještě není implementován na BE
@@ -3436,8 +3461,10 @@ const Invoices25List = () => {
       showToast?.(errorMsg, { type: err?.message?.includes('404') ? 'warning' : 'error' });
       setInvoices([]);
     } finally {
-      setLoading(false);
-      hideProgress?.();
+      if (!silent) {
+        setLoading(false);
+        hideProgress?.();
+      }
     }
   }, [token, username, selectedPeriod, currentPage, itemsPerPage, debouncedColumnFilters, filters, debouncedGlobalSearchTerm, sortField, sortDirection, isAdmin, showOnlyInactive, showProgress, hideProgress, showToast, getInvoiceStatus]);
 
@@ -3889,9 +3916,11 @@ const Invoices25List = () => {
         `• Věcná správnost bude VYMAZÁNA (datum, umístění, potvrzující uživatel)\n` +
         `• Předání zaměstnanci bude VYMAZÁNO (komu, datum předání i vrácení)\n\n` +
         `⚠️ Tuto akci NELZE vzít zpět!`,
+      confirmText: 'Ano, odpojit',
+      cancelText: 'Zrušit',
       onConfirm: async () => {
         try {
-          setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+          resetConfirmDialog();
           
           // API call pro odpojení
           const { updateInvoiceV2 } = await import('../services/api25invoices');
@@ -3924,9 +3953,46 @@ const Invoices25List = () => {
             invoice_id: invoice.id,
             updateData
           });
-          
-          // Refresh seznam faktur
-          loadData();
+
+          // Optimistický update řádku bez reloadu celé stránky
+          setInvoices(prevInvoices =>
+            prevInvoices.map(inv => {
+              if (inv.id !== invoice.id) return inv;
+
+              return {
+                ...inv,
+                objednavka_id: null,
+                smlouva_id: null,
+                cislo_objednavky: '',
+                cislo_smlouvy: '',
+                dt_potvrzeni_vecne_spravnosti: null,
+                vecna_spravnost_umisteni_majetku: null,
+                vecna_spravnost_poznamka: null,
+                potvrdil_vecnou_spravnost_id: null,
+                potvrdil_vecnou_spravnost_jmeno: null,
+                potvrdil_vecnou_spravnost_email: null,
+                vecna_spravnost_potvrzeno: 0,
+                vecna_spravnost_duvod: null,
+                substitution_info: null,
+                fa_predana_zam_id: null,
+                fa_predana_zam_jmeno_cele: null,
+                fa_datum_predani_zam: null,
+                fa_datum_vraceni_zam: null,
+                odbory_lp_id: null,
+                odbory_lp_lp_id: null,
+                odbory_lp_cislo: '',
+                odbory_lp_nazev: '',
+                odbory_lp_modul: '',
+                odbory_lp_platne_od: null,
+                odbory_lp_platne_do: null,
+                odbory_lp_limit: null,
+                odbory_lp_poznamka: ''
+              };
+            })
+          );
+
+          // Tichý revalidate na pozadí kvůli konzistenci dat/statistik
+          void loadData({ silent: true });
           
           showToast?.(
             `✅ Faktura ${invoice.fa_cislo_vema || invoice.cislo_faktury || `#${invoice.id}`} byla odpojena od ${entityType} ${entityNumber}`,
@@ -3941,7 +4007,7 @@ const Invoices25List = () => {
         }
       },
       onCancel: () => {
-        setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+        resetConfirmDialog();
       }
     });
   };
@@ -4201,6 +4267,41 @@ const Invoices25List = () => {
   // Handle invoice status change (workflow state)
   const handleStatusChange = async (invoice, newStatus) => {
     if (!invoice || !newStatus) return;
+
+    // STORNO musí být explicitně potvrzeno a přiřazené entity se musí odpojit
+    if (newStatus === 'STORNO') {
+      const entityType = invoice.objednavka_id ? 'objednávky' : invoice.smlouva_id ? 'smlouvy' : null;
+      const entityNumber = invoice.objednavka_id
+        ? (invoice.cislo_objednavky || `#${invoice.objednavka_id}`)
+        : invoice.smlouva_id
+          ? (invoice.cislo_smlouvy || `#${invoice.smlouva_id}`)
+          : null;
+
+      const relationWarning = entityType
+        ? `\n\nFaktura je aktuálně navázaná na ${entityType} ${entityNumber}.` +
+          `\nPo potvrzení STORNO dojde i k odpojení faktury od ${entityType} a vymazání navázaných údajů (věcná správnost, předání zaměstnanci).`
+        : '\n\nFaktura není navázaná na objednávku ani smlouvu.';
+
+      setConfirmDialog({
+        isOpen: true,
+        title: '⚠️ Potvrdit storno faktury?',
+        message:
+          `Opravdu chcete změnit stav faktury ${invoice.fa_cislo_vema || invoice.cislo_faktury || `#${invoice.id}`} na STORNO?` +
+          relationWarning +
+          '\n\n⚠️ Tuto akci důrazně doporučujeme provádět jen po ověření s účetní/PO.',
+        confirmText: 'Ano, stornovat',
+        cancelText: 'Zrušit',
+        onConfirm: async () => {
+          resetConfirmDialog();
+          await performStatusChange(invoice, newStatus);
+        },
+        onCancel: () => {
+          // Při zrušení zůstane původní stav beze změny
+          resetConfirmDialog();
+        }
+      });
+      return;
+    }
     
     // ⚠️ KONTROLA: Pokud je současný stav ZAPLACENO a uživatel mění na jiný stav -> zobrazit warning
     const currentStatus = invoice.stav || 'ZAEVIDOVANA';
@@ -4231,7 +4332,20 @@ const Invoices25List = () => {
         username,
         invoice_id: invoice.id,
         updateData: {
-          stav: newStatus
+          stav: newStatus,
+          // STORNO: stejné chování jako ruční odpojení od objednávky/smlouvy
+          ...(newStatus === 'STORNO' ? {
+            objednavka_id: null,
+            smlouva_id: null,
+            dt_potvrzeni_vecne_spravnosti: null,
+            vecna_spravnost_umisteni_majetku: null,
+            vecna_spravnost_poznamka: null,
+            potvrdil_vecnou_spravnost_id: null,
+            vecna_spravnost_potvrzeno: 0,
+            fa_predana_zam_id: null,
+            fa_datum_predani_zam: null,
+            fa_datum_vraceni_zam: null
+          } : {})
         }
       });
       
@@ -4251,6 +4365,19 @@ const Invoices25List = () => {
             if (newStatus === 'ZAPLACENO') {
               updates.zaplacena = true;
               updates.fa_zaplacena = true;
+            }
+
+            if (newStatus === 'STORNO') {
+              updates.objednavka_id = null;
+              updates.smlouva_id = null;
+              updates.dt_potvrzeni_vecne_spravnosti = null;
+              updates.vecna_spravnost_umisteni_majetku = null;
+              updates.vecna_spravnost_poznamka = null;
+              updates.potvrdil_vecnou_spravnost_id = null;
+              updates.vecna_spravnost_potvrzeno = 0;
+              updates.fa_predana_zam_id = null;
+              updates.fa_datum_predani_zam = null;
+              updates.fa_datum_vraceni_zam = null;
             }
             
             return { ...inv, ...updates };
@@ -5975,7 +6102,7 @@ const Invoices25List = () => {
                                     {invoice.potvrdil_vecnou_spravnost_zkracene}
                                     <SubstitutionBadge
                                       substitutionInfo={invoice.substitution_info?.potvrdil_vecnou_spravnost}
-                                      actionLabel="Potvrzeno"
+                                      actionLabel={invoice.vecna_spravnost_potvrzeno === 2 ? 'Zamítnuto' : 'Potvrzeno'}
                                       actorName={invoice.potvrdil_vecnou_spravnost_zkracene || ''}
                                     />
                                   </strong>
@@ -6878,7 +7005,7 @@ const Invoices25List = () => {
             if (confirmDialog.onCancel) {
               confirmDialog.onCancel();
             } else {
-              setConfirmDialog({ isOpen: false, title: '', message: '', onConfirm: null, onCancel: null });
+              resetConfirmDialog();
             }
           }}
           onConfirm={() => {
@@ -6887,8 +7014,8 @@ const Invoices25List = () => {
             }
           }}
           title={confirmDialog.title}
-          confirmText="Ano, odpojit"
-          cancelText="Zrušit"
+          confirmText={confirmDialog.confirmText || 'Ano, potvrdit'}
+          cancelText={confirmDialog.cancelText || 'Zrušit'}
           variant="warning"
         >
           <div style={{ whiteSpace: 'pre-line' }}>

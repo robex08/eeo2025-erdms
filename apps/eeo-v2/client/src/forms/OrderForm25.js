@@ -102,6 +102,7 @@ import {
 import { useFormController, useWorkflowManager } from './OrderForm25/hooks';
 import { DocxGeneratorModal } from '../components/DocxGeneratorModal';
 import FinancialControlConfirmationModal from '../components/FinancialControlConfirmationModal';
+import SubstitutionBadge from '../components/common/SubstitutionBadge';
 
 // Pomocná funkce pro formátování data pro DatePicker (YYYY-MM-DD formát)
 const formatDateForPicker = (date) => {
@@ -7309,7 +7310,49 @@ function OrderForm25() {
     });
   }, [formData?.faktury, hasDelegatedVecnaAccessForInvoice, normalizeVecnaStatus]);
 
-  const canSaveOrderEffective = canSaveOrder || hasDelegatedVecnaChanges;
+  const delegatedOrderParticipantIdSet = useMemo(() => {
+    const set = new Set();
+    activeSubstitutions.forEach(item => {
+      if (!item) return;
+
+      const perms = decodeOpravneni(item.opravneni);
+      const canView = toBool(perms?.view ?? item?.view ?? item?.can_view);
+      const canApprove = toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+      const canConfirm = toBool(perms?.confirm ?? perms?.material_check ?? perms?.materialCorrectness ?? item?.confirm ?? item?.can_confirm);
+      if (!canView && !canApprove && !canConfirm) return;
+
+      const zastupovanyId = item.zastupovany_id ?? item.zastupovanyId ?? item.user_id;
+      if (zastupovanyId === null || zastupovanyId === undefined) return;
+      set.add(String(zastupovanyId));
+    });
+    return set;
+  }, [activeSubstitutions]);
+
+  const hasDelegatedOrderWorkflowAccess = useMemo(() => {
+    const participantIds = [
+      formData.objednatel_id,
+      formData.uzivatel_id,
+      formData.garant_uzivatel_id,
+      formData.garant_id,
+      formData.prikazce_id,
+    ]
+      .filter(id => id !== null && id !== undefined && id !== '')
+      .map(id => String(parseInt(id, 10)));
+
+    if (participantIds.length === 0) return false;
+
+    const hasDelegatedParticipant = participantIds.some(id => delegatedOrderParticipantIdSet.has(id));
+    if (!hasDelegatedParticipant) return false;
+
+    const workflowStates = Array.isArray(formData?.stav_workflow_kod)
+      ? formData.stav_workflow_kod.map(state => String(state?.kod_stavu || state?.nazev_stavu || state).toUpperCase())
+      : [];
+    const isPendingApproval = workflowStates.includes('ODESLANA_KE_SCHVALENI') || workflowStates.includes('CEKA_SE');
+
+    return !isPendingApproval || approveDelegatedUserIdSet.has(String(parseInt(formData.prikazce_id, 10)));
+  }, [formData.objednatel_id, formData.uzivatel_id, formData.garant_uzivatel_id, formData.garant_id, formData.prikazce_id, formData?.stav_workflow_kod, delegatedOrderParticipantIdSet, approveDelegatedUserIdSet]);
+
+  const canSaveOrderEffective = canSaveOrder || hasDelegatedOrderWorkflowAccess || hasDelegatedVecnaChanges;
 
   const isSubstituteForOrderPrikazce = useMemo(() => {
     const orderPrikazceId = formData.prikazce_id ? String(parseInt(formData.prikazce_id, 10)) : '';
@@ -27598,7 +27641,16 @@ function OrderForm25() {
                                                     const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
                                                       ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
                                                       : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : 'Systém');
-                                                    return userName;
+                                                    return (
+                                                      <>
+                                                        {userName}
+                                                        <SubstitutionBadge
+                                                          substitutionInfo={faktura.substitution_info?.potvrdil_vecnou_spravnost}
+                                                          actionLabel="Potvrzeno"
+                                                          actorName={userName || ''}
+                                                        />
+                                                      </>
+                                                    );
                                                   })()}
                                                   {' '}<strong>•</strong>{' '}
                                                   <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}
@@ -27639,7 +27691,16 @@ function OrderForm25() {
                                                     const userName = faktura.potvrdil_vecnou_spravnost_jmeno 
                                                       ? `${faktura.potvrdil_vecnou_spravnost_jmeno} ${faktura.potvrdil_vecnou_spravnost_prijmeni || ''}`.trim()
                                                       : (faktura.potvrdil_vecnou_spravnost_id ? getUserNameById(faktura.potvrdil_vecnou_spravnost_id) : 'Systém');
-                                                    return userName;
+                                                    return (
+                                                      <>
+                                                        {userName}
+                                                        <SubstitutionBadge
+                                                          substitutionInfo={faktura.substitution_info?.potvrdil_vecnou_spravnost}
+                                                          actionLabel="Zamítnuto"
+                                                          actorName={userName || ''}
+                                                        />
+                                                      </>
+                                                    );
                                                   })()}
                                                   {' '}<strong>•</strong>{' '}
                                                   <strong>Datum:</strong> {prettyDate(faktura.dt_potvrzeni_vecne_spravnosti)}

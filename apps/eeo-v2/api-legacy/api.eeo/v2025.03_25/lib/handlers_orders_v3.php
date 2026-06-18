@@ -245,6 +245,17 @@ function handle_orders_v3_detail($input, $config) {
         $stmt_invoices->execute(['order_id' => $order_id]);
         $invoices = $stmt_invoices->fetchAll(PDO::FETCH_ASSOC);
 
+        // 🎯 SUBSTITUTION INFO - Přidej informace o zastoupení ke každé faktuře
+        foreach ($invoices as &$invoice) {
+            $invoice['substitution_info'] = [];
+
+            $sub_info = resolveInvoiceMaterialCheckSubstitutionInfo($db, $invoice);
+            if ($sub_info) {
+                $invoice['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
+            }
+        }
+        unset($invoice);
+
         // Načtení příloh faktur - opravené názvy sloupců podle skutečné DB struktury
         $sql_invoice_attachments = "SELECT 
             fp.id,
@@ -553,6 +564,31 @@ function handle_orders_v3_detail($input, $config) {
             }
         } catch (Exception $audit_err) {
             error_log("⚠️ [V3 ORDER DETAIL] Audit log load error (non-blocking): " . $audit_err->getMessage());
+        }
+
+        $order['substitution_info'] = [];
+        
+        // Schvalovatel objednávky (schválení/zamítnutí/čeká se)
+        if (!empty($order['schvalovatel_id']) && !empty($order['dt_schvaleni'])) {
+            $sub_info = resolveOrderApprovalSubstitutionInfo($db, $order);
+            if ($sub_info) {
+                $order['substitution_info']['schvalovatel'] = $sub_info;
+            }
+        }
+        
+        // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)
+        if (!empty($order['potvrdil_vecnou_spravnost_id']) && !empty($order['dt_potvrzeni_vecne_spravnosti'])) {
+            $sub_info = get_substitution_info_for_action(
+                $db,
+                (int)$order['potvrdil_vecnou_spravnost_id'],
+                'CONFIRM',
+                'OBJEDNAVKA',
+                (int)$order['id'],
+                $order['dt_potvrzeni_vecne_spravnosti']
+            );
+            if ($sub_info) {
+                $order['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
+            }
         }
 
         // Vrátit detail

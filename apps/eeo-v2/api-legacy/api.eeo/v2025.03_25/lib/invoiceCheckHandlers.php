@@ -131,18 +131,6 @@ function ensureLpSplitExistsForVsApproval($db, $faktura_id, $objednavka_id) {
  * @return void Vrací JSON response
  */
 function handle_invoice_toggle_check($input, $config) {
-    // ==========================================
-    // 🐛 DEV DEBUG LOGGING - VĚCNÁ SPRÁVNOST
-    // ==========================================
-    error_log("╔═══════════════════════════════════════════════════════════");
-    error_log("║ ✅ MODUL FAKTUR - VĚCNÁ SPRÁVNOST");
-    error_log("║ Čas: " . date('Y-m-d H:i:s'));
-    error_log("║ Uživatel: " . (isset($input['username']) ? $input['username'] : 'N/A'));
-    error_log("║ Faktura ID: " . (isset($input['faktura_id']) ? $input['faktura_id'] : 'N/A'));
-    error_log("║ Status: " . (isset($input['status']) ? $input['status'] : (isset($input['kontrolovano']) ? 'legacy' : 'N/A')));
-    error_log("║ Endpoint: invoices/toggle-check");
-    error_log("╚═══════════════════════════════════════════════════════════");
-    
     // 1. Validace HTTP metody
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         http_response_code(405);
@@ -728,7 +716,6 @@ function handle_invoice_toggle_check($input, $config) {
             
             // 9. ⚠️ AUTOMATICKÁ SPRÁVA WORKFLOW A STAVU OBJEDNÁVKY
             // podle věcné správnosti faktury
-            error_log("🔍 [WORKFLOW CHECK] Faktura ID: {$faktura_id}, Objednávka ID: " . ($faktura['objednavka_id'] ?? 'NULL') . ", Status: {$status}");
             if (!empty($faktura['objednavka_id'])) {
                 $objednavka_id = (int)$faktura['objednavka_id'];
                 
@@ -742,12 +729,10 @@ function handle_invoice_toggle_check($input, $config) {
                         'action_type' => 'APPROVE',
                         'note' => 'Workflow objednávky po potvrzení věcné správnosti faktury'
                     ));
-                    error_log("✅ Spuštěna aktualizace workflow pro objednávku #{$objednavka_id} po potvrzení VS faktury #{$faktura_id}");
                     
                 } elseif ($status === VS_STATUS_ZAMITNUTA || $status === VS_STATUS_NEPOTVRZENA) {
                     // ❌ ZAMÍTNUTO nebo RESETOVÁNO - zkontrolovat, zda ještě nejsou všechny faktury potvrzeny
                     // Pokud ne, odebrat ZKONTROLOVANA z workflow a vrátit stav na "Věcná správnost"
-                    error_log("🔍 [CONDITION] elseif (status === VS_STATUS_ZAMITNUTA || status === VS_STATUS_NEPOTVRZENA) -> SPLNĚNA! Status=$status");
                     removeZkontrolovanaFromWorkflow($db, $objednavka_id, array(
                         'token_data' => isset($audit_token_data) ? $audit_token_data : $token_data,
                         'endpoint' => 'invoices/toggle-check',
@@ -757,9 +742,6 @@ function handle_invoice_toggle_check($input, $config) {
                             ? 'Workflow objednávky po zamítnutí věcné správnosti faktury'
                             : 'Workflow objednávky po resetu věcné správnosti faktury'
                     ));
-                    error_log("🔍 [BEFORE CALL] Volám removeZkontrolovanaFromWorkflow(\$db, {$objednavka_id})");
-                    error_log("🔄 Spuštěna revize workflow pro objednávku #{$objednavka_id} po zamítnutí/resetu VS faktury #{$faktura_id}");
-                    error_log("🔍 [AFTER CALL] removeZkontrolovanaFromWorkflow() dokončena");
                 }
             }
             

@@ -98,7 +98,7 @@ export const AuthProvider = ({ children }) => {
   }); // {id, username, token, userDetail, permissions}
 
   const refreshSubstitutionEffectivePermissions = useCallback(async () => {
-    if (!token || !user?.username || impersonationActive) {
+    if (!token || !user?.username) {
       setSubstitutionEffectivePermissions([]);
       setSubstitutionDelegation({ hasAdminAccess: false, hasSuperadminAccess: false });
       return [];
@@ -124,10 +124,10 @@ export const AuthProvider = ({ children }) => {
       setSubstitutionDelegation({ hasAdminAccess: false, hasSuperadminAccess: false });
       return [];
     }
-  }, [token, user, impersonationActive]);
+  }, [token, user]);
 
   useEffect(() => {
-    if (!isLoggedIn || !token || !user?.username || impersonationActive) {
+    if (!isLoggedIn || !token || !user?.username) {
       setSubstitutionEffectivePermissions([]);
       setSubstitutionDelegation({ hasAdminAccess: false, hasSuperadminAccess: false });
       return;
@@ -139,7 +139,7 @@ export const AuthProvider = ({ children }) => {
     }, 120000);
 
     return () => clearInterval(intervalId);
-  }, [isLoggedIn, token, user, impersonationActive, refreshSubstitutionEffectivePermissions]);
+  }, [isLoggedIn, token, user, refreshSubstitutionEffectivePermissions]);
 
   const login = async (username, password) => {
     try {

@@ -473,6 +473,143 @@ function resolveOrderApprovalSubstitutionInfo($db, array $order) {
         }
     }
 
+    if (defined('TBL_ZASTUPOVANI_AKCE_LOG')) {
+        try {
+            $placeholders = implode(', ', array_fill(0, count($action_types), '?'));
+            $params = [
+                (int)$order['schvalovatel_id'],
+                'OBJEDNAVKA',
+                (int)$order['id']
+            ];
+
+            foreach ($action_types as $action_type) {
+                $params[] = $action_type;
+            }
+
+            $params[] = $order['dt_schvaleni'];
+
+            $stmt = $db->prepare(
+                "SELECT z.zastupovani_id, z.zastupovany_id, u.jmeno, u.prijmeni, z.dt_akce
+                 FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " z
+                 LEFT JOIN " . TBL_UZIVATELE . " u ON z.zastupovany_id = u.id
+                 WHERE z.zastupce_id = ?
+                   AND z.objekt_typ = ?
+                   AND z.objekt_id = ?
+                   AND z.akce_typ IN (" . $placeholders . ")
+                 ORDER BY ABS(TIMESTAMPDIFF(SECOND, z.dt_akce, ?)) ASC, z.dt_akce DESC, z.id DESC
+                 LIMIT 1"
+            );
+            $stmt->execute($params);
+            $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!empty($record)) {
+                return [
+                    'is_substitution' => true,
+                    'zastupovany_id' => (int)$record['zastupovany_id'],
+                    'zastupovany_jmeno' => trim(($record['jmeno'] ?? '') . ' ' . ($record['prijmeni'] ?? '')),
+                    'dt_akce' => $record['dt_akce']
+                ];
+            }
+        } catch (Exception $e) {
+            error_log('[OrderV3] resolveOrderApprovalSubstitutionInfo fallback error: ' . $e->getMessage());
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Vrátí prioritní seznam typů akcí pro věcnou správnost faktury.
+ * Potřeba pro korektní dohledání zastoupení u potvrzení i zamítnutí.
+ *
+ * @param array $invoice
+ * @return array
+ */
+function resolveInvoiceMaterialCheckActionTypesForSubstitution(array $invoice) {
+    $status = isset($invoice['vecna_spravnost_potvrzeno']) ? (int)$invoice['vecna_spravnost_potvrzeno'] : 0;
+
+    if ($status === 2) {
+        return array('REJECT', 'CONFIRM');
+    }
+
+    if ($status === 1) {
+        return array('CONFIRM', 'REJECT');
+    }
+
+    return array('CONFIRM', 'REJECT');
+}
+
+/**
+ * Dohledá substitution info pro věcnou správnost faktury s fallbackem napříč typy akcí.
+ *
+ * @param PDO $db
+ * @param array $invoice
+ * @return array|bool
+ */
+function resolveInvoiceMaterialCheckSubstitutionInfo($db, array $invoice) {
+    if (empty($invoice['potvrdil_vecnou_spravnost_id']) || empty($invoice['dt_potvrzeni_vecne_spravnosti']) || empty($invoice['id'])) {
+        return false;
+    }
+
+    $action_types = resolveInvoiceMaterialCheckActionTypesForSubstitution($invoice);
+
+    foreach ($action_types as $action_type) {
+        $sub_info = get_substitution_info_for_action(
+            $db,
+            (int)$invoice['potvrdil_vecnou_spravnost_id'],
+            $action_type,
+            'FAKTURA',
+            (int)$invoice['id'],
+            $invoice['dt_potvrzeni_vecne_spravnosti']
+        );
+
+        if (!empty($sub_info)) {
+            return $sub_info;
+        }
+    }
+
+    if (defined('TBL_ZASTUPOVANI_AKCE_LOG')) {
+        try {
+            $placeholders = implode(', ', array_fill(0, count($action_types), '?'));
+            $params = [
+                (int)$invoice['potvrdil_vecnou_spravnost_id'],
+                'FAKTURA',
+                (int)$invoice['id']
+            ];
+
+            foreach ($action_types as $action_type) {
+                $params[] = $action_type;
+            }
+
+            $params[] = $invoice['dt_potvrzeni_vecne_spravnosti'];
+
+            $stmt = $db->prepare(
+                "SELECT z.zastupovani_id, z.zastupovany_id, u.jmeno, u.prijmeni, z.dt_akce
+                 FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " z
+                 LEFT JOIN " . TBL_UZIVATELE . " u ON z.zastupovany_id = u.id
+                 WHERE z.zastupce_id = ?
+                   AND z.objekt_typ = ?
+                   AND z.objekt_id = ?
+                   AND z.akce_typ IN (" . $placeholders . ")
+                 ORDER BY ABS(TIMESTAMPDIFF(SECOND, z.dt_akce, ?)) ASC, z.dt_akce DESC, z.id DESC
+                 LIMIT 1"
+            );
+            $stmt->execute($params);
+            $record = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!empty($record)) {
+                return [
+                    'is_substitution' => true,
+                    'zastupovany_id' => (int)$record['zastupovany_id'],
+                    'zastupovany_jmeno' => trim(($record['jmeno'] ?? '') . ' ' . ($record['prijmeni'] ?? '')),
+                    'dt_akce' => $record['dt_akce']
+                ];
+            }
+        } catch (Exception $e) {
+            error_log('[OrderV3] resolveInvoiceMaterialCheckSubstitutionInfo fallback error: ' . $e->getMessage());
+        }
+    }
+
     return false;
 }
 

@@ -4506,8 +4506,10 @@ const OrdersTableV3 = ({
               <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 {prikazce}
               </div>
-              <div style={{ fontSize: '0.85em', color: '#6b7280', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {schvalovatel}
+              <div style={{ fontSize: '0.85em', color: '#6b7280', display: 'flex', alignItems: 'center', minWidth: 0 }}>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 }}>
+                  {schvalovatel}
+                </span>
                 <SubstitutionBadge 
                   substitutionInfo={approvalSubstitutionInfo}
                   actionLabel={approvalActionLabel}
