@@ -2716,13 +2716,36 @@ export default function InvoiceEvidencePage() {
       
       return true;
     }
+
+    // Aktivní substituce pro uživatele, kterému je faktura předána.
+    const assignedId = originalFormData?.fa_predana_zam_id;
+    if (assignedId && String(assignedId) !== String(user_id)) {
+      const hasActiveSubstitution = activeSubstitutions.some((item) => {
+        if (!item) return false;
+        const zastupovanyId = item.zastupovany_id ?? item.zastupovanyId ?? item.user_id;
+        if (zastupovanyId === null || zastupovanyId === undefined) return false;
+        return String(zastupovanyId) === String(assignedId);
+      });
+
+      if (hasActiveSubstitution) {
+        const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
+        const vecnaZamitnutaVDB = originalFormData?.vecna_spravnost_potvrzeno === 2;
+        if (vecnaPotvrzenaVDB || vecnaZamitnutaVDB) {
+          return false;
+        }
+
+        if (isOrderCompleted) return false;
+
+        return true;
+      }
+    }
     
     // Nemá žádné oprávnění → ZAMČENO
     // ⚠️ POZNÁMKA: Backend navíc kontroluje kolegy z úseku a uživatele z úseku smlouvy,
     // což frontend nemůže kontrolovat (nemá přístup k těmto datům).
     // Backend je primární kontrola oprávnění.
     return false;
-  }, [originalFormData, isOrderCompleted, hasPermission, isSuperAdmin, isAdmin, orderData, user_id]);
+  }, [originalFormData, isOrderCompleted, hasPermission, isSuperAdmin, isAdmin, orderData, user_id, activeSubstitutions]);
 
   // 🧾 Upozornění pro věcnou správnost: faktura je předána jinému zaměstnanci
   const vecnaSpravnostAssignedEmployee = useMemo(() => {
@@ -2804,7 +2827,8 @@ export default function InvoiceEvidencePage() {
             perms?.confirm ?? perms?.material_check ?? perms?.materialCorrectness ?? item?.confirm ?? item?.can_confirm
           );
           const canApprove = toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
-          return canConfirm || canApprove;
+          const canView = toBool(perms?.view ?? item?.view ?? item?.can_view);
+          return canConfirm || canApprove || canView;
         });
 
         setActiveSubstitutions(normalized);
@@ -4471,6 +4495,25 @@ export default function InvoiceEvidencePage() {
     faCisloVemaRef.current = formData.fa_cislo_vema;
   }, [formData.fa_cislo_vema]);
 
+  // 🔒 Single-flight guard pro temp faktury:
+  // při dávkovém uploadu více příloh musí vzniknout jen jedna faktura v DB
+  const tempInvoiceCreatePromiseRef = useRef(null);
+  const tempInvoiceCreatedIdRef = useRef(null);
+
+  useEffect(() => {
+    // Když už máme reálné ID, cacheujeme ho pro případ dalších paralelních volání
+    if (editingInvoiceId && !String(editingInvoiceId).startsWith('temp-')) {
+      tempInvoiceCreatedIdRef.current = editingInvoiceId;
+      return;
+    }
+
+    // Při resetu formuláře vynulovat lock i cache
+    if (!editingInvoiceId) {
+      tempInvoiceCreatePromiseRef.current = null;
+      tempInvoiceCreatedIdRef.current = null;
+    }
+  }, [editingInvoiceId]);
+
   // 📎 Handler: po úspěšném uploadu přílohy - volá se z InvoiceAttachmentsCompact
   const handleAttachmentUploaded = useCallback(async (fakturaId, uploadedAttachment) => {
     // Guard: Pokud není fakturaId, není co trackovat
@@ -4579,6 +4622,17 @@ export default function InvoiceEvidencePage() {
 
   // 🆕 Handler: Vytvoření faktury v DB (pro temp faktury před uploadem přílohy)
   const handleCreateInvoiceInDB = useCallback(async (tempFakturaId) => {
+    // Pokud už máme vytvořené reálné ID, použij ho (idempotence)
+    if (tempInvoiceCreatedIdRef.current && !String(tempInvoiceCreatedIdRef.current).startsWith('temp-')) {
+      return tempInvoiceCreatedIdRef.current;
+    }
+
+    // Pokud už create běží, další volání čekají na stejný Promise (single-flight)
+    if (tempInvoiceCreatePromiseRef.current) {
+      return tempInvoiceCreatePromiseRef.current;
+    }
+
+    const createPromise = (async () => {
     try {
       const apiParams = {
         token,
@@ -4611,6 +4665,9 @@ export default function InvoiceEvidencePage() {
         throw new Error('Nepodařilo se vytvořit fakturu v DB - backend nevrátil ID');
       }
 
+      // Uložit ID synchronně do ref, aby bylo dostupné i ve stejném render cyklu
+      tempInvoiceCreatedIdRef.current = newInvoiceId;
+
       // Nastav editingInvoiceId, aby se další přílohy uploadovaly k této faktuře
       setEditingInvoiceId(newInvoiceId);
       
@@ -4632,7 +4689,14 @@ export default function InvoiceEvidencePage() {
     } catch (error) {
       console.error('❌ Chyba při vytváření faktury v DB:', error);
       throw error;
+    } finally {
+      // Uvolnit single-flight lock po dokončení
+      tempInvoiceCreatePromiseRef.current = null;
     }
+    })();
+
+    tempInvoiceCreatePromiseRef.current = createPromise;
+    return createPromise;
   }, [token, username, formData, selectedLP]);
 
   // 📄 Handler: ISDOC parsing - vyplnění faktury z ISDOC souboru
@@ -8664,7 +8728,7 @@ export default function InvoiceEvidencePage() {
                       </strong>
                       {isVecnaSpravnostAssignedViaSubstitution
                         ? '. Jako jeho aktivní zástupce můžete věcnou správnost potvrdit také vy.'
-                        : '. Přesto můžete věcnou správnost k faktuře potvrdit i vy.'}
+                        : '. Bez aktivního zástupu pro tohoto uživatele nelze potvrdit věcnou správnost v zastoupení.'}
                     </div>
                   )}
                   <div style={{

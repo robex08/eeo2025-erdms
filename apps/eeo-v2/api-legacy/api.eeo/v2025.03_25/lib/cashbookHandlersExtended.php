@@ -350,6 +350,50 @@ function _cashbook_has_substitution_global_cashbox_visibility($db, $zastupceId) 
     return false;
 }
 
+/**
+ * Interní helper: zjistí, zda je potřeba použít legacy fallback pro cashbook_transfer.
+ *
+ * Legacy fallback používáme pouze tehdy, když aktivní záznamy zastupování
+ * neobsahují klíč cashbook_transfer vůbec (historická data).
+ * Pokud je klíč přítomen, respektujeme jeho explicitní hodnotu.
+ *
+ * @param PDO $db
+ * @param int $zastupceId
+ * @return bool
+ */
+function _cashbook_should_use_legacy_transfer_fallback($db, $zastupceId) {
+    try {
+        $stmt = $db->prepare(
+            "SELECT z.opravneni
+             FROM " . TBL_UZIVATELE_ZASTUPOVANI . " z
+             WHERE z.zastupce_id = :zastupce_id
+               AND z.aktivni = 1
+               AND z.dt_od <= CURDATE()
+               AND z.dt_do >= CURDATE()"
+        );
+        $stmt->bindValue(':zastupce_id', (int)$zastupceId, PDO::PARAM_INT);
+        $stmt->execute();
+
+        $hasAnyActiveSubstitution = false;
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $opravneni = json_decode($row['opravneni'], true);
+            if (!is_array($opravneni)) {
+                continue;
+            }
+
+            $hasAnyActiveSubstitution = true;
+            if (array_key_exists('cashbook_transfer', $opravneni)) {
+                return false;
+            }
+        }
+
+        return $hasAnyActiveSubstitution;
+    } catch (Exception $e) {
+        error_log('_cashbook_should_use_legacy_transfer_fallback error: ' . $e->getMessage());
+        return false;
+    }
+}
+
 function handle_cashbox_assignments_list_post($config, $input) {
     try {
         if (empty($input['username']) || empty($input['token'])) {
@@ -374,14 +418,20 @@ function handle_cashbox_assignments_list_post($config, $input) {
             if (function_exists('get_user_ids_with_substitution')) {
                 try {
                     $scopeInfo = null;
-                    // Preferovat explicitní module_visibility
-                    $subIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('module_visibility'), $scopeInfo);
+                    // Pro cashbook modul preferujeme explicitní předání pokladny.
+                    $subIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('cashbook_transfer'), $scopeInfo);
 
-                    // Fallback kompatibility: staré záznamy bez module_visibility
-                    if (!is_array($subIds) || count($subIds) <= 1) {
-                        $legacySubIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('view'), $scopeInfo);
-                        if (is_array($legacySubIds) && !empty($legacySubIds)) {
-                            $subIds = $legacySubIds;
+                    // Legacy fallback pouze pro historické záznamy bez klíče cashbook_transfer.
+                    if ((!is_array($subIds) || count($subIds) <= 1)
+                        && _cashbook_should_use_legacy_transfer_fallback($db, (int)$userData['id'])) {
+                        $subIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('module_visibility'), $scopeInfo);
+
+                        // Starší úplně legacy fallback (záznamy bez module_visibility)
+                        if (!is_array($subIds) || count($subIds) <= 1) {
+                            $legacySubIds = get_user_ids_with_substitution($db, (int)$userData['id'], array('view'), $scopeInfo);
+                            if (is_array($legacySubIds) && !empty($legacySubIds)) {
+                                $subIds = $legacySubIds;
+                            }
                         }
                     }
 

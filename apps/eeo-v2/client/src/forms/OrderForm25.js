@@ -6197,6 +6197,25 @@ function OrderForm25() {
 
       // Nastavit finální data (pokud není prázdné)
       if (Object.keys(finalData).length > 0) {
+        // Pokud DB vrátí objednávku bez faktur, nepřebírej staré draft metadata fakturace.
+        // Tím zabráníme zobrazení historického fakturanta/datu po odpojení faktur v modulu FA.
+        if (hasDbData) {
+          const dbInvoices = Array.isArray(loadedData?.faktury) ? loadedData.faktury : [];
+          const hasActivePersistedDbInvoicesForOrder = dbInvoices.some((f) => {
+            if (!f || !f.id || String(f.id).startsWith('temp-') || Number(f.aktivni ?? 1) !== 1) return false;
+            if (loadedData?.id && f.objednavka_id !== undefined && f.objednavka_id !== null) {
+              return String(f.objednavka_id) === String(loadedData.id);
+            }
+            return true;
+          });
+
+          if (!hasActivePersistedDbInvoicesForOrder) {
+            finalData.faktury = [];
+            finalData.fakturant_id = null;
+            finalData.dt_faktura_pridana = null;
+          }
+        }
+
         setFormData(finalData);
 
         // 🔒 CONFLICT DETECTION: Nastavit server timestamp při načtení objednávky z DB
@@ -6481,6 +6500,26 @@ function OrderForm25() {
   const prilohyTypyOptions = dictionaries.data?.prilohyTypyOptions || [];
   const typyFakturOptions = dictionaries.data?.typyFakturOptions || []; // Typy faktur z reduceru
   const stavyWorkflowMap = dictionaries.data?.stavyWorkflowMap || {}; // 🆕 Mapa workflow stavů z DB číselníku
+
+  const invoiceHandoffUserOptions = useMemo(() => {
+    return (allUsers || [])
+      .filter((u) => u && (u.aktivni === 1 || u.aktivni === '1' || u.active === 1 || u.active === '1'))
+      .map((u) => {
+        const uid = u.id || u.user_id;
+        const fullName = [
+          u.titul_pred || '',
+          u.jmeno || '',
+          u.prijmeni || ''
+        ].join(' ').replace(/\s+/g, ' ').trim();
+
+        return {
+          ...u,
+          value: uid,
+          label: u.titul_za ? `${fullName}, ${u.titul_za}` : fullName
+        };
+      })
+      .filter((u) => u.value && u.label);
+  }, [allUsers]);
 
   // 💰 Helper: Vytvořit LP řádky s 0 Kč z vybraných LP kódů (pro faktury 0 Kč)
   const buildZeroLpRowsFromSelection = React.useCallback((selectedLpValues) => {
@@ -7212,6 +7251,66 @@ function OrderForm25() {
     return set;
   }, [activeSubstitutions]);
 
+  // Substitutions where current user can confirm material correctness for delegated employee.
+  const vecnaSpravnostDelegatedUserIdSet = useMemo(() => {
+    const set = new Set();
+    activeSubstitutions.forEach(item => {
+      if (!item) return;
+
+      const perms = decodeOpravneni(item.opravneni);
+      const canConfirm = toBool(perms?.confirm ?? perms?.material_check ?? perms?.materialCorrectness ?? item?.confirm ?? item?.can_confirm);
+      const canApprove = toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+      const canView = toBool(perms?.view ?? item?.view ?? item?.can_view);
+      if (!canConfirm && !canApprove && !canView) return;
+
+      const zastupovanyId = item.zastupovany_id ?? item.zastupovanyId ?? item.user_id;
+      if (zastupovanyId === null || zastupovanyId === undefined) return;
+      set.add(String(zastupovanyId));
+    });
+    return set;
+  }, [activeSubstitutions]);
+
+  const hasDelegatedVecnaAccessForInvoice = useCallback((faktura) => {
+    if (!faktura) return false;
+    const assignedId = faktura.fa_predana_zam_id;
+    if (!assignedId) return false;
+    return vecnaSpravnostDelegatedUserIdSet.has(String(assignedId));
+  }, [vecnaSpravnostDelegatedUserIdSet]);
+
+  const normalizeVecnaStatus = useCallback((value) => {
+    if (value === 1 || value === '1') return 1;
+    if (value === 2 || value === '2') return 2;
+    return 0;
+  }, []);
+
+  const hasDelegatedVecnaChanges = useMemo(() => {
+    const currentInvoices = Array.isArray(formData?.faktury) ? formData.faktury : [];
+    if (currentInvoices.length === 0) return false;
+
+    const originalInvoices = Array.isArray(originalFormDataRef.current?.faktury)
+      ? originalFormDataRef.current.faktury
+      : [];
+    const originalById = new Map(originalInvoices.map(inv => [String(inv.id), inv]));
+
+    return currentInvoices.some((inv) => {
+      if (!inv || !inv.id) return false;
+      if (!hasDelegatedVecnaAccessForInvoice(inv)) return false;
+
+      const original = originalById.get(String(inv.id));
+      if (!original) return false;
+
+      const currentStatus = normalizeVecnaStatus(inv.vecna_spravnost_potvrzeno);
+      const originalStatus = normalizeVecnaStatus(original.vecna_spravnost_potvrzeno);
+      if (currentStatus !== originalStatus) return true;
+
+      const currentDuvod = (inv.vecna_spravnost_duvod || '').trim();
+      const originalDuvod = (original.vecna_spravnost_duvod || '').trim();
+      return currentDuvod !== originalDuvod;
+    });
+  }, [formData?.faktury, hasDelegatedVecnaAccessForInvoice, normalizeVecnaStatus]);
+
+  const canSaveOrderEffective = canSaveOrder || hasDelegatedVecnaChanges;
+
   const isSubstituteForOrderPrikazce = useMemo(() => {
     const orderPrikazceId = formData.prikazce_id ? String(parseInt(formData.prikazce_id, 10)) : '';
     if (!orderPrikazceId) return false;
@@ -7518,6 +7617,43 @@ function OrderForm25() {
     max_cena_s_dph: formData.max_cena_s_dph
   }), [formData.id, formData.faktury, formData.max_cena_s_dph]);
 
+  // Canonical invoice sets used by UI + tracking metadata, to keep load/save/render consistent.
+  const activeInvoicesForCurrentOrder = useMemo(() => {
+    if (!Array.isArray(formData.faktury)) return [];
+
+    return formData.faktury.filter((f) => {
+      if (!f || Number(f.aktivni ?? 1) !== 1) return false;
+
+      // For persisted invoices, enforce relation to current order when both IDs are known.
+      if (f.id && !String(f.id).startsWith('temp-') && formData.id && f.objednavka_id !== undefined && f.objednavka_id !== null) {
+        return String(f.objednavka_id) === String(formData.id);
+      }
+
+      return true;
+    });
+  }, [formData.faktury, formData.id]);
+
+  const persistedActiveInvoicesForCurrentOrder = useMemo(() => {
+    return activeInvoicesForCurrentOrder.filter((f) => f && f.id && !String(f.id).startsWith('temp-'));
+  }, [activeInvoicesForCurrentOrder]);
+
+  const hasPersistedActiveInvoicesForCurrentOrder = persistedActiveInvoicesForCurrentOrder.length > 0;
+
+  const hasInvoiceTrackingMetadata = !!(formData.fakturant_id && formData.dt_faktura_pridana);
+  const shouldShowInvoiceTrackingInfo = hasPersistedActiveInvoicesForCurrentOrder && hasInvoiceTrackingMetadata;
+
+  useEffect(() => {
+    if (hasPersistedActiveInvoicesForCurrentOrder) return;
+    if (!formData.fakturant_id && !formData.dt_faktura_pridana) return;
+
+    // Defensive FE guard: never keep invoice tracking metadata without a real persisted invoice.
+    setFormData((prev) => ({
+      ...prev,
+      fakturant_id: null,
+      dt_faktura_pridana: null
+    }));
+  }, [hasPersistedActiveInvoicesForCurrentOrder, formData.fakturant_id, formData.dt_faktura_pridana]);
+
   // 📎 Helper: Počítání příloh a jejich stavů
   const getAttachmentsInfo = useMemo(() => {
     if (!attachments || attachments.length === 0) {
@@ -7556,7 +7692,7 @@ function OrderForm25() {
     const isPlatbaPokladnaObj = formData.financovani?.platba === 'pokladna';
     const isPlatbaPokladnaDodavatel = formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
     const isPokladna = isPlatbaPokladnaObj || isPlatbaPokladnaDodavatel;
-    const hasFaktury = !!(formData.faktury && formData.faktury.length > 0); // ✅ OPRAVA: Vždy boolean
+    const hasFaktury = activeInvoicesForCurrentOrder.length > 0;
     
     if (states.fakturace) {
       states.fakturace = {
@@ -7602,9 +7738,9 @@ function OrderForm25() {
     }
     
     return states;
-  }, [allSectionStates, currentPhase, canManageInvoices, canPublishRegistry, 
+    }, [allSectionStates, currentPhase, canManageInvoices, canPublishRegistry, 
       formData.financovani?.platba, formData.dodavatel_zpusob_potvrzeni?.platba, 
-      formData.faktury, formData.dt_zverejneni, formData.registr_iddt, 
+      activeInvoicesForCurrentOrder, formData.dt_zverejneni, formData.registr_iddt, 
       formData.id, isPrilohyLocked, canConfirmOrderCompletion, getAttachmentsInfo]);
 
   // 🔧 HELPER: Zjistí jestli je pole disabled (kombinace workflow lock + UI stav)
@@ -7775,12 +7911,17 @@ function OrderForm25() {
       return true;
     }
 
+    // ✅ Aktivní substituce pro věcnou správnost (confirm/approve)
+    if (hasDelegatedVecnaAccessForInvoice(faktura)) {
+      return true;
+    }
+
     // ❌ Ostatní uživatelé nemají právo
     // ⚠️ POZNÁMKA: Backend navíc kontroluje kolegy z úseku a uživatele z úseku smlouvy,
     // což frontend nemůže kontrolovat (nemá přístup k těmto datům).
     // Backend je primární kontrola oprávnění.
     return false;
-  }, [isSuperAdmin, isAdmin, canManageInvoices, formData.garant_uzivatel_id, formData.uzivatel_id, formData.prikazce_id, user_id]);
+  }, [isSuperAdmin, isAdmin, canManageInvoices, formData.garant_uzivatel_id, formData.uzivatel_id, formData.prikazce_id, user_id, hasDelegatedVecnaAccessForInvoice]);
 
   // Helper proměnné pro workflow stavy (používají se v jiných částech kódu)
   const isOrderSent = hasWorkflowState(formData.stav_workflow_kod, 'ODESLANA');
@@ -8557,10 +8698,24 @@ function OrderForm25() {
 
   // 💰 HELPER FUNKCE PRO PRÁCI S FAKTURAMI (stejný pattern jako položky)
   const updateFaktury = useCallback((newFaktury) => {
-    setFormData(prev => ({
-      ...prev,
-      faktury: newFaktury
-    }));
+    setFormData(prev => {
+      const hasInvoices = Array.isArray(newFaktury) && newFaktury.length > 0;
+
+      if (!hasInvoices) {
+        return {
+          ...prev,
+          faktury: newFaktury,
+          fakturant_id: null,
+          dt_faktura_pridana: null
+        };
+      }
+
+      return {
+        ...prev,
+        faktury: newFaktury
+      };
+    });
+
     // 🔥 KRITICKÉ: Nastavit isChanged při změně faktur
     setIsChanged(true);
   }, []);
@@ -9426,6 +9581,8 @@ function OrderForm25() {
         fa_castka: fakturaFormData.fa_castka,
         fa_datum_splatnosti: fakturaFormData.fa_splatnost,
         fa_datum_doruceni: fakturaFormData.fa_datum_doruceni,
+        fa_predana_zam_id: fakturaFormData.fa_predana_zam_id ? parseInt(fakturaFormData.fa_predana_zam_id, 10) : null,
+        fa_datum_predani_zam: fakturaFormData.fa_datum_predani_zam || null,
         fa_dorucena: 1,
         fa_strediska_kod: JSON.stringify(cleanedStrediska),
         fa_poznamka: fakturaFormData.fa_poznamka || null,
@@ -10044,6 +10201,8 @@ function OrderForm25() {
         fa_castka: faktura.fa_castka,
         fa_datum_splatnosti: faktura.fa_splatnost || null,
         fa_datum_doruceni: faktura.fa_datum_doruceni,
+        fa_predana_zam_id: faktura.fa_predana_zam_id ? Number(faktura.fa_predana_zam_id) : null,
+        fa_datum_predani_zam: faktura.fa_datum_predani_zam || null,
         fa_dorucena: faktura.fa_dorucena || 1,
         fa_strediska_kod: JSON.stringify(strediskaKody),
         fa_poznamka: faktura.fa_poznamka || null,
@@ -10768,6 +10927,80 @@ function OrderForm25() {
     showToast && showToast('ℹ️ Dokončení zrušeno', { type: 'info' });
   };
 
+  const saveDelegatedVecnaSpravnostOnly = async () => {
+    const currentInvoices = Array.isArray(formData?.faktury) ? formData.faktury : [];
+    const originalInvoices = Array.isArray(originalFormDataRef.current?.faktury)
+      ? originalFormDataRef.current.faktury
+      : [];
+    const originalById = new Map(originalInvoices.map(inv => [String(inv.id), inv]));
+
+    const changedDelegatedInvoices = currentInvoices.filter((inv) => {
+      if (!inv || !inv.id) return false;
+      if (!hasDelegatedVecnaAccessForInvoice(inv)) return false;
+
+      const original = originalById.get(String(inv.id));
+      if (!original) return false;
+
+      const currentStatus = normalizeVecnaStatus(inv.vecna_spravnost_potvrzeno);
+      const originalStatus = normalizeVecnaStatus(original.vecna_spravnost_potvrzeno);
+      if (currentStatus !== originalStatus) return true;
+
+      const currentDuvod = (inv.vecna_spravnost_duvod || '').trim();
+      const originalDuvod = (original.vecna_spravnost_duvod || '').trim();
+      return currentDuvod !== originalDuvod;
+    });
+
+    if (changedDelegatedInvoices.length === 0) {
+      showToast && showToast('Nebyly nalezeny změny věcné správnosti k uložení.', { type: 'info' });
+      return;
+    }
+
+    setIsSaving(true);
+    setIsSavingDraft(true);
+
+    try {
+      for (const invoice of changedDelegatedInvoices) {
+        const status = normalizeVecnaStatus(invoice.vecna_spravnost_potvrzeno);
+        const duvod = (invoice.vecna_spravnost_duvod || '').trim();
+
+        if (status === 2 && duvod.length < 5) {
+          throw new Error(`Faktura #${invoice.id}: při zamítnutí je nutné uvést důvod (min. 5 znaků).`);
+        }
+
+        await toggleVecnaSpravnost(invoice.id, status, token, username, duvod || null);
+      }
+
+      if (formData.id) {
+        const freshOrderData = await getOrderV2(parseInt(formData.id, 10), token, username, true);
+        if (freshOrderData?.id) {
+          const transformedFreshData = transformBackendDataToFrontend(freshOrderData);
+          setFormData(prev => {
+            const updatedData = {
+              ...prev,
+              ...transformedFreshData,
+            };
+            originalFormDataRef.current = JSON.parse(JSON.stringify(updatedData));
+            return updatedData;
+          });
+
+          saveDraft(transformedFreshData, {
+            isOrderSavedToDB: true,
+            savedOrderId: freshOrderData.id,
+            isChanged: false,
+          });
+        }
+      }
+
+      showToast && showToast('✅ Věcná správnost faktur byla uložena přes aktivní zastupování.', { type: 'success' });
+    } catch (error) {
+      console.error('❌ [saveDelegatedVecnaSpravnostOnly] Chyba při ukládání věcné správnosti:', error);
+      showToast && showToast(`Chyba při ukládání věcné správnosti: ${error.message || error}`, { type: 'error' });
+    } finally {
+      setIsSaving(false);
+      setIsSavingDraft(false);
+    }
+  };
+
   // Uložení objednávky do API (když je validní)
   const saveOrderToAPI = async (skipFinancialControlModal = false) => {
     
@@ -10779,6 +11012,13 @@ function OrderForm25() {
     // 🆕 ŘEŠENÍ PROBLÉMU #3: Validace ev_cislo PŘED uložením
     if (!isValidEvCislo(formData.ev_cislo)) {
       showToast && showToast('Evidenční číslo se stále načítá. Počkejte prosím na dokončení.', { type: 'warning' });
+      return;
+    }
+
+    // 🔁 Substituční režim: pokud uživatel nemůže uložit celou objednávku,
+    // ale změnil delegovanou věcnou správnost, uložit jen věcnou správnost přes invoices/toggle-check.
+    if (!canSaveOrder && hasDelegatedVecnaChanges) {
+      await saveDelegatedVecnaSpravnostOnly();
       return;
     }
 
@@ -11557,19 +11797,22 @@ function OrderForm25() {
       if (formData.dt_zverejneni_potvrzeni) orderData.dt_zverejneni_potvrzeni = formData.dt_zverejneni_potvrzeni;
 
       // Věcná správnost - FÁZE 7 (vždy ukládat, i null hodnoty)
-      orderData.potvrdil_vecnou_spravnost_id = formData.potvrdil_vecnou_spravnost_id !== undefined ? formData.potvrdil_vecnou_spravnost_id : null;
-      orderData.dt_potvrzeni_vecne_spravnosti = formData.dt_potvrzeni_vecne_spravnosti || null;
+      orderData.potvrdil_vecnou_spravnost_id = updatedFormData.potvrdil_vecnou_spravnost_id !== undefined
+        ? updatedFormData.potvrdil_vecnou_spravnost_id
+        : null;
+      orderData.dt_potvrzeni_vecne_spravnosti = updatedFormData.dt_potvrzeni_vecne_spravnosti || null;
 
-      // Fakturace - 🆕 VŽDY aktualizovat při uložení ve fázi fakturace (poslední uživatel)
-      if (formData.faktury && formData.faktury.length > 0 && workflowStates.includes('FAKTURACE')) {
-        // Aktualizovat fakturant_id a dt_faktura_pridana při každém uložení ve fázi fakturace
-        orderData.fakturant_id = user_id;
-        orderData.dt_faktura_pridana = getMySQLDateTime(); // ✅ JEDNOTNÝ FORMÁT
-        addDebugLog('info', 'SAVE', 'fakturace-tracking', `Aktualizován fakturant_id: ${user_id}, dt_faktura_pridana: ${orderData.dt_faktura_pridana}`);
+      // Fakturace - metadata držet v souladu s reálným stavem faktur
+      const persistedInvoices = persistedActiveInvoicesForCurrentOrder;
+
+      if (persistedInvoices.length > 0) {
+        // Metadata bereme z již uloženého stavu; FE je nesmí přepisovat při reloadu/open.
+        orderData.fakturant_id = formData.fakturant_id || null;
+        orderData.dt_faktura_pridana = formData.dt_faktura_pridana || null;
       } else {
-        // Zachovat existující hodnoty pokud nejsme ve fázi fakturace
-        if (formData.fakturant_id !== undefined) orderData.fakturant_id = formData.fakturant_id;
-        if (formData.dt_faktura_pridana) orderData.dt_faktura_pridana = formData.dt_faktura_pridana;
+        orderData.fakturant_id = null;
+        orderData.dt_faktura_pridana = null;
+        addDebugLog('info', 'SAVE', 'fakturace-tracking-reset', 'Objednávka nemá aktivní faktury - reset fakturant_id/dt_faktura_pridana');
       }
 
       // Dokončení - FÁZE 8 (vždy ukládat, i null hodnoty)
@@ -11776,6 +12019,9 @@ function OrderForm25() {
                   const now = new Date();
                   return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
                 })(),
+            fa_predana_zam_id: faktura.fa_predana_zam_id ? Number(faktura.fa_predana_zam_id) : null,
+            fa_datum_predani_zam: faktura.fa_datum_predani_zam || null,
+            fa_datum_vraceni_zam: faktura.fa_datum_vraceni_zam || null,
             fa_strediska_kod: strediskaArray,                                 // ✅ POLE KÓDŮ: ["KLADNO","BENESOV","BEROUN"]
             fa_poznamka: faktura.fa_poznamka || '',                           // VOLITELNÉ - poznámka
             // ✅ NOVÉ: Per-invoice věcná správnost (FÁZE 7/8) - 1:1 DB mapping
@@ -13091,6 +13337,27 @@ function OrderForm25() {
           parsedUpdateData.faktury.map(async (fakturaFromDB) => {
             // 🔍 NAJÍT ODPOVÍDAJÍCÍ FAKTURU V SOUČASNÉM formData (PŘED přepsáním!)
             const currentFaktura = formData.faktury?.find(f => f.id === fakturaFromDB.id);
+
+            const currentAssignedId = (currentFaktura?.fa_predana_zam_id !== null && currentFaktura?.fa_predana_zam_id !== undefined && String(currentFaktura?.fa_predana_zam_id).trim() !== '')
+              ? Number(currentFaktura.fa_predana_zam_id)
+              : null;
+            const incomingAssignedId = (fakturaFromDB?.fa_predana_zam_id !== null && fakturaFromDB?.fa_predana_zam_id !== undefined && String(fakturaFromDB?.fa_predana_zam_id).trim() !== '')
+              ? Number(fakturaFromDB.fa_predana_zam_id)
+              : null;
+            const confirmerId = (fakturaFromDB?.potvrdil_vecnou_spravnost_id !== null && fakturaFromDB?.potvrdil_vecnou_spravnost_id !== undefined && String(fakturaFromDB?.potvrdil_vecnou_spravnost_id).trim() !== '')
+              ? Number(fakturaFromDB.potvrdil_vecnou_spravnost_id)
+              : null;
+
+            // Defensive FE guard: if response accidentally mirrors confirmer into handoff assignee,
+            // preserve currently selected assignee to keep OrderForm display consistent with FA module.
+            const shouldPreserveAssignedEmployee = (
+              currentAssignedId !== null
+              && incomingAssignedId !== null
+              && confirmerId !== null
+              && incomingAssignedId === confirmerId
+              && currentAssignedId !== incomingAssignedId
+            );
+            const safeAssignedEmployeeId = shouldPreserveAssignedEmployee ? currentAssignedId : incomingAssignedId;
             
             // Parsovat ISDOC data z rozsirujici_data pokud existují
             const isdocData = fakturaFromDB.rozsirujici_data?.isdoc;
@@ -13149,6 +13416,7 @@ function OrderForm25() {
               fa_dorucena: fakturaFromDB.fa_datum_doruceni ? 1 : 0,
               fa_splatnost: fakturaFromDB.fa_splatnost || (fakturaFromDB.fa_datum_splatnosti ? fakturaFromDB.fa_datum_splatnosti.split(' ')[0] : ''),
               fa_strediska_kod: parsedStrediska,
+              fa_predana_zam_id: safeAssignedEmployeeId,
               // ✅ KRITICKÉ: Přidat načtené přílohy
               attachments: attachments,
               // Zachovat originální DB pole pro API odesílání
@@ -21725,7 +21993,7 @@ function OrderForm25() {
                   onClick={handleSaveOrder}
                   disabled={(() => {
                     // Základní blokovací podmínky
-                    if (isSaving || showSaveProgress || !canSaveOrder || isLoadingEvCislo || !isValidEvCislo(formData.ev_cislo)) {
+                    if (isSaving || showSaveProgress || !canSaveOrderEffective || isLoadingEvCislo || !isValidEvCislo(formData.ev_cislo)) {
                       return true;
                     }
                     
@@ -21749,16 +22017,16 @@ function OrderForm25() {
                     return isWorkflowCompleted && !canUnlockAnything;
                   })()}
                   title={
-                    isViewOnly
-                      ? 'Režim náhledu — objednávku zobrazujete přes zastupování. Ukládání není k dispozici.'
-                      : isLoadingEvCislo
+                    isLoadingEvCislo
                         ? 'Načítá se evidenční číslo...'
                         : !isValidEvCislo(formData.ev_cislo)
                           ? 'Evidenční číslo se nepodařilo načíst'
                           : (isWorkflowCompleted && !canUnlockAnything)
                             ? 'Objednávka je dokončena/zamítnuta/stornována a uzamčena'
-                            : !canSaveOrder
-                              ? 'Nemáte oprávnění k ukládání objednávek'
+                            : !canSaveOrderEffective
+                              ? 'Nemáte oprávnění k ukládání objednávky ani delegované věcné správnosti'
+                              : (!canSaveOrder && hasDelegatedVecnaChanges)
+                                ? 'Uložit změny věcné správnosti přes zastupování'
                               : 'Uložit objednávku'
                   }
                 >
@@ -26081,6 +26349,18 @@ function OrderForm25() {
                             const isEditing = editingFaktura?.id === faktura.id;
                             const currentData = isEditing ? fakturaFormData : faktura;
                             const isVecnaPotvrzena = faktura.vecna_spravnost_potvrzeno === 1;
+                            const assignedEmployeeId = faktura?.fa_predana_zam_id ? String(faktura.fa_predana_zam_id) : '';
+                            const isVecnaSpravnostAssignedToOtherEmployee = !!(
+                              assignedEmployeeId
+                              && user_id
+                              && String(assignedEmployeeId) !== String(user_id)
+                              && !isVecnaPotvrzena
+                            );
+                            const isVecnaSpravnostAssignedViaSubstitution = isVecnaSpravnostAssignedToOtherEmployee
+                              && vecnaSpravnostDelegatedUserIdSet.has(assignedEmployeeId);
+                            const vecnaSpravnostAssignedEmployeeName = assignedEmployeeId
+                              ? (getUserNameById(assignedEmployeeId) || `ID ${assignedEmployeeId}`)
+                              : '';
                             const rawInvoiceStatus = (faktura.stav || '').toString().trim();
                             const normalizedInvoiceStatus = rawInvoiceStatus
                               .normalize('NFD')
@@ -26750,6 +27030,80 @@ function OrderForm25() {
                                   />
                                 </FormGroup>
                               </FormRow>
+
+                              {/* Řádek 4: Předání faktury zaměstnanci */}
+                              <FormRow style={{ gridTemplateColumns: '2fr 1fr' }}>
+                                <FormGroup data-custom-select>
+                                  <Label>Předat zaměstnanci</Label>
+                                  <StableCustomSelect
+                                    value={faktura.fa_predana_zam_id ? String(faktura.fa_predana_zam_id) : ''}
+                                    disabled={shouldLockFaktury}
+                                    onChange={(selected) => {
+                                      const selectedValue = typeof selected === 'object'
+                                        ? (selected.value || selected.id || selected.user_id)
+                                        : selected;
+
+                                      const normalized = selectedValue ? parseInt(selectedValue, 10) : null;
+
+                                      const updatedFaktury = formData.faktury.map((f) =>
+                                        f.id === faktura.id
+                                          ? {
+                                              ...f,
+                                              fa_predana_zam_id: Number.isFinite(normalized) ? normalized : null,
+                                              _isNew: false
+                                            }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
+                                    }}
+                                    options={invoiceHandoffUserOptions}
+                                    placeholder="Vyberte zaměstnance"
+                                    field={`faktura_${index + 1}_predana_zam`}
+                                    required={false}
+                                    multiple={false}
+                                    icon={<User />}
+                                    getOptionLabel={(option) => option.label || option.nazev || option.value || ''}
+                                    getOptionValue={(option) => String(option.value || option.id || option.user_id || '')}
+                                  />
+                                </FormGroup>
+
+                                <FormGroup>
+                                  <Label>Datum předání</Label>
+                                  <DatePicker
+                                    fieldName={`fa_${index + 1}_datum_predani_zam`}
+                                    value={faktura.fa_datum_predani_zam ? String(faktura.fa_datum_predani_zam).split(' ')[0] : ''}
+                                    disabled={shouldLockFaktury}
+                                    onChange={(value) => {
+                                      const updatedFaktury = formData.faktury.map((f) =>
+                                        f.id === faktura.id
+                                          ? { ...f, fa_datum_predani_zam: value || null, _isNew: false }
+                                          : f
+                                      );
+                                      updateFaktury(updatedFaktury);
+                                    }}
+                                    placeholder="dd.mm.rrrr"
+                                  />
+                                </FormGroup>
+                              </FormRow>
+
+                              {isVecnaSpravnostAssignedToOtherEmployee && (
+                                <div style={{
+                                  marginBottom: '1rem',
+                                  padding: '0.75rem',
+                                  background: isVecnaSpravnostAssignedViaSubstitution ? '#fffbeb' : '#fef2f2',
+                                  border: isVecnaSpravnostAssignedViaSubstitution ? '2px solid #f59e0b' : '2px solid #ef4444',
+                                  borderRadius: '8px',
+                                  color: isVecnaSpravnostAssignedViaSubstitution ? '#92400e' : '#991b1b',
+                                  fontSize: '0.9rem',
+                                  fontWeight: 600
+                                }}>
+                                  {isVecnaSpravnostAssignedViaSubstitution ? '🟠' : '⚠️'} Faktura byla předána k potvrzení věcné správnosti zaměstnanci:{' '}
+                                  <strong>{vecnaSpravnostAssignedEmployeeName}</strong>
+                                  {isVecnaSpravnostAssignedViaSubstitution
+                                    ? '. Jako jeho aktivní zástupce můžete věcnou správnost potvrdit také vy.'
+                                    : '. Přesto můžete věcnou správnost k faktuře potvrdit i vy.'}
+                                </div>
+                              )}
 
                               <FormRow>
                                 <FormGroup style={{gridColumn: '1 / -1'}}>
@@ -27501,8 +27855,8 @@ function OrderForm25() {
                         </div>
                       )}
 
-                      {/* INFORMAČNÍ BOX - Fakturace zpracována - ZOBRAZIT když je přidána faktura */}
-                      {formData.faktury && formData.faktury.length > 0 && formData.fakturant_id && formData.dt_faktura_pridana && (
+                      {/* INFORMAČNÍ BOX - Fakturace zpracována (jen když existuje reálně uložená faktura) */}
+                      {shouldShowInvoiceTrackingInfo && (
                         <div style={{
                           marginTop: '1.5rem',
                           padding: '1rem',
@@ -27560,7 +27914,7 @@ function OrderForm25() {
               })()}
 
               {/* INFORMAČNÍ BLOK - AKTIVNÍ FAKTURACE: Info o dalším kroku */}
-              {(isArchived || currentPhase === 6) && formData.faktury && formData.faktury.length > 0 && (
+              {(isArchived || currentPhase === 6) && hasPersistedActiveInvoicesForCurrentOrder && (
                 <div style={{
                   margin: '2rem 0',
                   padding: '1rem 1.25rem',
@@ -27573,7 +27927,7 @@ function OrderForm25() {
                     ℹ️ Přidání faktur k objednávce
                   </div>
                   <div style={{ fontSize: '0.875rem' }}>
-                    {formData.fakturant_id && formData.dt_faktura_pridana && (
+                    {shouldShowInvoiceTrackingInfo && (
                       <div style={{ marginBottom: '0.5rem' }}>
                         <strong>Přidal fakturu:</strong> {getUserNameById(formData.fakturant_id)}
                         {' • '}
@@ -27667,9 +28021,15 @@ function OrderForm25() {
                                 `(${formatDateOnly(formData.dt_zverejneni)} • ${formData.zverejnil_id ? getUserNameById(formData.zverejnil_id) : ''})` : 
                                 '(nepodléhá zveřejnění v registru)'}
                             </li>
-                            <li style={{ display: 'flex', alignItems: 'center', marginBottom: '0.4rem' }}>
-                              ✅ Fakturace ({formData.dt_faktura_pridana ? prettyDate(formData.dt_faktura_pridana) : ''} • {formData.fakturant_id ? getUserNameById(formData.fakturant_id) : ''})
-                            </li>
+                            {(() => {
+                              if (!shouldShowInvoiceTrackingInfo) return null;
+
+                              return (
+                                <li style={{ display: 'flex', alignItems: 'center', marginBottom: '0.4rem' }}>
+                                  ✅ Fakturace ({prettyDate(formData.dt_faktura_pridana)} • {getUserNameById(formData.fakturant_id)})
+                                </li>
+                              );
+                            })()}
                             {/* ✅ PER-INVOICE: Věcná správnost jednotlivých faktur */}
                             {formData.faktury && formData.faktury.length > 0 && formData.faktury.map((faktura, index) => {
                               const isPotvrzeno = faktura.vecna_spravnost_potvrzeno === 1;

@@ -30,6 +30,7 @@ import OrderAttachmentsTooltip from '../components/orders/OrderAttachmentsToolti
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import SubstitutionBadge from '../components/common/SubstitutionBadge';
 import OperatorInput from '../components/OperatorInput';
+import { fetchCurrentlySubstituting } from '../services/apiSubstitution';
 import { listInvoices25, listInvoiceAttachments25, deleteInvoiceV2, restoreInvoiceV2, updateInvoiceV2 } from '../services/api25invoices';
 import { getInvoiceTypes25, getOrdersList25 } from '../services/api25orders';
 import { getOrderV2 } from '../services/apiOrderV2';
@@ -117,6 +118,29 @@ const NotePreview = ({ text }) => {
       {text}
     </div>
   );
+};
+
+const toBool = (value) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    return ['1', 'true', 'yes', 'ano'].includes(normalized);
+  }
+  return false;
+};
+
+const decodeOpravneni = (raw) => {
+  if (!raw) return {};
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch (_) {
+      return {};
+    }
+  }
+  return {};
 };
 
 // � Scroll indikátor komponenty
@@ -2382,6 +2406,59 @@ const Invoices25List = () => {
            hasPermission('INVOICE_VIEW') && 
            hasPermission('INVOICE_MATERIAL_CORRECTNESS');
   }, [hasPermission]);
+
+  const [activeSubstitutions, setActiveSubstitutions] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadActiveSubstitutions = async () => {
+      if (!token || !username) {
+        if (!cancelled) setActiveSubstitutions([]);
+        return;
+      }
+
+      try {
+        const response = await fetchCurrentlySubstituting({ token, username });
+        if (cancelled) return;
+
+        const rows = Array.isArray(response?.substitutions)
+          ? response.substitutions
+          : (Array.isArray(response) ? response : []);
+
+        const normalized = rows.filter((item) => {
+          const perms = decodeOpravneni(item?.opravneni);
+          const canConfirm = toBool(perms?.confirm ?? perms?.material_check ?? perms?.materialCorrectness ?? item?.confirm ?? item?.can_confirm);
+          const canApprove = toBool(perms?.approve ?? item?.approve ?? item?.can_approve);
+          const canView = toBool(perms?.view ?? item?.view ?? item?.can_view);
+          return canConfirm || canApprove || canView;
+        });
+
+        setActiveSubstitutions(normalized);
+      } catch (error) {
+        if (!cancelled) {
+          setActiveSubstitutions([]);
+        }
+      }
+    };
+
+    loadActiveSubstitutions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [token, username]);
+
+  const canConfirmVecnaForInvoice = useCallback((invoice) => {
+    if (!invoice) return false;
+    if (canConfirmVecnaKontrola) return true;
+
+    const assignedId = invoice?.fa_predana_zam_id;
+    if (!assignedId) return false;
+    const assignedIdStr = String(assignedId);
+
+    return activeSubstitutions.some(item => String(item?.zastupovany_id) === assignedIdStr);
+  }, [canConfirmVecnaKontrola, activeSubstitutions]);
   
   // State pro delete dialog
   const [deleteDialog, setDeleteDialog] = useState({
@@ -3881,6 +3958,10 @@ const Invoices25List = () => {
   
   // Handler pro otevření dialogu věcné kontroly
   const handleOpenVecnaKontrola = async (invoice) => {
+    if (!canConfirmVecnaForInvoice(invoice)) {
+      showToast?.('Nemáte oprávnění k potvrzení věcné správnosti této faktury.', { type: 'error' });
+      return;
+    }
     
     // 🔒 KONTROLA LOCK před otevřením věcné kontroly faktury s objednávkou
     if (invoice.objednavka_id) {
@@ -4036,6 +4117,11 @@ const Invoices25List = () => {
 
   // Handler pro věcnou správnost - open dialog
   const handleVecnaSpravnostAction = (invoice, action) => {
+    if (!canConfirmVecnaForInvoice(invoice)) {
+      showToast?.('Nemáte oprávnění k potvrzení věcné správnosti této faktury.', { type: 'error' });
+      return;
+    }
+
     setVsDialog({
       isOpen: true,
       action, // 'approve' | 'reject' | 'reset'
@@ -6034,7 +6120,7 @@ const Invoices25List = () => {
                         )}
                         
                         {/* Ikona věcné kontroly - jen pro uživatele s INVOICE_VIEW + INVOICE_MATERIAL_CORRECTNESS */}
-                        {canConfirmVecnaKontrola && !canManageInvoices && !isAdmin && (
+                        {canConfirmVecnaForInvoice(invoice) && !canManageInvoices && !isAdmin && (
                           <TooltipWrapper 
                             text={
                               invoice.vecna_spravnost_potvrzeno 
@@ -8261,7 +8347,7 @@ const Invoices25List = () => {
                   )}
                   
                   {/* Action tlačítka pro věcnou správnost */}
-                  {canConfirmVecnaKontrola && slidePanelInvoice && (
+                  {slidePanelInvoice && canConfirmVecnaForInvoice(slidePanelInvoice) && (
                     <InfoRowFullWidth style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', gap: '0.75rem', width: '100%', flexWrap: 'wrap' }}>
                         {/* Potvrdit */}

@@ -1069,16 +1069,82 @@ const formatUserName = (jmeno, prijmeni, titulPred, titulZa) => {
 
 const AUDIT_API_BASE = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/+$/, '');
 
+const isTechnicalAuditRow = (row) => {
+  if (!row || typeof row !== 'object') return true;
+
+  const actionType = String(row.akce_typ || '').toUpperCase();
+  const note = String(row.poznamka || '').toLowerCase();
+  const endpoint = String(row.endpoint || '').toLowerCase();
+
+  // Technické odemčení UI sekce (není klíčová business operace pro workflow shrnutí).
+  if (actionType === 'UNLOCK' && (note.includes('orderform25') || note.includes('sekce='))) {
+    return true;
+  }
+
+  // Technické uložení bez změn.
+  if (actionType === 'UPDATE' && !row.pole && note.includes('beze zmen')) {
+    return true;
+  }
+
+  // Interní lock/unlock endpoint bez business kontextu.
+  if (actionType === 'UNLOCK' && endpoint.includes('/unlock')) {
+    return true;
+  }
+
+  return false;
+};
+
+const pickBestLastAuditRow = (rows) => {
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const meaningfulRows = rows.filter((row) => !isTechnicalAuditRow(row));
+  if (meaningfulRows.length === 0) {
+    return rows[0] || null;
+  }
+
+  // Preferuj fakturační business akce, protože sekce workflow obsahuje i VS/fakturaci.
+  const invoicePriorityRows = meaningfulRows.filter((row) => String(row.objekt_typ || '').toUpperCase() === 'FAKTURA');
+  if (invoicePriorityRows.length > 0) {
+    return invoicePriorityRows[0];
+  }
+
+  return meaningfulRows[0];
+};
+
 const getLastAuditSummaryText = (row) => {
   if (!row || typeof row !== 'object') {
     return '';
   }
 
+  const objectType = String(row.objekt_typ || '').toUpperCase();
   const actionType = String(row.akce_typ || '').toUpperCase();
   const changedField = String(row.pole || '').toLowerCase();
   const note = String(row.poznamka || '').trim();
 
-  if (actionType === 'UNLOCK') return 'Odemčení bloku fakturace';
+  if (objectType === 'FAKTURA') {
+    if (actionType === 'CREATE') return 'Přidání faktury';
+    if (actionType === 'DELETE') return 'Smazání faktury';
+    if (actionType === 'APPROVE') return 'Potvrzení věcné správnosti faktury';
+    if (actionType === 'REJECT') return 'Zamítnutí věcné správnosti faktury';
+    if (actionType === 'RESET') return 'Reset věcné správnosti faktury';
+    if (actionType === 'UPDATE') {
+      if (changedField) return 'Uložení změn faktury';
+      if (note) return note;
+      return 'Úprava faktury';
+    }
+    return note || 'Úprava faktury';
+  }
+
+  if (actionType === 'UNLOCK') {
+    const lowerNote = note.toLowerCase();
+    if (lowerNote.includes('sekce=fakturace') || lowerNote.includes('sekce fakturace')) {
+      return 'Odemčení sekce Fakturace';
+    }
+    if (note) {
+      return note;
+    }
+    return 'Odemčení zámku objednávky';
+  }
   if (actionType === 'CREATE') return 'Vytvoření objednávky';
   if (actionType === 'DELETE') return 'Smazání objednávky';
   if (actionType === 'APPROVE') return 'Schválení objednávky';
@@ -1237,18 +1303,18 @@ const OrderExpandedRowV3 = ({ order, detail, loading, error, onRetry, onForceRef
           body: JSON.stringify({
             token,
             username,
-            objekt_typ: 'OBJEDNAVKA',
-            objekt_id: orderId,
-            limit: 1,
+            related_objednavka_id: orderId,
+            limit: 30,
             offset: 0
           })
         });
 
         const json = await response.json().catch(() => null);
 
-        const row = (json?.status === 'success' && Array.isArray(json?.data) && json.data.length > 0)
-          ? json.data[0]
-          : null;
+        const rows = (json?.status === 'success' && Array.isArray(json?.data))
+          ? json.data
+          : [];
+        const row = pickBestLastAuditRow(rows);
 
         if (cancelled) return;
 

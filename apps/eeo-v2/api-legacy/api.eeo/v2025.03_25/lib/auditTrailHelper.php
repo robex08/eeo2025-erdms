@@ -276,16 +276,55 @@ function _audit_generate_batch_id() {
 }
 
 /**
+ * Z token_data/parametru vytáhne cílového zastupovaného pro audit.
+ * Vrací int ID nebo null.
+ */
+function _audit_extract_target_zastupovany_id($token_data, $explicit_target_zastupovany_id = null) {
+    $explicit = (int)$explicit_target_zastupovany_id;
+    if ($explicit > 0) {
+        return $explicit;
+    }
+
+    if (!is_array($token_data)) {
+        return null;
+    }
+
+    $direct_keys = array('audit_target_user_id', 'target_zastupovany_id', 'zastupovany_id', 'pro_uzivatele_id');
+    foreach ($direct_keys as $key) {
+        if (isset($token_data[$key]) && (int)$token_data[$key] > 0) {
+            return (int)$token_data[$key];
+        }
+    }
+
+    if (isset($token_data['substitution_context']) && is_array($token_data['substitution_context'])) {
+        $ctx = $token_data['substitution_context'];
+        if (isset($ctx['zastupovany_id']) && (int)$ctx['zastupovany_id'] > 0) {
+            return (int)$ctx['zastupovany_id'];
+        }
+    }
+
+    if (isset($token_data['delegation']) && is_array($token_data['delegation'])) {
+        $delegation = $token_data['delegation'];
+        if (isset($delegation['zastupovany_id']) && (int)$delegation['zastupovany_id'] > 0) {
+            return (int)$delegation['zastupovany_id'];
+        }
+    }
+
+    return null;
+}
+
+/**
  * Zjistí zastupovani_id z aktivního zastupování uživatele.
  * Vrátí int ID nebo null.
  * Selhání je non-fatal.
  */
-function _audit_get_zastupovani_id($db, $uzivatel_id) {
+function _audit_get_zastupovani_id($db, $uzivatel_id, $token_data = array(), $target_zastupovany_id = null) {
     if (!function_exists('get_active_substitution_for_action')) {
         return null;
     }
     try {
-        $substitution = get_active_substitution_for_action($db, (int)$uzivatel_id, 'approve');
+        $resolved_target_zastupovany_id = _audit_extract_target_zastupovany_id($token_data, $target_zastupovany_id);
+        $substitution = get_active_substitution_for_action($db, (int)$uzivatel_id, 'approve', $resolved_target_zastupovany_id);
         if ($substitution && !empty($substitution['zastupovani_id'])) {
             return (int)$substitution['zastupovani_id'];
         }
@@ -389,7 +428,7 @@ function audit_log_field_changes(
         }
 
         list($uzivatel_id, $username, $jmeno, $prijmeni) = _audit_user_snapshot($db, $token_data);
-        $zastupovani_id = _audit_get_zastupovani_id($db, $uzivatel_id);
+        $zastupovani_id = _audit_get_zastupovani_id($db, $uzivatel_id, $token_data);
         $ip             = _audit_get_ip();
         $user_agent     = isset($_SERVER['HTTP_USER_AGENT']) ? substr($_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
         $dt_akce        = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
@@ -472,7 +511,7 @@ function audit_log_action(
         }
 
         list($uzivatel_id, $username, $jmeno, $prijmeni) = _audit_user_snapshot($db, $token_data);
-        $zastupovani_id = _audit_get_zastupovani_id($db, $uzivatel_id);
+        $zastupovani_id = _audit_get_zastupovani_id($db, $uzivatel_id, $token_data);
         $ip             = _audit_get_ip();
         $user_agent     = isset($_SERVER['HTTP_USER_AGENT']) ? substr($_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
         $dt_akce        = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
@@ -566,7 +605,7 @@ function audit_log_create_with_data(
 
     try {
         list($uzivatel_id, $username, $jmeno, $prijmeni) = _audit_user_snapshot($db, $token_data);
-        $zastupovani_id = _audit_get_zastupovani_id($db, $uzivatel_id);
+        $zastupovani_id = _audit_get_zastupovani_id($db, $uzivatel_id, $token_data);
         $ip             = _audit_get_ip();
         $user_agent     = isset($_SERVER['HTTP_USER_AGENT']) ? substr($_SERVER['HTTP_USER_AGENT'], 0, 255) : null;
         $dt_akce        = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');

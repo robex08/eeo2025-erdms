@@ -358,7 +358,7 @@ const CashboxSelector = ({
     const query = searchQuery.toLowerCase();
     return availableCashboxes.filter(cb => {
       const number = String(cb.cislo_pokladny || '').toLowerCase();
-      const name = (cb.nazev || cb.nazev_pracoviste || '').toLowerCase();
+      const name = (cb.nazev || cb.nazev_pokladny || cb.nazev_pracoviste || '').toLowerCase();
       const userName = (cb.uzivatel_cele_jmeno ||
                        (cb.uzivatel_jmeno && cb.uzivatel_prijmeni
                          ? `${cb.uzivatel_jmeno} ${cb.uzivatel_prijmeni}`
@@ -394,12 +394,13 @@ const CashboxSelector = ({
     const lokalita = currentCashbox.lokalita_nazev || currentCashbox.lokalita_kod || null;
     const usek = currentCashbox.usek_nazev || null;
     const location = currentCashbox.nazev_pracoviste || currentCashbox.kod_pracoviste || null;
-    const cashboxName = currentCashbox.nazev || currentCashbox.nazev_pracoviste || '';
+    const cashboxNumber = currentCashbox.cislo_pokladny || '?';
+    const cashboxName = currentCashbox.nazev || currentCashbox.nazev_pokladny || currentCashbox.nazev_pracoviste || '';
 
     // Formát: č. XXX - Název pokladny (Celé jméno uživatele, Lokalita, Úsek, Oddělení)
     let label = '';
     if (isCurrentCashboxOwned) label += '★ '; // Hvězdička pro vlastní pokladny
-    label += `č. ${currentCashbox.cislo_pokladny}`;
+    label += `č. ${cashboxNumber}`;
     if (cashboxName) label += ` - ${cashboxName}`;
 
     // Přidat závorky s info
@@ -616,7 +617,7 @@ const CashboxSelector = ({
                             fontWeight: isMyOwnCashbox ? 'bold' : 'normal',
                             color: isMyOwnCashbox ? '#007bff' : 'inherit'
                           }}>
-                            {isMyOwnCashbox && '★ '}č. {cashbox.cislo_pokladny} - {cashbox.nazev || cashbox.nazev_pracoviste || 'Bez názvu'}
+                            {isMyOwnCashbox && '★ '}č. {cashbox.cislo_pokladny || '?'} - {cashbox.nazev || cashbox.nazev_pokladny || cashbox.nazev_pracoviste || 'Bez názvu'}
                           </OptionTitle>
                           {(userName || lokalita || usek || location) && (
                             <OptionSubtitle>

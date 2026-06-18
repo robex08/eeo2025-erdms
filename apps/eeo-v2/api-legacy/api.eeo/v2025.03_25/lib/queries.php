@@ -1726,7 +1726,7 @@ $queries['moznosti_zastupovani_can_set_own'] = "
         SELECT COUNT(*) as cnt
         FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
         WHERE m.aktivni = 1
-            AND m.zastupovany_id = :user_id
+            AND (m.zastupovany_id = :user_id OR m.global_all_users = 1)
 ";
 
 // Fallback: má uživatel aktuálně nějaký aktivní vztah zastupování (jako zastupovaný nebo zastupce)?

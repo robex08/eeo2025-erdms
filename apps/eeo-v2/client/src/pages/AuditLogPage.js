@@ -695,7 +695,7 @@ const AKCE_TYPY = [
   { value: 'REJECT', label: 'Zamítnutí' },
   { value: 'POSTPONE', label: 'Odložení / čeká se' },
   { value: 'STORNO', label: 'Storno objednávky' },
-  { value: 'RESET', label: 'RESET' },
+  { value: 'RESET', label: 'Reset / vrácení' },
 ];
 
 const AKCE_BADGE_LABELS = {
@@ -709,7 +709,7 @@ const AKCE_BADGE_LABELS = {
   POSTPONE: 'ODLOŽENO',
   STORNO: 'STORNO',
   LOCK: 'UZAMČENÍ',
-  RESET: 'RESET',
+  RESET: 'RESET / VRÁCENÍ',
 };
 
 const LIMIT_OPTIONS = [10, 25, 50, 100];
@@ -999,6 +999,15 @@ function formatAuditDateScalar(value) {
 
 function getActionBadgeLabel(actionType, row = null) {
   const key = normalizeAuditActionType(actionType, row);
+  const objectType = String(row?.objekt_typ || '').toUpperCase();
+
+  if (objectType === 'FAKTURA') {
+    if (key === 'CREATE') return 'PŘIDÁNÍ FAKTURY';
+    if (key === 'DELETE') return 'SMAZÁNÍ FAKTURY';
+    if (key === 'APPROVE') return 'POTVRZENÍ VĚCNÉ SPRÁVNOSTI';
+    if (key === 'REJECT') return 'ZAMÍTNUTÍ VĚCNÉ SPRÁVNOSTI';
+    if (key === 'RESET') return 'RESET VĚCNÉ SPRÁVNOSTI';
+  }
 
   if (key === 'UNLOCK') {
     const endpoint = String(row?.endpoint || '').toLowerCase();

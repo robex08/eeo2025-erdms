@@ -24,6 +24,7 @@
  *   akce_typ     string  (volitelné)
  *   od           string  datum YYYY-MM-DD
  *   do           string  datum YYYY-MM-DD
+ *   related_objednavka_id int  vrátí audit objednávky + jejích faktur
  *   limit        int     výchozí 10, max 500
  *   offset       int     výchozí 0
  */
@@ -48,6 +49,9 @@ function handle_audit_history($input, $config) {
     $akce_typ    = isset($input['akce_typ']) ? strtoupper(trim($input['akce_typ'])) : null;
     $od          = $input['od'] ?? null;
     $do_dt       = $input['do'] ?? null;
+    $related_objednavka_id = isset($input['related_objednavka_id']) && $input['related_objednavka_id'] > 0
+        ? (int)$input['related_objednavka_id']
+        : null;
     $limit       = min((int)($input['limit'] ?? 10), 500);
     $offset      = max((int)($input['offset'] ?? 0), 0);
 
@@ -95,6 +99,23 @@ function handle_audit_history($input, $config) {
         if ($do_dt) {
             $where[] = 'a.dt_akce <= :do_dt';
             $params[':do_dt'] = $do_dt . ' 23:59:59';
+        }
+        if ($related_objednavka_id) {
+            $where[] = "(
+                (a.objekt_typ = 'OBJEDNAVKA' AND a.objekt_id = :related_objednavka_id)
+                OR
+                (
+                    a.objekt_typ = 'FAKTURA'
+                    AND EXISTS (
+                        SELECT 1
+                        FROM `" . TBL_FAKTURY . "` f2
+                        WHERE f2.id = a.objekt_id
+                          AND f2.objednavka_id = :related_objednavka_id2
+                    )
+                )
+            )";
+            $params[':related_objednavka_id'] = $related_objednavka_id;
+            $params[':related_objednavka_id2'] = $related_objednavka_id;
         }
 
         $where_sql = implode(' AND ', $where);

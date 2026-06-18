@@ -78,41 +78,6 @@ function isFakturaLockedForVS($faktura) {
 }
 
 /**
- * Validace LP rozkladu před potvrzením věcné správnosti faktury.
- * Pravidlo: pokud je objednávka financována z LP, musí existovat alespoň 1 řádek
- * v 25a_faktury_lp_cerpani pro danou fakturu.
- *
- * @throws Exception při porušení pravidla
- */
-function ensureLpSplitExistsForVsApproval($db, $faktura_id, $objednavka_id) {
-    if (empty($objednavka_id)) {
-        return;
-    }
-
-    $stmt_order_fin = $db->prepare("SELECT financovani FROM " . TBL_OBJEDNAVKY . " WHERE id = ? AND aktivni = 1 LIMIT 1");
-    $stmt_order_fin->execute(array((int)$objednavka_id));
-    $order_fin = $stmt_order_fin->fetch(PDO::FETCH_ASSOC);
-
-    if (!$order_fin || empty($order_fin['financovani'])) {
-        return;
-    }
-
-    $financovani = json_decode($order_fin['financovani'], true);
-    if (!is_array($financovani) || !isset($financovani['typ']) || $financovani['typ'] !== 'LP') {
-        return;
-    }
-
-    $stmt_lp = $db->prepare("\n        SELECT COUNT(*) AS cnt\n        FROM " . TBL_FAKTURY_LP_CERPANI . "\n        WHERE faktura_id = ?\n          AND (lp_cislo IS NOT NULL AND TRIM(lp_cislo) != '')\n          AND castka IS NOT NULL\n    ");
-    $stmt_lp->execute(array((int)$faktura_id));
-    $lp_count_row = $stmt_lp->fetch(PDO::FETCH_ASSOC);
-    $lp_count = $lp_count_row ? (int)$lp_count_row['cnt'] : 0;
-
-    if ($lp_count <= 0) {
-        throw new Exception('Pro LP financování nelze potvrdit věcnou správnost bez LP rozkladu faktury.');
-    }
-}
-
-/**
  * POST - Přepne stav kontroly faktury NEBO nastaví stav věcné správnosti
  * 
  * 🆕 ROZŠÍŘENO O ZAMÍTNUTÍ VĚCNÉ SPRÁVNOSTI (status 0/1/2)
@@ -284,8 +249,6 @@ function handle_invoice_toggle_check($input, $config) {
         
         $user_id = $token_data['id'];
         $has_permission = false;
-        $substitution_context = null;
-        $audit_target_zastupovany_id = null;
         
         // Načíst úsek aktuálního uživatele
         $stmt_user_usek = $db->prepare("
@@ -296,38 +259,6 @@ function handle_invoice_toggle_check($input, $config) {
         $stmt_user_usek->execute(array($user_id));
         $user_usek_data = $stmt_user_usek->fetch(PDO::FETCH_ASSOC);
         $user_usek_id = $user_usek_data ? (int)$user_usek_data['usek_id'] : null;
-
-        // 5x. Kontrola aktivního zastoupení vůči uživateli, kterému je faktura předána
-        // Důležité: používá se pro oprávnění i pro audit log (badge v seznamu faktur)
-        if (!empty($faktura['fa_predana_zam_id'])
-            && (int)$faktura['fa_predana_zam_id'] !== (int)$user_id
-            && function_exists('get_active_substitution_for_action')) {
-            try {
-                $target_zastupovany_id = (int)$faktura['fa_predana_zam_id'];
-
-                // Primárně očekáváme oprávnění confirm pro věcnou správnost
-                $substitution_context = get_active_substitution_for_action($db, $user_id, 'confirm', $target_zastupovany_id);
-
-                // Fallback pro starší záznamy, kde může být jen approve
-                if (!$substitution_context) {
-                    $substitution_context = get_active_substitution_for_action($db, $user_id, 'approve', $target_zastupovany_id);
-                }
-
-                // Fallback pro vazební scénář: aktivní zástup s oprávněním view.
-                // Požadavek: pro VS akce respektovat aktivní vazbu i napříč úsek/role/lokalita.
-                if (!$substitution_context) {
-                    $substitution_context = get_active_substitution_for_action($db, $user_id, 'view', $target_zastupovany_id);
-                }
-
-                if ($substitution_context) {
-                    $audit_target_zastupovany_id = (int)$substitution_context['zastupovany_id'];
-                    error_log("✅ VS zastoupení: Uživatel #{$user_id} aktivně zastupuje uživatele #{$target_zastupovany_id} pro fakturu #{$faktura_id}");
-                }
-            } catch (Exception $e) {
-                error_log("⚠️ VS zastoupení check error: " . $e->getMessage());
-                $substitution_context = null;
-            }
-        }
         
         // 5a. Kontrola globálních rolí (SUPERADMIN, ADMINISTRATOR, KONTROLOR_FAKTUR)
         $stmt_role = $db->prepare("
@@ -425,12 +356,6 @@ function handle_invoice_toggle_check($input, $config) {
                     $has_permission = true;
                     error_log("✅ VS oprávnění: Uživatel #{$user_id} je kolega z úseku #{$user_usek_id} uživatele #{$faktura['fa_predana_zam_id']} komu byla faktura předána");
                 }
-
-                // Aktivní zastoupení má přednost nad omezením úsek/lokalita
-                if (!$has_permission && $substitution_context) {
-                    $has_permission = true;
-                    error_log("✅ VS oprávnění: Uživatel #{$user_id} má aktivní zastoupení pro uživatele #{$faktura['fa_predana_zam_id']}");
-                }
             }
         }
         
@@ -497,18 +422,6 @@ function handle_invoice_toggle_check($input, $config) {
             return;
         }
 
-        // Snapshot před změnou pro nový audit trail (field-level diff).
-        $audit_old_invoice = array();
-        if (function_exists('audit_log_field_changes') || function_exists('audit_log_action')) {
-            try {
-                $stmt_audit_old = $db->prepare("SELECT * FROM " . TBL_FAKTURY . " WHERE id = ? LIMIT 1");
-                $stmt_audit_old->execute(array($faktura_id));
-                $audit_old_invoice = $stmt_audit_old->fetch(PDO::FETCH_ASSOC) ?: array();
-            } catch (Exception $auditOldEx) {
-                error_log("[AUDIT] invoice toggle-check old snapshot error: " . $auditOldEx->getMessage());
-            }
-        }
-
         // 6b. Ochrana proti přepsání potvrzujícího uživatele při opakované volbě stejného statusu
         $current_vs_status = (int)($faktura['vecna_spravnost_potvrzeno'] ?? VS_STATUS_NEPOTVRZENA);
         if ($status === $current_vs_status && $status !== VS_STATUS_NEPOTVRZENA) {
@@ -531,19 +444,6 @@ function handle_invoice_toggle_check($input, $config) {
         }
 
         // 7. START TRANSAKCE - všechny změny v jedné transakci
-        if ($status === VS_STATUS_POTVRZENA) {
-            try {
-                ensureLpSplitExistsForVsApproval($db, $faktura_id, (int)$faktura['objednavka_id']);
-            } catch (Exception $lpGuardError) {
-                http_response_code(400);
-                echo json_encode(array(
-                    'status' => 'error',
-                    'message' => $lpGuardError->getMessage()
-                ));
-                return;
-            }
-        }
-
         $db->beginTransaction();
         
         try {
@@ -636,95 +536,6 @@ function handle_invoice_toggle_check($input, $config) {
                 $stmt_delete_lp->execute(array($faktura_id));
                 
                 error_log("🔴 Zamítnuta VS faktury #$faktura_id - stav změněn na V_RESENI, LP čerpání smazáno");
-            }
-
-            // 8c. Audit log akce v zastoupení (pokud byla akce provedena za zastupovaného)
-            if ($substitution_context && function_exists('log_substitution_action')) {
-                $sub_akce_typ = 'UPDATE';
-                $sub_popis = 'Úprava věcné správnosti faktury';
-
-                if ($status === VS_STATUS_POTVRZENA) {
-                    $sub_akce_typ = 'CONFIRM';
-                    $sub_popis = 'Potvrzení věcné správnosti faktury';
-                } elseif ($status === VS_STATUS_ZAMITNUTA) {
-                    $sub_akce_typ = 'REJECT';
-                    $sub_popis = 'Zamítnutí věcné správnosti faktury';
-                } elseif ($status === VS_STATUS_NEPOTVRZENA) {
-                    $sub_akce_typ = 'UPDATE';
-                    $sub_popis = 'Reset věcné správnosti faktury';
-                }
-
-                $logged_sub = log_substitution_action(
-                    $db,
-                    (int)$substitution_context['zastupovani_id'],
-                    (int)$user_id,
-                    (int)$substitution_context['zastupovany_id'],
-                    $sub_akce_typ,
-                    'FAKTURA',
-                    (int)$faktura_id,
-                    $sub_popis
-                );
-
-                if (!$logged_sub) {
-                    error_log("⚠️ VS substitution audit: nepodařilo se zapsat audit log pro fakturu #{$faktura_id}");
-                }
-            }
-
-            // 8d. Nový audit trail (25a_audit_zmen) s cíleným zastupovaným, pokud je znám.
-            try {
-                if (function_exists('audit_log_field_changes') || function_exists('audit_log_action')) {
-                    $audit_token_data = $token_data;
-                    if ($audit_target_zastupovany_id > 0) {
-                        $audit_token_data['audit_target_user_id'] = (int)$audit_target_zastupovany_id;
-                    }
-
-                    $stmt_audit_new = $db->prepare("SELECT * FROM " . TBL_FAKTURY . " WHERE id = ? LIMIT 1");
-                    $stmt_audit_new->execute(array($faktura_id));
-                    $audit_new_invoice = $stmt_audit_new->fetch(PDO::FETCH_ASSOC) ?: array();
-
-                    $audit_batch = '';
-                    if (function_exists('audit_log_field_changes') && !empty($audit_old_invoice) && !empty($audit_new_invoice)) {
-                        $audit_batch = audit_log_field_changes(
-                            $db,
-                            $audit_token_data,
-                            'FAKTURA',
-                            $faktura_id,
-                            'invoices/toggle-check',
-                            (array)$audit_old_invoice,
-                            (array)$audit_new_invoice,
-                            '',
-                            'Změna věcné správnosti faktury (toggle-check)'
-                        );
-                    }
-
-                    if (function_exists('audit_log_action')) {
-                        $audit_action = 'UPDATE';
-                        $audit_note = 'Úprava věcné správnosti faktury';
-                        if ($status === VS_STATUS_POTVRZENA) {
-                            $audit_action = 'APPROVE';
-                            $audit_note = 'Potvrzení věcné správnosti faktury';
-                        } elseif ($status === VS_STATUS_ZAMITNUTA) {
-                            $audit_action = 'REJECT';
-                            $audit_note = 'Zamítnutí věcné správnosti faktury';
-                        } elseif ($status === VS_STATUS_NEPOTVRZENA) {
-                            $audit_action = 'RESET';
-                            $audit_note = 'Reset věcné správnosti faktury';
-                        }
-
-                        audit_log_action(
-                            $db,
-                            $audit_token_data,
-                            'FAKTURA',
-                            $faktura_id,
-                            $audit_action,
-                            'invoices/toggle-check',
-                            $audit_note,
-                            $audit_batch
-                        );
-                    }
-                }
-            } catch (Exception $auditEx) {
-                error_log("[AUDIT] invoice toggle-check audit error: " . $auditEx->getMessage());
             }
             
             // 9. ⚠️ AUTOMATICKÁ SPRÁVA WORKFLOW A STAVU OBJEDNÁVKY

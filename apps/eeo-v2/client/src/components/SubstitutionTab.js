@@ -579,7 +579,7 @@ const EMPTY_ADMIN_FORM = () => ({
 // ─── HLAVNÍ KOMPONENTA ────────────────────────────────────────────────────────
 export default function SubstitutionTab({ token, username, showToast, hasPermission, isSuperAdmin, canManageOwnSubstitution = false }) {
   const isAdmin = !!(hasPermission && hasPermission('ADMIN'));
-  const canManageOwn = isAdmin || !!(hasPermission && hasPermission('USER_SUBSTITUTE_SET')) || !!canManageOwnSubstitution;
+  const canManageOwn = isAdmin || !!canManageOwnSubstitution;
 
   // Data
   const [substitutions, setSubstitutions] = useState([]);
