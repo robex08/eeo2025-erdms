@@ -263,7 +263,6 @@ function sync_order_v2_invoice_tracking_metadata($db, $order_id, $current_user_i
                       WHERE id = ?";
         $stmt_reset = $db->prepare($sql_reset);
         $stmt_reset->execute(array($current_user_id, $order_id));
-        error_log("🔄 [FAKTURACE TRACKING] Order #{$order_id}: reset fakturant_id/dt_faktura_pridana (0 aktivních faktur)");
         return;
     }
 
@@ -282,7 +281,6 @@ function sync_order_v2_invoice_tracking_metadata($db, $order_id, $current_user_i
                      WHERE id = ?";
         $stmt_init = $db->prepare($sql_init);
         $stmt_init->execute(array($current_user_id, $current_user_id, $order_id));
-        error_log("🔄 [FAKTURACE TRACKING] Order #{$order_id}: inicializace fakturant_id/dt_faktura_pridana (chybějící metadata)");
     }
 }
 
@@ -338,7 +336,6 @@ function autoRecalculateContractSpendingForInvoice($invoice_id, $invoice_data = 
         $db = get_db($config);
         
         if (!$db) {
-            error_log("⚠️ AUTO PREPOCET: Nepodařilo se připojit k DB pro fakturu #{$invoice_id}");
             return;
         }
         
@@ -349,7 +346,6 @@ function autoRecalculateContractSpendingForInvoice($invoice_id, $invoice_data = 
             $invoice_data = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$invoice_data) {
-                error_log("⚠️ AUTO PREPOCET: Faktura #{$invoice_id} nebyla nalezena");
                 return;
             }
         }
@@ -364,7 +360,6 @@ function autoRecalculateContractSpendingForInvoice($invoice_id, $invoice_data = 
             
             if ($contract) {
                 $contract_numbers_to_recalculate[] = $contract['cislo_smlouvy'];
-                error_log("🔍 AUTO PREPOCET: Faktura #{$invoice_id} má přímou vazbu na smlouvu {$contract['cislo_smlouvy']}");
             }
         }
         
@@ -379,7 +374,6 @@ function autoRecalculateContractSpendingForInvoice($invoice_id, $invoice_data = 
                 
                 if (isset($financovani['cislo_smlouvy']) && !empty($financovani['cislo_smlouvy'])) {
                     $contract_numbers_to_recalculate[] = $financovani['cislo_smlouvy'];
-                    error_log("🔍 AUTO PREPOCET: Faktura #{$invoice_id} má vazbu přes objednávku #{$invoice_data['objednavka_id']} na smlouvu {$financovani['cislo_smlouvy']}");
                 }
             }
         }
@@ -390,16 +384,13 @@ function autoRecalculateContractSpendingForInvoice($invoice_id, $invoice_data = 
         // Provést přepočet pro každou nalezenou smlouvu
         foreach ($contract_numbers_to_recalculate as $contract_number) {
             prepocetCerpaniSmlouvyAuto($contract_number);
-            error_log("✅ AUTO PREPOCET: Přepočteno čerpání smlouvy {$contract_number} po změně faktury #{$invoice_id}");
         }
         
         if (empty($contract_numbers_to_recalculate)) {
-            error_log("ℹ️ AUTO PREPOCET: Faktura #{$invoice_id} nemá vazbu na žádnou smlouvu - přepočet se neprovádí");
         }
         
     } catch (Exception $e) {
         // Neblokujeme operaci s fakturou, jen logujeme chybu
-        error_log("❌ AUTO PREPOCET ERROR pro fakturu #{$invoice_id}: " . $e->getMessage());
     }
 }
 
@@ -569,7 +560,6 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
         if ($order_id !== null && $order_id > 0) {
             $workflowSuccess = handleInvoiceWorkflowUpdate($db, $order_id);
             if (!$workflowSuccess) {
-                error_log("[WORKFLOW] Varování: Nepodařilo se aktualizovat workflow pro objednávku ID {$order_id} po přidání faktury");
                 // Pokračujeme - workflow update není kritická chyba pro vytvoření faktury
             }
         }
@@ -584,7 +574,6 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
         
         // 🔄 AUTO PŘEPOČET LP čerpání po vytvoření faktury s přílohou
         try {
-            error_log("🔄 [Invoice Create+Attach] Spouštím přepočet LP pro fakturu #{$invoice_id}");
             
             $lp_ids_to_recalc = array();
             
@@ -607,10 +596,8 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
                 foreach ($lp_ids_to_recalc as $lp_id) {
                     prepocetCerpaniPodleIdLP_PDO($db, (int)$lp_id, null);
                 }
-                error_log("✅ [Invoice Create+Attach] Přepočítáno " . count($lp_ids_to_recalc) . " LP pro fakturu #{$invoice_id}");
             }
         } catch (Exception $lp_error) {
-            error_log("⚠️ [Invoice Create+Attach] Chyba při přepočtu LP: " . $lp_error->getMessage());
         }
         
         echo json_encode(array(
@@ -792,14 +779,12 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
                     if (!in_array('FAKTURACE', $workflow_states)) {
                         $workflow_states[] = 'FAKTURACE';
                         $workflow_changed = true;
-                        error_log("✅ INVOICE CREATE: Přidán stav FAKTURACE pro objednávku #{$order_id}");
                     }
                     
                     // PRAVIDLO 2: Ujistit se, že má VECNA_SPRAVNOST
                     if (!in_array('VECNA_SPRAVNOST', $workflow_states)) {
                         $workflow_states[] = 'VECNA_SPRAVNOST';
                         $workflow_changed = true;
-                        error_log("✅ INVOICE CREATE: Přidán stav VECNA_SPRAVNOST pro objednávku #{$order_id}");
                     }
                     
                     // PRAVIDLO 3: Pokud byla ZKONTROLOVANA → vrátit na VECNA_SPRAVNOST
@@ -809,7 +794,6 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
                             return $s !== 'ZKONTROLOVANA';
                         }));
                         $workflow_changed = true;
-                        error_log("🔙 INVOICE CREATE: Přidána nová faktura → objednávka #{$order_id} vrácena ze ZKONTROLOVANA na VECNA_SPRAVNOST");
                     }
                     
                     // Pokud se workflow změnil → uložit do DB
@@ -835,7 +819,6 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
                             $order_id
                         ));
                         
-                        error_log("📋 INVOICE CREATE: Workflow objednávky #{$order_id} aktualizováno: " . implode(' → ', $workflow_states));
                         
                         // 🔔 NOTIFIKACE 2026-04-24: Po přidání NOVÉ faktury poslat žádost o věcnou
                         //    správnost POUZE pro tuto novou fakturu (invoice-level), ne pro celou
@@ -850,9 +833,7 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
                                     $invoice_id,
                                     $token_data['id']
                                 );
-                                error_log("✅ NOTIFIKACE: INVOICE_MATERIAL_CHECK_REQUESTED odeslána pro novou fakturu #{$invoice_id} (objednávka #{$order_id})");
                             } catch (Exception $notif_error) {
-                                error_log("❌ NOTIFIKACE: Exception při odesílání notifikace: " . $notif_error->getMessage());
                             }
                         }
                     }
@@ -871,7 +852,6 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
         
         // 🔄 AUTO PŘEPOČET LP čerpání po vytvoření faktury
         try {
-            error_log("🔄 [Invoice Create] Spouštím přepočet LP pro fakturu #{$invoice_id}");
             
             $lp_ids_to_recalc = array();
             
@@ -894,10 +874,8 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
                 foreach ($lp_ids_to_recalc as $lp_id) {
                     prepocetCerpaniPodleIdLP_PDO($db, (int)$lp_id, null);
                 }
-                error_log("✅ [Invoice Create] Přepočítáno " . count($lp_ids_to_recalc) . " LP pro fakturu #{$invoice_id}");
             }
         } catch (Exception $lp_error) {
-            error_log("⚠️ [Invoice Create] Chyba při přepočtu LP: " . $lp_error->getMessage());
         }
         
         echo json_encode(array(
@@ -931,7 +909,6 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         return;
     }
     
-    debug_log("📝 UPDATE INVOICE #$invoice_id - User: {$input['username']}, token_data: " . json_encode($token_data, JSON_UNESCAPED_UNICODE));
     
     try {
         $db = get_db($config);
@@ -942,7 +919,6 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         // 🔒 ADMIN CHECK - potřeba pro práci s neaktivními fakturami
         $is_admin = isset($token_data['is_admin']) ? (bool)$token_data['is_admin'] : false;
         
-        debug_log("🔒 UPDATE INVOICE #$invoice_id - is_admin: " . ($is_admin ? 'TRUE' : 'FALSE'));
         
         // Načíst současný stav faktury
         // ✅ Admin může aktualizovat i neaktivní faktury
@@ -951,20 +927,17 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             $sql_current .= " AND aktivni = 1";
         }
         
-        debug_log("🔍 UPDATE INVOICE #$invoice_id - SQL: $sql_current");
         
         $stmt_current = $db->prepare($sql_current);
         $stmt_current->execute(array($invoice_id));
         $current_invoice = $stmt_current->fetch(PDO::FETCH_ASSOC);
         
         if (!$current_invoice) {
-            debug_log("⛔ UPDATE INVOICE #$invoice_id - Faktura nebyla nalezena (is_admin=$is_admin)");
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nebyla nalezena'));
             return;
         }
         
-        debug_log("✅ UPDATE INVOICE #$invoice_id - Faktura nalezena, aktivni={$current_invoice['aktivni']}");
 
         // ✅ Normalizace částky faktury (fa_castka) před porovnáním i uložením
         // Důvod: UI může posílat částku s čárkou (např. "1277,77"), což MySQL může uložit/truncovat.
@@ -1166,7 +1139,6 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
                 $updateFields[] = 'stav = ?';
                 $updateValues[] = $newStatus;
                 $statusName = ((int)$input['vecna_spravnost_potvrzeno'] === 1) ? 'VECNA_SPRAVNOST' : 'V_RESENI';
-                error_log("🔄 Auto změna stavu: ZAEVIDOVANA → $statusName (věcná správnost změněna)");
             }
         }
         
@@ -1240,7 +1212,6 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             if (array_key_exists($field, $input)) {
                 // 🔍 DEBUG: Log věcné správnosti
                 if ($field === 'vecna_spravnost_umisteni_majetku' || $field === 'vecna_spravnost_poznamka') {
-                    error_log("🔍 DEBUG - Ukládání faktury #$invoice_id - pole $field: " . json_encode($input[$field]));
                 }
                 
                 if ($field === 'fa_cislo_vema') {
@@ -1272,8 +1243,6 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             }
         }
         
-        error_log("🔍 DEBUG - UPDATE SQL pro fakturu #$invoice_id:");
-        error_log("  Fields: " . implode(', ', $updateFields));
         error_log("  Values: " . json_encode($updateValues));
         
         if (empty($updateFields)) {
@@ -1328,19 +1297,16 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             $sql_update .= " AND aktivni = 1";
         }
         
-        debug_log("🔧 UPDATE INVOICE #$invoice_id - SQL: $sql_update");
         
         $stmt = $db->prepare($sql_update);
         $stmt->execute($updateValues);
         
         if ($stmt->rowCount() === 0) {
-            debug_log("⛔ UPDATE INVOICE #$invoice_id - rowCount=0, faktura nebyla aktualizována");
             http_response_code(404);
             echo json_encode(array('status' => 'error', 'message' => 'Faktura nebyla nalezena nebo není aktivní'));
             return;
         }
         
-        debug_log("✅ UPDATE INVOICE #$invoice_id - Aktualizováno {$stmt->rowCount()} řádků");
         
         // =========================================================================
         // 🔄 SPECIÁLNÍ LOGIKA: ODPOJENÍ FAKTURY OD OBJEDNÁVKY
@@ -1771,7 +1737,6 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
                     }
                     error_log("✅ [Invoice Update] Celkem přepočítáno " . count($lp_ids_to_recalc) . " LP pro fakturu #{$invoice_id}");
                 } else {
-                    error_log("ℹ️ [Invoice Update] Faktura #{$invoice_id} nemá napojené žádné LP");
                 }
                 
             } catch (Exception $lp_error) {
@@ -1836,14 +1801,11 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
  * PHP 5.6 Compatible - array() syntax, PDO exceptions
  */
 function handle_order_v2_delete_invoice($input, $config, $queries) {
-    debug_log("🗑️ DELETE INVOICE HANDLER START - invoice_id: " . $input['invoice_id'] . ", user: " . $input['username']);
     
     // Token verification - V2 enhanced
     try {
         $token_data = verify_token_v2($input['username'], $input['token']);
-        debug_log("✅ Token verified successfully");
     } catch (Exception $e) {
-        debug_log("❌ Token verification FAILED: " . $e->getMessage());
         http_response_code(401);
         echo json_encode(array('status' => 'error', 'message' => 'Token verification failed'));
         return;
@@ -1892,7 +1854,6 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         $current_user_id = (int)$token_data['id']; // Backward compatible - 'id' je vždy přítomné
         
         // 🔍 DEBUG: Detailní log token_data
-        error_log("🔍 DELETE INVOICE #{$invoice_id} - Token data: " . json_encode($token_data));
         error_log("🔍 is_admin check: isset=" . (isset($token_data['is_admin']) ? 'YES' : 'NO') . 
                   ", value=" . (isset($token_data['is_admin']) ? var_export($token_data['is_admin'], true) : 'N/A') .
                   ", strict_check=" . ($is_admin ? 'TRUE' : 'FALSE'));
@@ -1911,7 +1872,6 @@ function handle_order_v2_delete_invoice($input, $config, $queries) {
         }
         
         // DEBUG: Log pro debugging
-        error_log("DELETE invoice #{$invoice_id} - user_id: {$current_user_id}, is_admin: " . ($is_admin ? 'YES' : 'NO') . ", has_invoice_manage: " . ($has_invoice_manage ? 'YES' : 'NO') . ", invoice_owner: {$invoice['vytvoril_uzivatel_id']}, order_owner: {$invoice['objednavka_uzivatel_id']}, aktivni: {$invoice['aktivni']}");
         
         // Neaktivní faktury může mazat pouze ADMIN
         if ($invoice['aktivni'] == 0 && !$is_admin) {
