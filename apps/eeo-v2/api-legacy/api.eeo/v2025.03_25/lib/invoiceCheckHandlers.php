@@ -412,7 +412,6 @@ function handle_invoice_toggle_check($input, $config) {
         
         // 5g. Pokud nemá žádné oprávnění, vrátit 403
         if (!$has_permission) {
-            error_log("❌ VS oprávnění ZAMÍTNUTO: Uživatel #{$user_id} nemá oprávnění k faktuře #{$faktura_id}");
             http_response_code(403);
             echo json_encode(array(
                 'status' => 'error', 
