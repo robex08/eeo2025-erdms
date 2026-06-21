@@ -98,9 +98,6 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
             $user_permissions = array_values(array_unique(array_merge($user_permissions, $extra_permissions)));
         }
     }
-        
-    error_log("[OrderV3 Permissions] User $user_id - permissions: " . json_encode($user_permissions));
-    error_log("[OrderV3 Permissions] User $user_id - roles: " . json_encode($user_roles));
     
     // Check admin role (SUPERADMIN nebo ADMINISTRATOR)
     $isAdminByRole = in_array('SUPERADMIN', $user_roles) || in_array('ADMINISTRATOR', $user_roles);
@@ -115,13 +112,8 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
     // Final admin status
     $is_admin = $isAdminByRole || $hasReadAllPermissions;
     
-    error_log("[OrderV3 Permissions] Admin check - by role: " . ($isAdminByRole ? 'YES' : 'NO') . 
-              ", by permissions: " . ($hasReadAllPermissions ? 'YES' : 'NO') . 
-              ", FINAL: " . ($is_admin ? 'ADMIN' : 'USER'));
-    
     if ($is_admin) {
         // ADMIN - vidí všechny objednávky, žádné filtry
-        error_log("[OrderV3 Permissions] ADMIN mode - showing ALL orders (like Order V2)");
         return true;
     }
     
@@ -130,7 +122,6 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
     // ========================================================================
     
     if ($user_id <= 0) {
-        error_log("[OrderV3 Permissions] Invalid user_id, no permissions applied");
         return false;
     }
     
@@ -163,14 +154,10 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
     
     // 2️⃣ HIERARCHIE - ROZŠÍŘENÍ (pokud je aktivní)
     if (function_exists('applyHierarchyFilterToOrders')) {
-        error_log("[OrderV3 Permissions] Checking hierarchy filter for user $user_id");
         $hierarchyFilter = applyHierarchyFilterToOrders($user_id, $db);
         
         if ($hierarchyFilter !== null) {
             $visibilityConditions[] = $hierarchyFilter;
-            error_log("[OrderV3 Permissions] Hierarchy filter ADDED (expands visibility)");
-        } else {
-            error_log("[OrderV3 Permissions] Hierarchy filter NOT applied");
         }
     }
     
@@ -180,7 +167,6 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
     
     if ($hasOrderReadSubordinate || $hasOrderEditSubordinate) {
         if (function_exists('getUserDepartmentColleagueIds')) {
-            error_log("[OrderV3 Permissions] Building department filter for user $user_id");
             $departmentColleagueIds = getUserDepartmentColleagueIds($user_id, $db);
             
             if (!empty($departmentColleagueIds)) {
