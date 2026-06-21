@@ -313,10 +313,7 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         TimezoneHelper::setMysqlTimezone($pdo);
         
         // 🔧 DEBUG: Výpis přijatých dat z frontend
-        error_log("🔧 [DEBUG] Annual Fees CREATE - přijatá data:");
-        error_log("📦 Data: " . json_encode($data, JSON_UNESCAPED_UNICODE));
         if (isset($data['polozky'])) {
-            error_log("📋 Položky: " . json_encode($data['polozky'], JSON_UNESCAPED_UNICODE));
         }
         
         // Validace povinných polí
@@ -437,7 +434,6 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         // 3️⃣ Vytvoření položek (pokud nějaké jsou)
         $created_polozky = [];
         foreach ($polozky as $index => $polozka) {
-            error_log("🔧 [DEBUG] Zpracovávám položku " . ($index + 1) . ": " . json_encode($polozka, JSON_UNESCAPED_UNICODE));
             
             $polozka_id = queryInsertAnnualFeeItem($pdo, [
                 'rocni_poplatek_id' => $rocni_poplatek_id,
@@ -452,7 +448,6 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
                 'dt_vytvoreni' => TimezoneHelper::getCzechDateTime()
             ]);
             
-            error_log("✅ [DEBUG] Vytvořena položka ID: $polozka_id");
 
             $created_polozky[] = [
                 'id' => $polozka_id,
@@ -486,7 +481,6 @@ function handleAnnualFeesCreate($pdo, $data, $user) {
         } catch (Exception $ae) { error_log('[AUDIT] annual-fees create: ' . $ae->getMessage()); }
 
         // Úspěšná odpověď podle PHPAPI.prompt.md standardu
-        error_log("✅ Annual Fees CREATE: Úspěšně vytvořen roční poplatek ID: $rocni_poplatek_id");
         http_response_code(200);
         echo json_encode([
             'status' => 'success',
@@ -1087,7 +1081,6 @@ function handleAnnualFeesDelete($pdo, $data, $user) {
             return;
         }
 
-        error_log("✅ Annual Fees Delete: Úspěšně smazán ID $id pomocí hard delete");
         
         // 5. Úspěšná odpověď podle PHPAPI.prompt.md standardu
         http_response_code(200);
@@ -1317,7 +1310,6 @@ function handleAnnualFeesDeleteItem($pdo, $data, $user) {
         
         $pdo->commit();
         
-        error_log("✅ Annual Fees DELETE ITEM: Úspěšně smazána položka ID: $polozka_id");
         http_response_code(200);
         echo json_encode([
             'status' => 'success',
