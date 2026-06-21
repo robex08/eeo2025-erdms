@@ -309,10 +309,8 @@ function handle_invoice_toggle_check($input, $config) {
 
                 if ($substitution_context) {
                     $audit_target_zastupovany_id = (int)$substitution_context['zastupovany_id'];
-                    error_log("✅ VS zastoupení: Uživatel #{$user_id} aktivně zastupuje uživatele #{$target_zastupovany_id} pro fakturu #{$faktura_id}");
                 }
             } catch (Exception $e) {
-                error_log("⚠️ VS zastoupení check error: " . $e->getMessage());
                 $substitution_context = null;
             }
         }
@@ -330,7 +328,6 @@ function handle_invoice_toggle_check($input, $config) {
         
         if ($role_check && $role_check['has_role'] > 0) {
             $has_permission = true;
-            error_log("✅ VS oprávnění: Uživatel #{$user_id} má globální roli (Admin/Kontrolor)");
         }
         
         // 5b. Kontrola práva INVOICE_MANAGE
@@ -359,7 +356,6 @@ function handle_invoice_toggle_check($input, $config) {
             
             if ($pravo_check && $pravo_check['has_pravo'] > 0) {
                 $has_permission = true;
-                error_log("✅ VS oprávnění: Uživatel #{$user_id} má právo INVOICE_MANAGE");
             }
         }
         
@@ -367,13 +363,10 @@ function handle_invoice_toggle_check($input, $config) {
         if (!$has_permission && $faktura['objednavka_id']) {
             if ($faktura['garant_uzivatel_id'] == $user_id) {
                 $has_permission = true;
-                error_log("✅ VS oprávnění: Uživatel #{$user_id} je garant objednávky #{$faktura['objednavka_id']}");
             } elseif ($faktura['objednavka_vytvoril_id'] == $user_id) {
                 $has_permission = true;
-                error_log("✅ VS oprávnění: Uživatel #{$user_id} je autor objednávky #{$faktura['objednavka_id']}");
             } elseif ($faktura['prikazce_id'] == $user_id) {
                 $has_permission = true;
-                error_log("✅ VS oprávnění: Uživatel #{$user_id} je příkazce objednávky #{$faktura['objednavka_id']}");
             }
         }
         
@@ -382,21 +375,18 @@ function handle_invoice_toggle_check($input, $config) {
             // Uživatel z úseku smlouvy může schválit věcnou správnost
             if ($faktura['smlouva_usek_id'] && $user_usek_id && $faktura['smlouva_usek_id'] == $user_usek_id) {
                 $has_permission = true;
-                error_log("✅ VS oprávnění: Uživatel #{$user_id} je z úseku smlouvy #{$faktura['smlouva_id']} (úsek #{$user_usek_id})");
             }
         }
         
         // 5e. Kontrola autora faktury
         if (!$has_permission && $faktura['faktura_vytvoril_id'] == $user_id) {
             $has_permission = true;
-            error_log("✅ VS oprávnění: Uživatel #{$user_id} je autor faktury #{$faktura_id}");
         }
         
         // 5f. Kontrola fa_predana_zam_id - uživatel komu byla faktura předána
         if (!$has_permission && $faktura['fa_predana_zam_id']) {
             if ($faktura['fa_predana_zam_id'] == $user_id) {
                 $has_permission = true;
-                error_log("✅ VS oprávnění: Uživatel #{$user_id} je uživatel komu byla faktura předána (fa_predana_zam_id)");
             } else {
                 // Kontrola kolegů z úseku uživatele komu byla faktura předána
                 $stmt_predany_usek = $db->prepare("
@@ -411,13 +401,11 @@ function handle_invoice_toggle_check($input, $config) {
                 // Pokud je aktuální uživatel ze stejného úseku jako uživatel komu byla faktura předána
                 if ($predany_usek_id && $user_usek_id && $predany_usek_id == $user_usek_id) {
                     $has_permission = true;
-                    error_log("✅ VS oprávnění: Uživatel #{$user_id} je kolega z úseku #{$user_usek_id} uživatele #{$faktura['fa_predana_zam_id']} komu byla faktura předána");
                 }
 
                 // Aktivní zastoupení má přednost nad omezením úsek/lokalita
                 if (!$has_permission && $substitution_context) {
                     $has_permission = true;
-                    error_log("✅ VS oprávnění: Uživatel #{$user_id} má aktivní zastoupení pro uživatele #{$faktura['fa_predana_zam_id']}");
                 }
             }
         }
@@ -500,7 +488,6 @@ function handle_invoice_toggle_check($input, $config) {
         // 6b. Ochrana proti přepsání potvrzujícího uživatele při opakované volbě stejného statusu
         $current_vs_status = (int)($faktura['vecna_spravnost_potvrzeno'] ?? VS_STATUS_NEPOTVRZENA);
         if ($status === $current_vs_status && $status !== VS_STATUS_NEPOTVRZENA) {
-            error_log("🔒 VS beze změny: Faktura #$faktura_id už má status $status, zachovávám původního potvrzujícího uživatele");
             http_response_code(200);
             echo json_encode(array(
                 'status' => 'success',
@@ -580,7 +567,6 @@ function handle_invoice_toggle_check($input, $config) {
                     $faktura_id
                 ));
                 
-                error_log("✅ Potvrzena VS faktury #$faktura_id - stav změněn na VECNA_SPRAVNOST");
                 
             } else {
                 // Status 2 (zamítnuto) - uložit údaje (stav faktury se nastaví níže)
@@ -623,7 +609,6 @@ function handle_invoice_toggle_check($input, $config) {
                 ");
                 $stmt_delete_lp->execute(array($faktura_id));
                 
-                error_log("🔴 Zamítnuta VS faktury #$faktura_id - stav změněn na V_RESENI, LP čerpání smazáno");
             }
 
             // 8c. Audit log akce v zastoupení (pokud byla akce provedena za zastupovaného)
@@ -654,7 +639,6 @@ function handle_invoice_toggle_check($input, $config) {
                 );
 
                 if (!$logged_sub) {
-                    error_log("⚠️ VS substitution audit: nepodařilo se zapsat audit log pro fakturu #{$faktura_id}");
                 }
             }
 
@@ -753,7 +737,6 @@ function handle_invoice_toggle_check($input, $config) {
                 if ($status === VS_STATUS_POTVRZENA) {
                     // ✅ POTVRZENO - poslat notifikaci přes organizační hierarchii
                     triggerNotification($db, 'INVOICE_MATERIAL_CHECK_APPROVED', $faktura_id, $token_data['id']);
-                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_APPROVED for invoice $faktura_id");
                 } elseif ($status === VS_STATUS_ZAMITNUTA) {
                     // ❌ ZAMÍTNUTO - poslat notifikaci přes organizační hierarchii s důvodem
                     $reason = $vecna_spravnost_duvod ?: 'Neuvedeno';
@@ -766,11 +749,9 @@ function handle_invoice_toggle_check($input, $config) {
                         'reason'                => $reason,  // ✅ Univerzální alias
                     );
                     triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REJECTED', $faktura_id, $token_data['id'], $customPlaceholders);
-                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REJECTED for invoice $faktura_id (reason: $vecna_spravnost_duvod)");
                 } elseif ($status === VS_STATUS_NEPOTVRZENA) {
                     // 🔄 RESET - poslat notifikaci o požadavku na nové ověření
                     triggerNotification($db, 'INVOICE_MATERIAL_CHECK_REQUESTED', $faktura_id, $token_data['id']);
-                    error_log("🔔 Triggered: INVOICE_MATERIAL_CHECK_REQUESTED for invoice $faktura_id (reset)");
                 }
             } catch (Exception $notifErr) {
                 // Notifikace nesmí blokovat úspěch operace
