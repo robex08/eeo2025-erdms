@@ -1563,6 +1563,47 @@ $queries['substitution_get_all'] = "
 ";
 
 // Admin: uživatelé, za které může admin nastavit zastupování (mají USER_SUBSTITUTE_SET)
+// ✅ OPRAVENO 2026-06-21: Respektuje vazební tabulku 25_moznosti_zastupovani
+// Pro superadmin: všichni aktivní uživatelé
+// Pro admin: uživatelé podle vazební tabulky (kde může admin nastavit zastupování)
+$queries['substitution_manageable_users_superadmin'] = "
+    SELECT DISTINCT
+        u.id, u.username, u.jmeno, u.prijmeni, u.titul_pred, u.titul_za, u.email
+    FROM " . TBL_UZIVATELE . " u
+    WHERE u.aktivni = 1
+    AND u.id != :current_user_id
+    ORDER BY u.prijmeni, u.jmeno
+";
+
+// Pro admina (ne superadmina): uživatelé podle vazební tabulky
+// Vrátí uživatele, kteří mají definované možnosti zastupování (m.zastupovany_id)
+// nebo globální pravidla (m.global_all_users = 1)
+$queries['substitution_manageable_users_admin'] = "
+    SELECT DISTINCT
+        u.id, u.username, u.jmeno, u.prijmeni, u.titul_pred, u.titul_za, u.email
+    FROM " . TBL_UZIVATELE . " u
+    WHERE u.aktivni = 1
+    AND u.id != :current_user_id
+    AND (
+        -- Uživatelé s definovanými možnostmi zastupování
+        u.id IN (
+            SELECT DISTINCT m.zastupovany_id 
+            FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m
+            WHERE m.aktivni = 1 
+            AND m.zastupovany_id > 0
+        )
+        -- Nebo pokud existují globální pravidla (pro všechny uživatele)
+        OR EXISTS (
+            SELECT 1 
+            FROM " . TBL_MOZNOSTI_ZASTUPOVANI . " m2
+            WHERE m2.aktivni = 1 
+            AND m2.global_all_users = 1
+        )
+    )
+    ORDER BY u.prijmeni, u.jmeno
+";
+
+// DEPRECATED: Stará query (nerespektovala vazební tabulku)
 $queries['substitution_manageable_users'] = "
     SELECT DISTINCT
         u.id, u.username, u.jmeno, u.prijmeni, u.titul_pred, u.titul_za, u.email

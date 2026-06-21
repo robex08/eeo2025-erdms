@@ -1757,9 +1757,15 @@ function handle_substitution_manageable_users($data, $pdo) {
 
     try {
         $current_user_id = (int)$token_data['id'];
-        $stmt = $pdo->prepare($queries['substitution_manageable_users']);
+        
+        // ✅ OPRAVA 2026-06-21 v2: OBA (SUPERADMIN i ADMINISTRATOR) používají vazební tabulku
+        // Uživatelé se načítají POUZE podle pravidel v 25_moznosti_zastupovani
+        $stmt = $pdo->prepare($queries['substitution_manageable_users_admin']);
         $stmt->bindParam(':current_user_id', $current_user_id, PDO::PARAM_INT);
         $stmt->execute();
+        
+        $roleInfo = isset($token_data['roles']) ? implode(', ', $token_data['roles']) : 'N/A';
+        error_log("🔧 substitution_manageable_users: User roles=[$roleInfo] - loading users by vazebni tabulka");
 
         $users = array();
         while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1774,6 +1780,8 @@ function handle_substitution_manageable_users($data, $pdo) {
                 'email'      => $row['email'],
             );
         }
+        
+        error_log("🔧 substitution_manageable_users: Loaded " . count($users) . " users for zastupovany dropdown");
 
         return array('status' => 'ok', 'data' => $users, 'count' => count($users));
 
