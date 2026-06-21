@@ -177,6 +177,14 @@ function validateUserInput($input, $is_update = false) {
 function validateUserRelations($db, $queries, $data) {
     $errors = array();
     
+    // Mapování DB názvů na lidsky srozumitelné názvy
+    $field_labels = array(
+        'usek_id' => 'Úsek',
+        'lokalita_id' => 'Lokalita', 
+        'pozice_id' => 'Pozice',
+        'organizace_id' => 'Organizace'
+    );
+    
     $relations = array(
         'usek_id' => 'validate_usek_exists',
         'lokalita_id' => 'validate_lokalita_exists', 
@@ -185,19 +193,29 @@ function validateUserRelations($db, $queries, $data) {
     );
     
     foreach ($relations as $field => $query_key) {
-        if (isset($data[$field]) && $data[$field] !== null) {
-            try {
-                $stmt = $db->prepare($queries[$query_key]);
-                $stmt->bindParam(':id', $data[$field], PDO::PARAM_INT);
-                $stmt->execute();
-                $result = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                if (!$result || (int)$result['count'] === 0) {
-                    $errors[] = "Neplatná hodnota pro $field - záznam neexistuje";
-                }
-            } catch (Exception $e) {
-                $errors[] = "Chyba při validaci $field: " . $e->getMessage();
+        // NULL hodnoty jsou povoleny (nepovinné pole)
+        if (!isset($data[$field]) || $data[$field] === null) {
+            continue;
+        }
+        
+        // Prázdný string nebo 0 považuj za NULL
+        if ($data[$field] === '' || $data[$field] === 0) {
+            continue;
+        }
+        
+        try {
+            $stmt = $db->prepare($queries[$query_key]);
+            $stmt->bindParam(':id', $data[$field], PDO::PARAM_INT);
+            $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$result || (int)$result['count'] === 0) {
+                $label = isset($field_labels[$field]) ? $field_labels[$field] : $field;
+                $errors[] = "$label: Aktuální hodnota (ID: {$data[$field]}) již neexistuje v databázi. Prosím vyberte jinou nebo nechte pole prázdné.";
             }
+        } catch (Exception $e) {
+            $label = isset($field_labels[$field]) ? $field_labels[$field] : $field;
+            $errors[] = "Chyba při kontrole pole $label: " . $e->getMessage();
         }
     }
     
@@ -506,7 +524,7 @@ function handle_users_update($input, $config, $queries) {
         $relation_errors = validateUserRelations($db, $queries, $data);
         if (!empty($relation_errors)) {
             http_response_code(400);
-            echo json_encode(array('status' => 'error', 'message' => implode(', ', $relation_errors), 'code' => 'RELATION_ERROR'));
+            echo json_encode(array('status' => 'error', 'message' => implode(' | ', $relation_errors), 'code' => 'RELATION_ERROR'));
             return;
         }
         

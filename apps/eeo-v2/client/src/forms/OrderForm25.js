@@ -7302,6 +7302,12 @@ function OrderForm25() {
 
       const currentStatus = normalizeVecnaStatus(inv.vecna_spravnost_potvrzeno);
       const originalStatus = normalizeVecnaStatus(original.vecna_spravnost_potvrzeno);
+      
+      // ✅ KLÍČOVÁ ZMĚNA: Zobrazit tlačítko POUZE když je status 1 (POTVRZENA) nebo 2 (ZAMITNUTA)
+      // Pokud status není nastaven (0/null), tlačítko se nesmí zobrazit
+      if (currentStatus === 0) return false;
+      
+      // Tlačítko se zobrazí když došlo ke změně statusu nebo důvodu
       if (currentStatus !== originalStatus) return true;
 
       const currentDuvod = (inv.vecna_spravnost_duvod || '').trim();
@@ -27408,11 +27414,11 @@ function OrderForm25() {
                                                 if (shouldLockVecnaSpravnost || !canEditVecnaSpravnostFaktury(faktura)) return;
                                                 
                                                 // Toggle: pokud už je potvrzeno, zruš to (reset na NULL)
-                                                // ✅ ZACHOVAT existující hodnoty polí (umisteni_majetku, poznamka, duvod)
+                                                // ✅ RESETOVAT TAKÉ duvod na prázdný string, aby se tlačítko Uložit schowlo
                                                 if (faktura.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA) {
                                                   const updatedFaktury = formData.faktury.map(f => 
                                                     f.id === faktura.id 
-                                                      ? { ...f, vecna_spravnost_potvrzeno: null, potvrdil_vecnou_spravnost_id: null, dt_potvrzeni_vecne_spravnosti: null, _isNew: false } 
+                                                      ? { ...f, vecna_spravnost_potvrzeno: null, potvrdil_vecnou_spravnost_id: null, dt_potvrzeni_vecne_spravnosti: null, vecna_spravnost_duvod: '', _isNew: false } 
                                                       : f
                                                   );
                                                   updateFaktury(updatedFaktury);
@@ -27515,11 +27521,11 @@ function OrderForm25() {
                                                 if (shouldLockVecnaSpravnost || !canEditVecnaSpravnostFaktury(faktura)) return;
                                                 
                                                 // Toggle: pokud už je zamítnuto, zruš to (reset na NULL)
-                                                // ✅ ZACHOVAT existující hodnoty polí (umisteni_majetku, poznamka, duvod)
+                                                // ✅ RESETOVAT TAKÉ duvod na prázdný string, aby se tlačítko Uložit schowlo
                                                 if (faktura.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA) {
                                                   const updatedFaktury = formData.faktury.map(f => 
                                                     f.id === faktura.id 
-                                                      ? { ...f, vecna_spravnost_potvrzeno: null, potvrdil_vecnou_spravnost_id: null, dt_potvrzeni_vecne_spravnosti: null, _isNew: false } 
+                                                      ? { ...f, vecna_spravnost_potvrzeno: null, potvrdil_vecnou_spravnost_id: null, dt_potvrzeni_vecne_spravnosti: null, vecna_spravnost_duvod: '', _isNew: false } 
                                                       : f
                                                   );
                                                   updateFaktury(updatedFaktury);

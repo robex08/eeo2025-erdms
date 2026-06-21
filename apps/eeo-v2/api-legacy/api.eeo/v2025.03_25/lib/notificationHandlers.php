@@ -818,7 +818,7 @@ function handle_notifications_list_for_select($input, $config, $queries) {
         foreach ($notifications as $notif) {
             $result[] = array(
                 'id' => (int)$notif['id'],
-                'title' => $notif['nadpis'] . ' (' . $notif['typ'] . ')',
+                'title' => $notif['nadpis'],
                 'preview' => substr(strip_tags($notif['zprava']), 0, 100) . '...'
             );
         }

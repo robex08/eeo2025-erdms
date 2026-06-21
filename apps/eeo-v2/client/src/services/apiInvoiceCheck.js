@@ -87,10 +87,12 @@ export async function toggleInvoiceCheck(fakturaId, kontrolovanoOrStatus, token,
  * @param {string} token - Auth token
  * @param {string} username - Username
  * @param {string} [duvod] - Důvod rozhodnutí (POVINNÝ pro status 2, volitelný pro 1)
+ * @param {string} [poznamka] - Interní poznámka (volitelná vždy)
+ * @param {string} [umisteni] - Umístění majetku (volitelné)
  * @returns {Promise<Object>} Response { status, message, data }
  * @throws {Error} Pokud je faktura uzamčena (423) nebo chybí povinný důvod
  */
-export async function toggleVecnaSpravnost(fakturaId, status, token, username, duvod = '') {
+export async function toggleVecnaSpravnost(fakturaId, status, token, username, duvod = '', poznamka = '', umisteni = '') {
   // Validace na FE straně (backend má vlastní validaci)
   if (status === VS_STATUS.ZAMITNUTA && (!duvod || duvod.trim().length < 5)) {
     throw new Error('Pro zamítnutí faktury je povinný důvod (minimálně 5 znaků)');
@@ -110,7 +112,9 @@ export async function toggleVecnaSpravnost(fakturaId, status, token, username, d
       username,
       faktura_id: fakturaId,
       status,
-      vecna_spravnost_duvod: duvod || undefined
+      vecna_spravnost_duvod: duvod || undefined,
+      vecna_spravnost_poznamka: poznamka || undefined,
+      vecna_spravnost_umisteni_majetku: umisteni || undefined
     }),
   });
 
