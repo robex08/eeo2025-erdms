@@ -56,8 +56,6 @@ function createNotification($db, $params) {
         $result = $stmt->execute($params);
         
         if (!$result) {
-            error_log("[Notifications] SQL Error: " . json_encode($stmt->errorInfo()));
-            error_log("[Notifications] SQL Params: " . json_encode($params));
             return false;
         }
         
@@ -81,8 +79,6 @@ function createNotification($db, $params) {
         return $notifikace_id;
         
     } catch (Exception $e) {
-        error_log("[Notifications] Exception in createNotification: " . $e->getMessage());
-        error_log("[Notifications] SQL Params: " . json_encode($params));
         throw $e;
     }
 }
@@ -142,7 +138,6 @@ function getNotificationTemplate($db, $typ) {
     if (!$template && preg_match('/^[A-Z_]+$/', $typ)) {
         $oldTemplateName = mapEventTypeToTemplateName($typ);
         if ($oldTemplateName !== $typ) {
-            error_log("🔄 [getNotificationTemplate] Mapping new event type '$typ' -> old template '$oldTemplateName'");
             $stmt->execute(array(':typ' => $oldTemplateName));
             $template = $stmt->fetch(PDO::FETCH_ASSOC);
         }
@@ -346,7 +341,6 @@ function handle_notifications_list($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při načítání notifikací: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_list: " . $e->getMessage());
     }
 }
 
@@ -681,7 +675,6 @@ function handle_notifications_mark_all_read($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['err' => 'Chyba při označování notifikací: ' . $e->getMessage()]);
-        error_log("[Notifications] Exception in handle_notifications_mark_all_read: " . $e->getMessage());
     }
 }
 
@@ -728,7 +721,6 @@ function handle_notifications_get_by_id($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['err' => 'Chyba při načítání notifikace: ' . $e->getMessage()]);
-        error_log("[Notifications] Exception in handle_notifications_get_by_id: " . $e->getMessage());
     }
 }
 
@@ -846,7 +838,6 @@ function handle_notifications_list_for_select($input, $config, $queries) {
             'status' => 'error',
             'message' => 'Chyba při načítání notifikací: ' . $e->getMessage()
         ));
-        error_log("[Notifications] Exception in handle_notifications_list_for_select: " . $e->getMessage());
     }
 }
 
@@ -953,7 +944,6 @@ function handle_notifications_get_content($input, $config, $queries) {
             'status' => 'error',
             'message' => 'Chyba při načítání notifikace: ' . $e->getMessage()
         ));
-        error_log("[Notifications] Exception in handle_notifications_get_content: " . $e->getMessage());
     }
 }
 
@@ -1105,7 +1095,6 @@ function handle_notifications_unread_count($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(['err' => 'Chyba při počítání notifikací: ' . $e->getMessage()]);
-        error_log("[Notifications] Exception in handle_notifications_unread_count: " . $e->getMessage());
     }
 }
 
@@ -1122,7 +1111,6 @@ function handle_notifications_unread_count($input, $config, $queries) {
 function handle_notifications_create($input, $config, $queries) {
     // DEBUG: Log vstupních dat
     error_log("[Notifications] handle_notifications_create called");
-    error_log("[Notifications] Input: " . json_encode($input));
     
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
@@ -1130,14 +1118,12 @@ function handle_notifications_create($input, $config, $queries) {
 
     $token_data = verify_token_v2($request_username, $token);
     if (!$token_data) {
-        error_log("[Notifications] Token verification failed");
         http_response_code(401);
         echo json_encode(['err' => 'Neplatný nebo chybějící token']);
         return;
     }
 
     if ($token_data['username'] !== $request_username) {
-        error_log("[Notifications] Username mismatch: token=" . $token_data['username'] . ", request=" . $request_username);
         http_response_code(401);
         echo json_encode(['err' => 'Username z tokenu neodpovídá username z požadavku']);
         return;
@@ -1147,7 +1133,6 @@ function handle_notifications_create($input, $config, $queries) {
     $required_fields = array('typ');
     foreach ($required_fields as $field) {
         if (empty($input[$field])) {
-            error_log("[Notifications] Missing required field: $field");
             http_response_code(400);
             echo json_encode(array('err' => "Chybí povinné pole: $field"));
             return;
@@ -1163,7 +1148,6 @@ function handle_notifications_create($input, $config, $queries) {
         // Načti template z databáze
         $template = getNotificationTemplate($db, $typ);
         if (!$template) {
-            error_log("[Notifications] Template not found for typ: $typ");
             http_response_code(400);
             echo json_encode(array('err' => "Neznámý typ notifikace: $typ"));
             return;
@@ -1180,7 +1164,6 @@ function handle_notifications_create($input, $config, $queries) {
         // Když se volá order_status_kontrola_potvrzena BEZ invoice_id (z OrderForm25),
         // načti všechny faktury objednávky s potvrzenou věcnou správností a pošli notifikaci pro každou
         if ($typ === 'order_status_kontrola_potvrzena' && $order_id && !$invoice_id) {
-            error_log("[Notifications] ⚠️ SPECIÁLNÍ PŘÍPAD: Věcná správnost potvrzena bez invoice_id - načítám faktury objednávky $order_id");
             
             // Načti faktury s potvrzenou věcnou správností
             $faktury_table = get_invoices_table_name();
@@ -1253,7 +1236,6 @@ function handle_notifications_create($input, $config, $queries) {
                 );
                 
             } catch (Exception $e) {
-                error_log("[Notifications] Error loading order data: " . $e->getMessage());
                 $placeholderData = array();
             }
         } else {
@@ -1274,7 +1256,6 @@ function handle_notifications_create($input, $config, $queries) {
         // Merge placeholderData s data (placeholderData má přednost)
         $finalData = array_merge($data, $placeholderData);
         
-        error_log("[Notifications] Final placeholder data: " . json_encode(array_keys($finalData)));
         error_log("[Notifications] Sample values: order_number=" . (isset($finalData['order_number']) ? $finalData['order_number'] : 'N/A') . 
                   ", order_name=" . (isset($finalData['order_name']) ? substr($finalData['order_name'], 0, 30) : 'N/A'));
         
@@ -1466,7 +1447,6 @@ function handle_notifications_create($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při vytváření notifikace: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_create: " . $e->getMessage());
     }
 }
 
@@ -1641,7 +1621,6 @@ function handle_notifications_preview($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při náhledu notifikace: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_preview: " . $e->getMessage());
     }
 }
 
@@ -1706,7 +1685,6 @@ function handle_notifications_templates($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při načítání templates: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_templates: " . $e->getMessage());
     }
 }
 
@@ -1757,7 +1735,6 @@ function handle_notifications_send_bulk($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při hromadném odesílání: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_send_bulk: " . $e->getMessage());
     }
 }
 
@@ -2092,7 +2069,6 @@ function handle_notifications_event_types_list($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při načítání event types: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_event_types_list: " . $e->getMessage());
     }
 }
 
@@ -2144,7 +2120,6 @@ function loadOrderPlaceholders($db, $objectId, $triggerUserId = null) {
         $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
         $stmt->execute(['loadOrderPlaceholders START', json_encode(['object_id' => $objectId, 'trigger_user' => $triggerUserId])]);
     } catch (Exception $e) {
-        error_log("DEBUG LOG FAILED: " . $e->getMessage());
     }
     
     // Načíst table names pomocí funkcí z orderQueries.php
@@ -2926,16 +2901,9 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         'invoice_debug' => array("🚀 DEBUG TEST: notificationRouter started for event $eventType, object $objectId")
     );
     
-    error_log("");
     error_log("╔════════════════════════════════════════════════════════════════╗");
-    error_log("║  🎯 NOTIFICATION ROUTER - Processing Trigger                   ║");
     error_log("╠════════════════════════════════════════════════════════════════╣");
-    error_log("║  Event:     " . str_pad($eventType, 50) . "║");
-    error_log("║  Object:    " . str_pad($objectId, 50) . "║");
-    error_log("║  User:      " . str_pad($triggerUserId, 50) . "║");
-    error_log("║  Frontend:  " . str_pad(count($placeholderData) . " placeholders", 50) . "║");
     error_log("╚════════════════════════════════════════════════════════════════╝");
-    error_log("");
     
     // DEBUG do DB - START
     try {
@@ -2947,7 +2915,6 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
             'placeholder_count' => count($placeholderData)
         ])]);
     } catch (Exception $e) {
-        error_log("DEBUG LOG FAILED: " . $e->getMessage());
     }
     
     try {
@@ -3485,31 +3452,18 @@ function notificationRouter($db, $eventType, $objectId, $triggerUserId, $placeho
         // ═══════════════════════════════════════════════════════════════════
         // FINÁLNÍ SHRNUTÍ
         // ═══════════════════════════════════════════════════════════════════
-        error_log("");
         error_log("╔══════════════════════════════════════════════════════════════╗");
-        error_log("║  🎯 NOTIFICATION ROUTER - FINAL SUMMARY                      ║");
         error_log("╠══════════════════════════════════════════════════════════════╣");
-        error_log("║  Event:              " . str_pad($eventType, 38) . "║");
-        error_log("║  Object ID:          " . str_pad($objectId, 38) . "║");
-        error_log("║  Recipients Found:   " . str_pad(count($recipients), 38) . "║");
-        error_log("║  Notifications Sent: " . str_pad($result['sent'], 38) . "║");
-        error_log("║  Errors:             " . str_pad(count($result['errors']), 38) . "║");
         
         if ($result['success']) {
-            error_log("║                                                              ║");
-            error_log("║  ✅ ✅ ✅  SUCCESS - Notifications sent successfully!         ║");
         } else {
-            error_log("║                                                              ║");
-            error_log("║  ❌ FAILED - No notifications sent!                          ║");
         }
         
         error_log("╚══════════════════════════════════════════════════════════════╝");
-        error_log("");
         
     } catch (Exception $e) {
         $result['errors'][] = $e->getMessage();
         error_log("❌ [NotificationRouter] Exception: " . $e->getMessage());
-        error_log("");
     }
     
     // ✅ VŽDY vrátit debug info pokud je debugMode
@@ -3546,7 +3500,6 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
         
         if (!$profile) {
             error_log("❌ ❌ ❌ ŽÁDNÝ AKTIVNÍ HIERARCHICKÝ PROFIL NENALEZEN!");
-            error_log("");
             return $recipients;
         }
         
@@ -3555,7 +3508,6 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
         $structure = json_decode($profile['structure_json'], true);
         if (!$structure) {
             error_log("❌ Neplatný JSON ve structure_json");
-            error_log("");
             return $recipients;
         }
         
@@ -3564,7 +3516,6 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
         // Určit object type z event type
         $objectType = getObjectTypeFromEvent($eventType);
         error_log("📦 Object type: $objectType");
-        error_log("");
         
         // 2. Najít TEMPLATE nodes s tímto event typem
         error_log("🔍 Hledám templates s event typem '$eventType'...");
@@ -3579,7 +3530,6 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
             if (!in_array($eventType, $eventTypes)) continue;
             
             $matchingTemplates++;
-            error_log("");
             error_log("   ✅ MATCH! Template: '{$node['data']['name']}'");
             error_log("      ↪ Event: '$eventType'");
             
@@ -4058,33 +4008,18 @@ function findNotificationRecipients($db, $eventType, $objectId, $triggerUserId, 
         // ═══════════════════════════════════════════════════════════════════
         // SHRNUTÍ
         // ═══════════════════════════════════════════════════════════════════
-        error_log("");
         error_log("┌────────────────────────────────────────────────────────────────┐");
-        error_log("│  📊 ORGANIZATIONAL HIERARCHY - SUMMARY                         │");
         error_log("├────────────────────────────────────────────────────────────────┤");
-        error_log("│  Event:              " . str_pad($eventType, 38) . "│");
-        error_log("│  Matching Templates: " . str_pad($matchingTemplates, 38) . "│");
-        error_log("│  Total Recipients:   " . str_pad(count($recipients), 38) . "│");
         
         if ($matchingTemplates === 0) {
-            error_log("│                                                                │");
-            error_log("│  ⚠️  WARNING: No templates matched this event type!           │");
-            error_log("│      Check organizational hierarchy configuration.            │");
         } else if (count($recipients) === 0) {
-            error_log("│                                                                │");
-            error_log("│  ⚠️  WARNING: Templates matched but no recipients found!      │");
-            error_log("│      Check edge configurations and user filters.              │");
         } else {
-            error_log("│                                                                │");
-            error_log("│  ✅ Recipients found and ready to receive notifications       │");
         }
         
         error_log("└────────────────────────────────────────────────────────────────┘");
-        error_log("");
         
     } catch (Exception $e) {
         error_log("❌ [findNotificationRecipients] Exception: " . $e->getMessage());
-        error_log("");
     }
     
     return $recipients;
@@ -4388,7 +4323,6 @@ function handle_notifications_user_preferences($input, $config, $queries) {
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při načítání preferencí: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_user_preferences: " . $e->getMessage());
     }
 }
 
@@ -4500,7 +4434,6 @@ function handle_notifications_user_preferences_update($input, $config, $queries)
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(array('err' => 'Chyba při ukládání preferencí: ' . $e->getMessage()));
-        error_log("[Notifications] Exception in handle_notifications_user_preferences_update: " . $e->getMessage());
     }
 }
 
@@ -4581,7 +4514,6 @@ function handle_notifications_trigger($input, $config, $queries) {
             $stmt = $db->prepare("INSERT INTO debug_notification_log (message, data) VALUES (?, ?)");
             $stmt->execute(['handle_notifications_trigger START', json_encode(['input' => $input])]);
         } catch (Exception $e) {
-            error_log("DEBUG LOG FAILED: " . $e->getMessage());
         }
     }
     
@@ -4636,7 +4568,6 @@ function handle_notifications_trigger($input, $config, $queries) {
         
         if ($result['success']) {
             error_log("[NotificationTrigger] ✅ SUCCESS - Sent: " . $result['sent']);
-            error_log("════════════════════════════════════════════════════════════════");
             $response = array(
                 'status' => 'ok',
                 'zprava' => 'Notifikace odeslány',
@@ -4650,7 +4581,6 @@ function handle_notifications_trigger($input, $config, $queries) {
             echo json_encode($response);
         } else {
             error_log("[NotificationTrigger] ❌ FAILED - sent=" . $result['sent'] . ", errors=" . json_encode($result['errors']));
-            error_log("════════════════════════════════════════════════════════════════");
             // ⚠️ Pokud se neposlaly notifikace ale není to chyba, vracíme 200 (ne 500)
             // 500 jen pokud je skutečná technická chyba
             if (empty($result['errors'])) {
@@ -4678,7 +4608,6 @@ function handle_notifications_trigger($input, $config, $queries) {
     } catch (Exception $e) {
         error_log("[NotificationTrigger] ❌ EXCEPTION: " . $e->getMessage());
         error_log("[NotificationTrigger] Stack trace: " . $e->getTraceAsString());
-        error_log("════════════════════════════════════════════════════════════════");
         
         // DEBUG: Logovat exception
         if ($db) {
@@ -4691,7 +4620,6 @@ function handle_notifications_trigger($input, $config, $queries) {
                     'trace' => $e->getTraceAsString()
                 ])]);
             } catch (Exception $logErr) {
-                error_log("DEBUG LOG FAILED: " . $logErr->getMessage());
             }
         }
         
@@ -5216,13 +5144,6 @@ function loadCashbookPlaceholders($db, $cashbookId, $triggerUserId = null) {
  */
 function triggerNotification($db, $eventType, $objectId, $triggerUserId, $customPlaceholders = array()) {
     // ╔══════════════════════════════════════════════════════════════════╗
-    error_log("║                                                                  ║");
-    error_log("║  🔔 NOTIFICATION TRIGGER CALLED!                                ║");
-    error_log("║                                                                  ║");
-    error_log("║  Event Type:   " . str_pad($eventType, 47) . "║");
-    error_log("║  Object ID:    " . str_pad($objectId, 47) . "║");
-    error_log("║  Trigger User: " . str_pad($triggerUserId, 47) . "║");
-    error_log("║  Call Stack (first 3 frames):                                  ║");
     
     // 🔍 DEBUG: Zobraz call stack pro identifikaci duplikátů
     $backtrace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS, 5);
@@ -5230,10 +5151,8 @@ function triggerNotification($db, $eventType, $objectId, $triggerUserId, $custom
         $function = isset($trace['function']) ? $trace['function'] : 'unknown';
         $file = isset($trace['file']) ? basename($trace['file']) : 'unknown';
         $line = isset($trace['line']) ? $trace['line'] : 'unknown';
-        error_log("║  #" . ($idx + 1) . " {$file}:{$line} -> {$function}()");
     }
     
-    error_log("║                                                                  ║");
     error_log("╚══════════════════════════════════════════════════════════════════╝");
     
     try {
