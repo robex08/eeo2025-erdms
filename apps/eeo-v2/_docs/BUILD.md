@@ -106,12 +106,37 @@ diff prod.txt dev.txt
 - [ ] Nejsou přidané hardcoded URL/cesty/DB názvy (vše přes env)
 - [ ] **🔴 Pokud měníš DB strukturu - ověřil jsi sloupce v DEV databázi?**
 
-## Build (alternativa přímo v client/)
+## ✅ MANUÁLNÍ BUILD DEV (doporučeno)
 
 ```bash
 cd /var/www/erdms-dev/apps/eeo-v2/client
-npm ci
+npm ci  # Jen pokud je potřeba
+rm -rf build/  # Vyčištění starého buildu
 npm run build:dev:explicit
+```
+
+**Výstup:** `/var/www/erdms-dev/apps/eeo-v2/client/build/`
+
+## ✅ MANUÁLNÍ BUILD PROD (doporučeno)
+
+```bash
+cd /var/www/erdms-dev/apps/eeo-v2/client
+npm ci  # Jen pokud je potřeba
+rm -rf build-prod/  # Vyčištění starého buildu
+npm run build:prod
+```
+
+**Výstup:** `/var/www/erdms-dev/apps/eeo-v2/client/build-prod/`
+
+⚠️ **PŘED DEPLOYEM ZKONTROLUJ:**
+```bash
+# 1. Ověř version.json
+cat /var/www/erdms-dev/apps/eeo-v2/client/build-prod/version.json
+# → "version" NESMÍ být prázdné!
+
+# 2. Ověř API URL v buildu
+grep -o 'REACT_APP_API2_BASE_URL[^"]*"[^"]*"' /var/www/erdms-dev/apps/eeo-v2/client/build-prod/static/js/main.*.js | head -1
+# → Musí být: /api.eeo/ (ne /dev/api.eeo/)
 ```
 ## ⚠️ DŮLEŽITÉ: NODE_ENV a Environment Variables v Build Scriptech
 
@@ -400,23 +425,44 @@ curl https://erdms.zachranka.cz/eeo-v2/version.json
 # ============================================
 ```
 
-### � KRITICKÉ: MANUÁLNÍ PROD FE DEPLOYMENT (POUZE FE, BEZ API)
+### 🚀 KRITICKÉ: MANUÁLNÍ PROD FE DEPLOYMENT (POUZE FE, BEZ API)
 
+**🔴 ABSOLUTNĚ ZAKÁZÁNO: --delete FLAG!**
 **⚠️ DŮLEŽITÉ: Struktura PROD vs DEV je ROZDÍLNÁ!**
 
 ```bash
-# ❌ ŠPATNĚ - SMAŽE API SLOŽKU:
-cd /var/www/erdms-dev/apps/eeo-v2/client
-rsync -av --delete build-prod/ /var/www/erdms-platform/apps/eeo-v2/
-# → --delete flag SMAŽE api/ a vše co není v build-prod/!
+# 1️⃣ PŘED DEPLOYEM - VYTVOŘ ZÁLOHU PROD!
+mkdir -p /var/www/__BCK_PRODUKCE/$(date +%Y-%m-%d)
+rsync -av /var/www/erdms-platform/apps/eeo-v2/ \
+  /var/www/__BCK_PRODUKCE/$(date +%Y-%m-%d)/FE_build_PROD_backup_predeploy/
 
-# ✅ SPRÁVNĚ - POUZE FE, ZACHOVÁ API:
+# 2️⃣ DEPLOY FE DO PRODUKCE (ZACHOVÁ API A API-LEGACY):
+cd /var/www/erdms-dev/apps/eeo-v2/client
 rsync -av --exclude='api' --exclude='api-legacy' \
   build-prod/ /var/www/erdms-platform/apps/eeo-v2/
 
-# NEBO (bezpečnější):
+# 3️⃣ OVĚŘENÍ PO DEPLOYU:
+curl https://erdms.zachranka.cz/eeo-v2/version.json
+# → Zkontroluj "version": "2.61" a hash
+
+# 4️⃣ OVĚŘ ŽE API-LEGACY STÁLE FUNGUJE:
+ls -la /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/
+# → MUSÍ tam být api.php a lib/ složka!
+
+# 5️⃣ OVĚŘ PRODUKČNÍ .ENV (NESMÍ SE ZMĚNIT!):
+grep "DB_NAME\|UPLOAD_ROOT_PATH\|API_BASE_URL" \
+  /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env
+# → DB_NAME=eeo2025 (NE eeo2025-dev!)
+# → UPLOAD_ROOT_PATH=/var/www/erdms-data/
+```
+
+**❌ ZAKÁZANÉ PŘÍKAZY (NIKDY NEPOUŽÍVAT!):**
+```bash
+# ❌ SMAŽE API A API-LEGACY!
+rsync -av --delete build-prod/ /var/www/erdms-platform/apps/eeo-v2/
+
+# ❌ ŠPATNÁ CESTA (client/ neexistuje v PROD)!
 rsync -av build-prod/ /var/www/erdms-platform/apps/eeo-v2/client/
-# → Umístí FE do subfolder client/, API zůstane nedotčené
 ```
 
 **📂 Struktura složek:**
@@ -431,13 +477,20 @@ DEV struktura:
 ├── api/                      # Node.js API
 └── api-legacy/               # PHP API
 
-PROD struktura:
+PROD struktura (⚠️ KRITICKÉ - FE JE V ROOT ADRESÁŘI!):
 /var/www/erdms-platform/apps/eeo-v2/
-├── index.html               # FE soubory PŘÍMO v root
-├── static/                  # FE statické soubory
-├── version.json             # FE build info
-├── api/                     # Node.js API (NESMÍ se smazat!)
-└── api-legacy/              # PHP API (NESMÍ se smazat!)
+├── index.html               # ✅ FE soubory PŘÍMO v root (NENÍ client/)
+├── static/                  # ✅ FE statické soubory PŘÍMO v root
+├── version.json             # ✅ FE build info PŘÍMO v root
+├── asset-manifest.json      # ✅ FE manifest PŘÍMO v root
+├── favicon.ico, logo*.png   # ✅ FE assets PŘÍMO v root
+├── api/                     # ❌ Node.js API (NESMÍ se smazat!)
+└── api-legacy/              # ❌ PHP API (NESMÍ se smazat!)
+
+🚨 DŮLEŽITÉ: 
+   - PROD nemá složku client/ - FE je přímo v /var/www/erdms-platform/apps/eeo-v2/
+   - DEV má client/ - FE je v /var/www/erdms-dev/apps/eeo-v2/client/
+   - Proto rsync musí být: build-prod/ -> /var/www/erdms-platform/apps/eeo-v2/
 ```
 
 **💡 Poučení:**

@@ -1326,6 +1326,11 @@ const ProgressIconWrapper = styled.div`
   justify-content: center;
   font-size: 1.5rem;
   background: ${props => {
+    // 🎯 Pro věcnou správnost: zelená = potvrzeno (1), červená = zamítnuto (2)
+    if (props.vecnaStatus === 1) return 'linear-gradient(135deg, #10b981 0%, #059669 100%)'; // Zelená
+    if (props.vecnaStatus === 2) return 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)'; // Červená
+    
+    // Standardní stavy (pro normální progress modal)
     if (props.status === 'success') return 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
     if (props.status === 'error') return 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)';
     return 'linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)';
@@ -2104,7 +2109,8 @@ export default function InvoiceEvidencePage() {
     title: '',
     message: '',
     vecnaResetInfo: '', // 🆕 Info o zrušení věcné správnosti
-    vecnaWasReset: false // 🆕 Flag zda došlo k zrušení (pro barvu)
+    vecnaWasReset: false, // 🆕 Flag zda došlo k zrušení (pro barvu)
+    vecnaStatus: null // 🆕 Status věcné správnosti (0/1/2) pro správnou ikonu
   });
 
   // Spisovka Inbox Panel - pouze pro ADMIN
@@ -2641,8 +2647,19 @@ export default function InvoiceEvidencePage() {
     // 8. Uživatel komu byla faktura předána (fa_predana_zam_id)
     // 9. Backend kontroluje také: kolegy z úseku a uživatele z úseku smlouvy
     
-    // Admin/Superadmin - vždy může
+    // Admin/Superadmin - vždy může, ALE musí dodržet pravidlo:
+    // pokud už JE věcná správnost potvrzena/zamítnuta v DB → ZAMČENO
+    // (stejně jako u běžných uživatelů - musí nejdřív odstranit věcnou správnost nebo odemknout fakturu)
     if (isSuperAdmin || isAdmin) {
+      const vecnaPotvrzenaVDB = originalFormData?.vecna_spravnost_potvrzeno === 1;
+      const vecnaZamitnutaVDB = originalFormData?.vecna_spravnost_potvrzeno === 2;
+      if (vecnaPotvrzenaVDB || vecnaZamitnutaVDB) {
+        return false;
+      }
+      
+      // Pokud je objednávka dokončená → ZAMČENO
+      if (isOrderCompleted) return false;
+      
       return true;
     }
     
@@ -5078,13 +5095,17 @@ export default function InvoiceEvidencePage() {
 
       // ✅ Volání API - toggleVecnaSpravnost
       const duvod = formData.vecna_spravnost_duvod || '';
+      const poznamka = formData.vecna_spravnost_poznamka || '';
+      const umisteni = formData.vecna_spravnost_umisteni_majetku || '';
       
       const response = await toggleVecnaSpravnost(
         editingInvoiceId,
         status,
         token,
         username,
-        duvod
+        duvod,
+        poznamka,
+        umisteni
       );
 
       // ✅ Úspěšná aktualizace
@@ -5110,10 +5131,20 @@ export default function InvoiceEvidencePage() {
           newStav = 'V_RESENI'; // Zamítnuto → stav V řešení
         }
         
-        const updatedData = {
+        // ✅ Pokud je status 0 (reset/zrušení), vymazat všechna pole
+        const updatedData = status === VS_STATUS.NEPOTVRZENA ? {
+          vecna_spravnost_potvrzeno: null,
+          vecna_spravnost_duvod: '',
+          vecna_spravnost_poznamka: '',
+          vecna_spravnost_umisteni_majetku: '',
+          potvrdil_vecnou_spravnost_id: null,
+          dt_potvrzeni_vecne_spravnosti: null,
+          fa_stav: formData.fa_stav // Stav faktury zůstává stejný při resetu
+        } : {
           vecna_spravnost_potvrzeno: status,
-          vecna_spravnost_poznamka: formData.vecna_spravnost_poznamka || '',
           vecna_spravnost_duvod: duvod || '',
+          vecna_spravnost_poznamka: poznamka || '',
+          vecna_spravnost_umisteni_majetku: formData.vecna_spravnost_umisteni_majetku || '',
           potvrdil_vecnou_spravnost_id: user_id,
           dt_potvrzeni_vecne_spravnosti: localTimestamp,
           fa_stav: newStav
@@ -5141,14 +5172,14 @@ export default function InvoiceEvidencePage() {
         let successMessage = '';
         
         if (status === VS_STATUS.POTVRZENA) {
-          successTitle = '✅ Věcná správnost potvrzena';
-          successMessage = `Faktura ${faCislo} byla potvrzena jako věcně správná.`;
+          successTitle = 'Věcná správnost faktury';
+          successMessage = `Věcná správnost faktury ${faCislo} byla potvrzena.`;
         } else if (status === VS_STATUS.ZAMITNUTA) {
-          successTitle = '❌ Věcná správnost zamítnuta';
-          successMessage = `Faktura ${faCislo} byla zamítnuta.\n\nDůvod: ${duvod}`;
+          successTitle = 'Věcná správnost faktury';
+          successMessage = `Věcná správnost faktury ${faCislo} byla zamítnuta.\n\nDůvod: ${duvod}`;
         } else {
-          successTitle = '🔄 Status zrušen';
-          successMessage = `Status věcné správnosti faktury ${faCislo} byl zrušen.`;
+          successTitle = 'Věcná správnost faktury';
+          successMessage = `Věcná správnost faktury ${faCislo} byla zrušena.`;
         }
         
         if (isReadOnlyMode) {
@@ -5161,6 +5192,7 @@ export default function InvoiceEvidencePage() {
           title: successTitle,
           message: successMessage,
           vecnaResetInfo: '',
+          vecnaStatus: status, // 🆕 Předat status pro správnou ikonu
           resetData: { isVecnaSpravnost: true, isReadOnlyMode }
         });
       } else {
@@ -5338,7 +5370,7 @@ export default function InvoiceEvidencePage() {
       setFieldErrors(errors);
       setError('Opravte prosím chyby ve formuláři před odesláním');
       // Zavřít progress modal při chybě validace
-      setProgressModal({ show: false, status: 'error', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false });
+      setProgressModal({ show: false, status: 'error', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false, vecnaStatus: null });
 
       const validationToast = formatInvoiceValidationToast(errors);
       if (validationToast) {
@@ -5545,6 +5577,9 @@ export default function InvoiceEvidencePage() {
           shouldResetVecnaSpravnost = true;
         }
       }
+      
+      // 🔥 KOMBINACE: Automatický reset NEBO manuální zaškrtnutí checkboxu
+      const resetVecna = shouldResetVecnaSpravnost || forceResetVecnaSpravnost;
 
       if (editingInvoiceId) {
         // EDITACE - UPDATE faktury
@@ -5567,12 +5602,13 @@ export default function InvoiceEvidencePage() {
           fa_datum_vraceni_zam: formData.fa_datum_vraceni_zam || null,
           // fa_strediska_kod je již array stringů ["101_RLP_KLADNO"], jen JSON.stringify
           fa_strediska_kod: JSON.stringify(formData.fa_strediska_kod || []),
-          // 🆕 VĚCNÁ SPRÁVNOST - ZRUŠIT NA 0 pokud se změnily klíčové údaje faktury
-          vecna_spravnost_umisteni_majetku: shouldResetVecnaSpravnost ? '' : (formData.vecna_spravnost_umisteni_majetku || ''),
-          vecna_spravnost_poznamka: shouldResetVecnaSpravnost ? '' : (formData.vecna_spravnost_poznamka || ''),
-          vecna_spravnost_potvrzeno: shouldResetVecnaSpravnost ? 0 : (formData.vecna_spravnost_potvrzeno || 0),
-          potvrdil_vecnou_spravnost_id: shouldResetVecnaSpravnost ? null : (formData.potvrdil_vecnou_spravnost_id || null),
-          dt_potvrzeni_vecne_spravnosti: shouldResetVecnaSpravnost ? null : (formData.dt_potvrzeni_vecne_spravnosti || null)
+          // 🆕 VĚCNÁ SPRÁVNOST - ZRUŠIT pokud resetVecna === true
+          vecna_spravnost_umisteni_majetku: resetVecna ? '' : (formData.vecna_spravnost_umisteni_majetku || ''),
+          vecna_spravnost_poznamka: resetVecna ? '' : (formData.vecna_spravnost_poznamka || ''),
+          vecna_spravnost_duvod: resetVecna ? '' : (formData.vecna_spravnost_duvod || ''),
+          vecna_spravnost_potvrzeno: resetVecna ? 0 : (formData.vecna_spravnost_potvrzeno || 0),
+          potvrdil_vecnou_spravnost_id: resetVecna ? null : (formData.potvrdil_vecnou_spravnost_id || null),
+          dt_potvrzeni_vecne_spravnosti: resetVecna ? null : (formData.dt_potvrzeni_vecne_spravnosti || null)
         };
         
         // 🎯 Progress - aktualizace faktury
@@ -8310,6 +8346,15 @@ export default function InvoiceEvidencePage() {
               <FontAwesomeIcon icon={faTimes} />
               Zrušit
             </Button>
+            
+            {/* ✅ ZOBRAZIT tlačítko "Uložit věcnou správnost" POUZE když:
+                - není readonly režim (standardní uživatelé vidí vždy) NEBO
+                - je readonly režim A ZÁROVEŇ je věcná správnost potvrzena (1) nebo zamítnuta (2) */}
+            {(
+              !isReadOnlyMode ? true : 
+              (formData.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA || 
+               formData.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA)
+            ) && (
             <Button 
               $variant="primary" 
               onClick={handleSubmit} 
@@ -8321,9 +8366,7 @@ export default function InvoiceEvidencePage() {
                 (originalFormData?.stav === 'DOKONCENA') ||
                 // Běžná disabled logika - nelze přidat fakturu k objednávce v zakázaném stavu
                 // (výjimka: pouhá změna VEMA kódu je povolena i u uzamčené objednávky)
-                (isOrderStateBlockingInvoiceOperations && !canSaveVemaKodOnly) ||
-                // 🔥 Readonly uživatelé (INVOICE_MATERIAL_CORRECTNESS) mohou uložit POUZE pokud se změnila věcná správnost NEBO VEMA kód
-                (isReadOnlyMode && !hasChangedVecnaSpravnost && !canSaveVemaKodOnly)
+                (isOrderStateBlockingInvoiceOperations && !canSaveVemaKodOnly)
               }
               title={
                 hasOnlyViewPermission && !canSaveVemaKodOnly
@@ -8332,9 +8375,7 @@ export default function InvoiceEvidencePage() {
                   ? '🔒 Faktura je DOKONČENÁ a nelze ji editovat. Všechna pole jsou pouze pro čtení.'
                   : isOrderStateBlockingInvoiceOperations && !canSaveVemaKodOnly
                   ? canAddInvoiceToOrder(orderData).reason
-                  : (isReadOnlyMode && !hasChangedVecnaSpravnost && !canSaveVemaKodOnly)
-                    ? 'Nemáte oprávnění měnit základní data faktury. Můžete pouze potvrdit věcnou správnost.'
-                    : ''
+                  : ''
               }
             >
               <FontAwesomeIcon 
@@ -8372,6 +8413,7 @@ export default function InvoiceEvidencePage() {
                 return 'Zaevidovat fakturu';
               })()}
             </Button>
+            )}
             </div>
           </ButtonGroup>
           )}
@@ -9007,9 +9049,14 @@ export default function InvoiceEvidencePage() {
                     
                     {/* Tlačítka vpravo */}
                     <div style={{ display: 'flex', gap: '1rem' }}>
-                    {/* Tlačítko Aktualizovat věcnou správnost - zobrazit když uživatel změnil status */}
-                    {(formData.vecna_spravnost_potvrzeno !== originalFormData?.vecna_spravnost_potvrzeno || 
-                      formData.vecna_spravnost_poznamka !== (originalFormData?.vecna_spravnost_poznamka || '')) && (
+                    {/* Tlačítko Aktualizovat věcnou správnost - zobrazit POUZE když:
+                        1) status je 1 (POTVRZENA) nebo 2 (ZAMITNUTA) - ne null/0
+                        2) A ZÁROVEŇ se něco změnilo oproti původním datům */}
+                    {(formData.vecna_spravnost_potvrzeno === VS_STATUS.POTVRZENA || formData.vecna_spravnost_potvrzeno === VS_STATUS.ZAMITNUTA) &&
+                     (formData.vecna_spravnost_potvrzeno !== originalFormData?.vecna_spravnost_potvrzeno || 
+                      formData.vecna_spravnost_duvod !== (originalFormData?.vecna_spravnost_duvod || '') ||
+                      formData.vecna_spravnost_poznamka !== (originalFormData?.vecna_spravnost_poznamka || '') ||
+                      formData.vecna_spravnost_umisteni_majetku !== (originalFormData?.vecna_spravnost_umisteni_majetku || '')) && (
                       <button
                         onClick={handleUpdateMaterialCorrectness}
                         disabled={loading}
@@ -9648,9 +9695,12 @@ export default function InvoiceEvidencePage() {
         <ProgressOverlay>
           <ProgressModal>
             <ProgressHeader>
-              <ProgressIconWrapper status={progressModal.status}>
+              <ProgressIconWrapper status={progressModal.status} vecnaStatus={progressModal.vecnaStatus}>
                 {progressModal.status === 'loading' && <FontAwesomeIcon icon={faSpinner} spin />}
-                {progressModal.status === 'success' && <FontAwesomeIcon icon={faCheckCircle} />}
+                {/* 🎯 Pro věcnou správnost: zelená fajfka = potvrzeno, červený křížek = zamítnuto */}
+                {progressModal.status === 'success' && progressModal.vecnaStatus === VS_STATUS.POTVRZENA && <FontAwesomeIcon icon={faCheckCircle} />}
+                {progressModal.status === 'success' && progressModal.vecnaStatus === VS_STATUS.ZAMITNUTA && <FontAwesomeIcon icon={faTimesCircle} />}
+                {progressModal.status === 'success' && progressModal.vecnaStatus !== VS_STATUS.POTVRZENA && progressModal.vecnaStatus !== VS_STATUS.ZAMITNUTA && <FontAwesomeIcon icon={faCheckCircle} />}
                 {progressModal.status === 'error' && <FontAwesomeIcon icon={faTimesCircle} />}
               </ProgressIconWrapper>
               <ProgressTitle>{progressModal.title}</ProgressTitle>
@@ -9678,7 +9728,7 @@ export default function InvoiceEvidencePage() {
                   onClick={async () => {
                     // Pokud je to úspěch věcné správnosti - VŽDY vrátit na seznam
                     if (progressModal.resetData?.isVecnaSpravnost) {
-                      setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false, resetData: null });
+                      setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false, vecnaStatus: null, resetData: null });
                       
                       // ✅ VŽDY navigovat na seznam faktur po uložení věcné správnosti
                       navigate('/invoices25-list');
@@ -9768,7 +9818,7 @@ export default function InvoiceEvidencePage() {
                     setJustCompletedOperation(false);
                     
                     // Zavřít progress dialog
-                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false, resetData: null });
+                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false, vecnaStatus: null, resetData: null });
                     
                     // 🔄 PŘESMĚROVÁNÍ: 
                     // 🔥 VŽDY přejít na seznam faktur po úspěšném zaevidování/aktualizaci
@@ -9784,7 +9834,7 @@ export default function InvoiceEvidencePage() {
                 <ProgressButton 
                   variant="primary" 
                   onClick={() => {
-                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false });
+                    setProgressModal({ show: false, status: 'loading', progress: 0, title: '', message: '', vecnaResetInfo: '', vecnaWasReset: false, vecnaStatus: null });
                     // 🚫 Reset flag aby příští načtení mohlo loadovat z LS
                     setJustCompletedOperation(false);
                   }}

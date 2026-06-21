@@ -177,6 +177,8 @@ function handle_invoice_toggle_check($input, $config) {
     }
     
     $vecna_spravnost_duvod = isset($input['vecna_spravnost_duvod']) ? trim($input['vecna_spravnost_duvod']) : '';
+    $vecna_spravnost_poznamka = isset($input['vecna_spravnost_poznamka']) ? trim($input['vecna_spravnost_poznamka']) : '';
+    $vecna_spravnost_umisteni_majetku = isset($input['vecna_spravnost_umisteni_majetku']) ? trim($input['vecna_spravnost_umisteni_majetku']) : '';
     
     // Validace základních parametrů
     if (!$token || !$username) {
@@ -550,6 +552,8 @@ function handle_invoice_toggle_check($input, $config) {
                         potvrdil_vecnou_spravnost_id = ?,
                         dt_potvrzeni_vecne_spravnosti = ?,
                         vecna_spravnost_duvod = ?,
+                        vecna_spravnost_poznamka = ?,
+                        vecna_spravnost_umisteni_majetku = ?,
                         stav = ?,
                         dt_aktualizace = ?,
                         aktualizoval_uzivatel_id = ?
@@ -560,6 +564,8 @@ function handle_invoice_toggle_check($input, $config) {
                     $token_data['id'],
                     $czech_datetime,
                     $vecna_spravnost_duvod,
+                    $vecna_spravnost_poznamka,
+                    $vecna_spravnost_umisteni_majetku,
                     INVOICE_STATUS_VERIFICATION,
                     $czech_datetime,
                     $token_data['id'],
@@ -576,6 +582,8 @@ function handle_invoice_toggle_check($input, $config) {
                         potvrdil_vecnou_spravnost_id = ?,
                         dt_potvrzeni_vecne_spravnosti = ?,
                         vecna_spravnost_duvod = ?,
+                        vecna_spravnost_poznamka = ?,
+                        vecna_spravnost_umisteni_majetku = ?,
                         dt_aktualizace = ?,
                         aktualizoval_uzivatel_id = ?
                     WHERE id = ?
@@ -585,6 +593,8 @@ function handle_invoice_toggle_check($input, $config) {
                     $token_data['id'],
                     $czech_datetime,
                     $vecna_spravnost_duvod,
+                    $vecna_spravnost_poznamka,
+                    $vecna_spravnost_umisteni_majetku,
                     $czech_datetime,
                     $token_data['id'],
                     $faktura_id
