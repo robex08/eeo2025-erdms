@@ -904,6 +904,29 @@ body.dark-mode .dashboard-content::-webkit-scrollbar-thumb:hover {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
 }
 
+/* Webmail - světle azurová */
+.webmail-card {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%);
+  color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+body.dark-mode .webmail-card {
+  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%);
+}
+
+.webmail-card:hover {
+  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.webmail-card .app-title,
+.webmail-card .app-description,
+.webmail-card .app-link-text,
+.webmail-card .app-arrow {
+  color: white;
+}
+
 .eeo-card:hover,
 .szm-card:hover,
 .intranet-card:hover,
@@ -941,16 +964,73 @@ body.dark-mode .dashboard-content::-webkit-scrollbar-thumb:hover {
   color: white;
 }
 
-/* Microsoft 365 - Tmavší tyrkysová s jemným stínem */
+/* DEV verze - Šedivý gradient s fialovým odstínem */
+.dev-card {
+  background: linear-gradient(135deg, #64748b 0%, #475569 100%) !important;
+  opacity: 0.92;
+  border-left: 4px solid #8b5cf6;
+}
+
+body.dark-mode .dev-card {
+  background: linear-gradient(135deg, #475569 0%, #334155 100%) !important;
+}
+
+.dev-card:hover {
+  background: linear-gradient(135deg, #475569 0%, #334155 100%) !important;
+  opacity: 1;
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3) !important;
+}
+
+.dev-card .app-title,
+.dev-card .app-description,
+.dev-card .app-link-text,
+.dev-card .app-arrow {
+  color: white !important;
+}
+
+/* Interní aplikace s M365 integrací - Modro-tyrkysový gradient */
+.m365-app-card {
+  background: linear-gradient(135deg, #0891b2 0%, #0e7490 100%) !important;
+  border-bottom: 3px solid #06b6d4;
+  box-shadow: 0 2px 8px rgba(8, 145, 178, 0.2);
+}
+
+body.dark-mode .m365-app-card {
+  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%) !important;
+}
+
+.m365-app-card:hover {
+  background: linear-gradient(135deg, #0e7490 0%, #155e75 100%) !important;
+  border-bottom-color: #22d3ee;
+  box-shadow: 0 4px 12px rgba(8, 145, 178, 0.3) !important;
+}
+
+.m365-app-card .app-title,
+.m365-app-card .app-description,
+.m365-app-card .app-link-text,
+.m365-app-card .app-arrow {
+  color: white !important;
+}
+
+/* Microsoft 365 - Tyrkysovo-zelený gradient (odlišný od běžných aplikací) */
 .ms-copilot-card,
 .ms-teams-card,
 .ms-excel-card,
 .ms-word-card,
 .ms-outlook-card,
 .ms-onedrive-card {
-  background: #0e7490;
+  background: linear-gradient(135deg, #14b8a6 0%, #0d9488 100%);
   color: white;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+body.dark-mode .ms-copilot-card,
+body.dark-mode .ms-teams-card,
+body.dark-mode .ms-excel-card,
+body.dark-mode .ms-word-card,
+body.dark-mode .ms-outlook-card,
+body.dark-mode .ms-onedrive-card {
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
 }
 
 .ms-copilot-card:hover,
@@ -959,7 +1039,7 @@ body.dark-mode .dashboard-content::-webkit-scrollbar-thumb:hover {
 .ms-word-card:hover,
 .ms-outlook-card:hover,
 .ms-onedrive-card:hover {
-  background: #155e75;
+  background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.15), 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
@@ -1048,6 +1128,22 @@ body.dark-mode .dashboard-content::-webkit-scrollbar-thumb:hover {
 
 .app-card.disabled::before {
   background: #cbd5e1;
+}
+
+.app-card.portal-hr-card {
+  background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+}
+
+body.dark-mode .app-card.portal-hr-card {
+  background: linear-gradient(135deg, #6d28d9 0%, #5b21b6 100%);
+}
+
+.app-card.elo-dms-card {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
+}
+
+body.dark-mode .app-card.elo-dms-card {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
 }
 
 .app-card.vzdelavani-card {

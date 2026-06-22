@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import authService from '../services/authService';
 import './Dashboard.css';
+// import CopilotWidget from './CopilotWidget'; // SKRYTÝ - čeká na Azure OpenAI
+
+// Verze aplikace z environment
+const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0';
 
 function Dashboard() {
   const [user, setUser] = useState(null);
@@ -868,7 +872,7 @@ function Dashboard() {
         <div className="header-left">
           <img src="/logo-ZZS.png" alt="ZZS Logo" className="header-logo" />
           <div className="header-title">
-            <h1>ERDMS portál aplikaci <span className="version-badge">v1.91</span></h1>
+            <h1>ERDMS portál aplikaci <span className="version-badge">v{APP_VERSION}</span></h1>
             <span className="header-subtitle">Zdravotnická záchranná služba Středočeského kraje, příspěvková organizace</span>
           </div>
         </div>
@@ -972,6 +976,11 @@ function Dashboard() {
               )}
             </div>
           )}
+          
+          {/* Microsoft Copilot Chat Widget - SKRYTÝ dokud nebude Azure OpenAI nebo MS Copilot API
+          <CopilotWidget />
+          */}
+          
           <span>👤 {user ? `${user.jmeno} ${user.prijmeni}` : 'Načítání...'}</span>
           <button onClick={toggleDarkMode} className="theme-toggle-btn" title={darkMode ? 'Přepnout na světlý režim' : 'Přepnout na tmavý režim'}>
             {darkMode ? (
@@ -1041,7 +1050,7 @@ function Dashboard() {
             <div className="apps-section">
               <h2 className="section-title">📋 Interní aplikace organizace</h2>
               <div className="apps-grid">
-                <a href="https://erdms.zachranka.cz/eeo-v2/?sso=auto&v=1.91" className="app-card eeo-card" target="_self">
+                <a href={`https://erdms.zachranka.cz/eeo-v2/?sso=auto&v=${APP_VERSION}`} className="app-card eeo-card m365-app-card" target="_self">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1065,7 +1074,7 @@ function Dashboard() {
 
                 {(user?.username?.toLowerCase() === 'u03924' || user?.upn?.toLowerCase()?.startsWith('u03924@') ||
                   user?.username?.toLowerCase() === 'u09694' || user?.upn?.toLowerCase()?.startsWith('u09694@')) && (
-                <a href="https://erdms.zachranka.cz/dev/eeo-v2/?sso=auto&v=1.91" className="app-card eeo-card" target="_self">
+                <a href={`https://erdms.zachranka.cz/dev/eeo-v2/?sso=auto&v=${APP_VERSION}`} className="app-card eeo-card dev-card" target="_self">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1087,6 +1096,27 @@ function Dashboard() {
                   </div>
                 </a>
                 )}
+
+                <a href="https://webmail.zachranka.cz" className="app-card webmail-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper">
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <div className="app-badges">
+                      <span className="app-badge">Aktivní</span>
+                    </div>
+                  </div>
+                  <h3 className="app-title">Webmail</h3>
+                  <p className="app-description">Interní emailová komunikace</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
 
                 <a href="https://szm.zachranka.cz" className="app-card szm-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
@@ -1131,7 +1161,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://erdms.zachranka.cz/dev/intranet-v26/?sso=auto&v=1.91" className="app-card intranet-card" target="_self">
+                <a href={`https://erdms.zachranka.cz/dev/intranet-v26/?sso=auto&v=${APP_VERSION}`} className="app-card intranet-card dev-card" target="_self">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1176,7 +1206,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://editace.zzssck.cz" className="app-card editace-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://editace.zachranka.cz/ZZSDocWeb/" className="app-card editace-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1201,6 +1231,66 @@ function Dashboard() {
                 {/* Dělící čára */}
                 <div className="section-divider" style={{ gridColumn: '1 / -1' }}></div>
 
+                <a href="https://portal.zachranka.cz" className="app-card portal-hr-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
+                  </div>
+                  <h3 className="app-title">Portal HR / Vema</h3>
+                  <p className="app-description">Mzdy, personalistika, docházka, cestovní příkazy</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://dms.zachranka.cz/ix-ELO/plugin/auth2/sign-in" className="app-card elo-dms-card" target="_blank" rel="noopener noreferrer">
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M9 12h6M12 9v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
+                  </div>
+                  <h3 className="app-title">ELO DMS</h3>
+                  <p className="app-description">Inteligentní správa dokumentů a digitální transformace</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
+                <a href="https://copilot.microsoft.com/" className="app-card" target="_blank" rel="noopener noreferrer" 
+                   style={{ background: "linear-gradient(135deg, #00A4EF 0%, #0078D4 100%)" }}>
+                  <div className="app-card-header">
+                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
+                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </div>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>M365</span>
+                  </div>
+                  <h3 className="app-title">Microsoft Copilot</h3>
+                  <p className="app-description">AI asistent pro produktivitu a kreativitu</p>
+                  <div className="app-footer">
+                    <span className="app-link-text">Otevřít aplikaci</span>
+                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
+                    </svg>
+                  </div>
+                </a>
+
                 <a href="https://vzdelavani.zachranka.cz" className="app-card vzdelavani-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
@@ -1210,9 +1300,9 @@ function Dashboard() {
                         <path d="M12 14l9-5-9-5-9 5 9 5zm0 0l6.16-3.422a12.083 12.083 0 01.665 6.479A11.952 11.952 0 0012 20.055a11.952 11.952 0 00-6.824-2.998 12.078 12.078 0 01.665-6.479L12 14z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Vzdělávání</span>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">Vzdělávací platforma</h3>
+                  <h3 className="app-title">Vzdělávací platforma (vzdělávání)</h3>
                   <p className="app-description">Kurzy a vzdělávací materiály</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1229,9 +1319,9 @@ function Dashboard() {
                         <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Kontrola</span>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">Inspektor</h3>
+                  <h3 className="app-title">Inspektor (kontrola)</h3>
                   <p className="app-description">Inspekční systém a kontroly</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1243,15 +1333,15 @@ function Dashboard() {
 
                 <a href="https://redmine.zachranka.cz/" className="app-card redmine-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
-                    <div className="app-icon-wrapper support-icon">
+                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                         <path d="M9 12h6m-6 4h6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge support-badge">Podpora</span>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">Redmine</h3>
+                  <h3 className="app-title">Redmine (řízení projektů)</h3>
                   <p className="app-description">Správa projektů a úkolů</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1263,14 +1353,14 @@ function Dashboard() {
 
                 <a href="https://itop.zachranka.cz/" className="app-card itop-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
-                    <div className="app-icon-wrapper support-icon">
+                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <path d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                       </svg>
                     </div>
-                    <span className="app-badge support-badge">Podpora</span>
+                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">iTOP</h3>
+                  <h3 className="app-title">iTOP (helpdesk)</h3>
                   <p className="app-description">IT service management a helpdesk</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
