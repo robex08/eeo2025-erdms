@@ -170,6 +170,12 @@ define('TBL_ROCNI_POPLATKY', '25a_rocni_poplatky');
 define('TBL_ROCNI_POPLATKY_POLOZKY', '25a_rocni_poplatky_polozky');
 define('TBL_ROCNI_POPLATKY_PRILOHY', '25a_rocni_poplatky_prilohy');
 
+// DATABASE TABLE NAMES - VEMA DATA
+define('TBL_VEMA_FIRMYUPL', '25v_firmyupl');
+define('TBL_VEMA_FPAZAHL', '25v_fpazahl');
+define('TBL_VEMA_SMLA', '25v_smla');
+define('TBL_VEMA_KONTROLA_METADATA', '25v_kontrola_metadata');
+
 // FAKTURY - WORKFLOW STAVY (ENUM hodnoty)
 define('INVOICE_STATUS_REGISTERED', 'ZAEVIDOVANA');      // Nově vložená z podatelny
 define('INVOICE_STATUS_VERIFICATION', 'VECNA_SPRAVNOST'); // Poslaná k potvrzení věcné správnosti
@@ -297,6 +303,9 @@ require_once __DIR__ . '/v2025.03_25/lib/hierarchyTriggers.php';
 require_once __DIR__ . '/v2025.03_25/lib/planningHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/lpHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/odboryLpHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/vemaHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/vemaKontrolaHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/vemaPropojenHandlers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
@@ -2392,7 +2401,77 @@ switch ($endpoint) {
             echo json_encode(array('err' => 'Method not allowed'));
         }
         break;
-        
+
+    // ============================================
+    // VEMA MODULE - 4 endpoints
+    // ============================================
+    
+    case 'vema/firmy/list':
+        if ($request_method === 'POST') {
+            handle_vema_firmy_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    case 'vema/faktury/list':
+        if ($request_method === 'POST') {
+            handle_vema_faktury_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    case 'vema/smlouvy/list':
+        if ($request_method === 'POST') {
+            handle_vema_smlouvy_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+    
+    case 'vema/import/upload':
+        if ($request_method === 'POST') {
+            handle_vema_import_upload($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    case 'vema/truncate':
+        if ($request_method === 'POST') {
+            handle_vema_truncate($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
+
+    // VEMA KONTROLA MODULE - 4 endpoints
+    case 'vema-kontrola/get':
+        handle_vema_kontrola_get($input, $config);
+        break;
+
+    case 'vema-kontrola/save':
+        handle_vema_kontrola_save($input, $config);
+        break;
+
+    case 'vema-kontrola/list':
+        handle_vema_kontrola_list($input, $config);
+        break;
+
+    case 'vema-kontrola/stats':
+        handle_vema_kontrola_stats($input, $config);
+        break;
+
+    case 'vema-faktury/propojeni-eeo':
+        handle_vema_faktury_propojeni_eeo($input, $config);
+        break;
+
     // === NOVÉ OBJEDNÁVKY API (25a_*) ===
     case 'orders25/list':
         if ($request_method === 'POST') {

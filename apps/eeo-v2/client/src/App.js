@@ -54,6 +54,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const AppSettings = lazy(() => import('./pages/AppSettings'));
 const AuditLogPage = lazy(() => import('./pages/AuditLogPage')); // Audit log - SUPERADMIN / ADMINISTRATOR
 const ContactsPage = lazy(() => import('./pages/ContactsPage'));
+const VemaDenik = lazy(() => import('./pages/VemaDenik'));
 const OrganizationHierarchy = lazy(() => import('./pages/OrganizationHierarchy'));
 const PlanningAdminPage = lazy(() => import('./pages/PlanningAdminPage'));
 const MaintenancePage = lazy(() => import('./pages/MaintenancePage'));
@@ -1222,6 +1223,7 @@ function App() {
                     ))
                   ) && <Route path="/address-book" element={<AddressBookPage />} />}
                   {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
+                  {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('VEMA_VIEW'))) && <Route path="/vema-denik" element={<VemaDenik />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
                   {isLoggedIn && <Route path="/dashboard" element={<DashboardPage />} />}
                   {/* Redirect root to dashboard for logged in users */}
