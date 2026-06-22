@@ -29,6 +29,7 @@ import AuthContext from '../context/AuthContext';
 import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, formatExcelDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
 import VemaKontrolaCell from '../components/VemaKontrolaCell';
 import { getVemaFakturaPropojeni } from '../services/apiVemaPropojeni';
+import { fetchLimitovanePrisliby } from '../services/api2auth';
 
 // ============================================================================
 // STYLED COMPONENTS - OrderV3 style
@@ -134,11 +135,7 @@ const Tab = styled.button`
 const SearchContainer = styled.div`
   display: flex;
   gap: 1rem;
-  margin-bottom: 1rem;
-  background: white;
-  padding: 1rem;
-  border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0;
 `;
 
 const SearchBox = styled.div`
@@ -219,6 +216,8 @@ const TableHeader = styled.th`
 `;
 
 const TableRow = styled.tr`
+  background: ${props => props.$background || 'white'};
+  
   &:hover {
     background: #f8fafc;
   }
@@ -660,6 +659,20 @@ const VemaDenik = () => {
   const [firmyData, setFirmyData] = useState([]);
   const [fakturyData, setFakturyData] = useState([]);
   const [smlouvyData, setSmlouvyData] = useState([]);
+  
+  // Cache markery - true znamená "už načteno, nezatěžovat server"
+  const [dataLoaded, setDataLoaded] = useState({ firmy: false, faktury: false, smlouvy: false });
+  // Aktuální search pro který jsou data v cache (když se search změní, cache se invaliduje)
+  const [cachedSearch, setCachedSearch] = useState('');
+
+  // Expandable rows - propojení VEMA-EEO
+  const [expanded, setExpanded] = useState({});
+  const [propojenData, setPropojenData] = useState({}); // Ukládá propojené záznamy pro každý řádek
+  const [loadingPropojeni, setLoadingPropojeni] = useState({}); // Loading state pro každý řádek
+
+  // LP seznam pro parsing financování
+  const [lpSeznam, setLpSeznam] = useState([]);
+  const [lpLoaded, setLpLoaded] = useState(false);
 
   // Pagination
   const [pageIndex, setPageIndex] = useState(0);
@@ -681,26 +694,98 @@ const VemaDenik = () => {
   const [truncating, setTruncating] = useState(false);
 
   // Load data based on active tab
+  // Strategy:
+  // 1. Při prvním načtení (a po změně search) → načti VŠECHNY 3 taby paralelně
+  //    => okamžitě se zobrazí počty v ouškách + přepínání je instant
+  // 2. Při přepnutí na tab který už je v cache → nic se nenačítá (instant)
+  // 3. Při změně search → invaliduj cache a načti znovu vše
+  
+  // Load LP seznam pro parsing financování
+  useEffect(() => {
+    if (!token || !username || lpLoaded) return;
+    
+    const loadLP = async () => {
+      try {
+        const response = await fetchLimitovanePrisliby({ token, username });
+        if (response && Array.isArray(response)) {
+          setLpSeznam(response);
+          setLpLoaded(true);
+          console.log('✅ LP seznam načten:', response.length, 'záznamů');
+        }
+      } catch (err) {
+        console.error('Chyba načítání LP seznamu:', err);
+        // Nefatální chyba - parsování financování bude fallback na kódy
+      }
+    };
+    
+    loadLP();
+  }, [token, username, lpLoaded]);
+  
   useEffect(() => {
     if (!token || !username) return;
 
-    let cancelled = false; // Cleanup flag
+    let cancelled = false;
 
-    const loadData = async () => {
+    // Detekce změny searche → invaliduj cache
+    if (search !== cachedSearch) {
+      setDataLoaded({ firmy: false, faktury: false, smlouvy: false });
+      setCachedSearch(search);
+    }
+
+    // Pokud aktuální tab už má data v cache, jen vypneme loading
+    const isCached = dataLoaded[activeTab] && search === cachedSearch;
+    if (isCached) {
+      setLoading(false);
+      return;
+    }
+
+    // Načíst všechny chybějící taby paralelně (typicky první load)
+    const loadAllMissing = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        if (activeTab === 'firmy') {
-          const response = await loadVemaFirmy({ token, username, limit: 50000, offset: 0, search });
-          if (!cancelled) setFirmyData(response.data || []);
-        } else if (activeTab === 'faktury') {
-          const response = await loadVemaFaktury({ token, username, limit: 50000, offset: 0, search });
-          if (!cancelled) setFakturyData(response.data || []);
-        } else if (activeTab === 'smlouvy') {
-          const response = await loadVemaSmlouvy({ token, username, limit: 50000, offset: 0, search });
-          if (!cancelled) setSmlouvyData(response.data || []);
+        const promises = [];
+        const labels = [];
+
+        if (!dataLoaded.firmy) {
+          promises.push(loadVemaFirmy({ token, username, limit: 50000, offset: 0, search }));
+          labels.push('firmy');
+        } else {
+          promises.push(null);
+          labels.push(null);
         }
+
+        if (!dataLoaded.faktury) {
+          promises.push(loadVemaFaktury({ token, username, limit: 50000, offset: 0, search }));
+          labels.push('faktury');
+        } else {
+          promises.push(null);
+          labels.push(null);
+        }
+
+        if (!dataLoaded.smlouvy) {
+          promises.push(loadVemaSmlouvy({ token, username, limit: 50000, offset: 0, search }));
+          labels.push('smlouvy');
+        } else {
+          promises.push(null);
+          labels.push(null);
+        }
+
+        const results = await Promise.all(promises.map(p => p || Promise.resolve(null)));
+        if (cancelled) return;
+
+        const newLoaded = { ...dataLoaded };
+        results.forEach((resp, idx) => {
+          if (resp && labels[idx]) {
+            const data = resp.data || [];
+            if (labels[idx] === 'firmy') setFirmyData(data);
+            else if (labels[idx] === 'faktury') setFakturyData(data);
+            else if (labels[idx] === 'smlouvy') setSmlouvyData(data);
+            newLoaded[labels[idx]] = true;
+          }
+        });
+        setDataLoaded(newLoaded);
       } catch (err) {
         console.error('Error loading VEMA data:', err);
         if (!cancelled) setError(err.message || 'Chyba při načítání dat');
@@ -709,11 +794,12 @@ const VemaDenik = () => {
       }
     };
 
-    loadData();
+    loadAllMissing();
 
     return () => {
-      cancelled = true; // Cleanup - prevence race condition
+      cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, token, username, search]);
 
   // Import handler
@@ -760,6 +846,8 @@ const VemaDenik = () => {
       setFirmyData(firmyResp.data || []);
       setFakturyData(fakturyResp.data || []);
       setSmlouvyData(smlouvyResp.data || []);
+      // Cache je aktuální = všechny taby naplněné
+      setDataLoaded({ firmy: true, faktury: true, smlouvy: true });
 
     } catch (err) {
       console.error('Import error:', err);
@@ -786,6 +874,7 @@ const VemaDenik = () => {
       setFirmyData([]);
       setFakturyData([]);
       setSmlouvyData([]);
+      setDataLoaded({ firmy: true, faktury: true, smlouvy: true });
       setShowTruncateModal(false);
 
     } catch (err) {
@@ -906,8 +995,143 @@ const VemaDenik = () => {
     }
   ], [token, username]);
 
+  // Načtení propojení VEMA-EEO
+  const loadPropojeni = async (row) => {
+    const rowId = row.id;
+    
+    // Pokud už máme data, nebudeme je znovu načítat
+    if (propojenData[rowId]) {
+      return;
+    }
+
+    setLoadingPropojeni(prev => ({ ...prev, [rowId]: true }));
+
+    try {
+      const vemaFaktura = {
+        cfak: row.original.cfak,
+        cobj: row.original.cobj,
+        csml: row.original.csml,
+        vsymb: row.original.vsymb,
+        cdok: row.original.cdok,
+        smlouva_ecsml: row.original.smlouva_ecsml,
+        cobj_formatovane: row.original.cobj_formatovane,
+        celkem: row.original.celkem  // ✅ PŘIDAT ČÁSTKU pro matchování
+      };
+
+      const data = await getVemaFakturaPropojeni(vemaFaktura, token, username);
+      
+      setPropojenData(prev => ({
+        ...prev,
+        [rowId]: data
+      }));
+    } catch (error) {
+      console.error('Chyba při načítání propojení:', error);
+      setPropojenData(prev => ({
+        ...prev,
+        [rowId]: { objednavky: [], faktury: [], smlouvy: [], celkem: 0, error: true }
+      }));
+    } finally {
+      setLoadingPropojeni(prev => ({ ...prev, [rowId]: false }));
+    }
+  };
+
   // Faktury columns
   const fakturyColumns = useMemo(() => [
+    {
+      id: 'expander',
+      header: '',
+      size: 40,
+      minSize: 40,
+      maxSize: 40,
+      enableSorting: false,
+      cell: ({ row }) => {
+        const rowId = row.id;
+        const propojeni = propojenData[rowId];
+        const isLoading = loadingPropojeni[rowId];
+        const isExpanded = row.getIsExpanded();
+        
+        // Počítat z backendu (pokud existují)
+        const pocetObj = row.original.pocet_objednavek || 0;
+        const pocetFa = row.original.pocet_faktur || 0;
+        const pocetSml = row.original.pocet_smluv || 0;
+        const pocetRp = row.original.pocet_rocnich_poplatku || 0;
+        const count = pocetObj + pocetFa + pocetSml + pocetRp;
+        
+        // Button je vždy enabled - až po načtení zjistíme jestli jsou data
+        const hasLoadedEmptyData = propojeni && !isLoading && propojeni.celkem === 0;
+
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {hasLoadedEmptyData ? (
+              <button
+                disabled
+                title="Žádné propojené záznamy"
+                style={{
+                  background: '#f3f4f6',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  width: '22px',
+                  cursor: 'not-allowed',
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#9ca3af',
+                  flexShrink: 0,
+                  padding: '1px 0',
+                  gap: 0,
+                  lineHeight: 1,
+                  opacity: 0.5
+                }}
+              >
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1 }}>0</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>+</span>
+              </button>
+            ) : (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isExpanded && !propojeni) {
+                    loadPropojeni(row);
+                  }
+                  row.toggleExpanded();
+                }}
+                title={isExpanded ? 'Skrýt propojené záznamy' : (isLoading ? 'Načítám...' : (propojeni ? `Zobrazit propojené záznamy (${propojeni.celkem})` : `Načíst propojené záznamy (${count})`))}
+                style={{
+                  background: isExpanded ? '#fee2e2' : '#eff6ff',
+                  border: `1px solid ${isExpanded ? '#fca5a5' : '#93c5fd'}`,
+                  borderRadius: '4px',
+                  width: '22px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: isExpanded ? '#dc2626' : '#3b82f6',
+                  flexShrink: 0,
+                  padding: '1px 0',
+                  gap: 0,
+                  lineHeight: 1
+                }}
+              >
+                <span style={{ 
+                  fontSize: '0.6rem', 
+                  fontWeight: 700, 
+                  lineHeight: 1, 
+                  color: isExpanded ? '#dc2626' : '#1e40af', 
+                  opacity: 0.85 
+                }}>
+                  {isLoading ? '…' : count}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
+                  {isExpanded ? '−' : '+'}
+                </span>
+              </button>
+            )}
+          </div>
+        );
+      }
+    },
     {
       accessorKey: 'id',
       header: 'ID',
@@ -1109,7 +1333,7 @@ const VemaDenik = () => {
         </div>
       )
     }
-  ], [token, username]);
+  ], [token, username, propojenData, loadingPropojeni]);
 
   // Smlouvy columns
   const smlouvyColumns = useMemo(() => [
@@ -1281,12 +1505,16 @@ const VemaDenik = () => {
     },
     enableRowSelection: false,
     autoResetPageIndex: false,
+    getRowCanExpand: () => activeTab === 'faktury', // Pouze faktury mají expandable rows
     state: {
-      sorting
+      sorting,
+      expanded
     },
+    onExpandedChange: setExpanded,
     onSortingChange: setSorting,
     getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel()
+    getSortedRowModel: getSortedRowModel(),
+    getExpandedRowModel: getExpandedRowModel()
   });
 
   // Paginated data - počítáno během renderu, ne v useMemo
@@ -1320,6 +1548,552 @@ const VemaDenik = () => {
   const goToLastPage = () => setPageIndex(totalPages - 1);
 
   // ============================================================================
+  // RENDER EXPANDED CONTENT - VEMA-EEO Propojení (TABULKOVÁ STRUKTURA)
+  // ============================================================================
+
+  const renderExpandedContent = (row) => {
+    const rowId = row.id;
+    const propojeni = propojenData[rowId];
+    const isLoading = loadingPropojeni[rowId];
+
+    if (isLoading) {
+      return (
+        <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+          Načítám propojení...
+        </div>
+      );
+    }
+
+    if (!propojeni) {
+      return (
+        <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+          Data se načítají...
+        </div>
+      );
+    }
+
+    if (propojeni.error) {
+      return (
+        <div style={{ padding: '1.5rem', textAlign: 'center', color: '#ef4444' }}>
+          Chyba při načítání propojení
+        </div>
+      );
+    }
+
+    const { objednavky = [], faktury = [], smlouvy = [], celkem = 0 } = propojeni;
+
+    if (celkem === 0) {
+      return (
+        <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748b' }}>
+          Nebyly nalezeny žádné propojené záznamy
+        </div>
+      );
+    }
+
+    const tableContainerStyle = {
+      marginBottom: '1rem',
+      borderRadius: '8px',
+      border: '1px solid #e5e7eb',
+      overflow: 'hidden',
+      background: 'white'
+    };
+
+    const tableStyle = {
+      width: '100%',
+      tableLayout: 'fixed',
+      borderCollapse: 'collapse',
+      fontSize: '0.82rem',
+      fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif",
+      letterSpacing: '-0.01em'
+    };
+
+    const thStyle = {
+      padding: '0.5rem 0.75rem',
+      fontWeight: 600,
+      fontSize: '0.75rem',
+      color: '#334155',
+      textTransform: 'uppercase',
+      letterSpacing: '0.025em',
+      borderBottom: '2px solid #cbd5e1',
+      background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+      textAlign: 'left',
+      whiteSpace: 'nowrap'
+    };
+
+    const tdStyle = {
+      padding: '0.5rem 0.75rem',
+      borderBottom: '1px solid #f1f5f9',
+      color: '#374151',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      wordBreak: 'break-word'
+    };
+
+    const sectionHeaderStyle = {
+      fontSize: '0.8rem',
+      fontWeight: '700',
+      color: '#475569',
+      marginBottom: '0.5rem',
+      marginTop: '0.75rem',
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.5rem'
+    };
+
+    return (
+      <div style={{ 
+        padding: '0.5rem 1rem 0.75rem 2rem', 
+        background: '#f8fafc', 
+        borderLeft: '4px solid #3b82f6'
+      }}>
+        
+        {/* OBJEDNÁVKY */}
+        {objednavky.length > 0 && (
+          <>
+            <div style={sectionHeaderStyle}>
+              <span style={{ fontSize: '1.1rem' }}>📦</span>
+              <span>Objednávky ({objednavky.length})</span>
+            </div>
+            <div style={tableContainerStyle}>
+              <table style={tableStyle}>
+                <colgroup>
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '7%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '8%' }} />
+                  <col style={{ width: '6%' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Č. obj.</th>
+                    <th style={thStyle}>Předmět obj.</th>
+                    <th style={thStyle}>Datum</th>
+                    <th style={thStyle}>Stav</th>
+                    <th style={thStyle}>Dodavatel</th>
+                    <th style={thStyle}>Zadavatel</th>
+                    <th style={thStyle}>Financování</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>MAX DPH</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Cena detail</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Zaplaceno</th>
+                    <th style={thStyle}>Počet FA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {objednavky.map((obj, idx) => {
+                    const zadavatel = obj.zadavatel_jmeno && obj.zadavatel_prijmeni 
+                      ? `${obj.zadavatel_jmeno} ${obj.zadavatel_prijmeni}`
+                      : '—';
+                    
+                    return (
+                      <tr key={idx} style={{ 
+                        background: idx % 2 === 0 ? 'white' : '#f8fafc',
+                        transition: 'background-color 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#e8f0fe'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#f8fafc'}
+                      >
+                        <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b', fontSize: '0.75rem' }}>
+                          {obj.cislo_objednavky || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.75rem' }}>
+                          {obj.nazev || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {obj.dt_objednavky ? new Date(obj.dt_objednavky).toLocaleDateString('cs-CZ') : '—'}
+                        </td>
+                        <td style={tdStyle}>
+                          {obj.stav && (
+                            <span style={{
+                              padding: '2px 6px',
+                              background: '#dbeafe',
+                              color: '#1e40af',
+                              borderRadius: '3px',
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.3px',
+                              display: 'inline-block',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {obj.stav}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {obj.dodavatel || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {zadavatel}
+                        </td>
+                        <td style={tdStyle}>
+                          {(() => {
+                            // Parsovat financování JSON do lidské podoby
+                            if (!obj.financovani) return '—';
+                            
+                            try {
+                              let financovaniData;
+                              // Pokud je to JSON string, parsuj ho
+                              if (typeof obj.financovani === 'string' && obj.financovani.startsWith('{')) {
+                                financovaniData = JSON.parse(obj.financovani);
+                              } else if (typeof obj.financovani === 'object') {
+                                financovaniData = obj.financovani;
+                              } else {
+                                // Fallback - zobrazit jako text
+                                return (
+                                  <span style={{
+                                    fontSize: '0.7rem',
+                                    color: '#6b7280'
+                                  }}>
+                                    {obj.financovani}
+                                  </span>
+                                );
+                              }
+                              
+                              const typ = financovaniData.TYP || financovaniData.typ;
+                              const lpKody = financovaniData.LP_KODY || financovaniData.lp_kody || [];
+                              
+                              // Formátovat podle typu
+                              let label = '';
+                              let bg = '#f3f4f6';
+                              let color = '#6b7280';
+                              
+                              if (typ === 'LP') {
+                                // Dohledat názvy LP podle ID (LP_KODY obsahuje ID, ne kódy)
+                                if (lpKody.length > 0 && lpSeznam.length > 0) {
+                                  const lpNazvy = lpKody.map(lpId => {
+                                    // Najdi LP v seznamu podle ID
+                                    const lp = lpSeznam.find(l => l.id === parseInt(lpId));
+                                    
+                                    if (lp) {
+                                      // Zkratka LP je v poli cislo_lp (např. "LPIT2/132/2024")
+                                      const cisloLp = lp.cislo_lp || `LP-${lpId}`;
+                                      const zkratka = cisloLp.split('/')[0]; // První část před lomítkem (např. "LPIT2")
+                                      const nazev = lp.vyuziti || lp.nazev || lp.nazev_uctu || '';
+                                      
+                                      return nazev ? `${zkratka}: ${nazev}` : zkratka;
+                                    }
+                                    console.warn(`LP ID ${lpId} nenalezen v seznamu (celkem ${lpSeznam.length} LP)`);
+                                    return `LP ID ${lpId}`;
+                                  });
+                                  label = lpNazvy.join(', ');
+                                } else if (lpKody.length > 0) {
+                                  // LP seznam není načten - zobrazit jen ID
+                                  label = lpKody.map(k => `LP ID ${k}`).join(', ');
+                                } else {
+                                  label = 'Limitovaný příslib';
+                                }
+                                bg = '#fef3c7';
+                                color = '#92400e';
+                              } else if (typ === 'SMLOUVA') {
+                                label = 'Smlouva';
+                                bg = '#f0f9ff';
+                                color = '#0369a1';
+                              } else if (typ === 'INDIVIDUALNI') {
+                                label = 'Individuální schválení';
+                                bg = '#fce7f3';
+                                color = '#9f1239';
+                              } else if (typ === 'POJISTNA_UDALOST') {
+                                label = 'Pojistná událost';
+                                bg = '#fef3c7';
+                                color = '#ea580c';
+                              } else {
+                                label = typ || 'Jiné';
+                              }
+                              
+                              return (
+                                <span style={{
+                                  padding: '2px 6px',
+                                  background: bg,
+                                  color: color,
+                                  borderRadius: '3px',
+                                  fontSize: '0.65rem',
+                                  fontWeight: 600,
+                                  letterSpacing: '0.3px',
+                                  display: 'inline-block',
+                                  whiteSpace: 'nowrap'
+                                }}>
+                                  {label}
+                                </span>
+                              );
+                            } catch (e) {
+                              // Při chybě parsování zobrazit původní text
+                              return (
+                                <span style={{
+                                  fontSize: '0.7rem',
+                                  color: '#6b7280'
+                                }}>
+                                  {obj.financovani}
+                                </span>
+                              );
+                            }
+                          })()}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#3b82f6', fontSize: '0.75rem' }}>
+                          {obj.castka_max ? `${parseFloat(obj.castka_max).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#059669', fontSize: '0.75rem' }}>
+                          {obj.castka_detail ? `${parseFloat(obj.castka_detail).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
+                          {obj.zaplaceno ? `${parseFloat(obj.zaplaceno).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'center', fontSize: '0.75rem' }}>
+                          {obj.pocet_faktur > 0 ? (
+                            <span style={{
+                              padding: '2px 8px',
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              borderRadius: '3px',
+                              fontSize: '0.7rem',
+                              fontWeight: 600
+                            }}>
+                              {obj.pocet_faktur}
+                            </span>
+                          ) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* FAKTURY */}
+        {faktury.length > 0 && (
+          <>
+            <div style={sectionHeaderStyle}>
+              <span style={{ fontSize: '1.1rem' }}>🧾</span>
+              <span>Faktury ({faktury.length})</span>
+            </div>
+            <div style={tableContainerStyle}>
+              <table style={tableStyle}>
+                <colgroup>
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '9%' }} />
+                  <col style={{ width: '11%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '19%' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Č. faktury</th>
+                    <th style={thStyle}>Č. obj.</th>
+                    <th style={thStyle}>Vystavení</th>
+                    <th style={thStyle}>Stav</th>
+                    <th style={thStyle}>Dodavatel</th>
+                    <th style={thStyle}>VEMA kód</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Částka</th>
+                    <th style={thStyle}>Splatnost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {faktury.map((fa, idx) => {
+                    // Překlad stavů faktur do češtiny
+                    const stavMap = {
+                      'ZAEVIDOVANA': 'Zaevidována',
+                      'VECNA_SPRAVNOST': 'Věcná správnost',
+                      'V_RESENI': 'V řešení',
+                      'PREDANA_PO': 'Předána PO',
+                      'K_ZAPLACENI': 'K zaplací',
+                      'ZAPLACENO': 'Zaplaceno',
+                      'DOKONCENA': 'Dokončena',
+                      'STORNO': 'Storno'
+                    };
+                    const stavCesky = fa.stav ? (stavMap[fa.stav] || fa.stav) : '—';
+                    
+                    return (
+                      <tr key={idx} style={{ 
+                        background: idx % 2 === 0 ? 'white' : '#f8fafc',
+                        transition: 'background-color 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#e8f0fe'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#f8fafc'}
+                      >
+                        <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b', fontSize: '0.75rem' }}>
+                          {fa.cislo_faktury || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.75rem' }}>
+                          {fa.cislo_objednavky || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {fa.datum_vystaveni ? new Date(fa.datum_vystaveni).toLocaleDateString('cs-CZ') : '—'}
+                        </td>
+                        <td style={tdStyle}>
+                          {fa.stav && (
+                            <span style={{
+                              padding: '2px 6px',
+                              background: '#fef3c7',
+                              color: '#92400e',
+                              borderRadius: '3px',
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.3px',
+                              display: 'inline-block',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {stavCesky}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {fa.dodavatel || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b' }}>
+                          {fa.fa_vema_kod || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
+                          {fa.castka ? `${parseFloat(fa.castka).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {fa.datum_splatnosti ? new Date(fa.datum_splatnosti).toLocaleDateString('cs-CZ') : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {/* ROČNÍ POPLATKY */}
+        {propojeni.rocni_poplatky && propojeni.rocni_poplatky.length > 0 && (
+          <>
+            <div style={sectionHeaderStyle}>
+              <span style={{ fontSize: '1.1rem' }}>💳</span>
+              <span>Roční poplatky ({propojeni.rocni_poplatky.length})</span>
+            </div>
+            <div style={tableContainerStyle}>
+              <table style={tableStyle}>
+                <colgroup>
+                  <col style={{ width: '16%' }} />
+                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '10%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '8%' }} />
+                </colgroup>
+                <thead>
+                  <tr>
+                    <th style={thStyle}>Č. smlouvy</th>
+                    <th style={thStyle}>Název</th>
+                    <th style={thStyle}>Rok</th>
+                    <th style={thStyle}>Druh</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Celková částka</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Zaplaceno</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Zbývá zaplatit</th>
+                    <th style={thStyle}>Stav</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {propojeni.rocni_poplatky.map((rp, idx) => {
+                    // Mapování stavů ročních poplatků
+                    const stavMap = {
+                      'NEZAPLACENO': { bg: '#fee2e2', color: '#991b1b', label: 'Nezaplaceno' },
+                      'CASTECNE_ZAPLACENO': { bg: '#fef3c7', color: '#92400e', label: 'Částečně zaplaceno' },
+                      'ZAPLACENO': { bg: '#dcfce7', color: '#166534', label: 'Zaplaceno' },
+                      'STORNOVANO': { bg: '#f3f4f6', color: '#6b7280', label: 'Stornováno' }
+                    };
+                    const stavStyle = rp.stav ? (stavMap[rp.stav] || { bg: '#e0e7ff', color: '#4338ca', label: rp.stav }) : null;
+                    
+                    return (
+                      <tr key={idx} style={{ 
+                        background: idx % 2 === 0 ? 'white' : '#f8fafc',
+                        transition: 'background-color 0.15s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.background = '#e8f0fe'}
+                      onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#f8fafc'}
+                      >
+                        <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b', fontSize: '0.75rem' }}>
+                          {rp.cislo_smlouvy || '—'}
+                        </td>
+                        <td style={tdStyle}>
+                          <div style={{ fontWeight: 500, fontSize: '0.75rem' }}>
+                            {rp.nazev || '—'}
+                          </div>
+                          {rp.nazev_smlouvy && (
+                            <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '2px' }}>
+                              {rp.nazev_smlouvy}
+                            </div>
+                          )}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, fontSize: '0.8rem' }}>
+                          {rp.rok || '—'}
+                        </td>
+                        <td style={tdStyle}>
+                          {rp.druh && (
+                            <span style={{
+                              padding: '2px 6px',
+                              background: '#f0f9ff',
+                              color: '#0369a1',
+                              borderRadius: '3px',
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.3px',
+                              display: 'inline-block',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {rp.druh}
+                            </span>
+                          )}
+                          {!rp.druh && '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#3b82f6', fontSize: '0.75rem' }}>
+                          {rp.celkova_castka ? `${parseFloat(rp.celkova_castka).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#059669', fontSize: '0.75rem' }}>
+                          {rp.zaplaceno_celkem ? `${parseFloat(rp.zaplaceno_celkem).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
+                          {rp.zbyva_zaplatit ? `${parseFloat(rp.zbyva_zaplatit).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
+                        </td>
+                        <td style={tdStyle}>
+                          {stavStyle ? (
+                            <span style={{
+                              padding: '3px 8px',
+                              background: stavStyle.bg,
+                              color: stavStyle.color,
+                              borderRadius: '4px',
+                              fontSize: '0.65rem',
+                              fontWeight: 600,
+                              textTransform: 'uppercase',
+                              letterSpacing: '0.3px',
+                              whiteSpace: 'nowrap'
+                            }}>
+                              {stavStyle.label}
+                            </span>
+                          ) : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
+  // ============================================================================
   // RENDER
   // ============================================================================
 
@@ -1340,7 +2114,7 @@ const VemaDenik = () => {
             <FontAwesomeIcon icon={faUpload} />
             Import dat
           </HeaderButton>
-          {userDetail?.role_kod === 'SUPERADMIN' && (
+          {userDetail?.roles?.some(r => r.kod_role === 'SUPERADMIN') && (
             <HeaderButton 
               onClick={() => setShowTruncateModal(true)}
               style={{background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)'}}
@@ -1356,38 +2130,165 @@ const VemaDenik = () => {
       <TabsContainer>
         <Tab $active={activeTab === 'faktury'} onClick={() => { setActiveTab('faktury'); setPageIndex(0); }}>
           <FontAwesomeIcon icon={faFileInvoice} />
-          Faktury ({fakturyData.length})
+          Faktury ({dataLoaded.faktury ? fakturyData.length : '…'})
         </Tab>
         <Tab $active={activeTab === 'smlouvy'} onClick={() => { setActiveTab('smlouvy'); setPageIndex(0); }}>
           <FontAwesomeIcon icon={faFileContract} />
-          Smlouvy ({smlouvyData.length})
+          Smlouvy ({dataLoaded.smlouvy ? smlouvyData.length : '…'})
         </Tab>
         <Tab $active={activeTab === 'firmy'} onClick={() => { setActiveTab('firmy'); setPageIndex(0); }}>
           <FontAwesomeIcon icon={faBuilding} />
-          Firmy ({firmyData.length})
+          Firmy ({dataLoaded.firmy ? firmyData.length : '…'})
         </Tab>
       </TabsContainer>
 
-      {/* Search */}
-      <SearchContainer>
-        <SearchBox>
-          <FontAwesomeIcon icon={faSearch} />
-          <SearchInput
-            type="text"
-            placeholder={`Hledat v ${activeTab}...`}
-            value={search}
-            onChange={handleSearchChange}
-          />
-          {search && (
-            <ClearButton onClick={handleClearSearch}>
-              <FontAwesomeIcon icon={faTimes} />
-            </ClearButton>
-          )}
-        </SearchBox>
-      </SearchContainer>
-
       {/* Error */}
       {error && <ErrorMessage>{error}</ErrorMessage>}
+
+      {/* Search + Statistický badge v jednom řádku */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center',
+        gap: '1rem',
+        marginBottom: '1rem',
+        flexWrap: 'wrap'
+      }}>
+        {/* Search - flex-grow pro dynamickou šířku */}
+        <SearchContainer style={{ flex: '1 1 300px', margin: 0 }}>
+          <SearchBox>
+            <FontAwesomeIcon icon={faSearch} />
+            <SearchInput
+              type="text"
+              placeholder={`Hledat v ${activeTab}...`}
+              value={search}
+              onChange={handleSearchChange}
+            />
+            {search && (
+              <ClearButton onClick={handleClearSearch}>
+                <FontAwesomeIcon icon={faTimes} />
+              </ClearButton>
+            )}
+          </SearchBox>
+        </SearchContainer>
+
+        {/* Statistický badge - pouze pro faktury */}
+        {activeTab === 'faktury' && dataLoaded.faktury && (
+          <div style={{ 
+            display: 'flex', 
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+            flex: '0 0 auto'
+          }}>
+          {(() => {
+            // Spočítat statistiky
+            let bezVazby = 0;
+            let pouzeObj = 0;
+            let pouzeFa = 0;
+            let objAFa = 0;
+            let rocniPopl = 0;
+            
+            fakturyData.forEach(fa => {
+              const pocetObj = fa.pocet_objednavek || 0;
+              const pocetFa = fa.pocet_faktur || 0;
+              const pocetRp = fa.pocet_rocnich_poplatku || 0;
+              const celkem = pocetObj + pocetFa + pocetRp;
+              
+              if (celkem === 0) {
+                bezVazby++;
+              } else if (pocetRp > 0) {
+                rocniPopl++;
+              } else if (pocetObj > 0 && pocetFa > 0) {
+                objAFa++;
+              } else if (pocetFa > 0) {
+                pouzeFa++;
+              } else if (pocetObj > 0) {
+                pouzeObj++;
+              }
+            });
+            
+            return (
+              <>
+                <span style={{
+                  padding: '0.4rem 0.75rem',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#6b7280',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}>
+                  <span style={{ fontSize: '0.9rem' }}>⚪</span>
+                  Bez vazby: {bezVazby}
+                </span>
+                <span style={{
+                  padding: '0.4rem 0.75rem',
+                  background: '#dbeafe',
+                  border: '1px solid #93c5fd',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#1e40af',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}>
+                  <span style={{ fontSize: '0.9rem' }}>🔵</span>
+                  Objednávky: {pouzeObj}
+                </span>
+                <span style={{
+                  padding: '0.4rem 0.75rem',
+                  background: '#dcfce7',
+                  border: '1px solid #86efac',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#166534',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}>
+                  <span style={{ fontSize: '0.9rem' }}>🟢</span>
+                  Faktury: {pouzeFa}
+                </span>
+                <span style={{
+                  padding: '0.4rem 0.75rem',
+                  background: '#fef3c7',
+                  border: '1px solid #fde047',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#92400e',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}>
+                  <span style={{ fontSize: '0.9rem' }}>🟡</span>
+                  Obj + Fa: {objAFa}
+                </span>
+                <span style={{
+                  padding: '0.4rem 0.75rem',
+                  background: '#ffedd5',
+                  border: '1px solid #fdba74',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#9a3412',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}>
+                  <span style={{ fontSize: '0.9rem' }}>🟠</span>
+                  Roční popl.: {rocniPopl}
+                </span>
+              </>
+            );
+          })()}
+          </div>
+        )}
+      </div>
 
       {/* Table */}
       <TableWrapper>
@@ -1425,15 +2326,48 @@ const VemaDenik = () => {
                     </td>
                   </tr>
                 ) : (
-                  paginatedData.map(row => (
-                    <TableRow key={row.id}>
-                      {row.getVisibleCells().map(cell => (
-                        <TableCell key={cell.id}>
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
+                  paginatedData.map(row => {
+                    // Zjistit barvu řádku podle propojení (pouze pro faktury)
+                    let rowBackground = 'white';
+                    if (activeTab === 'faktury') {
+                      const pocetObj = row.original.pocet_objednavek || 0;
+                      const pocetFa = row.original.pocet_faktur || 0;
+                      const pocetRp = row.original.pocet_rocnich_poplatku || 0;
+                      const celkem = pocetObj + pocetFa + pocetRp;
+                      
+                      if (celkem === 0) {
+                        rowBackground = '#f9fafb'; // Šedá - bez vazby
+                      } else if (pocetRp > 0) {
+                        rowBackground = '#ffedd5'; // Oranžová - roční poplatky (PRIORITA 1)
+                      } else if (pocetObj > 0 && pocetFa > 0) {
+                        rowBackground = '#fef3c7'; // Žlutá - objednávky + faktury
+                      } else if (pocetFa > 0) {
+                        rowBackground = '#dcfce7'; // Zelená - faktury
+                      } else if (pocetObj > 0) {
+                        rowBackground = '#dbeafe'; // Modrá - objednávky
+                      }
+                    }
+                    
+                    return (
+                      <React.Fragment key={row.id}>
+                        <TableRow $background={rowBackground}>
+                          {row.getVisibleCells().map(cell => (
+                            <TableCell key={cell.id}>
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                        {/* Expanded row content - pouze pro faktury */}
+                        {row.getIsExpanded() && activeTab === 'faktury' && (
+                          <tr>
+                            <td colSpan={row.getVisibleCells().length} style={{ padding: 0, background: '#f8fafc' }}>
+                              {renderExpandedContent(row)}
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </Table>

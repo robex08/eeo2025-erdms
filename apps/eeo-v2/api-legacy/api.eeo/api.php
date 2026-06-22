@@ -175,6 +175,7 @@ define('TBL_VEMA_FIRMYUPL', '25v_firmyupl');
 define('TBL_VEMA_FPAZAHL', '25v_fpazahl');
 define('TBL_VEMA_SMLA', '25v_smla');
 define('TBL_VEMA_KONTROLA_METADATA', '25v_kontrola_metadata');
+define('TBL_VEMA_KONTROLA_METADATA_HISTORIE', '25v_kontrola_metadata_historie');
 
 // FAKTURY - WORKFLOW STAVY (ENUM hodnoty)
 define('INVOICE_STATUS_REGISTERED', 'ZAEVIDOVANA');      // Nově vložená z podatelny
