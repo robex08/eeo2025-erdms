@@ -17,6 +17,7 @@
 require_once __DIR__ . '/dbconfig.php';
 require_once __DIR__ . '/TimezoneHelper.php';
 require_once __DIR__ . '/handlers.php';
+require_once __DIR__ . '/vemaPropojenHandlers.php';
 
 // ============================================================================
 // 1. SEZNAM FIREM - GET /vema/firmy/list
@@ -93,6 +94,9 @@ function handle_vema_firmy_list($input, $config, $queries) {
         $where = array();
         $params = array();
 
+        // Vždy filtrovat jen aktivní záznamy
+        $where[] = "stav_zaznamu = 'aktivni'";
+
         if ($search !== '') {
             $where[] = "(nazev LIKE ? OR ico LIKE ? OR email LIKE ?)";
             $search_param = '%' . $search . '%';
@@ -106,7 +110,7 @@ function handle_vema_firmy_list($input, $config, $queries) {
             $params[] = $stav;
         }
 
-        $where_sql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
+        $where_sql = 'WHERE ' . implode(' AND ', $where);
 
         // Celkový počet
         $count_sql = "SELECT COUNT(*) as total FROM `" . TBL_VEMA_FIRMYUPL . "` " . $where_sql;
@@ -238,6 +242,9 @@ function handle_vema_faktury_list($input, $config, $queries) {
         $where = array();
         $params = array();
 
+        // Vždy filtrovat jen aktivní záznamy
+        $where[] = "f.stav_zaznamu = 'aktivni'";
+
         if ($firma !== null) {
             $where[] = "f.firma = ?";
             $params[] = $firma;
@@ -267,10 +274,12 @@ function handle_vema_faktury_list($input, $config, $queries) {
             $params[] = $search_param;
         }
 
-        $where_sql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
+        $where_sql = 'WHERE ' . implode(' AND ', $where);
 
         // Celkový počet
-        $count_sql = "SELECT COUNT(*) as total FROM `" . TBL_VEMA_FPAZAHL . "` f " . $where_sql;
+        $count_sql = "SELECT COUNT(*) as total 
+                      FROM `" . TBL_VEMA_FPAZAHL . "` f 
+                      " . $where_sql;
         $count_stmt = $db->prepare($count_sql);
         $count_stmt->execute($params);
         $total = $count_stmt->fetchColumn();
@@ -347,6 +356,12 @@ function handle_vema_faktury_list($input, $config, $queries) {
             }
         }
         unset($faktura); // Break reference
+
+        // BULK: Spočítat propojení s EEO pro všechny faktury najednou (4 dotazy místo 4*N)
+        $t_start = microtime(true);
+        bulk_calculate_vema_propojeni_counts($faktury, $db);
+        $t_elapsed = round((microtime(true) - $t_start) * 1000, 2);
+        error_log("⚡ VEMA bulk propojení: {$t_elapsed}ms pro " . count($faktury) . " faktur");
 
         // Úspěšná odpověď
         http_response_code(200);
@@ -452,6 +467,9 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
         $where = array();
         $params = array();
 
+        // Vždy filtrovat jen aktivní záznamy
+        $where[] = "s.stav_zaznamu = 'aktivni'";
+
         if ($firma !== null) {
             $where[] = "s.firma = ?";
             $params[] = $firma;
@@ -475,7 +493,7 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
             $params[] = $search_param;
         }
 
-        $where_sql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
+        $where_sql = 'WHERE ' . implode(' AND ', $where);
 
         // Celkový počet
         $count_sql = "SELECT COUNT(*) as total FROM `" . TBL_VEMA_SMLA . "` s " . $where_sql;
@@ -712,7 +730,24 @@ function handle_vema_import_upload($input, $config, $queries) {
                 ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?,
                 'aktivni', ?, ?, ?, NOW()
-            )";
+            ) ON DUPLICATE KEY UPDATE
+                nazev=VALUES(nazev), ico=VALUES(ico), icodl=VALUES(icodl),
+                rocis=VALUES(rocis), regcisph=VALUES(regcisph), zaplf=VALUES(zaplf),
+                koplf=VALUES(koplf), sidlo=VALUES(sidlo), fakt=VALUES(fakt),
+                dodav=VALUES(dodav), ulice=VALUES(ulice), cp=VALUES(cp),
+                obec=VALUES(obec), psc=VALUES(psc), posta=VALUES(posta),
+                stat=VALUES(stat), telefon=VALUES(telefon), mobil=VALUES(mobil),
+                fax=VALUES(fax), email=VALUES(email), web=VALUES(web),
+                datschr=VALUES(datschr), dnazev=VALUES(dnazev), dul=VALUES(dul),
+                pln=VALUES(pln), odb=VALUES(odb), dod=VALUES(dod),
+                druhorg=VALUES(druhorg), ins=VALUES(ins), stara=VALUES(stara),
+                prfyz=VALUES(prfyz), dgdpr=VALUES(dgdpr), pozn=VALUES(pozn),
+                souhlas=VALUES(souhlas), zakaz=VALUES(zakaz), redgdpr=VALUES(redgdpr),
+                txtgdpr=VALUES(txtgdpr), dic=VALUES(dic), hod=VALUES(hod),
+                stav='aktivni',
+                import_batch_id=VALUES(import_batch_id),
+                dt_posledni_aktualizace=NOW(),
+                aktualizoval_uzivatel_id=VALUES(vytvoril_uzivatel_id)";
 
             try {
                 $stmt = $db->prepare($sql);
@@ -839,7 +874,44 @@ function handle_vema_import_upload($input, $config, $queries) {
                 ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?,
                 'aktivni', ?, ?, ?, NOW()
-            )";
+            ) ON DUPLICATE KEY UPDATE
+                stav=VALUES(stav), storno=VALUES(storno), cdok=VALUES(cdok), dicp=VALUES(dicp),
+                likdok=VALUES(likdok), cfakdupl=VALUES(cfakdupl), nazevfak=VALUES(nazevfak),
+                typdok=VALUES(typdok), dobrdok=VALUES(dobrdok), dobrfak=VALUES(dobrfak),
+                ksymb=VALUES(ksymb), vsymb=VALUES(vsymb), ssymb=VALUES(ssymb),
+                uhrada=VALUES(uhrada), zadrz=VALUES(zadrz), bancisn=VALUES(bancisn),
+                bancisf=VALUES(bancisf), tuzzahr=VALUES(tuzzahr), firmapuv=VALUES(firmapuv),
+                datpri=VALUES(datpri), dof=VALUES(dof), spl=VALUES(spl),
+                plndod=VALUES(plndod), datuskut=VALUES(datuskut), rmzu=VALUES(rmzu),
+                rmzustor=VALUES(rmzustor), adr=VALUES(adr), csml=VALUES(csml),
+                cdodsml=VALUES(cdodsml), cobj=VALUES(cobj), cpperf=VALUES(cpperf),
+                fpzadav=VALUES(fpzadav), vlast=VALUES(vlast), fakmist=VALUES(fakmist),
+                budejsd=VALUES(budejsd), dopr=VALUES(dopr), douct=VALUES(douct),
+                zauct=VALUES(zauct), zauctlik=VALUES(zauctlik), zauctpst=VALUES(zauctpst),
+                zauctlst=VALUES(zauctlst), pracvd=VALUES(pracvd), cind=VALUES(cind),
+                ucetd=VALUES(ucetd), zak=VALUES(zak), difpl=VALUES(difpl),
+                cdokrozp=VALUES(cdokrozp), datrozp=VALUES(datrozp), stavwkf=VALUES(stavwkf),
+                kdoschfp=VALUES(kdoschfp), fpzadat=VALUES(fpzadat), datschvz=VALUES(datschvz),
+                fpprik=VALUES(fpprik), datschvp=VALUES(datschvp), fpsprozp=VALUES(fpsprozp),
+                datschvs=VALUES(datschvs), fpzodpov=VALUES(fpzodpov), datschvu=VALUES(datschvu),
+                idproc=VALUES(idproc), datpros=VALUES(datpros), odkud=VALUES(odkud),
+                fpjs=VALUES(fpjs), link=VALUES(link), idext=VALUES(idext),
+                datz=VALUES(datz), datu=VALUES(datu), text=VALUES(text),
+                pripoj=VALUES(pripoj), dzap=VALUES(dzap), splzadr=VALUES(splzadr),
+                stav1=VALUES(stav1), stav2=VALUES(stav2), stav3=VALUES(stav3),
+                cpredmet=VALUES(cpredmet), cprir=VALUES(cprir),
+                cdobrop=VALUES(cdobrop), czdobrop=VALUES(czdobrop), czalohy=VALUES(czalohy),
+                cplatby=VALUES(cplatby), czbyva=VALUES(czbyva), cprepl=VALUES(cprepl),
+                csaldo=VALUES(csaldo), cklikv=VALUES(cklikv), czlikv=VALUES(czlikv),
+                cdodlist=VALUES(cdodlist), cpoz=VALUES(cpoz), czadr=VALUES(czadr),
+                cnezadr=VALUES(cnezadr), cprzal=VALUES(cprzal), radkylik=VALUES(radkylik),
+                dob=VALUES(dob), dodlist=VALUES(dodlist), poz=VALUES(poz),
+                zadr=VALUES(zadr), vyuc=VALUES(vyuc), sdok=VALUES(sdok),
+                prilohy=VALUES(prilohy),
+                stav_zaznamu='aktivni',
+                import_batch_id=VALUES(import_batch_id),
+                dt_posledni_aktualizace=NOW(),
+                aktualizoval_uzivatel_id=VALUES(vytvoril_uzivatel_id)";
 
             $stmt = $db->prepare($sql);
             $params = array(
@@ -1016,7 +1088,29 @@ function handle_vema_import_upload($input, $config, $queries) {
                 ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?,
                 'aktivni', ?, ?, ?, NOW()
-            )";
+            ) ON DUPLICATE KEY UPDATE
+                typsml=VALUES(typsml), nazsml=VALUES(nazsml), ecsml=VALUES(ecsml),
+                csmlp=VALUES(csmlp), verzak=VALUES(verzak), firma=VALUES(firma),
+                str3=VALUES(str3), duver=VALUES(duver), puvod=VALUES(puvod),
+                dnazsml=VALUES(dnazsml), popis=VALUES(popis), text=VALUES(text),
+                datuzavr=VALUES(datuzavr), datumod=VALUES(datumod), datumdo=VALUES(datumdo),
+                zavazdo=VALUES(zavazdo), perioda=VALUES(perioda), termin=VALUES(termin),
+                hodnota=VALUES(hodnota), duvnulc=VALUES(duvnulc), jistota=VALUES(jistota),
+                ukonc=VALUES(ukonc), datukon=VALUES(datukon), notsml=VALUES(notsml),
+                prac=VALUES(prac), usek=VALUES(usek), cinnost=VALUES(cinnost),
+                zak=VALUES(zak), poznsml=VALUES(poznsml), dodatky=VALUES(dodatky),
+                etapy=VALUES(etapy), kalendar=VALUES(kalendar), aktual=VALUES(aktual),
+                souv=VALUES(souv), prolsml=VALUES(prolsml), proldnyz=VALUES(proldnyz),
+                proldoba=VALUES(proldoba), stavrs=VALUES(stavrs), predmsml=VALUES(predmsml),
+                hodnbdph=VALUES(hodnbdph), hodnsdph=VALUES(hodnsdph), rspriloh=VALUES(rspriloh),
+                rsprilzv=VALUES(rsprilzv), idrs=VALUES(idrs), datumrs=VALUES(datumrs),
+                komrs=VALUES(komrs), uctuj=VALUES(uctuj), ucetmd=VALUES(ucetmd),
+                ucetd=VALUES(ucetd), zucobd=VALUES(zucobd), datzauct=VALUES(datzauct),
+                zu=VALUES(zu), pre=VALUES(pre), prilohy=VALUES(prilohy),
+                stav_zaznamu='aktivni',
+                import_batch_id=VALUES(import_batch_id),
+                dt_posledni_aktualizace=NOW(),
+                aktualizoval_uzivatel_id=VALUES(vytvoril_uzivatel_id)";
 
             try {
                 $stmt = $db->prepare($sql);
@@ -1114,6 +1208,55 @@ function handle_vema_import_upload($input, $config, $queries) {
             error_log("║    ⚠️  Chyby: " . count($smlouvy_errors) . " záznamů se nepodařilo vložit");
         }
 
+        // ===== 4. OZNAČENÍ SMAZANÝCH ZÁZNAMŮ =====
+        error_log("║");
+        error_log("║ ┌─────────────────────────────────────────────────────────────");
+        error_log("║ │ 4️⃣  OZNAČENÍ SMAZANÝCH ZÁZNAMŮ");
+        error_log("║ │ (Záznamy které nejsou v aktuálním importu)");
+        error_log("║ └─────────────────────────────────────────────────────────────");
+        
+        // Označit firmy které nejsou v aktuálním batch_id jako 'smazano'
+        $stmt_firmy_del = $db->prepare("
+            UPDATE `" . TBL_VEMA_FIRMYUPL . "` 
+            SET stav_zaznamu = 'smazano',
+                dt_posledni_aktualizace = NOW()
+            WHERE import_batch_id != ? 
+              AND stav_zaznamu = 'aktivni'
+        ");
+        $stmt_firmy_del->execute(array($batch_id));
+        $firmy_smazano = $stmt_firmy_del->rowCount();
+        error_log("║    ├─ Firmy označeno jako smazáno: " . $firmy_smazano);
+        
+        // Označit faktury které nejsou v aktuálním batch_id jako 'smazano'
+        $stmt_faktury_del = $db->prepare("
+            UPDATE `" . TBL_VEMA_FPAZAHL . "` 
+            SET stav_zaznamu = 'smazano',
+                dt_posledni_aktualizace = NOW()
+            WHERE import_batch_id != ? 
+              AND stav_zaznamu = 'aktivni'
+        ");
+        $stmt_faktury_del->execute(array($batch_id));
+        $faktury_smazano = $stmt_faktury_del->rowCount();
+        error_log("║    ├─ Faktury označeno jako smazáno: " . $faktury_smazano);
+        
+        // Označit smlouvy které nejsou v aktuálním batch_id jako 'smazano'
+        $stmt_smlouvy_del = $db->prepare("
+            UPDATE `" . TBL_VEMA_SMLA . "` 
+            SET stav_zaznamu = 'smazano',
+                dt_posledni_aktualizace = NOW()
+            WHERE import_batch_id != ? 
+              AND stav_zaznamu = 'aktivni'
+        ");
+        $stmt_smlouvy_del->execute(array($batch_id));
+        $smlouvy_smazano = $stmt_smlouvy_del->rowCount();
+        error_log("║    └─ Smlouvy označeno jako smazáno: " . $smlouvy_smazano);
+        
+        $total_smazano = $firmy_smazano + $faktury_smazano + $smlouvy_smazano;
+        if ($total_smazano > 0) {
+            error_log("║");
+            error_log("║    🗑️  Celkem označeno jako smazáno: " . $total_smazano . " záznamů");
+        }
+
         // ====== COMMIT TRANSACTION ======
         error_log("║");
         error_log("║ 🔒 COMMIT TRANSACTION");
@@ -1129,13 +1272,14 @@ function handle_vema_import_upload($input, $config, $queries) {
         error_log("║ 📋 SOUHRN:");
         error_log("║    ├─ Batch ID: " . $batch_id);
         error_log("║    ├─ Celkem záznamů: " . $total_records);
-        error_log("║    ├─ Úspěšně vloženo: " . $total_inserted);
+        error_log("║    ├─ Úspěšně vloženo/aktualizováno: " . $total_inserted);
+        error_log("║    ├─ Označeno jako smazáno: " . $total_smazano);
         error_log("║    └─ Chyb: " . $total_errors);
         error_log("║");
         error_log("║ 📊 DETAILY:");
-        error_log("║    ├─ Firmy: " . $firmy_inserted . "/" . $total_firmy . ($firmy_errors ? " (chyb: " . count($firmy_errors) . ")" : ""));
-        error_log("║    ├─ Faktury: " . $faktury_inserted . "/" . $total_faktury . ($faktury_errors ? " (chyb: " . count($faktury_errors) . ")" : ""));
-        error_log("║    └─ Smlouvy: " . $smlouvy_inserted . "/" . $total_smlouvy . ($smlouvy_errors ? " (chyb: " . count($smlouvy_errors) . ")" : ""));
+        error_log("║    ├─ Firmy: " . $firmy_inserted . "/" . $total_firmy . ($firmy_errors ? " (chyb: " . count($firmy_errors) . ")" : "") . " | Smazáno: " . $firmy_smazano);
+        error_log("║    ├─ Faktury: " . $faktury_inserted . "/" . $total_faktury . ($faktury_errors ? " (chyb: " . count($faktury_errors) . ")" : "") . " | Smazáno: " . $faktury_smazano);
+        error_log("║    └─ Smlouvy: " . $smlouvy_inserted . "/" . $total_smlouvy . ($smlouvy_errors ? " (chyb: " . count($smlouvy_errors) . ")" : "") . " | Smazáno: " . $smlouvy_smazano);
         error_log("╚═══════════════════════════════════════════════════════════════");
 
         // Úspěšná odpověď
@@ -1150,6 +1294,12 @@ function handle_vema_import_upload($input, $config, $queries) {
                     'fpazahl' => $faktury_inserted,
                     'smla' => $smlouvy_inserted,
                     'total' => $firmy_inserted + $faktury_inserted + $smlouvy_inserted
+                ),
+                'deleted' => array(
+                    'firmyupl' => $firmy_smazano,
+                    'fpazahl' => $faktury_smazano,
+                    'smla' => $smlouvy_smazano,
+                    'total' => $total_smazano
                 ),
                 'dt_importu' => $dt_importu
             )

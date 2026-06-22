@@ -175,6 +175,65 @@ const ErrorText = styled.div`
   border-radius: 4px;
 `;
 
+const Divider = styled.div`
+  height: 1px;
+  background: #e2e8f0;
+  margin: 0.75rem 0;
+`;
+
+const JournalList = styled.div`
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+`;
+
+const JournalItem = styled.div`
+  font-size: 0.75rem;
+  padding: 0.4rem;
+  border-left: 2px solid #cbd5e1;
+  margin-bottom: 0.4rem;
+  &:last-child {
+    margin-bottom: 0;
+  }
+`;
+
+const JournalMeta = styled.div`
+  font-size: 0.7rem;
+  color: #64748b;
+  margin-bottom: 0.2rem;
+`;
+
+// ─── Pomocné funkce ─────────────────────────────────────────────────────────
+
+const formatDatum = (dt) => {
+  if (!dt) return '';
+  try {
+    return new Date(dt).toLocaleString('cs-CZ', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  } catch {
+    return dt;
+  }
+};
+
+const formatUdalostTyp = (typ) => {
+  const typy = {
+    'ZMENA_STAVU': '🔄 Změna stavu',
+    'ZMENA_PRIORITY': '⚡ Změna priority',
+    'KOMENTAR': '💬 Komentář',
+    'AUTO_SYSTEM': '🤖 Systém'
+  };
+  return typy[typ] || typ;
+};
+
 // ─── Komponenta ─────────────────────────────────────────────────────────────
 
 /**
@@ -197,6 +256,7 @@ export default function VemaKontrolaCell({
   onSave,
 }) {
   const [kontrola, setKontrola] = useState(null);
+  const [udalosti, setUdalosti] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -217,8 +277,14 @@ export default function VemaKontrolaCell({
     setLoading(true);
     setError(null);
     try {
-      const data = await getVemaKontrola(typZaznamu, vemaId, token, username);
+      const response = await getVemaKontrola(typZaznamu, vemaId, token, username);
+      
+      // Backend vrací {case, udalosti} strukturu jako u FK
+      const data = response?.case || response;
+      const historie = response?.udalosti || [];
+      
       setKontrola(data);
+      setUdalosti(historie);
       
       // Nastavit form hodnoty
       if (data) {
@@ -232,7 +298,7 @@ export default function VemaKontrolaCell({
         setFormPoznamka('');
       }
     } catch (err) {
-      console.error('Chyba při načítání VEMA kontroly:', err);
+      console.error('❌ Chyba při načítání VEMA kontroly:', err);
       setError(err.message || 'Chyba při načítání kontroly');
     } finally {
       setLoading(false);
@@ -245,10 +311,12 @@ export default function VemaKontrolaCell({
   }, [loadKontrola]);
 
   // Otevřít popover
-  const handleOpen = useCallback(() => {
+  const handleOpen = useCallback(async () => {
     setIsOpen(true);
     setError(null);
-  }, []);
+    // Vždy načíst aktuální data z DB při otevření
+    await loadKontrola();
+  }, [loadKontrola]);
 
   // Zavřít popover
   const handleClose = useCallback(() => {
@@ -267,7 +335,7 @@ export default function VemaKontrolaCell({
     setError(null);
 
     try {
-      await saveVemaKontrola(
+      const result = await saveVemaKontrola(
         {
           typZaznamu,
           vemaId,
@@ -290,7 +358,7 @@ export default function VemaKontrolaCell({
       // Zavřít popover
       handleClose();
     } catch (err) {
-      console.error('Chyba při ukládání VEMA kontroly:', err);
+      console.error('❌ Chyba při ukládání VEMA kontroly:', err);
       setError(err.message || 'Chyba při ukládání kontroly');
     } finally {
       setSaving(false);
@@ -413,6 +481,40 @@ export default function VemaKontrolaCell({
                       : 'Dosud nekontrolováno'}
                     {kontrola.dt_kontroly && ` (${new Date(kontrola.dt_kontroly).toLocaleString('cs-CZ')})`}
                   </InfoText>
+                )}
+
+                {/* Historie změn */}
+                {udalosti && udalosti.length > 0 && (
+                  <>
+                    <Divider />
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginBottom: '0.3rem' }}>
+                      📜 Historie změn ({udalosti.length}):
+                    </div>
+                    <JournalList>
+                      {[...udalosti].reverse().map((u, idx) => (
+                        <JournalItem key={u.id || idx}>
+                          <JournalMeta>
+                            {formatUdalostTyp(u.typ)} · {formatDatum(u.dt_vytvoreni)}
+                            {(u.prijmeni || u.jmeno) && ` · ${[u.prijmeni, u.jmeno].filter(Boolean).join(' ')}`}
+                          </JournalMeta>
+                          {u.typ === 'ZMENA_STAVU' && (
+                            <span>
+                              {KONTROLA_STATUS_LABELS[u.stav_pred] || u.stav_pred} → {KONTROLA_STATUS_LABELS[u.stav_po] || u.stav_po}
+                            </span>
+                          )}
+                          {u.typ === 'KOMENTAR' && <span>{u.text_zprava}</span>}
+                          {u.typ === 'AUTO_SYSTEM' && (
+                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>{u.text_zprava}</span>
+                          )}
+                          {u.typ === 'ZMENA_PRIORITY' && (
+                            <span>
+                              Priorita: {KONTROLA_PRIORITA_LABELS[u.stav_pred] || u.stav_pred} → {KONTROLA_PRIORITA_LABELS[u.stav_po] || u.stav_po}
+                            </span>
+                          )}
+                        </JournalItem>
+                      ))}
+                    </JournalList>
+                  </>
                 )}
 
                 {error && <ErrorText>{error}</ErrorText>}
