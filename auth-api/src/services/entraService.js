@@ -591,10 +591,72 @@ class EntraService {
       throw err;
     }
   }
-}
 
-// Singleton instance
-module.exports = new EntraService();
+  /**
+   * Zjistit zda má uživatel Microsoft Copilot Business licenci
+   * @param {string} userId - Entra ID (GUID) uživatele
+   * @returns {Promise<boolean>} true pokud má Copilot licenci
+   */
+  async hasCopilotLicense(userId) {
+    await this.ensureInitialized();
+    try {
+      console.log(`🔍 Checking Copilot license for user: ${userId}`);
+      
+      const response = await this.client
+        .api(`/users/${userId}/licenseDetails`)
+        .get();
+      
+      const licenses = response.value || [];
+      console.log(`📋 User has ${licenses.length} license(s)`);
+      
+      // Debug: vypsat všechny SKU
+      licenses.forEach((lic, idx) => {
+        console.log(`  License ${idx+1}: ${lic.skuPartNumber}`);
+        if (lic.servicePlans?.length > 0) {
+          const copilotPlans = lic.servicePlans.filter(sp => 
+            sp.servicePlanName?.toUpperCase().includes('COPILOT')
+          );
+          if (copilotPlans.length > 0) {
+            copilotPlans.forEach(sp => {
+              console.log(`    → Copilot plan: ${sp.servicePlanName} (${sp.provisioningStatus})`);
+            });
+          }
+        }
+      });
+      
+      // Check for Copilot Business SKU
+      const hasCopilot = licenses.some(license => {
+        const skuPart = license.skuPartNumber?.toUpperCase() || '';
+        const hasCopilotSku = 
+          skuPart.includes('COPILOT') ||
+          skuPart === 'MICROSOFT_365_COPILOT' ||
+          skuPart === 'M365_COPILOT' ||
+          skuPart === 'COPILOT_BUSINESS';
+        
+        // Check also service plans
+        const hasCopilotPlan = license.servicePlans?.some(sp => 
+          sp.servicePlanName?.toUpperCase().includes('COPILOT') &&
+          (sp.provisioningStatus === 'Success' || sp.provisioningStatus === 'Enabled')
+        ) || false;
+        
+        if (hasCopilotSku || hasCopilotPlan) {
+          console.log(`✅ Found Copilot license: ${license.skuPartNumber}`);
+          return true;
+        }
+        return false;
+      });
+      
+      console.log(`🎯 Copilot license check result: ${hasCopilot}`);
+      return hasCopilot;
+      
+    } catch (err) {
+      console.error('🔴 hasCopilotLicense ERROR:', err.message);
+      console.error('🔴 ERROR stack:', err.stack);
+      // V případě chyby vrátíme false (bezpečný default)
+      return false;
+    }
+  }
+}
 
 // Singleton instance
 module.exports = new EntraService();

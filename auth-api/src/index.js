@@ -17,6 +17,9 @@ require('./db/connection');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Disable ETag for all responses (aby se necachovaly API odpovědi)
+app.set('etag', false);
+
 // Middleware
 app.use(helmet());
 app.use(morgan(process.env.NODE_ENV === 'development' ? 'dev' : 'combined'));
@@ -49,10 +52,12 @@ app.use(cors({
 // Routes
 const authRoutes = require('./routes/auth');
 const entraRoutes = require('./routes/entra');
+const copilotRoutes = require('./routes/copilot');
 
 app.use('/auth', authRoutes);
 app.use('/api/auth', authRoutes); // Legacy support
 app.use('/api/entra', entraRoutes);
+app.use('/api/copilot', copilotRoutes);
 
 // Health check
 app.get('/api/health', (req, res) => {
