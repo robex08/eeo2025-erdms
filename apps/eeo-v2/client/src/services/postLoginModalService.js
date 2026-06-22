@@ -276,9 +276,208 @@ export const debugModalDismiss = (userId, modalGuid) => {
   return result;
 };
 
+/**
+ * 🔍 DIAGNOSTIKA EASY MODE: Automaticky načte správný token a user data
+ * @returns {Promise<Object>} Detailní diagnostic report
+ * @example await window.debugPostLoginModalEasy()
+ */
+export const debugPostLoginModalEasy = async () => {
+  try {
+    // Načíst správný token a user data z authStorage (ne přímo z localStorage!)
+    const { loadAuthData } = await import('../utils/authStorage');
+    const token = await loadAuthData.token();
+    const user = await loadAuthData.user();
+    
+    if (!token || !user) {
+      return {
+        error: '❌ Nejsi přihlášen nebo token vypršel. Přihlas se znovu.',
+        timestamp: new Date().toISOString()
+      };
+    }
+    
+    console.log('🔍 Načítám debug report pro:', user.username, '(ID:', user.id, ')');
+    return await debugPostLoginModal(user.id, token, user.username);
+  } catch (error) {
+    return {
+      error: '❌ Chyba při načítání debug dat: ' + error.message,
+      timestamp: new Date().toISOString()
+    };
+  }
+};
+
+/**
+ * 🔍 DIAGNOSTIKA: Kompletní analýza proč se modal nezobrazuje
+ * POZNÁMKA: Doporučeno použít debugPostLoginModalEasy() místo této funkce!
+ * @param {number} userId - ID uživatele
+ * @param {string} token - Auth token (MUSÍ být z authStorage, ne localStorage.getItem('token')!)
+ * @param {string} username - Username
+ * @returns {Promise<Object>} Detailní diagnostic report
+ * @example await window.debugPostLoginModal(123, 'token', 'username')
+ */
+export const debugPostLoginModal = async (userId, token, username) => {
+  const report = {
+    timestamp: new Date().toISOString(),
+    userId,
+    username,
+    checks: {},
+    globalSettings: {},
+    localStorage: {},
+    conclusion: '',
+    recommendation: ''
+  };
+  
+  try {
+    // 1. Načíst global settings
+    const globalSettings = await getGlobalSettingsForDisplay(token, username);
+    report.globalSettings.raw = globalSettings;
+    
+    // 2. Zkontrolovat enabled flag
+    const enabledValue = globalSettings.post_login_modal_enabled?.hodnota || globalSettings.post_login_modal_enabled;
+    const enabled = enabledValue === '1' || enabledValue === 1 || enabledValue === true;
+    report.checks.enabled = {
+      value: enabledValue,
+      parsed: enabled,
+      passed: enabled,
+      message: enabled ? '✅ Modal je povolen' : '❌ Modal je VYPNUT v Global Settings'
+    };
+    
+    if (!enabled) {
+      report.conclusion = '❌ DŮVOD: Modal je vypnutý v Global Settings (post_login_modal_enabled není 1)';
+      report.recommendation = 'Zapni modal v AppSettings → Global Settings → Post-Login Modal → Povolit';
+      return report;
+    }
+    
+    // 3. Získat konfiguraci
+    const getSettingValue = (key, defaultValue = null) => {
+      const setting = globalSettings[key];
+      if (setting && typeof setting === 'object' && 'hodnota' in setting) {
+        return setting.hodnota;
+      }
+      return setting || defaultValue;
+    };
+    
+    const modalGuid = getSettingValue('post_login_modal_guid') || null;
+    const validFrom = getSettingValue('post_login_modal_valid_from') || null;
+    const validTo = getSettingValue('post_login_modal_valid_to') || null;
+    const messageId = getSettingValue('post_login_modal_message_id') || null;
+    const title = getSettingValue('post_login_modal_title') || 'Upozornění';
+    const htmlContent = getSettingValue('post_login_modal_content') || null;
+    
+    report.globalSettings.parsed = {
+      modalGuid,
+      validFrom,
+      validTo,
+      messageId,
+      title,
+      hasContent: !!htmlContent
+    };
+    
+    // 4. Zkontrolovat časovou platnost
+    const now = new Date();
+    
+    if (validFrom) {
+      const fromDate = new Date(validFrom);
+      const isValid = !isNaN(fromDate.getTime());
+      const isPast = isValid && now >= fromDate;
+      report.checks.validFrom = {
+        value: validFrom,
+        parsed: fromDate.toISOString(),
+        passed: isPast,
+        message: isPast ? '✅ Platnost OD je v pořádku' : `❌ Modal je platný až od ${fromDate.toLocaleString('cs-CZ')}`
+      };
+      
+      if (!isPast) {
+        report.conclusion = `❌ DŮVOD: Modal ještě není platný (platí od ${fromDate.toLocaleString('cs-CZ')})`;
+        report.recommendation = 'Počkej na datum platnosti nebo změň valid_from v Global Settings';
+        return report;
+      }
+    } else {
+      report.checks.validFrom = {
+        value: null,
+        passed: true,
+        message: '✅ Bez omezení platnosti OD'
+      };
+    }
+    
+    if (validTo) {
+      const toDate = new Date(validTo);
+      const isValid = !isNaN(toDate.getTime());
+      const isFuture = isValid && now <= toDate;
+      report.checks.validTo = {
+        value: validTo,
+        parsed: toDate.toISOString(),
+        passed: isFuture,
+        message: isFuture ? '✅ Platnost DO je v pořádku' : `❌ Modal už vypršel (platil do ${toDate.toLocaleString('cs-CZ')})`
+      };
+      
+      if (!isFuture) {
+        report.conclusion = `❌ DŮVOD: Modal už vypršel (platil do ${toDate.toLocaleString('cs-CZ')})`;
+        report.recommendation = 'Prodluž platnost (valid_to) v Global Settings';
+        return report;
+      }
+    } else {
+      report.checks.validTo = {
+        value: null,
+        passed: true,
+        message: '✅ Bez omezení platnosti DO'
+      };
+    }
+    
+    // 5. Zkontrolovat localStorage dismissal
+    const isDismissed = modalGuid ? isModalDismissedByUser(userId, modalGuid) : false;
+    const dismissKey = modalGuid ? getModalDismissKey(userId, modalGuid) : null;
+    report.checks.dismissed = {
+      modalGuid,
+      dismissKey,
+      isDismissed,
+      passed: !isDismissed,
+      message: isDismissed 
+        ? `❌ Uživatel klikl "Příště nezobrazovat" (GUID: ${modalGuid})` 
+        : '✅ Není dismissnutý'
+    };
+    
+    if (isDismissed) {
+      report.conclusion = `❌ DŮVOD: Uživatel už klikl "Příště nezobrazovat" pro GUID: ${modalGuid}`;
+      report.recommendation = `Vymaž localStorage klíč: ${dismissKey}\nNebo vygeneruj nový GUID v Global Settings`;
+      return report;
+    }
+    
+    // 6. Zkontrolovat obsah
+    report.checks.content = {
+      messageId,
+      hasContent: !!htmlContent,
+      contentLength: htmlContent ? htmlContent.length : 0,
+      passed: !!htmlContent,
+      message: htmlContent ? '✅ Má obsah' : '❌ Chybí obsah (post_login_modal_content nebo message_id)'
+    };
+    
+    if (!htmlContent) {
+      report.conclusion = '❌ DŮVOD: Chybí obsah modalu (post_login_modal_content nebo message_id není nastaveno)';
+      report.recommendation = 'Nastav message_id nebo post_login_modal_content v Global Settings';
+      return report;
+    }
+    
+    // 7. Všechny kontroly prošly
+    report.conclusion = '✅ Všechny kontroly prošly - modal BY SE MĚL ZOBRAZIT!';
+    report.recommendation = 'Zkontroluj:\n1. Console log při přihlášení (⚠️ warnings)\n2. Zda se volá checkPostLoginModal() (breakpoint)\n3. Zda App.js má listener na "show-post-login-modal" event';
+    
+    return report;
+    
+  } catch (error) {
+    report.conclusion = `❌ CHYBA: ${error.message}`;
+    report.recommendation = 'Zkontroluj network tab a console';
+    report.error = {
+      message: error.message,
+      stack: error.stack
+    };
+    return report;
+  }
+};
+
 // Přidat funkci do window pro snadný přístup z konzole
 if (typeof window !== 'undefined') {
   window.debugModalDismiss = debugModalDismiss;
+  window.debugPostLoginModal = debugPostLoginModal;
 }
 
 export default {
@@ -289,5 +488,6 @@ export default {
   clearModalDismissalForAllUsers,
   generateModalGuid,
   getModalDismissalCount,
-  debugModalDismiss
+  debugModalDismiss,
+  debugPostLoginModal
 };

@@ -32,6 +32,35 @@ import { tokenRefreshService } from '../utils/tokenRefresh'; // 🔄 Token refre
 // Globální flag pro potlačení duplikátních logů
 let initCount = 0;
 
+// 🔔 POST-LOGIN MODAL: Helper pro zobrazení modalu (volaný z login() i checkToken())
+// Použije sessionStorage flag aby se modal zobrazil jen JEDNOU per session (F5 jej neukazuje znovu)
+const triggerPostLoginModalCheck = async (userId, token, username, authMethodValue, source = 'unknown') => {
+  try {
+    // Kontrola, zda modal už byl v této session zobrazen (přežije F5 ale ne nový tab)
+    const sessionDone = sessionStorage.getItem('post_login_modal_session_checked') === '1';
+    
+    if (sessionDone) {
+      return;
+    }
+    
+    // Označit session jako zkontrolovanou OKAMŽITĚ (aby se zabránilo duplicitnímu volání)
+    sessionStorage.setItem('post_login_modal_session_checked', '1');
+    
+    const { checkPostLoginModal } = await import('../services/postLoginModalService');
+    const modalConfig = await checkPostLoginModal(userId, token, username);
+    
+    if (modalConfig && modalConfig.enabled) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('show-post-login-modal', {
+          detail: modalConfig
+        }));
+      }
+    }
+  } catch (error) {
+    console.warn(`⚠️ Chyba při kontrole post-login modal [${source}]:`, error);
+  }
+};
+
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
@@ -243,27 +272,14 @@ export const AuthProvider = ({ children }) => {
       
       // 🔔 POST-LOGIN MODAL: Zkontrolovat a zobrazit modal po přihlášení
       // Spustit po prvním renderovacím cyklu (200ms stačí pro UI)
-      setTimeout(async () => {
-        try {
-          const { checkPostLoginModal } = await import('../services/postLoginModalService');
-          const modalConfig = await checkPostLoginModal(
-            loginData.id,
-            loginData.token,
-            loginData.username
-          );
-          
-          if (modalConfig && modalConfig.enabled) {
-            // Vyvolat custom event - App.js ho zachytí a zobrazí modal
-            if (typeof window !== 'undefined') {
-              window.dispatchEvent(new CustomEvent('show-post-login-modal', {
-                detail: modalConfig
-              }));
-            }
-          }
-        } catch (error) {
-          console.warn('⚠️ Chyba při kontrole post-login modal:', error);
-          // Tiše ignorovat - modal není kritický pro přihlášení
-        }
+      setTimeout(() => {
+        triggerPostLoginModalCheck(
+          loginData.id,
+          loginData.token,
+          loginData.username,
+          userDetail.auth_method,
+          'login()'
+        );
       }, 200); // 200ms po přihlášení - dát čas na dokončení renderování UI
       // 🌲 HIERARCHIE WORKFLOW: Načíst stav hierarchie po přihlášení
       try {
@@ -722,6 +738,14 @@ export const AuthProvider = ({ children }) => {
       console.warn('⚠️ Chyba při mazání impersonation state:', error);
     }
     
+    // 🔔 POST-LOGIN MODAL: Vyčistit session flag aby se modal znovu zobrazil
+    // po opětovném přihlášení v rámci stejného tabu prohlížeče
+    try {
+      sessionStorage.removeItem('post_login_modal_session_checked');
+    } catch (error) {
+      console.warn('⚠️ Chyba při mazání post-login modal session flag:', error);
+    }
+    
     setHierarchyStatus({
       hierarchyEnabled: false,
       isImmune: false,
@@ -989,7 +1013,19 @@ export const AuthProvider = ({ children }) => {
           setIsLoggedIn(true);
           setLoading(false);
           
-          // 🔄 TOKEN REFRESH: Spustit auto-refresh timer i při page reload
+          // 🔔 POST-LOGIN MODAL: Zkontrolovat zobrazení i po page reload (Entra ID, F5)
+          // Helper má sessionStorage flag - modal se zobrazí jen JEDNOU per session
+          setTimeout(() => {
+            triggerPostLoginModalCheck(
+              storedUser.id,
+              storedToken,
+              storedUser.username,
+              activeDetail?.auth_method || storedDetail?.auth_method,
+              'checkToken()'
+            );
+          }, 500); // 500ms po načtení - dát čas na inicializaci UI
+          
+          // �🔄 TOKEN REFRESH: Spustit auto-refresh timer i při page reload
           try {
             // Token byl načten z localStorage, zkus zjistit expiraci
             // Pro teď předpokládáme, že token vyprší za zbývající část 12h
