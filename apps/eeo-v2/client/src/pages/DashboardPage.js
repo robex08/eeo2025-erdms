@@ -2211,15 +2211,22 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
   const [loading, setLoading]       = useState(false);
   const [unreadCounts, setUnreadCounts] = useState({});  // {user_id: unread_count}
 
-  // Vlastní auto-refresh widgetu každých 30s podle aktuální periody
+  // Vlastní auto-refresh widgetu každých 30 minut podle aktuální periody
+  // Optimalizace 2026-06-23 Phase 2: 15 min → 30 minut + visibility check
   useEffect(() => {
     let cancelled = false;
     const fetch30 = async () => {
       const d = await getActiveUsersAdmin({ token, username, period });
       if (d && !cancelled) setLocalData(d);
     };
-    fetch30();
-    const iv = setInterval(fetch30, 30000);
+    fetch30(); // Immediate fetch při mount/reload
+    
+    const iv = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetch30();
+      }
+    }, 30 * 60 * 1000); // 30 minut + visibility check
+    
     return () => { cancelled = true; clearInterval(iv); };
   }, [token, username, period]); // re-mounts při změně periody
 
@@ -5216,7 +5223,14 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
     };
 
     loadPlanningMessages();
-    const refreshTimer = setInterval(loadPlanningMessages, 5 * 60 * 1000);
+    
+    // Auto-refresh každých 30 minut, pouze když je page visible
+    // Optimalizace 2026-06-23: 5 min → 30 min + visibility check
+    const refreshTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadPlanningMessages();
+      }
+    }, 30 * 60 * 1000); // 30 minut (bylo 5 min)
 
     return () => {
       isMounted = false;
@@ -8500,7 +8514,8 @@ export default function DashboardPage() {
     return (userDetail?.roles || []).some(r => r.kod_role === 'SUPERADMIN');
   }, [userDetail]);
 
-  // Auto-refresh aktivních uživatelů každých 30s (SUPERADMIN nebo DASHBOARD_ACTIVE_USERS) – jen pro quick-tile badge count
+  // Auto-refresh aktivních uživatelů každých 30 minut (SUPERADMIN nebo DASHBOARD_ACTIVE_USERS) – jen pro quick-tile badge count
+  // Optimalizace 2026-06-23: 30s → 30 minut + visibility check (reload dělá fresh fetch)
   useEffect(() => {
     const hasAccess = isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS'));
     if (!hasAccess || !token || !username) return;
@@ -8508,8 +8523,14 @@ export default function DashboardPage() {
       const d = await getActiveUsersAdmin({ token, username, period: '5min' });
       if (d) setActiveUsersData(d);
     };
-    fetchActive();
-    const iv = setInterval(fetchActive, 30000);
+    fetchActive(); // Immediate fetch při mount/reload
+    
+    const iv = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchActive();
+      }
+    }, 30 * 60 * 1000); // 30 minut + visibility check (bylo 30s)
+    
     return () => clearInterval(iv);
   }, [isSuperAdmin, hasPermission, token, username]);
 

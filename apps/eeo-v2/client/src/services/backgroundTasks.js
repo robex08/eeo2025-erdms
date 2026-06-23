@@ -28,7 +28,9 @@
  */
 
 // Import API služeb
-// ✅ SECURITY FIX: Použít Order V2 API pro správné backend filtrování podle uživatelských práv
+// ✅ Order V2 API se používá jen v V2 auto-refresh tasku (createOrdersRefreshTask),
+// který běží POUZE na route /orders25-list a pouze pokud je modul V2 zapnut.
+// PostOrderAction VŮBEC nevolá listOrdersV2 - V3 stránka má vlastní refresh.
 import { listOrdersV2 } from './apiOrderV2';
 import { getUnreadCount, getNotificationsList } from './notificationsUnified';
 import { loadAuthData, getStoredUserId } from '../utils/authStorage';
@@ -56,28 +58,78 @@ const getModuleSettingsSafe = () => {
 
 /**
  * Task handler pro kontrolu notifikací
- * Spouští se každých 60 sekund
+ * Spouští se každých 90 sekund (byl 60s - optimalizace 2026-06-23)
+ * 
+ * OPTIMALIZACE 2026-06-23:
+ * - Interval zvýšen z 60s na 90s (snížení traffic o 33%)
+ * - Leader election implementována (pouze 1 tab polling místo N tabů)
+ * - Expected: snížení requestů z ~1,553/den na ~200/den (87% úspora)
  */
-export const createNotificationCheckTask = (onNewNotifications, onUnreadCountChange) => ({
-  name: 'checkNotifications',
-  interval: 60 * 1000, // 60 sekund
-  immediate: true, // Spustit hned při registraci
-  enabled: true,
+export const createNotificationCheckTask = (onNewNotifications, onUnreadCountChange) => {
+  // Leader election state (sdílený mezi všemi instancemi)
+  let isLeader = false;
+  let tabId = `ntf_tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-  // Podmínka - spouštět pouze když je uživatel přihlášen
-  condition: () => {
+  // Helper: Pokus o získání leadership
+  const tryBecomeLeader = () => {
     try {
-      // Kontrola šifrovaného tokenu v localStorage
-      const token = loadAuthData.token();
-      const isAuthenticated = !!token;
-
-      return isAuthenticated;
-    } catch (error) {
+      const leaderData = JSON.parse(localStorage.getItem('notification_checker_leader'));
+      const now = Date.now();
+      
+      // Pokud žádný leader nebo starý (120s timeout), staň se leaderem
+      if (!leaderData || (now - leaderData.timestamp) > 120000) {
+        isLeader = true;
+        localStorage.setItem('notification_checker_leader', JSON.stringify({
+          tabId: tabId,
+          timestamp: now
+        }));
+        return true;
+      } else if (leaderData.tabId === tabId) {
+        // Jsme leader - update timestamp
+        isLeader = true;
+        localStorage.setItem('notification_checker_leader', JSON.stringify({
+          tabId: tabId,
+          timestamp: now
+        }));
+        return true;
+      }
+      
+      // Jiný tab je leader
+      isLeader = false;
       return false;
+    } catch (e) {
+      // Fallback - staň se leaderem
+      isLeader = true;
+      return true;
     }
-  },
+  };
 
-  callback: async () => {
+  // Return task configuration object
+  return {
+    name: 'checkNotifications',
+    interval: 90 * 1000, // 90 sekund (bylo 60s)
+    immediate: true, // Spustit hned při registraci
+    enabled: true,
+
+    // Podmínka - spouštět pouze když je uživatel přihlášen A je leader
+    condition: () => {
+      try {
+        // 1. Kontrola autentizace
+        const token = loadAuthData.token();
+        const isAuthenticated = !!token;
+        
+        if (!isAuthenticated) {
+          return false;
+        }
+
+        // 2. Leader election - pouze leader tab provádí polling
+        return tryBecomeLeader();
+      } catch (error) {
+        return false;
+      }
+    },
+
+    callback: async () => {
     try {
       // Získání počtu nepřečtených notifikací s informacemi o barvě badge
       const unreadData = await getUnreadCount();
@@ -135,7 +187,8 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
   onError: (error) => {
     // Tiše selhat - nezobrazovat error uživateli při background kontrole
   }
-});
+  }; // End of return object
+}; // End of createNotificationCheckTask function
 
 /**
  * Task handler pro kontrolu nových chat zpráv
@@ -419,8 +472,15 @@ export const createInvoicesRefreshTask = (onInvoicesAutoRefresh) => ({
 
 /**
  * Kombinovaný task handler - po přidání/úpravě objednávky
- * Provede okamžitý refresh objednávek + kontrolu notifikací
- * Tato úloha se spouští MANUÁLNĚ po uložení objednávky
+ * Provede invalidaci cache + kontrolu notifikací
+ * Tato úloha se spouští MANUÁLNĚ po uložení objednávky (z OrderForm25)
+ *
+ * ⚠️ POZNÁMKA: V2 modul je vypnut (module_orders_visible=false).
+ * Refresh seznamu objednávek si řeší přímo zdrojová stránka:
+ *   - Orders25ListV3 (V3): vlastní background task `autoRefreshOrdersV3`
+ *     a refresh po návratu na route /orders25-list-v3 (focus/mount)
+ *   - Orders25List (V2, pokud bude zapnut): `autoRefreshOrders` task
+ * Tento task proto NEVOLÁ listOrdersV2/V3 - jen invaliduje cache a hlídá notifikace.
  */
 export const createPostOrderActionTask = (callbacks = {}) => ({
   name: 'postOrderAction',
@@ -436,8 +496,7 @@ export const createPostOrderActionTask = (callbacks = {}) => ({
     };
 
     try {
-      // 1. Okamžitý refresh orders (ne za 10 minut, ale HNED)
-      // Načti autentizační data pro API volání
+      // 1. Ověř přihlášení (jen kontrola, ne API volání seznamu objednávek)
       const token = await loadAuthData.token();
       const user = await loadAuthData.user();
 
@@ -445,13 +504,14 @@ export const createPostOrderActionTask = (callbacks = {}) => ({
         throw new Error('Missing authentication data for post-order refresh');
       }
 
-      const ordersData = await listOrdersV2({}, token, user.username, false, true);
-
-      // 🚀 CACHE: Po uložení objednávky MUSÍME invalidovat cache (data se změnila)
+      // 🚀 CACHE: Po uložení objednávky invaliduj cache (data se změnila).
+      // Konkrétní načtení nového seznamu řeší zdrojová stránka sama
+      // (V3 přes autoRefreshOrdersV3, V2 přes autoRefreshOrders).
       ordersCacheService.invalidate();
 
-      if (callbacks.onOrdersRefreshed && ordersData) {
-        callbacks.onOrdersRefreshed(ordersData);
+      // Volitelný callback pro zdrojovou stránku (bez payloadu - jen signál)
+      if (callbacks.onOrdersRefreshed) {
+        callbacks.onOrdersRefreshed(null);
       }
 
       results.ordersRefreshed = true;

@@ -654,6 +654,7 @@ const VemaDenik = () => {
   const [loading, setLoading] = useState(true); // Initial load = true
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState(''); // Pro okamžitou aktualizaci inputu
 
   // Data
   const [firmyData, setFirmyData] = useState([]);
@@ -700,6 +701,15 @@ const VemaDenik = () => {
   // 2. Při přepnutí na tab který už je v cache → nic se nenačítá (instant)
   // 3. Při změně search → invaliduj cache a načti znovu vše
   
+  // Debounced search - spustí se až 500ms po posledním stisku klávesy
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearch(searchInput);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchInput]);
+
   // Load LP seznam pro parsing financování
   useEffect(() => {
     if (!token || !username || lpLoaded) return;
@@ -726,20 +736,17 @@ const VemaDenik = () => {
 
     let cancelled = false;
 
-    // Detekce změny searche → invaliduj cache
-    if (search !== cachedSearch) {
-      setDataLoaded({ firmy: false, faktury: false, smlouvy: false });
-      setCachedSearch(search);
-    }
+    // Detekce změny searche → musíme vždy znovu načíst data ze serveru
+    const searchChanged = search !== cachedSearch;
 
-    // Pokud aktuální tab už má data v cache, jen vypneme loading
-    const isCached = dataLoaded[activeTab] && search === cachedSearch;
+    // Pokud aktuální tab už má data v cache a search se nezměnil → nic neděláme
+    const isCached = dataLoaded[activeTab] && !searchChanged;
     if (isCached) {
       setLoading(false);
       return;
     }
 
-    // Načíst všechny chybějící taby paralelně (typicky první load)
+    // Načíst všechny chybějící taby paralelně (typicky první load nebo změna search)
     const loadAllMissing = async () => {
       setLoading(true);
       setError(null);
@@ -748,7 +755,11 @@ const VemaDenik = () => {
         const promises = [];
         const labels = [];
 
-        if (!dataLoaded.firmy) {
+        // Pokud se změnil search → načti VŠECHNY 3 taby (cache je neaktuální)
+        // Jinak → načti jen ty, které ještě nejsou v cache
+        const shouldLoadAll = searchChanged;
+
+        if (shouldLoadAll || !dataLoaded.firmy) {
           promises.push(loadVemaFirmy({ token, username, limit: 50000, offset: 0, search }));
           labels.push('firmy');
         } else {
@@ -756,7 +767,7 @@ const VemaDenik = () => {
           labels.push(null);
         }
 
-        if (!dataLoaded.faktury) {
+        if (shouldLoadAll || !dataLoaded.faktury) {
           promises.push(loadVemaFaktury({ token, username, limit: 50000, offset: 0, search }));
           labels.push('faktury');
         } else {
@@ -764,7 +775,7 @@ const VemaDenik = () => {
           labels.push(null);
         }
 
-        if (!dataLoaded.smlouvy) {
+        if (shouldLoadAll || !dataLoaded.smlouvy) {
           promises.push(loadVemaSmlouvy({ token, username, limit: 50000, offset: 0, search }));
           labels.push('smlouvy');
         } else {
@@ -772,20 +783,36 @@ const VemaDenik = () => {
           labels.push(null);
         }
 
-        const results = await Promise.all(promises.map(p => p || Promise.resolve(null)));
+        const results = await Promise.allSettled(promises.map(p => p || Promise.resolve(null)));
         if (cancelled) return;
 
-        const newLoaded = { ...dataLoaded };
-        results.forEach((resp, idx) => {
-          if (resp && labels[idx]) {
-            const data = resp.data || [];
+        // Pokud se search změnil → reset cache flag a uložení nového search
+        const newLoaded = shouldLoadAll
+          ? { firmy: false, faktury: false, smlouvy: false }
+          : { ...dataLoaded };
+        const failedTabs = [];
+
+        results.forEach((result, idx) => {
+          if (!labels[idx]) return;
+
+          if (result.status === 'fulfilled' && result.value) {
+            const data = result.value.data || [];
             if (labels[idx] === 'firmy') setFirmyData(data);
             else if (labels[idx] === 'faktury') setFakturyData(data);
             else if (labels[idx] === 'smlouvy') setSmlouvyData(data);
             newLoaded[labels[idx]] = true;
+            return;
           }
+
+          failedTabs.push(labels[idx]);
         });
+
         setDataLoaded(newLoaded);
+        if (searchChanged) setCachedSearch(search);
+
+        if (failedTabs.length > 0) {
+          setError(`Nepodařilo se načíst: ${failedTabs.join(', ')}`);
+        }
       } catch (err) {
         console.error('Error loading VEMA data:', err);
         if (!cancelled) setError(err.message || 'Chyba při načítání dat');
@@ -835,17 +862,26 @@ const VemaDenik = () => {
 
       // Reload VŠECH dat po importu (ne jen aktivní záložky)
       console.log('🔄 Reload všech VEMA dat po importu...');
-      const [firmyResp, fakturyResp, smlouvyResp] = await Promise.all([
+      const [firmyResp, fakturyResp, smlouvyResp] = await Promise.allSettled([
         loadVemaFirmy({ token, username, limit: 50000, offset: 0, search: '' }),
         loadVemaFaktury({ token, username, limit: 50000, offset: 0, search: '' }),
         loadVemaSmlouvy({ token, username, limit: 50000, offset: 0, search: '' })
       ]);
-      console.log('📊 Firmy:', firmyResp.data?.length || 0);
-      console.log('📄 Faktury:', fakturyResp.data?.length || 0);
-      console.log('📋 Smlouvy:', smlouvyResp.data?.length || 0);
-      setFirmyData(firmyResp.data || []);
-      setFakturyData(fakturyResp.data || []);
-      setSmlouvyData(smlouvyResp.data || []);
+
+      const firmyData = firmyResp.status === 'fulfilled' ? (firmyResp.value?.data || []) : [];
+      const fakturyData = fakturyResp.status === 'fulfilled' ? (fakturyResp.value?.data || []) : [];
+      const smlouvyData = smlouvyResp.status === 'fulfilled' ? (smlouvyResp.value?.data || []) : [];
+
+      console.log('📊 Firmy:', firmyData.length);
+      console.log('📄 Faktury:', fakturyData.length);
+      console.log('📋 Smlouvy:', smlouvyData.length);
+      setFirmyData(firmyData);
+      setFakturyData(fakturyData);
+      setSmlouvyData(smlouvyData);
+
+      if (firmyResp.status === 'rejected' || fakturyResp.status === 'rejected' || smlouvyResp.status === 'rejected') {
+        setError('Některá data se po importu nepodařilo znovu načíst.');
+      }
       // Cache je aktuální = všechny taby naplněné
       setDataLoaded({ firmy: true, faktury: true, smlouvy: true });
 
@@ -1533,11 +1569,12 @@ const VemaDenik = () => {
   // ============================================================================
 
   const handleSearchChange = (e) => {
-    setSearch(e.target.value);
+    setSearchInput(e.target.value); // Okamžitá aktualizace inputu
     setPageIndex(0); // Reset to first page on search
   };
 
   const handleClearSearch = () => {
+    setSearchInput('');
     setSearch('');
     setPageIndex(0);
   };
@@ -2160,10 +2197,10 @@ const VemaDenik = () => {
             <SearchInput
               type="text"
               placeholder={`Hledat v ${activeTab}...`}
-              value={search}
+              value={searchInput}
               onChange={handleSearchChange}
             />
-            {search && (
+            {searchInput && (
               <ClearButton onClick={handleClearSearch}>
                 <FontAwesomeIcon icon={faTimes} />
               </ClearButton>

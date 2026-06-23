@@ -582,7 +582,7 @@ function _dashboard_get_invoices_pending_check($db, $user_id, $is_admin, $days, 
         LEFT JOIN `" . TBL_UZIVATELE . "` u_vyt ON u_vyt.id = f.vytvoril_uzivatel_id
         LEFT JOIN `" . TBL_UZIVATELE . "` u_pred ON u_pred.id = f.fa_predana_zam_id
         WHERE f.aktivni = 1
-          AND " . SQL_VS_NOT_REJECTED . "
+          AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = " . VS_STATUS_NEPOTVRZENA . ")
           AND f.stav != 'STORNO'
           {$where_user}
         ORDER BY f.fa_datum_splatnosti ASC
@@ -872,7 +872,7 @@ function _dashboard_get_alerts($db, $user_id, $is_admin, $permissions) {
             SELECT COUNT(*) as count
             FROM `" . TBL_FAKTURY . "` f
             WHERE f.aktivni = 1
-              AND " . SQL_VS_NOT_REJECTED . "
+              AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = " . VS_STATUS_NEPOTVRZENA . ")
               AND f.stav != 'STORNO'
               AND DATEDIFF(CURDATE(), f.dt_vytvoreni) > 7
               {$where_user2}
@@ -985,7 +985,7 @@ function _dashboard_get_focus_alerts($db, $user_id, $is_admin, $permissions, $ha
             SELECT COUNT(*) as cnt
             FROM `" . TBL_FAKTURY . "` f
             WHERE f.aktivni = 1
-              AND " . SQL_VS_NOT_REJECTED . "
+              AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = " . VS_STATUS_NEPOTVRZENA . ")
               AND f.stav != 'STORNO'
               AND DATEDIFF(CURDATE(), f.dt_vytvoreni) > 5
               {$where_f}
@@ -1305,7 +1305,7 @@ function _dashboard_get_news_since_login($db, $user_id, $is_admin, $perm_codes, 
             SELECT COUNT(*) as cnt
             FROM `" . TBL_FAKTURY . "` f
             WHERE f.aktivni = 1
-              AND " . SQL_VS_NOT_REJECTED . "
+              AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = " . VS_STATUS_NEPOTVRZENA . ")
               AND f.stav != 'STORNO'
               {$where_f}
         ");
@@ -1467,7 +1467,7 @@ function _dashboard_get_my_stats($db, $user_id) {
             SELECT COUNT(*) as cnt
             FROM `" . TBL_FAKTURY . "` f
             WHERE f.aktivni = 1
-              AND " . SQL_VS_NOT_REJECTED . "
+              AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = " . VS_STATUS_NEPOTVRZENA . ")
               AND f.stav != 'STORNO'
               AND (f.potvrdil_vecnou_spravnost_id = ? OR f.fa_predana_zam_id = ?)
         ");

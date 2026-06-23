@@ -94,15 +94,27 @@ function handle_vema_firmy_list($input, $config, $queries) {
         $where = array();
         $params = array();
 
-        // Vždy filtrovat jen aktivní záznamy
-        $where[] = "stav_zaznamu = 'aktivni'";
+        // Poznámka: tabulka 25v_firmyupl nemá sloupec stav_zaznamu (na rozdíl od faktur/smluv)
+        // Pokud potřebujeme filtrovat smazané záznamy, použijeme sloupec 'stav' z Excelu
 
         if ($search !== '') {
-            $where[] = "(nazev LIKE ? OR ico LIKE ? OR email LIKE ?)";
+            // Fulltext search přes klíčové sloupce firem
+            $where[] = "(nazev LIKE ? OR ico LIKE ? OR email LIKE ? 
+                        OR regcisph LIKE ? OR ulice LIKE ? OR obec LIKE ? 
+                        OR telefon LIKE ? OR mobil LIKE ? OR web LIKE ? 
+                        OR dnazev LIKE ? OR dic LIKE ?)";
             $search_param = '%' . $search . '%';
-            $params[] = $search_param;
-            $params[] = $search_param;
-            $params[] = $search_param;
+            $params[] = $search_param; // nazev
+            $params[] = $search_param; // ico
+            $params[] = $search_param; // email
+            $params[] = $search_param; // regcisph
+            $params[] = $search_param; // ulice
+            $params[] = $search_param; // obec
+            $params[] = $search_param; // telefon
+            $params[] = $search_param; // mobil
+            $params[] = $search_param; // web
+            $params[] = $search_param; // dnazev
+            $params[] = $search_param; // dic
         }
 
         if ($stav !== '') {
@@ -110,7 +122,7 @@ function handle_vema_firmy_list($input, $config, $queries) {
             $params[] = $stav;
         }
 
-        $where_sql = 'WHERE ' . implode(' AND ', $where);
+        $where_sql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
 
         // Celkový počet
         $count_sql = "SELECT COUNT(*) as total FROM `" . TBL_VEMA_FIRMYUPL . "` " . $where_sql;
@@ -267,11 +279,27 @@ function handle_vema_faktury_list($input, $config, $queries) {
         // }
 
         if ($search !== '') {
-            $where[] = "(f.cfak LIKE ? OR f.nazevfak LIKE ? OR f.cdok LIKE ?)";
+            // Fulltext search přes klíčové sloupce faktur
+            // Poznámka: JOIN sloupce (firmy.nazev) nelze použít v WHERE - filtrují se až v aplikační vrstvě
+            $where[] = "(f.cfak LIKE ? OR f.nazevfak LIKE ? OR f.cdok LIKE ? 
+                        OR f.csml LIKE ? OR f.cobj LIKE ? OR f.typdok LIKE ? 
+                        OR f.ksymb LIKE ? OR f.vsymb LIKE ? OR f.ssymb LIKE ?
+                        OR f.dicp LIKE ? OR f.cfakdupl LIKE ? OR f.dobrdok LIKE ?
+                        OR f.dobrfak LIKE ?)";
             $search_param = '%' . $search . '%';
-            $params[] = $search_param;
-            $params[] = $search_param;
-            $params[] = $search_param;
+            $params[] = $search_param; // cfak
+            $params[] = $search_param; // nazevfak
+            $params[] = $search_param; // cdok
+            $params[] = $search_param; // csml
+            $params[] = $search_param; // cobj
+            $params[] = $search_param; // typdok
+            $params[] = $search_param; // ksymb
+            $params[] = $search_param; // vsymb
+            $params[] = $search_param; // ssymb
+            $params[] = $search_param; // dicp
+            $params[] = $search_param; // cfakdupl
+            $params[] = $search_param; // dobrdok
+            $params[] = $search_param; // dobrfak
         }
 
         $where_sql = 'WHERE ' . implode(' AND ', $where);
@@ -486,11 +514,17 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
         }
 
         if ($search !== '') {
-            $where[] = "(s.csml LIKE ? OR s.nazsml LIKE ? OR s.dnazsml LIKE ?)";
+            // Fulltext search přes klíčové sloupce smluv
+            // Poznámka: JOIN sloupce (firmy.nazev) nelze použít v WHERE
+            $where[] = "(s.csml LIKE ? OR s.nazsml LIKE ? OR s.dnazsml LIKE ? 
+                        OR s.ecsml LIKE ? OR s.popis LIKE ? OR s.text LIKE ?)";
             $search_param = '%' . $search . '%';
-            $params[] = $search_param;
-            $params[] = $search_param;
-            $params[] = $search_param;
+            $params[] = $search_param; // csml
+            $params[] = $search_param; // nazsml
+            $params[] = $search_param; // dnazsml
+            $params[] = $search_param; // ecsml
+            $params[] = $search_param; // popis
+            $params[] = $search_param; // text
         }
 
         $where_sql = 'WHERE ' . implode(' AND ', $where);
@@ -1358,6 +1392,10 @@ function has_permission($user_id, $kod_prava) {
     try {
         $config = require __DIR__ . '/dbconfig.php';
         $db = get_db($config);
+
+        if (!$db) {
+            return false;
+        }
         
         // ✅ PRVNÍ: Kontrola admin rolí - SUPERADMIN a ADMINISTRATOR mají vše automaticky
         $admin_check_sql = "SELECT r.kod_role 
@@ -1372,20 +1410,22 @@ function has_permission($user_id, $kod_prava) {
             // ✅ Je SUPERADMIN nebo ADMINISTRATOR - má automaticky všechna práva
             return true;
         }
-        
-        // ✅ DRUHÝ: Běžná kontrola přes 25_role_prava
+
+        // ✅ DRUHÝ: Kontrola konkrétního práva
+        // Právo může být přiřazeno buď přes roli (rp.role_id), nebo přímo uživateli (rp.user_id).
         $sql = "SELECT COUNT(*) as count
-                FROM `25_uzivatele_role` ur
-                JOIN `25_role_prava` rp ON ur.role_id = rp.role_id
-                JOIN `25_prava` p ON rp.pravo_id = p.id
-                WHERE ur.uzivatel_id = ? 
-                  AND p.kod_prava = ?
-                  AND p.aktivni = 1";
-        
+                FROM `25_prava` p
+                LEFT JOIN `25_role_prava` rp_role ON p.id = rp_role.pravo_id
+                LEFT JOIN `25_uzivatele_role` ur ON ur.role_id = rp_role.role_id AND ur.uzivatel_id = ?
+                LEFT JOIN `25_role_prava` rp_user ON p.id = rp_user.pravo_id AND rp_user.user_id = ?
+                WHERE p.kod_prava = ?
+                  AND p.aktivni = 1
+                  AND (ur.uzivatel_id IS NOT NULL OR rp_user.user_id IS NOT NULL)";
+
         $stmt = $db->prepare($sql);
-        $stmt->execute(array($user_id, $kod_prava));
+        $stmt->execute(array($user_id, $user_id, $kod_prava));
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        
+
         return $result['count'] > 0;
     } catch (Exception $e) {
         error_log("Permission check error: " . $e->getMessage());

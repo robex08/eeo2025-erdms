@@ -217,10 +217,13 @@ function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
     };
     
     if (isLoggedIn) {
+      // Okamžitá kontrola při mount/reload (detekuje údržbu ihned při F5)
       checkMaintenance();
       
-      // Kontrola každých 30 sekund
-      const interval = setInterval(checkMaintenance, 30000);
+      // Kontrola každých 20 minut (bylo 10 min - optimalizace 2026-06-23 phase 2)
+      // Důvod: Reload stránky detekuje údržbu okamžitě (line výše)
+      // Údržba se nemění často + uživatelé reloadují průměrně každých 10-20 min
+      const interval = setInterval(checkMaintenance, 20 * 60 * 1000); // 20 minut
       
       return () => clearInterval(interval);
     } else {

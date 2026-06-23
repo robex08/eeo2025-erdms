@@ -2854,10 +2854,11 @@ const Layout = ({ children }) => {
     // Check immediately on mount
     checkMaintenance();
 
-    // Check every 30 seconds
-    const interval = setInterval(checkMaintenance, 30000);
-
-    return () => clearInterval(interval);
+    // ❌ DUPLICITA ODSTRANĚNA 2026-06-23: Interval check je již v App.js
+    // Layout.js + App.js = 2× interval na každém tabu = každé 2s místo 30s!
+    // Ponecháno pouze immediate check při mount pro kompatibilitu
+    
+    // return () => {} - žádný cleanup
   }, []);
 
   // Listen for settings changes (triggered after saving settings in ProfilePage)

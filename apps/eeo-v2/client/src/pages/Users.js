@@ -1610,6 +1610,7 @@ const Users = () => {
   }, [token, username, fetchUsers, silentRefresh]);
 
   // Načítání aktivních uživatelů (pro dashboard)
+  // Optimalizace 2026-06-23: 30s → 30 minut + visibility check
   const fetchActiveUsersData = useCallback(async () => {
     if (!token || !username) return;
     try {
@@ -1620,9 +1621,15 @@ const Users = () => {
   }, [token, username]);
 
   useEffect(() => {
-    fetchActiveUsersData();
-    // Refresh každých 30 sekund
-    const interval = setInterval(fetchActiveUsersData, 30000);
+    fetchActiveUsersData(); // Immediate fetch při mount
+    
+    // Refresh každých 30 minut, POUZE když je page visible
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchActiveUsersData();
+      }
+    }, 30 * 60 * 1000); // 30 minut (bylo 30s)
+    
     return () => clearInterval(interval);
   }, [fetchActiveUsersData]);
 
