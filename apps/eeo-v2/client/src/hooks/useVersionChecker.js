@@ -31,19 +31,23 @@ import VersionChecker from '../utils/versionChecker';
  */
 const useVersionChecker = (options = {}) => {
   const checkerRef = useRef(null);
-  const { onUpdate, checkInterval, gracePeriod, enabled = true, endpoint } = options;
+  const optionsRef = useRef(options);
+  const { enabled = true } = options;
+  
+  // Uchovej nejnovější options v ref (bez triggeru re-render)
+  optionsRef.current = options;
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
 
-    // Vytvoř instanci checkeru
+    // Vytvoř instanci checkeru (POUZE jednou, při mount nebo když se změní enabled)
     checkerRef.current = new VersionChecker({
-      onUpdate,
-      checkInterval,
-      gracePeriod,
-      endpoint
+      onUpdate: optionsRef.current.onUpdate,
+      checkInterval: optionsRef.current.checkInterval,
+      gracePeriod: optionsRef.current.gracePeriod,
+      endpoint: optionsRef.current.endpoint
     });
 
     // Spusť monitoring
@@ -56,7 +60,7 @@ const useVersionChecker = (options = {}) => {
         checkerRef.current = null;
       }
     };
-  }, [enabled, onUpdate, checkInterval, gracePeriod, endpoint]);
+  }, [enabled]); // ✅ OPRAVENO: Pouze 'enabled' v dependencies
 
   // Vrať API pro manuální kontrolu nebo reload
   return {
