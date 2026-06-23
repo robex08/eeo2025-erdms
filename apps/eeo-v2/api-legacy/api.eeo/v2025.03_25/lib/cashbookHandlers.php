@@ -256,39 +256,17 @@ function handle_cashbook_get_post($config, $input) {
                     $book['rok'], 
                     $book['mesic']
                 );
-                
-                // Načíst položky pro přepočet koncového stavu
-                $entryModel = new CashbookEntryModel($db);
-                $entries = $entryModel->getEntriesByBookId($book['id'], false);
-                
-                $totalIncome = 0;
-                $totalExpense = 0;
-                foreach ($entries as $entry) {
-                    if ($entry['castka_prijem']) {
-                        $totalIncome += floatval($entry['castka_prijem']);
-                    }
-                    if ($entry['castka_vydaj']) {
-                        $totalExpense += floatval($entry['castka_vydaj']);
-                    }
-                }
-                
-                // Vypočítat nový koncový stav
-                $koncovyStav = $prevTransfer + $totalIncome - $totalExpense;
-                
-                // Aktualizovat převod + koncový stav v DB
-                $stmt = $db->prepare("
-                    UPDATE 25a_pokladni_knihy 
-                    SET prevod_z_predchoziho = ?,
-                        pocatecni_stav = ?,
-                        koncovy_stav = ?
-                    WHERE id = ?
-                ");
-                $stmt->execute(array($prevTransfer, $prevTransfer, $koncovyStav, $book['id']));
-                
-                // Aktualizovat hodnoty v response
-                $book['prevod_z_predchoziho'] = number_format($prevTransfer, 2, '.', '');
-                $book['pocatecni_stav'] = number_format($prevTransfer, 2, '.', '');
-                $book['koncovy_stav'] = number_format($koncovyStav, 2, '.', '');
+
+                // 🆕 FIX 2026-06-23: Update hlavičky + KASKÁDOVÝ přepočet zustatek_po_operaci u všech položek.
+                // Dříve se zde dělal jen inline UPDATE knihy, takže prevod_z_predchoziho byl správně,
+                // ale zustatek_po_operaci u položek zůstával spočítaný se starým převodem
+                // (např. ve sloupci "Zůstatek" v UI se objevovaly hodnoty nedávající smysl).
+                // updatePreviousMonthTransfer() interně volá BalanceCalculator->recalculateBookBalances(),
+                // který přepočítá zustatek_po_operaci u všech položek i koncovy_stav v knize.
+                $bookModel->updatePreviousMonthTransfer($book['id'], $prevTransfer);
+
+                // Reload knihy z DB, aby response obsahoval aktuální koncovy_stav (po přepočtu položek)
+                $book = $bookModel->getBookById($book['id']);
             }
         }
         
