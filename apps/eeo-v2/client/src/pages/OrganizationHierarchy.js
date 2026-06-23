@@ -1325,12 +1325,14 @@ const HelpExample = styled.div`
 
 // Custom Node Component
 const CustomNode = ({ data, selected }) => {
-  // Rozlišit typ node (user, location, department, template, role, genericRecipient)
+  // Rozlišit typ node (user, location, department, template, role, lp_kod, financing, genericRecipient)
   const isTemplate = data.type === 'template';
   const isRole = data.type === 'role';
   const isLocation = data.type === 'location';
   const isDepartment = data.type === 'department';
-  const isUser = !isLocation && !isDepartment && !isTemplate && !isRole;
+  const isLpCode = data.type === 'lp_kod'; // ✅ NOVÉ
+  const isFinancing = data.type === 'financing'; // ✅ NOVÉ
+  const isUser = !isLocation && !isDepartment && !isTemplate && !isRole && !isLpCode && !isFinancing;
   
   // Pro template nodes - jen zelený výstupní bod
   if (isTemplate) {
@@ -1546,6 +1548,166 @@ const CustomNode = ({ data, selected }) => {
     );
   }
   
+  // ✅ NOVÉ: Pro LP kód nodes - červený node
+  if (isLpCode) {
+    return (
+      <div style={{
+        padding: '12px 16px',
+        borderRadius: '8px',
+        background: selected 
+          ? 'linear-gradient(135deg, #fee2e2 0%, #fecaca 100%)'
+          : 'white',
+        border: `3px solid ${selected ? '#dc2626' : '#dc2626'}`,
+        minWidth: '180px',
+        boxShadow: selected 
+          ? '0 6px 16px rgba(220, 38, 38, 0.4)'
+          : '0 2px 8px rgba(220, 38, 38, 0.15)',
+        transition: 'all 0.2s',
+        position: 'relative',
+        transform: selected ? 'scale(1.05)' : 'scale(1)',
+      }}>
+        {/* Source a Target handles */}
+        <Handle
+          type="target"
+          position={Position.Top}
+          style={{
+            width: '14px',
+            height: '14px',
+            background: '#dc2626',
+            border: '2px solid white',
+            boxShadow: '0 2px 6px rgba(220, 38, 38, 0.4)',
+            cursor: 'crosshair'
+          }}
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          style={{
+            width: '14px',
+            height: '14px',
+            background: '#dc2626',
+            border: '2px solid white',
+            boxShadow: '0 2px 6px rgba(220, 38, 38, 0.4)',
+            cursor: 'crosshair'
+          }}
+        />
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '6px',
+            background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.2rem',
+            boxShadow: '0 2px 6px rgba(220, 38, 38, 0.3)',
+            color: 'white'
+          }}>
+            📋
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ 
+              fontWeight: 700, 
+              color: '#991b1b',
+              fontSize: '0.85rem'
+            }}>
+              {data.lp_cislo}
+            </div>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#dc2626',
+              fontWeight: 500 
+            }}>
+              {data.usek || data.nazev || 'LP'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ✅ NOVÉ: Pro financování nodes - zelený node
+  if (isFinancing) {
+    return (
+      <div style={{
+        padding: '12px 16px',
+        borderRadius: '8px',
+        background: selected 
+          ? 'linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%)'
+          : 'white',
+        border: `3px solid ${selected ? '#16a34a' : '#16a34a'}`,
+        minWidth: '180px',
+        boxShadow: selected 
+          ? '0 6px 16px rgba(22, 163, 74, 0.4)'
+          : '0 2px 8px rgba(22, 163, 74, 0.15)',
+        transition: 'all 0.2s',
+        position: 'relative',
+        transform: selected ? 'scale(1.05)' : 'scale(1)',
+      }}>
+        {/* Source a Target handles */}
+        <Handle
+          type="target"
+          position={Position.Top}
+          style={{
+            width: '14px',
+            height: '14px',
+            background: '#16a34a',
+            border: '2px solid white',
+            boxShadow: '0 2px 6px rgba(22, 163, 74, 0.4)',
+            cursor: 'crosshair'
+          }}
+        />
+        <Handle
+          type="source"
+          position={Position.Bottom}
+          style={{
+            width: '14px',
+            height: '14px',
+            background: '#16a34a',
+            border: '2px solid white',
+            boxShadow: '0 2px 6px rgba(22, 163, 74, 0.4)',
+            cursor: 'crosshair'
+          }}
+        />
+        
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{
+            width: '36px',
+            height: '36px',
+            borderRadius: '6px',
+            background: 'linear-gradient(135deg, #16a34a 0%, #166534 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: '1.2rem',
+            boxShadow: '0 2px 6px rgba(22, 163, 74, 0.3)',
+            color: 'white'
+          }}>
+            💰
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ 
+              fontWeight: 700, 
+              color: '#166534',
+              fontSize: '0.85rem'
+            }}>
+              {data.typ || data.nazev}
+            </div>
+            <div style={{ 
+              fontSize: '0.7rem', 
+              color: '#16a34a',
+              fontWeight: 500 
+            }}>
+              {data.popis || data.description || 'Financování'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // User node - původní vizualizace
   return (
     <div style={{
@@ -1717,6 +1879,10 @@ const CustomEdge = ({
     strokeColor = '#92400e'; // Tmavě hnědá pro lokality
   } else if (sourceNode?.data?.type === 'department') {
     strokeColor = '#059669'; // Tmavě zelená pro útvary
+  } else if (sourceNode?.data?.type === 'lp_kod') { // ✅ NOVÉ
+    strokeColor = '#dc2626'; // Červená pro LP kódy
+  } else if (sourceNode?.data?.type === 'financing') { // ✅ NOVÉ
+    strokeColor = '#16a34a'; // Zelená pro financování
   } else if (sourceNode?.type === 'custom') {
     strokeColor = '#3b82f6'; // Modrá pro uživatele
   }
@@ -1780,6 +1946,8 @@ const OrganizationHierarchy = () => {
   const [searchRoles, setSearchRoles] = useState(() => localStorage.getItem('hierarchy_search_roles') || '');
   const [searchLocations, setSearchLocations] = useState(() => localStorage.getItem('hierarchy_search_locations') || '');
   const [searchDepartments, setSearchDepartments] = useState(() => localStorage.getItem('hierarchy_search_departments') || '');
+  const [searchLpCodes, setSearchLpCodes] = useState(() => localStorage.getItem('hierarchy_search_lp_codes') || ''); // ✅ NOVÉ
+  const [searchFinancing, setSearchFinancing] = useState(() => localStorage.getItem('hierarchy_search_financing') || ''); // ✅ NOVÉ
   const [searchTemplates, setSearchTemplates] = useState(() => localStorage.getItem('hierarchy_search_templates') || '');
   
   const [expandedSections, setExpandedSections] = useState(() => {
@@ -1789,6 +1957,8 @@ const OrganizationHierarchy = () => {
       roles: false,
       locations: false,
       departments: false,
+      lpCodes: false, // ✅ NOVÉ
+      financing: false, // ✅ NOVÉ
       genericRecipients: false,
       notificationTemplates: false
     };
@@ -1809,6 +1979,8 @@ const OrganizationHierarchy = () => {
   const [allRoles, setAllRoles] = useState([]);
   const [allLocations, setAllLocations] = useState([]);
   const [allDepartments, setAllDepartments] = useState([]);
+  const [allLpCodes, setAllLpCodes] = useState([]); // ✅ NOVÉ: LP KÓDY
+  const [allFinancing, setAllFinancing] = useState([]); // ✅ NOVÉ: FINANCOVÁNÍ
   const [notificationTypes, setNotificationTypes] = useState([]);
   const [allNotificationTemplates, setAllNotificationTemplates] = useState([]);
   const [notificationEventTypes, setNotificationEventTypes] = useState([]); // Event Types pro Notification Center
@@ -2242,6 +2414,8 @@ const OrganizationHierarchy = () => {
   const [selectedRoles, setSelectedRoles] = useState(new Set());
   const [selectedLocations, setSelectedLocations] = useState(new Set());
   const [selectedDepartments, setSelectedDepartments] = useState(new Set());
+  const [selectedLpCodes, setSelectedLpCodes] = useState(new Set()); // ✅ NOVÉ
+  const [selectedFinancing, setSelectedFinancing] = useState(new Set()); // ✅ NOVÉ
   const [selectedNotificationTemplates, setSelectedNotificationTemplates] = useState(new Set());
   
   // Confirm dialog state
@@ -2625,11 +2799,13 @@ const OrganizationHierarchy = () => {
         };
 
         // 3. Paralelní načtení dat (BEZ struktury - tu načteme až po zjištění profilu)
-        const [usersData, rolesData, locationsData, departmentsData, profilesData, notifTypesData, templatesData, eventTypesData] = await Promise.all([
+        const [usersData, rolesData, locationsData, departmentsData, lpCodesData, financingData, profilesData, notifTypesData, templatesData, eventTypesData] = await Promise.all([
           fetchData('hierarchy/users'),
           fetchData('ciselniky/role/list'),
           fetchData('hierarchy/locations'),
           fetchData('hierarchy/departments'),
+          fetchData('hierarchy/lp-codes'), // ✅ NOVÉ: LP KÓDY
+          fetchData('hierarchy/financing'), // ✅ NOVÉ: FINANCOVÁNÍ
           fetchData('hierarchy/profiles/list'),
           fetchData('hierarchy/notification-types'),
           fetchData('notifications/templates/list'),
@@ -2656,6 +2832,8 @@ const OrganizationHierarchy = () => {
         setAllRoles(rolesWithUserCount);
         setAllLocations(locationsData.data || []);
         setAllDepartments(departmentsData.data || []);
+        setAllLpCodes(lpCodesData.data || []); // ✅ NOVÉ: Načíst LP KÓDY
+        setAllFinancing(financingData.data || []); // ✅ NOVÉ: Načíst FINANCOVÁNÍ
         setNotificationTypes(notifTypesData.data || []);
         setAllNotificationTemplates(templatesData.data || []);
         
@@ -3266,6 +3444,51 @@ const OrganizationHierarchy = () => {
         showExtended: true,
         showModules: true,
         explanation: (source, target) => `${source} získá práva vidět data od uživatelů s rolí ${target}. Rozsah a Moduly určují, co přesně uvidí (objednávky/faktury/pokladnu).`
+      },
+      // ✅ NOVÉ: Vztahy pro LP KÓDY a FINANCOVÁNÍ
+      'user-lp_kod': {
+        label: 'Uživatel → LP kód',
+        icon: '👤→📋',
+        description: 'Uživatel má přístup k LP kódu pro čerpání',
+        sourceLabel: 'Uživatel (čerpající)',
+        targetLabel: 'LP kód (limitovaný příslib)',
+        showScope: false, // LP kód nemá scope jako data
+        showExtended: false,
+        showModules: false, // LP kód není modul
+        explanation: (source, target) => `${source} může čerpat z LP kódu ${target}.`
+      },
+      'user-financing': {
+        label: 'Uživatel → Způsob financování',
+        icon: '👤→💰',
+        description: 'Uživatel má přístup k tomuto způsobu financování',
+        sourceLabel: 'Uživatel (čerpající)',
+        targetLabel: 'Způsob financování',
+        showScope: false,
+        showExtended: false,
+        showModules: false,
+        explanation: (source, target) => `${source} může používat způsob financování ${target}.`
+      },
+      'role-lp_kod': {
+        label: 'Role → LP kód',
+        icon: '🛡️→📋',
+        description: 'Všichni uživatelé s rolí mohou čerpat z LP kódu',
+        sourceLabel: 'Role (čerpající)',
+        targetLabel: 'LP kód (limitovaný příslib)',
+        showScope: false,
+        showExtended: false,
+        showModules: false,
+        explanation: (source, target) => `Všichni uživatelé s rolí ${source} mohou čerpat z LP kódu ${target}.`
+      },
+      'role-financing': {
+        label: 'Role → Způsob financování',
+        icon: '🛡️→💰',
+        description: 'Všichni uživatelé s rolí mohou používat tento způsob financování',
+        sourceLabel: 'Role (čerpající)',
+        targetLabel: 'Způsob financování',
+        showScope: false,
+        showExtended: false,
+        showModules: false,
+        explanation: (source, target) => `Všichni uživatelé s rolí ${source} mohou používat způsob financování ${target}.`
       }
     };
     
@@ -3326,6 +3549,30 @@ const OrganizationHierarchy = () => {
     });
   };
 
+  const toggleLpCodeSelection = (lpId) => { // ✅ NOVÉ
+    setSelectedLpCodes(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lpId)) {
+        newSet.delete(lpId);
+      } else {
+        newSet.add(lpId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleFinancingSelection = (finId) => { // ✅ NOVÉ
+    setSelectedFinancing(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(finId)) {
+        newSet.delete(finId);
+      } else {
+        newSet.add(finId);
+      }
+      return newSet;
+    });
+  };
+
   const toggleRoleSelection = (roleId) => {
     setSelectedRoles(prev => {
       const newSet = new Set(prev);
@@ -3360,6 +3607,22 @@ const OrganizationHierarchy = () => {
 
   const deselectAllDepartments = () => {
     setSelectedDepartments(new Set());
+  };
+
+  const selectAllLpCodes = () => { // ✅ NOVÉ
+    setSelectedLpCodes(new Set(filteredLpCodes.map(l => l.id)));
+  };
+
+  const deselectAllLpCodes = () => { // ✅ NOVÉ
+    setSelectedLpCodes(new Set());
+  };
+
+  const selectAllFinancing = () => { // ✅ NOVÉ
+    setSelectedFinancing(new Set(filteredFinancing.map(f => f.id)));
+  };
+
+  const deselectAllFinancing = () => { // ✅ NOVÉ
+    setSelectedFinancing(new Set());
   };
 
   const toggleNotificationTemplateSelection = (templateId) => {
@@ -3597,7 +3860,7 @@ const OrganizationHierarchy = () => {
     }
     
     // Zpracování uživatele
-    if (!dragId.startsWith('loc-') && !dragId.startsWith('dept-') && !dragId.startsWith('role-')) {
+    if (!dragId.startsWith('loc-') && !dragId.startsWith('dept-') && !dragId.startsWith('role-') && !dragId.startsWith('lp-') && !dragId.startsWith('fin-')) {
       const user = allUsers.find(u => u.id === dragId);
       
       if (user) {
@@ -3684,6 +3947,100 @@ const OrganizationHierarchy = () => {
           metadata: {
             type: 'department',
             department: department.name
+          }
+        }
+      };
+      
+      setNodes((nds) => [...nds, newNode]);
+      return;
+    }
+
+    // Zpracování role
+    if (dragId.startsWith('role-')) {
+      const roleId = dragId.replace('role-', '');
+      const role = allRoles.find(r => r.id === roleId);
+      
+      if (role) {
+        const nodeId = `role-${roleId}-${Date.now()}`;
+        
+        const newNode = {
+          id: nodeId,
+          type: 'custom',
+          position,
+          data: {
+            type: 'role',
+            roleId: roleId,
+            name: role.nazev_role,
+            position: role.popis || 'Role',
+            metadata: {
+              userCount: role.userCount,
+              description: role.popis
+            }
+          }
+        };
+        
+        setNodes((nds) => [...nds, newNode]);
+      }
+      return;
+    }
+
+    // ✅ NOVÉ: Zpracování LP kódu
+    if (dragId.startsWith('lp-')) {
+      const lpId = dragId.replace('lp-', '');
+      const lp = allLpCodes.find(l => String(l.id) === String(lpId));
+      
+      if (!lp) {
+        console.error('❌ LP kód nenalezen:', lpId, 'dostupné:', allLpCodes.map(l => l.id));
+        return;
+      }
+      
+      const nodeId = `lp-${lpId}-${Date.now()}`;
+      
+      const newNode = {
+        id: nodeId,
+        type: 'custom',
+        position,
+        data: {
+          type: 'lp_kod',
+          lp_id: lp.lp_id || lp.id,
+          lp_cislo: lp.lp_cislo,
+          nazev: lp.nazev,
+          usek: lp.usek,
+          metadata: {
+            lp_id: lp.lp_id || lp.id,
+            orderCount: lp.orderCount || 0
+          }
+        }
+      };
+      
+      setNodes((nds) => [...nds, newNode]);
+      return;
+    }
+
+    // ✅ NOVÉ: Zpracování financování
+    if (dragId.startsWith('fin-')) {
+      const finId = dragId.replace('fin-', '');
+      const fin = allFinancing.find(f => String(f.id) === String(finId));
+      
+      if (!fin) {
+        console.error('❌ Financování nenalezeno:', finId, 'dostupné:', allFinancing.map(f => f.id));
+        return;
+      }
+      
+      const nodeId = `fin-${finId}-${Date.now()}`;
+      
+      const newNode = {
+        id: nodeId,
+        type: 'custom',
+        position,
+        data: {
+          type: 'financing',
+          financing_id: finId,
+          typ: fin.typ,
+          nazev: fin.nazev || fin.typ,
+          popis: fin.popis,
+          metadata: {
+            description: fin.popis || ''
           }
         }
       };
@@ -4879,6 +5236,18 @@ const OrganizationHierarchy = () => {
     dept.code?.toLowerCase().includes(searchDepartments.toLowerCase())
   );
 
+  const filteredLpCodes = allLpCodes.filter(lp => // ✅ NOVÉ
+    lp.lp_cislo?.toLowerCase().includes(searchLpCodes.toLowerCase()) ||
+    lp.nazev?.toLowerCase().includes(searchLpCodes.toLowerCase()) ||
+    lp.usek?.toLowerCase().includes(searchLpCodes.toLowerCase())
+  );
+
+  const filteredFinancing = allFinancing.filter(fin => // ✅ NOVÉ
+    fin.typ?.toLowerCase().includes(searchFinancing.toLowerCase()) ||
+    fin.nazev?.toLowerCase().includes(searchFinancing.toLowerCase()) ||
+    fin.popis?.toLowerCase().includes(searchFinancing.toLowerCase())
+  );
+
   const filteredNotificationTemplates = allNotificationTemplates.filter(template =>
     (template.nazev || template.name)?.toLowerCase().includes(searchTemplates.toLowerCase()) ||
     (template.typ || template.type)?.toLowerCase().includes(searchTemplates.toLowerCase()) ||
@@ -5622,6 +5991,238 @@ const OrganizationHierarchy = () => {
                           <UserMeta>{dept.userCount} uživatelů • {dept.code}</UserMeta>
                         </UserInfo>
                       </LocationItem>
+                    ))}
+                  </div>
+                </SectionContent>
+              </CollapsibleSection>
+
+              {/* ✅ NOVÉ: LP KÓDY sekce */}
+              <CollapsibleSection>
+                <SectionHeader
+                  expanded={expandedSections.lpCodes}
+                  onClick={() => toggleSection('lpCodes')}
+                >
+                  <FontAwesomeIcon icon={expandedSections.lpCodes ? faChevronDown : faChevronRight} />
+                  <FontAwesomeIcon icon={faLayerGroup} />
+                  LP KÓDY ({filteredLpCodes.length})
+                  {selectedLpCodes.size > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#dc2626', fontWeight: 'bold' }}>
+                      {selectedLpCodes.size} vybráno
+                    </span>
+                  )}
+                </SectionHeader>
+                <SectionContent expanded={expandedSections.lpCodes}>
+                  {/* Search box pro LP kódy */}
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed' }}>
+                    <SearchBox style={{ margin: 0 }}>
+                      <SearchIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchIcon>
+                      <SearchInput
+                        placeholder="Hledat LP..."
+                        value={searchLpCodes}
+                        onChange={(e) => setSearchLpCodes(e.target.value)}
+                        style={{ fontSize: '0.85rem', padding: '8px 32px' }}
+                      />
+                      {searchLpCodes && (
+                        <SearchClearButton
+                          onClick={() => setSearchLpCodes('')}
+                          title="Vymazat"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </SearchClearButton>
+                      )}
+                    </SearchBox>
+                  </div>
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed', display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (selectedLpCodes.size === filteredLpCodes.length) {
+                          deselectAllLpCodes();
+                        } else {
+                          selectAllLpCodes();
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '6px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e0e6ed',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        color: '#475569',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = '#e2e8f0'}
+                      onMouseLeave={(e) => e.target.style.background = '#f8fafc'}
+                    >
+                      {selectedLpCodes.size === filteredLpCodes.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
+                    </button>
+                  </div>
+                  <div>
+                    {filteredLpCodes.map((lp) => (
+                      <UserItem
+                        key={`lp-${lp.id}`}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('application/reactflow', `lp-${lp.id}`);
+                          setDraggedItem(`lp-${lp.id}`);
+                        }}
+                        onDragEnd={() => setDraggedItem(null)}
+                        style={{
+                          background: selectedLpCodes.has(lp.id) ? '#fee2e2' : 'white',
+                          borderColor: selectedLpCodes.has(lp.id) ? '#dc2626' : '#e0e6ed',
+                          cursor: 'grab'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedLpCodes.has(lp.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleLpCodeSelection(lp.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer',
+                            accentColor: '#dc2626',
+                            flexShrink: 0
+                          }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                          <FontAwesomeIcon icon={faLayerGroup} style={{ color: '#dc2626', fontSize: '1.1rem' }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: '#991b1b' }}>
+                              {lp.lp_cislo}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#dc2626', marginTop: '2px' }}>
+                              {lp.nazev || lp.popis || ''}{lp.usek ? ` • ${lp.usek}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      </UserItem>
+                    ))}
+                  </div>
+                </SectionContent>
+              </CollapsibleSection>
+
+              {/* ✅ NOVÉ: FINANCOVÁNÍ sekce */}
+              <CollapsibleSection>
+                <SectionHeader
+                  expanded={expandedSections.financing}
+                  onClick={() => toggleSection('financing')}
+                >
+                  <FontAwesomeIcon icon={expandedSections.financing ? faChevronDown : faChevronRight} />
+                  <FontAwesomeIcon icon={faLayerGroup} />
+                  FINANCOVÁNÍ ({filteredFinancing.length})
+                  {selectedFinancing.size > 0 && (
+                    <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#16a34a', fontWeight: 'bold' }}>
+                      {selectedFinancing.size} vybráno
+                    </span>
+                  )}
+                </SectionHeader>
+                <SectionContent expanded={expandedSections.financing}>
+                  {/* Search box pro financování */}
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed' }}>
+                    <SearchBox style={{ margin: 0 }}>
+                      <SearchIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchIcon>
+                      <SearchInput
+                        placeholder="Hledat financování..."
+                        value={searchFinancing}
+                        onChange={(e) => setSearchFinancing(e.target.value)}
+                        style={{ fontSize: '0.85rem', padding: '8px 32px' }}
+                      />
+                      {searchFinancing && (
+                        <SearchClearButton
+                          onClick={() => setSearchFinancing('')}
+                          title="Vymazat"
+                        >
+                          <FontAwesomeIcon icon={faTimes} />
+                        </SearchClearButton>
+                      )}
+                    </SearchBox>
+                  </div>
+                  <div style={{ padding: '8px 12px', borderBottom: '1px solid #e0e6ed', display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (selectedFinancing.size === filteredFinancing.length) {
+                          deselectAllFinancing();
+                        } else {
+                          selectAllFinancing();
+                        }
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '6px 12px',
+                        background: '#f8fafc',
+                        border: '1px solid #e0e6ed',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontSize: '0.8rem',
+                        fontWeight: '600',
+                        color: '#475569',
+                        transition: 'all 0.2s'
+                      }}
+                      onMouseEnter={(e) => e.target.style.background = '#e2e8f0'}
+                      onMouseLeave={(e) => e.target.style.background = '#f8fafc'}
+                    >
+                      {selectedFinancing.size === filteredFinancing.length ? '☐ Zrušit vše' : '☑ Vybrat vše'}
+                    </button>
+                  </div>
+                  <div>
+                    {filteredFinancing.map((fin) => (
+                      <UserItem
+                        key={`fin-${fin.id}`}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('application/reactflow', `fin-${fin.id}`);
+                          setDraggedItem(`fin-${fin.id}`);
+                        }}
+                        onDragEnd={() => setDraggedItem(null)}
+                        style={{
+                          background: selectedFinancing.has(fin.id) ? '#dcfce7' : 'white',
+                          borderColor: selectedFinancing.has(fin.id) ? '#16a34a' : '#e0e6ed',
+                          cursor: 'grab'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedFinancing.has(fin.id)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            toggleFinancingSelection(fin.id);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            width: '18px',
+                            height: '18px',
+                            cursor: 'pointer',
+                            accentColor: '#16a34a',
+                            flexShrink: 0
+                          }}
+                        />
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1 }}>
+                          <FontAwesomeIcon icon={faLayerGroup} style={{ color: '#16a34a', fontSize: '1.1rem' }} />
+                          <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: '600', fontSize: '0.85rem', color: '#166534' }}>
+                              {fin.typ || fin.nazev}
+                            </div>
+                            <div style={{ fontSize: '0.7rem', color: '#16a34a', marginTop: '2px' }}>
+                              {fin.popis || fin.description || ''}
+                            </div>
+                          </div>
+                        </div>
+                      </UserItem>
                     ))}
                   </div>
                 </SectionContent>
@@ -7991,6 +8592,214 @@ const OrganizationHierarchy = () => {
                   </>
                 )}
                 
+                {/* ✅ NOVÉ: LP KÓD NODE */}
+                {selectedNode && selectedNode.data.type === 'lp_kod' && (
+                  <>
+                    <FormGroup>
+                      <Label>LP kód (Číslo limitovaného příslibu)</Label>
+                      <Input value={selectedNode.data.lp_cislo || 'Neuvedeno'} readOnly style={{ fontWeight: '600', fontSize: '1.1rem', color: '#dc2626' }} />
+                    </FormGroup>
+                    <FormGroup>
+                      <Label>Název/Účel</Label>
+                      <Input value={selectedNode.data.nazev || 'Neuvedeno'} readOnly />
+                    </FormGroup>
+                    <FormGroup>
+                      <Label>Úsek</Label>
+                      <Input value={selectedNode.data.usek || 'Neuvedeno'} readOnly style={{ background: '#f0fdf4', fontWeight: '500', border: '1px solid #86efac' }} />
+                    </FormGroup>
+                    {selectedNode.data.metadata?.orderCount !== undefined && (
+                      <FormGroup>
+                        <Label>Počet objednávek s tímto LP</Label>
+                        <Input value={selectedNode.data.metadata.orderCount || 0} readOnly style={{ background: '#fef3c7', fontWeight: '600', border: '1px solid #f59e0b' }} />
+                      </FormGroup>
+                    )}
+                    
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px',
+                      background: '#fee2e2',
+                      border: '2px solid #dc2626',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#991b1b'
+                    }}>
+                      <strong>📋 Co LP kód definuje:</strong>
+                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                        <li>Uživatelé mohou <strong>čerpat</strong> z tohoto LP kódu při vytváření objednávek</li>
+                        <li>LP kód má <strong>limit</strong> a kontrolu čerpání</li>
+                        <li>Propojení přes <strong>edge</strong> určuje, kdo může čerpat</li>
+                      </ul>
+                    </div>
+                    
+                    <div style={{ 
+                      marginTop: '16px', 
+                      padding: '12px', 
+                      background: '#f0f9ff', 
+                      border: '2px solid #3b82f6',
+                      borderRadius: '8px' 
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        marginBottom: '12px',
+                        fontWeight: '600',
+                        color: '#1e40af',
+                        fontSize: '0.9rem'
+                      }}>
+                        <FontAwesomeIcon icon={faUsers} />
+                        Kdo může čerpat z tohoto LP kódu
+                      </div>
+                      
+                      {(() => {
+                        const incomingEdges = edges.filter(e => e.target === selectedNode.id);
+                        
+                        if (incomingEdges.length === 0) {
+                          return (
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                              Zatím není přiřazen žádný uživatel nebo role
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {incomingEdges.map((edge, i) => {
+                              const sourceNode = nodes.find(n => n.id === edge.source);
+                              const sourceType = sourceNode?.data?.type || 'user';
+                              const icon = sourceType === 'role' ? '🛡️' : '👤';
+                              
+                              return (
+                                <div key={i} style={{ 
+                                  padding: '8px 12px', 
+                                  background: '#dbeafe',
+                                  borderRadius: '6px',
+                                  fontSize: '0.85rem',
+                                  color: '#1e40af',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s'
+                                }}
+                                onClick={() => {
+                                  setSelectedEdge(edge);
+                                  setSelectedNode(null);
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                title="Klikněte pro zobrazení detailu vztahu">
+                                  {icon} {sourceNode?.data?.name || 'Neznámý'}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
+                )}
+                
+                {/* ✅ NOVÉ: FINANCOVÁNÍ NODE */}
+                {selectedNode && selectedNode.data.type === 'financing' && (
+                  <>
+                    <FormGroup>
+                      <Label>Typ financování</Label>
+                      <Input value={selectedNode.data.typ || 'Neuvedeno'} readOnly style={{ fontWeight: '600', fontSize: '1.1rem', color: '#16a34a' }} />
+                    </FormGroup>
+                    <FormGroup>
+                      <Label>Název</Label>
+                      <Input value={selectedNode.data.nazev || selectedNode.data.typ || 'Neuvedeno'} readOnly />
+                    </FormGroup>
+                    {selectedNode.data.popis && (
+                      <FormGroup>
+                        <Label>Popis</Label>
+                        <Input value={selectedNode.data.popis} readOnly style={{ background: '#f0fdf4', border: '1px solid #86efac' }} />
+                      </FormGroup>
+                    )}
+                    
+                    <div style={{
+                      marginTop: '16px',
+                      padding: '12px',
+                      background: '#f0fdf4',
+                      border: '2px solid #16a34a',
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      color: '#15803d'
+                    }}>
+                      <strong>💰 Co způsob financování definuje:</strong>
+                      <ul style={{ margin: '8px 0 0 0', paddingLeft: '20px', lineHeight: '1.6' }}>
+                        <li>Uživatelé mohou používat tento <strong>způsob platby</strong></li>
+                        <li>Definuje <strong>typ financování</strong> (rozpočet, grant, projekt...)</li>
+                        <li>Propojení přes <strong>edge</strong> určuje, kdo může používat</li>
+                      </ul>
+                    </div>
+                    
+                    <div style={{ 
+                      marginTop: '16px', 
+                      padding: '12px', 
+                      background: '#f0f9ff', 
+                      border: '2px solid #3b82f6',
+                      borderRadius: '8px' 
+                    }}>
+                      <div style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '8px',
+                        marginBottom: '12px',
+                        fontWeight: '600',
+                        color: '#1e40af',
+                        fontSize: '0.9rem'
+                      }}>
+                        <FontAwesomeIcon icon={faUsers} />
+                        Kdo může používat toto financování
+                      </div>
+                      
+                      {(() => {
+                        const incomingEdges = edges.filter(e => e.target === selectedNode.id);
+                        
+                        if (incomingEdges.length === 0) {
+                          return (
+                            <div style={{ fontSize: '0.8rem', color: '#64748b', fontStyle: 'italic' }}>
+                              Zatím není přiřazen žádný uživatel nebo role
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            {incomingEdges.map((edge, i) => {
+                              const sourceNode = nodes.find(n => n.id === edge.source);
+                              const sourceType = sourceNode?.data?.type || 'user';
+                              const icon = sourceType === 'role' ? '🛡️' : '👤';
+                              
+                              return (
+                                <div key={i} style={{ 
+                                  padding: '8px 12px', 
+                                  background: '#dbeafe',
+                                  borderRadius: '6px',
+                                  fontSize: '0.85rem',
+                                  color: '#1e40af',
+                                  fontWeight: '500',
+                                  cursor: 'pointer',
+                                  transition: 'all 0.2s'
+                                }}
+                                onClick={() => {
+                                  setSelectedEdge(edge);
+                                  setSelectedNode(null);
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
+                                title="Klikněte pro zobrazení detailu vztahu">
+                                  {icon} {sourceNode?.data?.name || 'Neznámý'}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  </>
+                )}
+                
                 {/* UŽIVATELSKÝ NODE */}
                 {selectedNode && (!selectedNode.data.type || selectedNode.data.type === 'user') && (
                   <>
@@ -8023,164 +8832,44 @@ const OrganizationHierarchy = () => {
                       />
                     </FormGroup>
                     
-                    {/* TARGET NODE konfigurace - pouze delivery (scope není potřeba, uživatel je už konkrétní) */}
+                    {/* ✅ NOVÉ: Info panel - pro nastavení klikni na konkrétní edge */}
                     <div style={{ 
                       marginTop: '20px', 
                       padding: '16px', 
-                      background: 'linear-gradient(135deg, #fff5f5 0%, #ffe4e6 100%)', 
-                      border: '3px solid #f43f5e',
+                      background: 'linear-gradient(135deg, #e0f2fe 0%, #dbeafe 100%)', 
+                      border: '3px solid #3b82f6',
                       borderRadius: '12px',
-                      boxShadow: '0 4px 12px rgba(244, 63, 94, 0.15)'
+                      boxShadow: '0 4px 12px rgba(59, 130, 246, 0.15)'
                     }}>
                       <div style={{ 
                         display: 'flex', 
                         alignItems: 'center', 
                         gap: '10px',
-                        marginBottom: '16px',
+                        marginBottom: '12px',
                         fontWeight: '700',
-                        color: '#be123c',
-                        fontSize: '1rem',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.5px'
+                        color: '#1e40af',
+                        fontSize: '0.95rem'
                       }}>
-                        <FontAwesomeIcon icon={faBullseye} style={{ fontSize: '1.2rem' }} />
-                        🎯 TARGET: Způsob doručení
+                        <FontAwesomeIcon icon={faInfoCircle} style={{ fontSize: '1.2rem' }} />
+                        Nastavení vztahů
                       </div>
                       
                       <div style={{ 
                         padding: '12px',
-                        background: '#fef3c7',
-                        border: '2px solid #f59e0b',
+                        background: 'white',
+                        border: '2px solid #93c5fd',
                         borderRadius: '8px',
-                        fontSize: '0.8rem',
-                        color: '#78350f',
-                        marginBottom: '16px'
+                        fontSize: '0.85rem',
+                        color: '#1e3a8a',
+                        lineHeight: '1.6'
                       }}>
-                        💡 <strong>Rozsah:</strong> U konkrétního uživatele není třeba definovat scope - notifikace půjde přímo tomuto uživateli.
-                      </div>
-                      
-                      {/* Delivery Options */}
-                      <Label style={{ fontWeight: '600', color: '#881337', fontSize: '0.9rem', marginBottom: '12px' }}>
-                        Způsob doručení
-                      </Label>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <label style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '10px',
-                          cursor: 'pointer',
-                          padding: '10px',
-                          background: 'white',
-                          borderRadius: '8px',
-                          border: '2px solid #fda4af',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
-                        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
-                          <input
-                            type="checkbox"
-                            checked={targetDeliveryEmail}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setTargetDeliveryEmail(checked);
-                              const updatedNode = {
-                                ...selectedNode,
-                                data: {
-                                  ...selectedNode.data,
-                                  delivery: {
-                                    ...(selectedNode.data.delivery || {}),
-                                    email: checked
-                                  }
-                                }
-                              };
-                              setSelectedNode(updatedNode);
-                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
-                            }}
-                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
-                            📧 Email
-                          </span>
-                        </label>
-                        
-                        <label style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '10px',
-                          cursor: 'pointer',
-                          padding: '10px',
-                          background: 'white',
-                          borderRadius: '8px',
-                          border: '2px solid #fda4af',
-                          transition: 'all 0.2s'
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
-                        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
-                          <input
-                            type="checkbox"
-                            checked={targetDeliveryInApp}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setTargetDeliveryInApp(checked);
-                              const updatedNode = {
-                                ...selectedNode,
-                                data: {
-                                  ...selectedNode.data,
-                                  delivery: {
-                                    ...(selectedNode.data.delivery || {}),
-                                    inApp: checked
-                                  }
-                                }
-                              };
-                              setSelectedNode(updatedNode);
-                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
-                            }}
-                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
-                            🔔 In-app notifikace (zvoneček)
-                          </span>
-                        </label>
-                        
-                        <label style={{ 
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          gap: '10px',
-                          cursor: 'pointer',
-                          padding: '10px',
-                          background: 'white',
-                          borderRadius: '8px',
-                          border: '2px solid #fda4af',
-                          transition: 'all 0.2s',
-                          opacity: 0.6
-                        }}
-                        onMouseEnter={(e) => e.currentTarget.style.borderColor = '#fb7185'}
-                        onMouseLeave={(e) => e.currentTarget.style.borderColor = '#fda4af'}>
-                          <input
-                            type="checkbox"
-                            checked={targetDeliverySms}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setTargetDeliverySms(checked);
-                              const updatedNode = {
-                                ...selectedNode,
-                                data: {
-                                  ...selectedNode.data,
-                                  delivery: {
-                                    ...(selectedNode.data.delivery || {}),
-                                    sms: checked
-                                  }
-                                }
-                              };
-                              setSelectedNode(updatedNode);
-                              setNodes(nodes.map(n => n.id === updatedNode.id ? updatedNode : n));
-                            }}
-                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#881337' }}>
-                            📱 SMS (zatím nedostupné)
-                          </span>
-                        </label>
+                        💡 <strong>Jak nastavit notifikace, oprávnění nebo LP kódy:</strong><br/>
+                        • <strong>Klikni na šipku (edge)</strong> mezi uzly<br/>
+                        • Zobrazí se nastavení podle typu vztahu:<br/>
+                        &nbsp;&nbsp;→ Šablona → Uživatel: způsob doručení (email/in-app)<br/>
+                        &nbsp;&nbsp;→ Uživatel → Uživatel: scope, moduly, rozšířené lokality<br/>
+                        &nbsp;&nbsp;→ Uživatel → LP kód: info o čerpání<br/>
+                        &nbsp;&nbsp;→ Uživatel → Financování: info o způsobu platby
                       </div>
                     </div>
                   </>
@@ -8209,27 +8898,89 @@ const OrganizationHierarchy = () => {
                       </div>
                       
                       {(() => {
-                        // Najdi nadřízené (šipky směřující DO tohoto nodu)
-                        const supervisors = edges
+                        // Najdi příchozí vztahy (šipky směřující DO tohoto nodu)
+                        const incomingEdges = edges
                           .filter(e => e.target === selectedNode.id)
                           .map(e => {
                             const sourceNode = nodes.find(n => n.id === e.source);
+                            const sourceType = sourceNode?.data?.type || 'user';
+                            
+                            let icon = '👤';
+                            let typeLabel = 'Uživatel';
+                            let color = '#3b82f6';
+                            
+                            if (sourceType === 'template') {
+                              icon = '📧';
+                              typeLabel = 'Notifikace';
+                              color = '#8b5cf6';
+                            } else if (sourceType === 'role') {
+                              icon = '🛡️';
+                              typeLabel = 'Role';
+                              color = '#a855f7';
+                            } else if (sourceType === 'location') {
+                              icon = '📍';
+                              typeLabel = 'Lokalita';
+                              color = '#10b981';
+                            } else if (sourceType === 'department') {
+                              icon = '🏢';
+                              typeLabel = 'Úsek';
+                              color = '#3b82f6';
+                            } else if (e.data?.relationshipType === 'zastupovani') {
+                              typeLabel = 'Zastupování';
+                            } else {
+                              typeLabel = 'Nadřízený';
+                            }
+                            
                             return {
                               name: sourceNode?.data?.name || 'Neznámý',
                               edgeId: e.id,
-                              type: e.data?.relationshipType || 'prime'
+                              icon,
+                              typeLabel,
+                              color
                             };
                           });
                         
-                        // Najdi podřízené (šipky směřující Z tohoto nodu)
-                        const subordinates = edges
+                        // Najdi odchozí vztahy (šipky směřující Z tohoto nodu)
+                        const outgoingEdges = edges
                           .filter(e => e.source === selectedNode.id)
                           .map(e => {
                             const targetNode = nodes.find(n => n.id === e.target);
+                            const targetType = targetNode?.data?.type || 'user';
+                            
+                            let icon = '👤';
+                            let typeLabel = 'Podřízený';
+                            let color = '#3b82f6';
+                            
+                            if (targetType === 'lp_kod') {
+                              icon = '📋';
+                              typeLabel = 'LP kód';
+                              color = '#dc2626';
+                            } else if (targetType === 'financing') {
+                              icon = '💰';
+                              typeLabel = 'Financování';
+                              color = '#16a34a';
+                            } else if (targetType === 'role') {
+                              icon = '🛡️';
+                              typeLabel = 'Role';
+                              color = '#a855f7';
+                            } else if (targetType === 'location') {
+                              icon = '📍';
+                              typeLabel = 'Lokalita';
+                              color = '#10b981';
+                            } else if (targetType === 'department') {
+                              icon = '🏢';
+                              typeLabel = 'Úsek';
+                              color = '#3b82f6';
+                            } else if (e.data?.relationshipType === 'zastupovani') {
+                              typeLabel = 'Zastupování';
+                            }
+                            
                             return {
-                              name: targetNode?.data?.name || 'Neznámý',
+                              name: targetNode?.data?.name || targetNode?.data?.lp_cislo || targetNode?.data?.typ || 'Neznámý',
                               edgeId: e.id,
-                              type: e.data?.relationshipType || 'prime'
+                              icon,
+                              typeLabel,
+                              color
                             };
                           });
                         
@@ -8237,80 +8988,90 @@ const OrganizationHierarchy = () => {
                           <>
                             <div style={{ marginBottom: '12px' }}>
                               <strong style={{ fontSize: '0.8rem', color: '#475569', display: 'block', marginBottom: '6px' }}>
-                                ⬆️ Nadřízení ({supervisors.length})
+                                ⬅️ Příchozí vztahy ({incomingEdges.length})
                               </strong>
-                              {supervisors.length > 0 ? (
+                              {incomingEdges.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  {supervisors.map((sup, i) => (
+                                  {incomingEdges.map((item, i) => (
                                     <div key={i} style={{ 
-                                      padding: '6px 10px', 
+                                      padding: '8px 10px', 
                                       background: '#dbeafe',
-                                      borderRadius: '4px',
+                                      borderRadius: '6px',
                                       fontSize: '0.8rem',
-                                      color: '#1e40af',
+                                      color: item.color,
                                       fontWeight: '500',
                                       cursor: 'pointer',
-                                      transition: 'all 0.2s'
+                                      transition: 'all 0.2s',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px'
                                     }}
                                     onClick={() => {
-                                      // Kliknutím vyber tento edge
-                                      const edge = edges.find(e => e.id === sup.edgeId);
+                                      const edge = edges.find(e => e.id === item.edgeId);
                                       if (edge) {
                                         setSelectedEdge(edge);
                                         setSelectedNode(null);
                                       }
                                     }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#bfdbfe'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#dbeafe'}
+                                    onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                    onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
                                     title="Klikněte pro zobrazení detailu vztahu">
-                                      {sup.name}
-                                      {sup.type === 'zastupovani' && ' (zastupování)'}
+                                      <span style={{ fontSize: '1.2rem' }}>{item.icon}</span>
+                                      <div style={{ flex: 1 }}>
+                                        <div>{item.name}</div>
+                                        <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>({item.typeLabel})</div>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
                               ) : (
                                 <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
-                                  Nemá nadřízeného v diagramu
+                                  Žádné příchozí vztahy
                                 </div>
                               )}
                             </div>
                             
                             <div>
                               <strong style={{ fontSize: '0.8rem', color: '#475569', display: 'block', marginBottom: '6px' }}>
-                                ⬇️ Podřízení ({subordinates.length})
+                                ➡️ Odchozí vztahy ({outgoingEdges.length})
                               </strong>
-                              {subordinates.length > 0 ? (
+                              {outgoingEdges.length > 0 ? (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                  {subordinates.map((sub, i) => (
+                                  {outgoingEdges.map((item, i) => (
                                     <div key={i} style={{ 
-                                      padding: '6px 10px', 
+                                      padding: '8px 10px', 
                                       background: '#dbeafe',
-                                      borderRadius: '4px',
+                                      borderRadius: '6px',
                                       fontSize: '0.8rem',
-                                      color: '#1e40af',
+                                      color: item.color,
                                       fontWeight: '500',
                                       cursor: 'pointer',
-                                      transition: 'all 0.2s'
+                                      transition: 'all 0.2s',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '8px'
                                     }}
                                     onClick={() => {
-                                      // Kliknutím vyber tento edge
-                                      const edge = edges.find(e => e.id === sub.edgeId);
+                                      const edge = edges.find(e => e.id === item.edgeId);
                                       if (edge) {
                                         setSelectedEdge(edge);
                                         setSelectedNode(null);
                                       }
                                     }}
-                                    onMouseEnter={(e) => e.currentTarget.style.background = '#bfdbfe'}
-                                    onMouseLeave={(e) => e.currentTarget.style.background = '#dbeafe'}
+                                    onMouseEnter={(e) => e.currentTarget.style.opacity = '0.7'}
+                                    onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
                                     title="Klikněte pro zobrazení detailu vztahu">
-                                      {sub.name}
-                                      {sub.type === 'zastupovani' && ' (zastupování)'}
+                                      <span style={{ fontSize: '1.2rem' }}>{item.icon}</span>
+                                      <div style={{ flex: 1 }}>
+                                        <div>{item.name}</div>
+                                        <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>({item.typeLabel})</div>
+                                      </div>
                                     </div>
                                   ))}
                                 </div>
                               ) : (
                                 <div style={{ fontSize: '0.75rem', color: '#94a3b8', fontStyle: 'italic' }}>
-                                  Nemá podřízené v diagramu
+                                  Žádné odchozí vztahy
                                 </div>
                               )}
                             </div>

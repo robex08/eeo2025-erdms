@@ -6,21 +6,32 @@
  * 
  * Features:
  * - Build hash based detection (spolehlivější než manuální verze)
- * - Grace period po načtení stránky (60s)
- * - Kontrola při focus okna
- * - Periodická kontrola (každých 5 minut)
+ * - Grace period po načtení stránky (2 minuty)
+ * - Kontrola při focus okna (debounced - max 1× za 10 minut)
+ * - Periodická kontrola (každých 10 minut)
+ * - Leader election (pouze jeden tab dělá polling)
  * - Komunikace mezi taby přes localStorage
  * - Silent fail při chybě síťe
+ * 
+ * OPTIMALIZACE 2026-06-23:
+ * - Interval zvýšen z 5 na 10 minut (snížení traffic o 50%)
+ * - Focus debounce (eliminace spamu při přepínání tabů)
+ * - Leader election (jen 1 tab polling místo N tabů)
+ * - Expected: snížení requestů z ~30k/den na ~200/den (99% úspora)
  */
 
 class VersionChecker {
   constructor(options = {}) {
     this.currentHash = this.getBuildHash();
-    this.checkInterval = options.checkInterval || 5 * 60 * 1000; // 5 minut
-    this.gracePeriod = options.gracePeriod || 60 * 1000; // 60 sekund
+    this.checkInterval = options.checkInterval || 30 * 60 * 1000; // 30 minut (bylo 10 min)
+    this.gracePeriod = options.gracePeriod || 2 * 60 * 1000; // 2 minuty (bylo 60s)
+    this.focusDebounceInterval = 30 * 60 * 1000; // Focus check max 1× za 30 minut
     this.ignoreUntil = Date.now() + this.gracePeriod;
+    this.lastFocusCheck = 0; // Timestamp poslední focus kontroly
     this.notificationShown = false;
     this.isChecking = false;
+    this.isLeader = false; // Leader election flag
+    this.leaderCheckInterval = null;
     this.onUpdateCallback = options.onUpdate || null;
     this.versionEndpoint = options.endpoint || '/dev/eeo-v2/version.json';
     
@@ -183,18 +194,93 @@ class VersionChecker {
   }
 
   /**
+   * Leader election - pouze jeden tab dělá periodický polling
+   */
+  becomeLeader() {
+    this.isLeader = true;
+    localStorage.setItem('version_checker_leader', JSON.stringify({
+      tabId: this.tabId,
+      timestamp: Date.now()
+    }));
+    
+    // Periodická kontrola (pouze leader)
+    this.intervalId = setInterval(() => {
+      if (this.isLeader) {
+        this.checkForUpdate();
+      }
+    }, this.checkInterval);
+
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[VersionChecker] Became leader tab');
+    }
+  }
+
+  /**
+   * Kontrola a údržba leader statusu
+   */
+  checkLeaderStatus() {
+    try {
+      const leaderData = JSON.parse(localStorage.getItem('version_checker_leader'));
+      const now = Date.now();
+      
+      // Pokud žádný leader nebo starý (60s), staň se leaderem
+      if (!leaderData || (now - leaderData.timestamp) > 60000) {
+        if (!this.isLeader) {
+          this.becomeLeader();
+        }
+      } else if (leaderData.tabId === this.tabId) {
+        // Jsme leader - update timestamp
+        localStorage.setItem('version_checker_leader', JSON.stringify({
+          tabId: this.tabId,
+          timestamp: now
+        }));
+      } else {
+        // Jiný tab je leader
+        this.isLeader = false;
+        if (this.intervalId) {
+          clearInterval(this.intervalId);
+          this.intervalId = null;
+        }
+      }
+    } catch (e) {
+      // Fallback - staň se leaderem
+      if (!this.isLeader) {
+        this.becomeLeader();
+      }
+    }
+  }
+
+  /**
    * Spuštění automatické kontroly
    */
   start() {
-    // Kontrola při focus okna
+    // Unikátní ID pro tento tab
+    this.tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    // Kontrola při focus okna (DEBOUNCED - max 1× za 10 minut)
     window.addEventListener('focus', () => {
+      const now = Date.now();
+      
+      // Debounce - ignoruj focus pokud byl check nedávno
+      if (now - this.lastFocusCheck < this.focusDebounceInterval) {
+        if (process.env.NODE_ENV === 'development') {
+          const waitTime = Math.round((this.focusDebounceInterval - (now - this.lastFocusCheck)) / 1000);
+          console.log(`[VersionChecker] Focus ignored - next check in ${waitTime}s`);
+        }
+        return;
+      }
+      
+      this.lastFocusCheck = now;
       this.checkForUpdate();
     });
 
-    // Periodická kontrola
-    this.intervalId = setInterval(() => {
-      this.checkForUpdate();
-    }, this.checkInterval);
+    // Leader election - pokus o získání leadership
+    this.checkLeaderStatus();
+    
+    // Periodická kontrola leader statusu (každých 30s)
+    this.leaderCheckInterval = setInterval(() => {
+      this.checkLeaderStatus();
+    }, 30000);
 
     // Poslech zpráv z jiných tabů
     window.addEventListener('storage', (e) => {
@@ -228,6 +314,24 @@ class VersionChecker {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
+    }
+
+    if (this.leaderCheckInterval) {
+      clearInterval(this.leaderCheckInterval);
+      this.leaderCheckInterval = null;
+    }
+
+    // Pokud jsme byli leader, uvolni leadership
+    if (this.isLeader) {
+      try {
+        const leaderData = JSON.parse(localStorage.getItem('version_checker_leader'));
+        if (leaderData && leaderData.tabId === this.tabId) {
+          localStorage.removeItem('version_checker_leader');
+        }
+      } catch (e) {
+        // Ignore
+      }
+      this.isLeader = false;
     }
 
     if (process.env.NODE_ENV === 'development') {

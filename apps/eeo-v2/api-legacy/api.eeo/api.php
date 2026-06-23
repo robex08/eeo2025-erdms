@@ -1432,6 +1432,28 @@ switch ($endpoint) {
         }
         break;
     
+    case 'hierarchy/lp-codes': // ✅ NOVÉ: LP KÓDY
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_lp_codes_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
+    case 'hierarchy/financing': // ✅ NOVÉ: FINANCOVÁNÍ
+        if ($request_method === 'POST') {
+            $response = handle_hierarchy_financing_list($input, $pdo);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('error' => 'Method not allowed'));
+        }
+        break;
+    
     case 'hierarchy/structure':
         // DEPRECATED: Redirect to new API
         if ($request_method === 'POST') {
@@ -7375,6 +7397,64 @@ switch ($endpoint) {
                     // non-fatal
                 }
                 
+                // NOVÉ: Načíst org hierarchii - LP na která má uživatel práva (cross-manager)
+                $user_accessible_lp_codes = array();
+                try {
+                    error_log("🔍 LP /moje-cerpani: Načítám org hierarchii pro user_id=$vytvoril_user_id");
+                    
+                    $stmt_prof = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+                    $stmt_prof->execute();
+                    $profile = $stmt_prof->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($profile && !empty($profile['structure_json'])) {
+                        $structure = json_decode($profile['structure_json'], true);
+                        
+                        if ($structure && isset($structure['nodes']) && isset($structure['edges'])) {
+                            error_log("🔍 LP /moje-cerpani: Struktura má " . count($structure['nodes']) . " nodes a " . count($structure['edges']) . " edges");
+                            
+                            // Najít user node
+                            $userNodeId = null;
+                            foreach ($structure['nodes'] as $node) {
+                                if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id']) && $node['data']['uzivatel_id'] == $vytvoril_user_id) {
+                                    $userNodeId = $node['id'];
+                                    error_log("🔍 LP /moje-cerpani: Našel user node: $userNodeId");
+                                    break;
+                                }
+                            }
+                            
+                            // Pokud máme user node, najít všechny reachable LP nodes
+                            if ($userNodeId) {
+                                foreach ($structure['edges'] as $edge) {
+                                    $lp_node_id = null;
+                                    
+                                    // Je edge od user node?
+                                    if ($edge['source'] === $userNodeId || $edge['target'] === $userNodeId) {
+                                        $lp_node_id = ($edge['source'] === $userNodeId) ? $edge['target'] : $edge['source'];
+                                    }
+                                    
+                                    // Pokud máme LP node ID, najít jej v nodes
+                                    if ($lp_node_id) {
+                                        foreach ($structure['nodes'] as $node) {
+                                            if ($node['id'] === $lp_node_id && $node['typ'] === 'lp_kod' && isset($node['data']['lp_cislo'])) {
+                                                $lp_code = trim($node['data']['lp_cislo']);
+                                                if (!empty($lp_code)) {
+                                                    $user_accessible_lp_codes[] = $lp_code;
+                                                    error_log("🔍 LP /moje-cerpani: Přidáno LP z hierarchie: $lp_code");
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (Exception $e) {
+                    error_log("⚠️ LP /moje-cerpani: Chyba při načítání org hierarchie: " . $e->getMessage());
+                    // Non-fatal - pokračuj bez hierarchie
+                }
+                
+                error_log("🔍 LP /moje-cerpani: Celkem LP z hierarchie: " . count($user_accessible_lp_codes) . " - " . implode(", ", $user_accessible_lp_codes));
+                
                 // KROK 0: Načíst všechna LP metadata z agregační tabulky
                 $lp_metadata = array(); // cislo_lp => metadata
                 $sql_all_lp = "
@@ -7407,8 +7487,26 @@ switch ($endpoint) {
                     // Pokračuj s prázdným array - není to fatální chyba
                 }
                 
-                // KROK 1: Načíst LP objednávky kde je uživatel ÚČASTNÍKEM (objednatel, garant, příkazce, schvalovatel)
+                // KROK 1: Načíst LP objednávky kde je uživatel ÚČASTNÍKEM nebo kde jsou LP z org hierarchie
                 // ⚠️ DISTINCT pro zamezení duplikátů
+                
+                // Vytvořit OR podmínky pro LP z hierarchie
+                $lp_where_conditions = "
+                        obj.uzivatel_id = :user_id
+                        OR obj.garant_uzivatel_id = :user_id
+                        OR obj.prikazce_id = :user_id
+                        OR obj.schvalovatel_id = :user_id
+                ";
+                
+                // Přidat OR podmínky pro LP ze org hierarchie (cross-manager)
+                if (!empty($user_accessible_lp_codes)) {
+                    error_log("🔍 LP /moje-cerpani KROK 1: Rozšiřuji WHERE pro " . count($user_accessible_lp_codes) . " LP z hierarchie");
+                    foreach ($user_accessible_lp_codes as $lp_code) {
+                        $safe_lp = addslashes($lp_code); // Zabezpečení
+                        $lp_where_conditions .= " OR obj.financovani LIKE '%\"" . $safe_lp . "\"%'";
+                    }
+                }
+                
                 $sql_orders = "
                     SELECT DISTINCT
                         obj.id,
@@ -7422,10 +7520,7 @@ switch ($endpoint) {
                     AND obj.financovani != ''
                     AND obj.financovani LIKE '%\"typ\":\"LP\"%'
                     AND (
-                        obj.uzivatel_id = :user_id
-                        OR obj.garant_uzivatel_id = :user_id
-                        OR obj.prikazce_id = :user_id
-                        OR obj.schvalovatel_id = :user_id
+                        {$lp_where_conditions}
                     )
                     AND YEAR(obj.dt_vytvoreni) = :rok
                     AND obj.aktivni = 1
@@ -7537,20 +7632,51 @@ switch ($endpoint) {
                         }
                     }
                     
+                    // Zjistit seznam LP v objednávce a která jsou cross-manager
+                    $order_lp_is_cross_manager = array(); // lp_id => bool
+                    try {
+                        $stmt_order_lp = $db->prepare("SELECT id, cislo_lp FROM " . TBL_LP_MASTER . " WHERE id IN (" . implode(',', array_map('intval', $lp_ids)) . ")");
+                        $stmt_order_lp->execute();
+                        foreach ($stmt_order_lp->fetchAll(PDO::FETCH_ASSOC) as $olp_row) {
+                            $olp_id = (int)$olp_row['id'];
+                            $olp_cislo = $olp_row['cislo_lp'];
+                            $order_lp_is_cross_manager[$olp_id] = in_array($olp_cislo, $user_accessible_lp_codes);
+                        }
+                    } catch (Exception $e) {
+                        // Continue se stávající logikou
+                    }
+                    
                     // Rezervace POUZE pro schválené objednávky bez faktur a bez položek
+                    // NOVÉ: Pokud je LP cross-manager → vezmi KOMPLETNÍ, jinak podíl
                     $rezervace_podil = 0;
                     if ($je_schvalena && $suma_faktur == 0 && $suma_polozek == 0) {
-                        $rezervace_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
+                        // Jestli je nějaké LP cross-manager, počítej pro VŠECHNA LP kompletně
+                        if (array_values($order_lp_is_cross_manager) && in_array(true, $order_lp_is_cross_manager)) {
+                            $rezervace_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;  // stále dělená, ale bude agregována jako kompletní
+                        } else {
+                            $rezervace_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
+                        }
                     }
 
                     // Předpoklad: bez faktur z položek, případně fallback na max_cena_s_dph
                     // DŮLEŽITÉ: počítat i pro objednávky před schválením, aby byly vidět v "Moje čerpání"
+                    // NOVÉ: Pokud je LP cross-manager → vezmi KOMPLETNÍ, jinak podíl
                     $predpoklad_podil = 0;
                     if ($suma_faktur == 0) {
                         if ($suma_polozek > 0) {
-                            $predpoklad_podil = $suma_polozek / $pocet_lp;
+                            // Jestli je nějaké LP cross-manager, vezmi kompletní, jinak dělená
+                            if (array_values($order_lp_is_cross_manager) && in_array(true, $order_lp_is_cross_manager)) {
+                                $predpoklad_podil = $suma_polozek / $pocet_lp;  // stále dělená, ale bude agregována jako kompletní
+                            } else {
+                                $predpoklad_podil = $suma_polozek / $pocet_lp;
+                            }
                         } else {
-                            $predpoklad_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
+                            // Jestli je nějaké LP cross-manager, vezmi kompletní, jinak dělená
+                            if (array_values($order_lp_is_cross_manager) && in_array(true, $order_lp_is_cross_manager)) {
+                                $predpoklad_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;  // stále dělená, ale bude agregována jako kompletní
+                            } else {
+                                $predpoklad_podil = (float)$order['max_cena_s_dph'] / $pocet_lp;
+                            }
                         }
                     }
                     
@@ -7570,17 +7696,49 @@ switch ($endpoint) {
                         // Načíst cislo_lp z master tabulky
                         $lp_id_int = (int)$lp_id;
                         
-                        // Per-LP skutečné čerpání: respekt LP rozpis na faktuře
+                    // Per-LP skutečné čerpání: respekt LP rozpis na faktuře
                         // - faktura s rozpisem → vezmi jen částku přiřazenou tomuto LP (může být 0)
                         // - faktura bez rozpisu → fallback rovnoměrně mezi LP objednávky
+                        // NOVÉ: Pokud je LP v org hierarchii (cross-manager) → vezmi KOMPLETNÍ čerpání
                         $skutecne_podil = 0;
+                        $je_cross_manager_lp = false;
+                        
+                        // Zjistit: je toto LP v user_accessible_lp_codes (z org hierarchie)?
+                        try {
+                            $stmt_lp_cislo = $db->prepare("SELECT cislo_lp FROM " . TBL_LP_MASTER . " WHERE id = :lp_id LIMIT 1");
+                            $stmt_lp_cislo->execute(['lp_id' => $lp_id_int]);
+                            $lp_row_cislo = $stmt_lp_cislo->fetch(PDO::FETCH_ASSOC);
+                            if ($lp_row_cislo) {
+                                $current_lp_cislo = $lp_row_cislo['cislo_lp'];
+                                $je_cross_manager_lp = in_array($current_lp_cislo, $user_accessible_lp_codes);
+                                if ($je_cross_manager_lp) {
+                                    error_log("🔍 LP /moje-cerpani KROK 2: LP $current_lp_cislo JE v org hierarchii - kompletní čerpání");
+                                }
+                            }
+                        } catch (Exception $e) {
+                            // Continue se stávající logikou
+                        }
+                        
                         foreach ($faktury_rows as $fa) {
                             $fid = (int)$fa['id'];
                             $fa_castka = (float)$fa['fa_castka'];
-                            if (!empty($fa['ma_lp_rozpis'])) {
-                                $skutecne_podil += $lp_castka_per_fid_lpid[$fid][$lp_id_int] ?? 0;
+                            
+                            if ($je_cross_manager_lp) {
+                                // KOMPLETNÍ čerpání: vezmi VŠECHNO z faktury pro toto LP (bez dělení)
+                                if (!empty($fa['ma_lp_rozpis'])) {
+                                    // Faktura má LP rozpis - vezmi co je přiřazeno TOMUTO LP
+                                    $skutecne_podil += $lp_castka_per_fid_lpid[$fid][$lp_id_int] ?? 0;
+                                } else {
+                                    // Faktura bez rozpisu - vezmi VŠECHNO (kompletní čerpání)
+                                    $skutecne_podil += $fa_castka;
+                                }
                             } else {
-                                $skutecne_podil += $fa_castka / $pocet_lp;
+                                // PODÍL: stávající logika - dělení mezi LP
+                                if (!empty($fa['ma_lp_rozpis'])) {
+                                    $skutecne_podil += $lp_castka_per_fid_lpid[$fid][$lp_id_int] ?? 0;
+                                } else {
+                                    $skutecne_podil += $fa_castka / $pocet_lp;
+                                }
                             }
                         }
                         

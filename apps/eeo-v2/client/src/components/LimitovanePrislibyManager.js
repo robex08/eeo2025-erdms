@@ -3730,7 +3730,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                           const thBase = { padding: '0.35rem 0.5rem', fontWeight: 600, fontSize: '0.75rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.025em', borderBottom: '2px solid #cbd5e1', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' };
                           return (
                           <>
-                          <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.82rem', letterSpacing: '-0.01em' }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: "'Roboto Condensed', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif", fontSize: '0.82rem', letterSpacing: '-0.01em' }}>
                             <colgroup>
                               <col style={{ width: '140px' }} />
                               <col style={{ width: '280px' }} />
@@ -3798,36 +3798,97 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                                         {formatAmount(ord.planovana_castka_lp || ord.max_cena_s_dph || 0)}
                                       </td>
                                     </tr>
-                                    {/* Faktury pod objednávkou */}
-                                    {(ord.faktury && ord.faktury.length > 0) && 
-                                      ord.faktury.map((fa, fi) => {
-                                        const faTypMap = {
-                                          'BEZNA': 'Běžná',
-                                          'ZALOHOVA': 'Zálohová',
-                                          'OPRAVNA': 'Opravná',
-                                          'PROFORMA': 'Proforma',
-                                          'DOBROPIS': 'Dobropis'
-                                        };
-                                        return (
-                                          <tr key={`fa_${ord.id}_${fa.id}`} style={{ borderBottom: '1px solid #e2e8f0', background: '#fafbfc' }}>
-                                            <td colSpan="8" style={{ padding: '0.3rem 0.5rem' }}>
-                                              <div style={{ fontSize: '0.75rem', color: '#475569', display: 'grid', gridTemplateColumns: '140px 280px 90px auto 1fr', gap: '0.5rem', alignItems: 'center' }}>
-                                                <div style={{ fontWeight: 600 }}>📋 {fa.fa_cislo_vema || fa.id}</div>
-                                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{fa.fa_poznamka || '—'}</div>
-                                                <div style={{ fontSize: '0.75rem', color: '#475569', textAlign: 'left' }}>
-                                                  <span style={{ color: '#94a3b8', marginRight: '4px' }}>Typ:</span>
-                                                  <span style={{ fontWeight: 600 }}>
-                                                  {getInvoiceTypeName(fa)}
-                                                  </span>
-                                                </div>
-                                                <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>—</div>
-                                                <div>{fa.fa_poznamka && `${fa.fa_poznamka} | `}{formatAmount(fa.fa_castka)}</div>
-                                              </div>
-                                            </td>
-                                          </tr>
-                                        );
-                                      })
-                                    }
+                                    {/* Faktury pod objednávkou - stejný styl jako v renderLPTable */}
+                                    {ord.faktury?.length > 0 && ord.faktury.map((fa, fi) => {
+                                      const faHasLP = fa.lp_castka !== null && fa.lp_castka !== undefined;
+                                      const faHasPositiveLP = faHasLP && fa.lp_castka > 0;
+                                      const faHasOtherLP = fa.ma_jiny_lp === true;
+                                      const faVecnaKontrola = fa.vecna_spravnost_potvrzeno === true || fa.vecna_spravnost_potvrzeno === 1;
+                                      const showWarning = !faVecnaKontrola || (!faHasLP && faVecnaKontrola);
+                                      const showOtherLP = faHasOtherLP && faVecnaKontrola;
+                                      return (
+                                        <tr key={`fa_${ord.id}_${fa.id}`} style={{
+                                          background: faHasPositiveLP ? '#fffbeb' : (faHasOtherLP ? '#f1f5f9' : (faHasLP ? '#f8fafc' : '#fef2f2')),
+                                          opacity: faHasPositiveLP ? 1 : (faHasOtherLP ? 0.65 : 0.85),
+                                          borderBottom: fi === ord.faktury.length - 1 ? '1px solid #e2e8f0' : (faHasPositiveLP ? '1px dashed #fde68a' : (faHasOtherLP ? '1px dashed #cbd5e1' : (faHasLP ? '1px dashed #cbd5e1' : '1px dashed #fecaca'))),
+                                          borderLeft: faHasPositiveLP ? '3px solid #16a34a' : (faHasOtherLP ? '3px solid #64748b' : (faHasLP ? '3px solid #94a3b8' : '3px solid #f97316'))
+                                        }}>
+                                          <td style={{ padding: '0.2rem 0.5rem 0.2rem 1.5rem', fontSize: '0.75rem', color: faHasPositiveLP ? '#92400e' : '#64748b' }}>
+                                            ↳{' '}
+                                            <button
+                                              onClick={() => navigate('/invoice-evidence', { state: { editInvoiceId: fa.id, orderIdForLoad: ord.id, returnTo: location.pathname } })}
+                                              style={{ 
+                                                background: 'none', 
+                                                border: 'none', 
+                                                color: (fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#059669' : (faHasPositiveLP ? '#7c3aed' : '#94a3b8'), 
+                                                cursor: 'pointer', 
+                                                fontWeight: 600, 
+                                                padding: 0, 
+                                                fontSize: 'inherit', 
+                                                fontFamily: 'inherit', 
+                                                borderBottom: `1px dashed ${(fa.stav === 'DOKONCENA' || fa.stav === 'ZAPLACENO') ? '#86efac' : (faHasPositiveLP ? '#c4b5fd' : '#cbd5e1')}`,
+                                                textDecoration: faHasOtherLP ? 'line-through' : 'none'
+                                              }}
+                                              title="Otevřít fakturu"
+                                            >
+                                              FA VS: {fa.fa_cislo_vema || '—'}
+                                            </button>
+                                            {showWarning && (
+                                              <span 
+                                                style={{ 
+                                                  marginLeft: '0.4rem', 
+                                                  background: !faVecnaKontrola ? '#fecaca' : '#fed7aa', 
+                                                  color: !faVecnaKontrola ? '#991b1b' : '#c2410c', 
+                                                  border: !faVecnaKontrola ? '1px solid #f87171' : '1px solid #fdba74',
+                                                  borderRadius: '3px', 
+                                                  padding: '1px 5px', 
+                                                  fontSize: '0.65rem', 
+                                                  fontWeight: 700, 
+                                                  verticalAlign: 'middle',
+                                                  letterSpacing: '0.01em'
+                                                }} 
+                                                title={
+                                                  !faVecnaKontrola 
+                                                    ? '🚫 Faktura nemá provedenou věcnou kontrolu'
+                                                    : '⚠️ Faktura nemá evidovaný LP rozpis'
+                                                }
+                                              >
+                                                {!faVecnaKontrola ? '🚫 NEKONTROLOVÁNA' : '⚠️ BEZ LP'}
+                                              </span>
+                                            )}
+                                            {showOtherLP && (
+                                              <span 
+                                                style={{ 
+                                                  marginLeft: '0.4rem', 
+                                                  background: '#dbeafe', 
+                                                  color: '#1e40af', 
+                                                  border: '1px solid #93c5fd',
+                                                  borderRadius: '3px', 
+                                                  padding: '1px 5px', 
+                                                  fontSize: '0.65rem', 
+                                                  fontWeight: 700, 
+                                                  verticalAlign: 'middle',
+                                                  letterSpacing: '0.01em'
+                                                }} 
+                                                title="📊 Faktura čerpá z jiného LP kódu"
+                                              >
+                                                📊 JINÉ LP
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#64748b' }}>{fa.fa_poznamka || '—'}</td>
+                                          <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem', color: '#94a3b8' }}>
+                                            {getInvoiceTypeName(fa)}
+                                          </td>
+                                          <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#64748b' }}>—</td>
+                                          <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#64748b' }}>—</td>
+                                          <td style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem', color: '#64748b' }}>—</td>
+                                          <td style={{ padding: '0.2rem 0.5rem', textAlign: 'right', fontWeight: 600, fontSize: '0.75rem', color: faHasPositiveLP ? '#15803d' : '#64748b' }}>
+                                            {formatAmount(faHasLP ? fa.lp_castka : fa.fa_castka)}
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
                                   </React.Fragment>
                                 );
                               })}

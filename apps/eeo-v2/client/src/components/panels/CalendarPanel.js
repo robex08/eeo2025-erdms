@@ -5,7 +5,7 @@ import { PanelHeader, TinyBtn } from './PanelPrimitives';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChevronLeft, faChevronRight } from '@fortawesome/free-solid-svg-icons';
 import { AuthContext } from '../../context/AuthContext';
-import { listOrdersV2 } from '../../services/apiOrderV2';
+import { listOrdersV3 } from '../../services/apiOrdersV3';
 
 // 🎨 Import STATUS_COLORS z Orders25List pro konzistentní barevné schéma
 const STATUS_COLORS = {
@@ -328,7 +328,22 @@ export const CalendarPanel = ({ anchorRef, isVisible, onClose, onDateSelect, onD
 
     const loadOrdersForCalendar = async () => {
       try {
-        // � Vypočítej datumový rozsah: aktuální měsíc ± 1 měsíc
+        // 🔒 GUARD: Pokud je modul objednávek (V3 i V2) globálně vypnut, nečti nic.
+        // Modul V2 je standardně vypnut, takto se vyhneme i záložnímu V2 volání.
+        try {
+          const raw = localStorage.getItem('app_moduleSettings');
+          if (raw) {
+            const settings = JSON.parse(raw);
+            const v3Off = settings?.module_orders_v3_visible === false;
+            const v2Off = settings?.module_orders_visible === false;
+            if (v3Off && v2Off) {
+              if (!isCancelled) setDotMap({});
+              return;
+            }
+          }
+        } catch (_) { /* ignore */ }
+
+        // 📅 Vypočítej datumový rozsah: aktuální měsíc ± 1 měsíc
         const currentMonth = new Date(viewMonth);
         const startDate = new Date(currentMonth);
         startDate.setMonth(currentMonth.getMonth() - 1);
@@ -341,22 +356,22 @@ export const CalendarPanel = ({ anchorRef, isVisible, onClose, onDateSelect, onD
         const dateFrom = startDate.toISOString().split('T')[0]; // YYYY-MM-DD
         const dateTo = endDate.toISOString().split('T')[0];     // YYYY-MM-DD
 
-        // 📊 V2 API: Načteme objednávky s datumovým filtrem ±1 měsíc
-        const filters = {
-          date_from: dateFrom,
-          date_to: dateTo
-        };
+        // 🚀 V3 API: Načteme objednávky s datumovým filtrem ±1 měsíc.
+        // Backend automaticky aplikuje role-based filtrování (12 user_id polí) podle tokenu.
+        // per_page=500 = strop pro kreslení teček na kalendáři (lehký response - bez položek/faktur).
+        const response = await listOrdersV3({
+          token,
+          username,
+          page: 1,
+          per_page: 500,
+          period: 'all',
+          filters: {
+            datum_od: dateFrom,
+            datum_do: dateTo
+          }
+        });
 
-        // 🚀 BACKEND AUTOMATICKY RESPEKTUJE ROLE-BASED FILTERING z tokenu!
-        // - Admin/ORDER_MANAGE: vidí všechny objednávky z období
-        // - Běžný uživatel: vidí jen objednávky kde je v JAKÉKOLIV z 12 rolí
-        //   (uzivatel_id, objednatel_id, garant_uzivatel_id, schvalovatel_id,
-        //    prikazce_id, prijemce_id, kontrola_form, kontrola_vecna,
-        //    schvalil, evidoval, vytvoril, zmenil)
-        // ❌ NEPOSÍLÁME uzivatel_id filtr - backend to řeší sám podle tokenu!
-
-        // 🚀 Načti objednávky z V2 API
-        const orders = await listOrdersV2(filters, token, username);
+        const orders = response?.data?.orders || response?.orders || response?.data || [];
 
         if (isCancelled) return;
 

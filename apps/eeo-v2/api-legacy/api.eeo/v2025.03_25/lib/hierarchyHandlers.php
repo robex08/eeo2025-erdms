@@ -3001,6 +3001,125 @@ function handle_hierarchy_departments_list($data, $pdo) {
 }
 
 /**
+ * ✅ NOVÉ: Načte všechny LP kódy
+ */
+function handle_hierarchy_lp_codes_list($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatný nebo chybějící token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovídá username z požadavku');
+    }
+    
+    try {
+        // Načti LP z tabulky 25_limitovane_prisliby
+        $sql = "
+            SELECT 
+                lp.id,
+                lp.cislo_lp,
+                lp.nazev_uctu,
+                us.usek_zkr as usek,
+                COUNT(DISTINCT o.id) as orderCount
+            FROM " . TBL_LP_MASTER . " lp
+            LEFT JOIN " . TBL_USEKY . " us ON us.id = lp.usek_id
+            LEFT JOIN " . TBL_OBJEDNAVKY . " o ON JSON_CONTAINS(o.financovani, CONCAT('\"', lp.cislo_lp, '\"'))
+            GROUP BY lp.id, lp.cislo_lp, lp.nazev_uctu, us.usek_zkr
+            ORDER BY lp.cislo_lp
+        ";
+        
+        $stmt = $pdo->query($sql);
+        $lpCodes = array();
+        
+        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            // UTF-8 sanitizace
+            foreach ($row as $key => $value) {
+                if (is_string($value)) {
+                    $row[$key] = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+                }
+            }
+            
+            $lpCodes[] = array(
+                'id' => (string)$row['id'],
+                'lp_cislo' => $row['cislo_lp'],
+                'lp_id' => (int)$row['id'],
+                'nazev' => $row['nazev_uctu'] ?: 'Bez názvu',
+                'usek' => $row['usek'] ?: 'Bez úseku',
+                'orderCount' => (int)$row['orderCount']
+            );
+        }
+        
+        return array(
+            'success' => true,
+            'data' => $lpCodes,
+            'count' => count($lpCodes)
+        );
+        
+    } catch (PDOException $e) {
+        error_log("Database error in handle_hierarchy_lp_codes_list: " . $e->getMessage());
+        return array('success' => true, 'data' => array(), 'count' => 0); // Vrať prázdný seznam aby se nezlomilo UI
+    }
+}
+
+/**
+ * ✅ NOVÉ: Načte všechny typy financování
+ */
+function handle_hierarchy_financing_list($data, $pdo) {
+    $token = isset($data['token']) ? $data['token'] : '';
+    $request_username = isset($data['username']) ? $data['username'] : '';
+    
+    $token_data = verify_token($token, $pdo);
+    if (!$token_data) {
+        return array('success' => false, 'error' => 'Neplatný nebo chybějící token');
+    }
+    
+    if ($token_data['username'] !== $request_username) {
+        return array('success' => false, 'error' => 'Username z tokenu neodpovídá username z požadavku');
+    }
+    
+    try {
+        // Vrat hardcodované typy financování (lze rozšířit)
+        $financingTypes = array(
+            array(
+                'id' => '1',
+                'typ' => 'Smlouva',
+                'nazev' => 'Smlouva',
+                'popis' => 'Financování smlouvou',
+                'description' => 'Financování smlouvou'
+            ),
+            array(
+                'id' => '2',
+                'typ' => 'LP',
+                'nazev' => 'Limitovaný přísliv',
+                'popis' => 'Financování limitovaným přísluvem',
+                'description' => 'Financování limitovaným přísluvem'
+            ),
+            array(
+                'id' => '3',
+                'typ' => 'Ind. schválení',
+                'nazev' => 'Individuální schválení',
+                'popis' => 'Financování individuálním schválením',
+                'description' => 'Financování individuálním schválením'
+            )
+        );
+        
+        return array(
+            'success' => true,
+            'data' => $financingTypes,
+            'count' => count($financingTypes)
+        );
+        
+    } catch (Exception $e) {
+        error_log("Error in handle_hierarchy_financing_list: " . $e->getMessage());
+        return array('success' => true, 'data' => array(), 'count' => 0);
+    }
+}
+
+/**
  * Načte kompletní hierarchickou strukturu
  */
 function handle_hierarchy_structure($data, $pdo) {
