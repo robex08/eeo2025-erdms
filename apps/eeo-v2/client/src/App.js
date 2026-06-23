@@ -477,23 +477,27 @@ function App() {
   const [updateAvailable, setUpdateAvailable] = React.useState(false);
   const [updateData, setUpdateData] = React.useState(null);
   
+  // ✅ useCallback pro stabilní referenci (zabránění re-creation checkeru)
+  const handleVersionUpdate = React.useCallback((versionData) => {
+    setUpdateData(versionData);
+    setUpdateAvailable(true);
+    
+    // Optional: Toast notifikace
+    if (showToast) {
+      showToast(`Je dostupná nová verze aplikace ${process.env.REACT_APP_VERSION || 'N/A'}`, { 
+        type: 'info',
+        autoClose: 8000
+      });
+    }
+  }, [showToast]);
+  
   useVersionChecker({
     // Zakázat v development režimu (npm start), povolit jen v production buildech
     enabled: process.env.NODE_ENV === 'production',
-    checkInterval: 5 * 60 * 1000, // 5 minut
-    gracePeriod: 60 * 1000, // 60 sekund po načtení
-    onUpdate: (versionData) => {
-      setUpdateData(versionData);
-      setUpdateAvailable(true);
-      
-      // Optional: Toast notifikace
-      if (showToast) {
-        showToast(`Je dostupná nová verze aplikace ${process.env.REACT_APP_VERSION || 'N/A'}`, { 
-          type: 'info',
-          autoClose: 8000
-        });
-      }
-    }
+    // ✅ OPRAVENO: 30 minut místo 5 (snížení traffic)
+    checkInterval: 30 * 60 * 1000, // 30 minut
+    gracePeriod: 2 * 60 * 1000, // 2 minuty po načtení
+    onUpdate: handleVersionUpdate // ✅ Stabilní reference
   });
 
   const handleCloseUpdateModal = () => {
