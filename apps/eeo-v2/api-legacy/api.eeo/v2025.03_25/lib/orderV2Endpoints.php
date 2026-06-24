@@ -1350,61 +1350,106 @@ function handle_order_v2_update($input, $config, $queries) {
         $dbData['dt_aktualizace'] = TimezoneHelper::getCzechDateTime();
         $dbData['uzivatel_akt_id'] = $current_user_id; // ✅ FIXED: Set user who updated the order
         
-        // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu na SCHVALENA
+        // ✅ AUTOMATICKÉ NASTAVENÍ dt_schvaleni při změně workflow stavu na SCHVALENA/ZAMITNUTA/CEKA_SE
+        // 🎯 ZASTUPOVÁNÍ: detekce nového schvalovacího kroku pro audit log v zastoupení
+        $approval_substitution = null;            // Kontext zastoupení použitý pro schválení (pokud byl)
+        $approval_action_for_audit = null;        // APPROVE / REJECT / CONFIRM (POSTPONE) pro audit log
+        $is_approval_action = false;              // Guard: je to schvalovací akce?
+        
         if (isset($dbData['stav_workflow_kod'])) {
             $new_workflow_decoded = json_decode($dbData['stav_workflow_kod'], true);
             $old_workflow_array = isset($existingOrder['stav_workflow_kod']) && is_array($existingOrder['stav_workflow_kod']) 
                 ? $existingOrder['stav_workflow_kod'] 
                 : array();
+
+            if (is_array($new_workflow_decoded)) {
+                // Detekce schvalovací akce (sjednoceno s V3)
+                $is_approval_action = in_array('SCHVALENA', $new_workflow_decoded, true)
+                    || in_array('ZAMITNUTA', $new_workflow_decoded, true)
+                    || in_array('CEKA_SE', $new_workflow_decoded, true);
+
+                // Mapování workflow stav -> typ akce pro audit zastoupení
+                $approval_state_to_action = [
+                    'SCHVALENA' => 'APPROVE',
+                    'ZAMITNUTA' => 'REJECT',
+                    'CEKA_SE'   => 'CONFIRM', // odložení = CONFIRM dle V3 implementace
+                ];
+                foreach ($approval_state_to_action as $state_code => $action_code) {
+                    if (in_array($state_code, $new_workflow_decoded, true) &&
+                        !in_array($state_code, $old_workflow_array, true)) {
+                        $approval_action_for_audit = $action_code;
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // 🔒 APPROVAL ACTION GUARD: kontrola oprávnění pro VŠECHNY schvalovací akce (sjednoceno s V3)
+        if ($is_approval_action) {
+            $order_prikazce_id = isset($existingOrder['prikazce_id']) ? (int)$existingOrder['prikazce_id'] : 0;
             
-            // Pokud se přidává SCHVALENA stav (dříve nebyl, teď je)
-            if (is_array($new_workflow_decoded) && in_array('SCHVALENA', $new_workflow_decoded) &&
-                !in_array('SCHVALENA', $old_workflow_array)) {
-                
-                // 🔒 VALIDACE ÚSEKU: Kontrola zda uživatel může schvalovat tuto objednávku
-                $_approval_roles = getUserRoles($current_user_id, $db);
-                $_approval_perms = getUserOrderPermissions($current_user_id, $db);
-                $is_admin = in_array('SUPERADMIN', $_approval_roles) ||
-                           in_array('ADMINISTRATOR', $_approval_roles) ||
-                           in_array('ORDER_MANAGE', $_approval_perms);
-                
-                $is_prikazce = isset($existingOrder['prikazce_id']) && 
-                              (int)$existingOrder['prikazce_id'] === (int)$current_user_id;
-                
-                if (!$is_admin && !$is_prikazce) {
-                    // Není admin ani přímo příkazce - zkontroluj úsek
+            $_approval_roles = getUserRoles($current_user_id, $db);
+            $_approval_perms = getUserOrderPermissions($current_user_id, $db);
+            $is_admin = in_array('SUPERADMIN', $_approval_roles) ||
+                       in_array('ADMINISTRATOR', $_approval_roles) ||
+                       in_array('ORDER_MANAGE', $_approval_perms);
+            
+            $is_prikazce = ($order_prikazce_id > 0 && $order_prikazce_id === (int)$current_user_id);
+
+            if (!$is_admin && !$is_prikazce) {
+                // 🎯 ZASTUPOVÁNÍ: zkusit najít aktivní zastoupení s oprávněním approve pro tohoto příkazce
+                if (function_exists('get_active_substitution_for_action') && $order_prikazce_id > 0) {
+                    $approval_substitution = get_active_substitution_for_action(
+                        $db,
+                        (int)$current_user_id,
+                        'approve',
+                        $order_prikazce_id
+                    );
+                }
+
+                if (!$approval_substitution) {
+                    // Fallback: původní kontrola úseku (kompatibilita)
                     $sql_check_usek = "SELECT 
                         u1.usek_id as current_user_usek,
                         u2.usek_id as prikazce_usek
                     FROM 25_uzivatele u1
                     LEFT JOIN 25_uzivatele u2 ON u2.id = :prikazce_id
                     WHERE u1.id = :current_user_id";
-                    
+
                     $stmt_usek = $db->prepare($sql_check_usek);
                     $stmt_usek->execute([
                         ':current_user_id' => $current_user_id,
-                        ':prikazce_id' => $existingOrder['prikazce_id']
+                        ':prikazce_id' => $order_prikazce_id
                     ]);
                     $usek_check = $stmt_usek->fetch(PDO::FETCH_ASSOC);
-                    
+
                     if (!$usek_check || 
                         !$usek_check['current_user_usek'] || 
                         !$usek_check['prikazce_usek'] ||
                         $usek_check['current_user_usek'] != $usek_check['prikazce_usek']) {
-                        
+
                         $db->rollBack();
-                        error_log("Order V2 UPDATE: PERMISSION DENIED - User $current_user_id cannot approve order $order_id (different usek). Current: {$usek_check['current_user_usek']}, Prikazce: {$usek_check['prikazce_usek']}");
+                        error_log("Order V2 UPDATE: PERMISSION DENIED - User $current_user_id cannot approve order $order_id (no substitution & different usek). Current: {$usek_check['current_user_usek']}, Prikazce: {$usek_check['prikazce_usek']}");
                         http_response_code(403);
                         echo json_encode(array(
                             'status' => 'error',
-                            'message' => 'Nemáte oprávnění schvalovat objednávky z jiného úseku. Pouze příkazce ze stejného úseku může schválit tuto objednávku.'
+                            'message' => 'Nemáte oprávnění schvalovat/zamítat/odkládat tuto objednávku. Musíte být příkazce, admin nebo aktivní zástupce s oprávněním ke schvalování.'
                         ));
                         return;
                     }
+                } else {
+                    error_log("✅ Order V2 UPDATE: Approval action ALLOWED via SUBSTITUTION - substitute=$current_user_id, prikazce=$order_prikazce_id, zastupovani_id={$approval_substitution['zastupovani_id']}");
                 }
-                
+            }
+            
+            // 🔒 BEZPEČNOST: schvalovatel_id VŽDY nastavit na reálně přihlášeného (sjednoceno s V3)
+            $dbData['schvalovatel_id'] = $current_user_id;
+            
+            // ✅ dt_schvaleni jen pro SCHVALENA (zachovat původní logiku)
+            if (isset($new_workflow_decoded) && is_array($new_workflow_decoded) && 
+                in_array('SCHVALENA', $new_workflow_decoded) &&
+                !in_array('SCHVALENA', $old_workflow_array)) {
                 $dbData['dt_schvaleni'] = TimezoneHelper::getCzechDateTime();
-                $dbData['schvalovatel_id'] = $current_user_id; // Nastavit schvalovatele
                 error_log("Order V2 UPDATE: Auto-setting dt_schvaleni=" . $dbData['dt_schvaleni'] . " and schvalovatel_id=$current_user_id for order $order_id");
             }
         }
@@ -2127,6 +2172,58 @@ function handle_order_v2_update($input, $config, $queries) {
             }
         } catch (Exception $ae) {
             error_log('[AUDIT] orderV2 update audit error: ' . $ae->getMessage());
+        }
+
+        // === AUDIT LOG ZASTUPOVÁNÍ: pokud schvalovací akci provedl zástupce ===
+        // (sjednoceno s handle_orders_v3_update v handlers_orders_v3.php)
+        if ($approval_action_for_audit !== null
+            && function_exists('get_active_substitution_for_action')
+            && function_exists('log_substitution_action')) {
+            try {
+                $order_prikazce_id = isset($existingOrder['prikazce_id']) ? (int)$existingOrder['prikazce_id'] : 0;
+
+                // Preferuj substituci ověřenou už při kontrole oprávnění (SCHVALENA path).
+                $substitution = $approval_substitution;
+
+                if (!$substitution
+                    && $order_prikazce_id > 0
+                    && $order_prikazce_id !== (int)$current_user_id) {
+                    // Všechny schvalovací akce vyžadují 'approve' oprávnění
+                    $substitution = get_active_substitution_for_action(
+                        $db,
+                        (int)$current_user_id,
+                        'approve',
+                        $order_prikazce_id
+                    );
+                }
+
+                if ($substitution) {
+                    $komentar = isset($dbData['schvaleni_komentar']) ? trim((string)$dbData['schvaleni_komentar']) : '';
+                    $popis = "{$approval_action_for_audit} objednávky #{$order_id} v zastoupení uživatele ID " . (int)$substitution['zastupovany_id'];
+                    if ($komentar !== '') {
+                        $popis .= " (komentář: $komentar)";
+                    }
+
+                    $logged_sub = log_substitution_action(
+                        $db,
+                        (int)$substitution['zastupovani_id'],
+                        (int)$current_user_id,
+                        (int)$substitution['zastupovany_id'],
+                        $approval_action_for_audit,
+                        'OBJEDNAVKA',
+                        (int)$order_id,
+                        $popis
+                    );
+
+                    if ($logged_sub) {
+                        error_log("✅ [ORDER V2 SUBSTITUTION AUDIT] Logged $approval_action_for_audit on order #$order_id by substitute=$current_user_id for zastupovany=" . (int)$substitution['zastupovany_id']);
+                    } else {
+                        error_log("⚠️ [ORDER V2 SUBSTITUTION AUDIT] Failed to log $approval_action_for_audit on order #$order_id");
+                    }
+                }
+            } catch (Exception $sub_audit_err) {
+                error_log("⚠️ [ORDER V2 SUBSTITUTION AUDIT] Non-blocking error: " . $sub_audit_err->getMessage());
+            }
         }
 
         // === PO COMMITU: Přepočty a načtení dat ===
