@@ -1363,11 +1363,6 @@ function handle_order_v2_update($input, $config, $queries) {
                 : array();
 
             if (is_array($new_workflow_decoded)) {
-                // Detekce schvalovací akce (sjednoceno s V3)
-                $is_approval_action = in_array('SCHVALENA', $new_workflow_decoded, true)
-                    || in_array('ZAMITNUTA', $new_workflow_decoded, true)
-                    || in_array('CEKA_SE', $new_workflow_decoded, true);
-
                 // Mapování workflow stav -> typ akce pro audit zastoupení
                 $approval_state_to_action = [
                     'SCHVALENA' => 'APPROVE',
@@ -1381,6 +1376,13 @@ function handle_order_v2_update($input, $config, $queries) {
                         break;
                     }
                 }
+
+                // Detekce schvalovací akce: pouze pokud došlo k PŘECHODU na schvalovací stav.
+                // Frontend (OrderForm25) posílá kompletní stav_workflow_kod při každém uložení
+                // (např. potvrzení věcné správnosti), takže pouhá přítomnost SCHVALENA/ZAMITNUTA/CEKA_SE
+                // nesmí spouštět approval guard — jinak by věcný kontrolor (jiný úsek než příkazce)
+                // dostal 403 při uložení formuláře, který má v historii SCHVALENA.
+                $is_approval_action = ($approval_action_for_audit !== null);
             }
         }
         
