@@ -3,6 +3,8 @@ const { v4: uuidv4 } = require('uuid');
 
 // In-memory session storage (pro produkci použít Redis)
 const sessions = new Map();
+const SESSION_TTL_HOURS = parseInt(process.env.AUTH_SESSION_TTL_HOURS || '24', 10);
+const SESSION_TTL_MS = SESSION_TTL_HOURS * 60 * 60 * 1000;
 
 class AuthService {
   /**
@@ -141,7 +143,9 @@ class AuthService {
    */
   async createSession(user, tokens, ipAddress, userAgent) {
     const sessionId = uuidv4();
-    const expiresAt = new Date(Date.now() + tokens.expiresIn * 1000);
+    const now = Date.now();
+    const expiresAt = new Date(now + SESSION_TTL_MS);
+    const entraTokenExpiresAt = new Date(now + ((tokens.expiresIn || 0) * 1000));
 
     // Ulož session do paměti s kompletními user daty
     sessions.set(sessionId, {
@@ -159,6 +163,7 @@ class AuthService {
       entra_access_token: tokens.accessToken,
       entra_id_token: tokens.idToken,
       entra_refresh_token: tokens.refreshToken || null,
+      entra_token_expires_at: entraTokenExpiresAt,
       expiresAt: expiresAt,
       // Metadata
       ipAddress: ipAddress,
@@ -199,6 +204,7 @@ class AuthService {
     const session = sessions.get(sessionId);
     if (session) {
       session.lastActivity = new Date();
+      session.expiresAt = new Date(Date.now() + SESSION_TTL_MS);
     }
   }
 

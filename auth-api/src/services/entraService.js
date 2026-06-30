@@ -593,6 +593,68 @@ class EntraService {
   }
 
   /**
+   * Získat poslední e-maily přihlášeného uživatele
+   * @param {string} userAccessToken - Access token uživatele (delegated)
+   * @param {number} limit - Počet zpráv (výchozí 5)
+   * @returns {Promise<Array>} - Pole e-mailových zpráv
+   */
+  async getMyRecentMessages(userAccessToken, limit = 5) {
+    if (!userAccessToken) {
+      throw new Error('User access token is required for mail access');
+    }
+
+    try {
+      const userClient = Client.init({
+        authProvider: (done) => {
+          done(null, userAccessToken);
+        }
+      });
+
+      const response = await userClient
+        .api('/me/messages')
+        .select('id,subject,from,receivedDateTime,importance,isRead,webLink')
+        .orderby('receivedDateTime DESC')
+        .top(Math.max(1, Math.min(limit, 20)))
+        .get();
+
+      return response.value || [];
+    } catch (err) {
+      console.error('🔴 getMyRecentMessages ERROR:', err.message);
+      throw err;
+    }
+  }
+
+  /**
+   * Získat naposledy použité dokumenty přihlášeného uživatele
+   * @param {string} userAccessToken - Access token uživatele (delegated)
+   * @param {number} limit - Počet dokumentů (výchozí 5)
+   * @returns {Promise<Array>} - Pole dokumentů
+   */
+  async getMyRecentDocuments(userAccessToken, limit = 5) {
+    if (!userAccessToken) {
+      throw new Error('User access token is required for documents access');
+    }
+
+    try {
+      const userClient = Client.init({
+        authProvider: (done) => {
+          done(null, userAccessToken);
+        }
+      });
+
+      const response = await userClient
+        .api('/me/drive/recent')
+        .get();
+
+      const docs = response.value || [];
+      return docs.slice(0, Math.max(1, Math.min(limit, 20)));
+    } catch (err) {
+      console.error('🔴 getMyRecentDocuments ERROR:', err.message);
+      throw err;
+    }
+  }
+
+  /**
    * Zjistit zda má uživatel Microsoft Copilot Business licenci
    * @param {string} userId - Entra ID (GUID) uživatele
    * @returns {Promise<boolean>} true pokud má Copilot licenci

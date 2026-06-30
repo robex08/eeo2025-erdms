@@ -328,28 +328,78 @@ router.get('/me/calendar/events', authenticateSession, async (req, res) => {
     const days = parseInt(req.query.days) || 7;
     console.log('📅 Calling entraService.getMyCalendarEvents with days:', days);
     
-    // 🔬 DEBUG: Na pozadí zavolat všechny varianty Graph API a vypsat do konzole
-    console.log('\n🔬 ========== GRAPH API DEBUG TEST START ==========');
-    entraService.debugCalendarAPIs(req.user.entra_access_token).then(results => {
-      console.log('\n🔬 DEBUG RESULTS:');
-      console.log(JSON.stringify(results, null, 2));
-      console.log('\n🔬 SUMMARY:');
-      results.tests.forEach(test => {
-        const hasCategories = test.firstEvent?.categories !== undefined;
-        const timezone = test.firstEvent?.start?.timeZone || 'N/A';
-        console.log(`  ${test.test}: categories=${hasCategories}, timezone=${timezone}`);
-      });
-      console.log('🔬 ========== GRAPH API DEBUG TEST END ==========\n');
-    }).catch(err => {
-      console.error('🔴 DEBUG TEST ERROR:', err.message);
-    });
-    
     const events = await entraService.getMyCalendarEvents(req.user.entra_access_token, days);
     console.log('📅 Got events:', events.length);
     res.json({ success: true, data: events });
   } catch (err) {
     console.error('🔴 GET /api/entra/me/calendar/events ERROR:', err.message);
     console.error('🔴 Stack:', err.stack);
+    res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * GET /api/entra/me/messages/recent
+ * Získat poslední e-maily přihlášeného uživatele
+ * Query params: ?limit=5
+ */
+router.get('/me/messages/recent', authenticateSession, async (req, res) => {
+  try {
+    if (!req.user || !req.user.entra_access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'User access token not found. Please re-login to get mail permissions.'
+      });
+    }
+
+    let limit = parseInt(req.query.limit, 10) || 5;
+    if (isNaN(limit) || limit < 1) {
+      limit = 5;
+    }
+    if (limit > 20) {
+      limit = 20;
+    }
+
+    const messages = await entraService.getMyRecentMessages(req.user.entra_access_token, limit);
+    res.json({ success: true, data: messages, count: messages.length });
+  } catch (err) {
+    console.error('🔴 GET /api/entra/me/messages/recent ERROR:', err.message);
+    res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
+ * GET /api/entra/me/documents/recent
+ * Získat naposledy použité dokumenty přihlášeného uživatele
+ * Query params: ?limit=5
+ */
+router.get('/me/documents/recent', authenticateSession, async (req, res) => {
+  try {
+    if (!req.user || !req.user.entra_access_token) {
+      return res.status(401).json({
+        success: false,
+        error: 'User access token not found. Please re-login to get documents permissions.'
+      });
+    }
+
+    let limit = parseInt(req.query.limit, 10) || 5;
+    if (isNaN(limit) || limit < 1) {
+      limit = 5;
+    }
+    if (limit > 20) {
+      limit = 20;
+    }
+
+    const documents = await entraService.getMyRecentDocuments(req.user.entra_access_token, limit);
+    res.json({ success: true, data: documents, count: documents.length });
+  } catch (err) {
+    console.error('🔴 GET /api/entra/me/documents/recent ERROR:', err.message);
     res.status(err.statusCode || 500).json({
       success: false,
       error: err.message
