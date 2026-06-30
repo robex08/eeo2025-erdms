@@ -477,14 +477,8 @@ function handle_order_v2_create_invoice_with_attachment($input, $config, $querie
     try {
         $db = get_db($config);
 
-        // 🔒 DUPLICATE GUARD + IDEMPOTENCE (server-side)
-        $fa_cislo_vema = trim($input['fa_cislo_vema']);
-        $existing_invoice = order_v2_find_active_invoice_by_number($db, $fa_cislo_vema);
-        if ($existing_invoice) {
-            $is_idempotent_retry = order_v2_is_probable_idempotent_create_retry($existing_invoice, $token_data, $input, $order_id, 180);
-            order_v2_emit_duplicate_create_response($existing_invoice, $is_idempotent_retry);
-            return;
-        }
+        // Duplicitní VS je pouze informativní (kontrola probíhá přes check-duplicate endpoint),
+        // vytvoření faktury nesmí být blokováno.
         
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);
@@ -667,14 +661,8 @@ function handle_order_v2_create_invoice($input, $config, $queries) {
     try {
         $db = get_db($config);
 
-        // 🔒 DUPLICATE GUARD + IDEMPOTENCE (server-side)
-        $fa_cislo_vema = trim($input['fa_cislo_vema']);
-        $existing_invoice = order_v2_find_active_invoice_by_number($db, $fa_cislo_vema);
-        if ($existing_invoice) {
-            $is_idempotent_retry = order_v2_is_probable_idempotent_create_retry($existing_invoice, $token_data, $input, $order_id, 180);
-            order_v2_emit_duplicate_create_response($existing_invoice, $is_idempotent_retry);
-            return;
-        }
+        // Duplicitní VS je pouze informativní (kontrola probíhá přes check-duplicate endpoint),
+        // vytvoření faktury nesmí být blokováno.
         
         // Nastavit MySQL timezone pro konzistentní datetime handling
         TimezoneHelper::setMysqlTimezone($db);

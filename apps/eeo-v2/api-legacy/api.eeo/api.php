@@ -2446,6 +2446,15 @@ switch ($endpoint) {
             echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
         }
         break;
+
+    case 'vema/faktury/eeo-bez-vema/list':
+        if ($request_method === 'POST') {
+            handle_vema_faktury_eeo_bez_vema_list($input, $config, $queries);
+        } else {
+            http_response_code(405);
+            echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        }
+        break;
     
     case 'vema/smlouvy/list':
         if ($request_method === 'POST') {

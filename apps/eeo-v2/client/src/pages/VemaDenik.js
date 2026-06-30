@@ -11,6 +11,7 @@
 
 import React, { useState, useEffect, useContext, useMemo } from 'react';
 import styled from '@emotion/styled';
+import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBuilding, faFileInvoice, faFileContract, faSearch, faTimes, 
@@ -26,7 +27,7 @@ import {
   createColumnHelper
 } from '@tanstack/react-table';
 import AuthContext from '../context/AuthContext';
-import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, formatExcelDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
+import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, loadEeoFakturyBezVema, formatExcelDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
 import VemaKontrolaCell from '../components/VemaKontrolaCell';
 import { getVemaFakturaPropojeni } from '../services/apiVemaPropojeni';
 import { fetchLimitovanePrisliby } from '../services/api2auth';
@@ -183,18 +184,14 @@ const FakturySubTab = styled.button`
   }
 `;
 
-const FakturyPlaceholder = styled.div`
-  background: #ffffff;
-  border: 1px dashed #cbd5e1;
-  border-radius: 10px;
-  min-height: 220px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 2rem 1rem;
-  color: #64748b;
-`;
+const FAKTURY_SUB_SECTIONS = [
+  { id: 'tabulka', label: 'Veškeré doklady' },
+  { id: 'kontrola-obj', label: 'Kontrola OBJ' },
+  { id: 'kontrola-sml', label: 'Kontrola SML' },
+  { id: 'kontrola-rp', label: 'Kontrola ročních poplatků' },
+  { id: 'vema-bez-eeo', label: 'VEMA doklady bez EEO dokladů' },
+  { id: 'eeo-bez-vema', label: 'Faktury EEO bez VEMA dokladů' }
+];
 
 // Search
 const SearchContainer = styled.div`
@@ -573,6 +570,30 @@ const LoadingOverlay = styled.div`
   font-size: 1rem;
 `;
 
+const spinnerRotate = keyframes`
+  to { transform: rotate(360deg); }
+`;
+
+const LoadingInline = styled.div`
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.625rem;
+  color: #475569;
+  font-size: 0.92rem;
+  font-weight: 600;
+`;
+
+const LoadingSpinner = styled.div`
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid #cbd5e1;
+  border-top-color: #2563eb;
+  animation: ${spinnerRotate} 0.8s linear infinite;
+`;
+
 const ErrorMessage = styled.div`
   padding: 1rem;
   background: #fee2e2;
@@ -726,6 +747,8 @@ const VemaDenik = () => {
   const [firmyData, setFirmyData] = useState([]);
   const [fakturyData, setFakturyData] = useState([]);
   const [smlouvyData, setSmlouvyData] = useState([]);
+  const [eeoBezVemaData, setEeoBezVemaData] = useState([]);
+  const [eeoBezVemaLoading, setEeoBezVemaLoading] = useState(false);
   
   // Cache markery - true znamená "už načteno, nezatěžovat server"
   const [dataLoaded, setDataLoaded] = useState({ firmy: false, faktury: false, smlouvy: false });
@@ -894,6 +917,46 @@ const VemaDenik = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, token, username, search]);
+
+  // Načtení EEO faktur bez vazby na VEMA import
+  useEffect(() => {
+    if (!token || !username) return;
+    if (activeTab !== 'faktury' || fakturySubTab !== 'eeo-bez-vema') return;
+
+    let cancelled = false;
+
+    const loadEeoBezVema = async () => {
+      setEeoBezVemaLoading(true);
+
+      try {
+        const resp = await loadEeoFakturyBezVema({
+            token,
+            username,
+            limit: 50000,
+            offset: 0,
+            search
+        });
+
+        if (!cancelled) {
+          setEeoBezVemaData(resp?.data || []);
+        }
+      } catch (err) {
+        console.error('Chyba načítání EEO bez VEMA:', err);
+        if (!cancelled) {
+          setError(err.message || 'Chyba při načítání EEO faktur bez vazby na VEMA');
+          setEeoBezVemaData([]);
+        }
+      } finally {
+        if (!cancelled) setEeoBezVemaLoading(false);
+      }
+    };
+
+    loadEeoBezVema();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, fakturySubTab, token, username, search]);
 
   // Import handler
   const handleImport = async () => {
@@ -1147,6 +1210,37 @@ const VemaDenik = () => {
       maxSize: 40,
       enableSorting: false,
       cell: ({ row }) => {
+        if (row.original._isEeoOnly) {
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button
+                disabled
+                title="Žádné propojené záznamy"
+                style={{
+                  background: '#f3f4f6',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '4px',
+                  width: '22px',
+                  cursor: 'not-allowed',
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#9ca3af',
+                  flexShrink: 0,
+                  padding: '1px 0',
+                  gap: 0,
+                  lineHeight: 1,
+                  opacity: 0.5
+                }}
+              >
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1 }}>0</span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>+</span>
+              </button>
+            </div>
+          );
+        }
+
         const rowId = row.id;
         const propojeni = propojenData[rowId];
         const isLoading = loadingPropojeni[rowId];
@@ -1155,16 +1249,23 @@ const VemaDenik = () => {
         // Počítat z backendu (pokud existují)
         const pocetObj = row.original.pocet_objednavek || 0;
         const pocetFa = row.original.pocet_faktur || 0;
-        const pocetSml = row.original.pocet_smluv || 0;
         const pocetRp = row.original.pocet_rocnich_poplatku || 0;
-        const count = pocetObj + pocetFa + pocetSml + pocetRp;
+        // DŮLEŽITÉ: musí sedět s backend `propojeni.celkem` (objednávky + faktury + roční poplatky)
+        // `pocet_smluv` zde nezahrnujeme, protože detail smlouvy samostatně nezobrazuje ani nepočítá do celkem.
+        const count = pocetObj + pocetFa + pocetRp;
+        const displayCount = (propojeni && !isLoading && typeof propojeni.celkem === 'number')
+          ? propojeni.celkem
+          : count;
         
-        // Button je vždy enabled - až po načtení zjistíme jestli jsou data
+        // Pokud backend už vrací count=0, tlačítko má být neaktivní hned.
+        const hasPrecomputedEmptyData = count === 0;
+        // Po načtení detailu bereme jako autoritu i propojeni.celkem.
         const hasLoadedEmptyData = propojeni && !isLoading && propojeni.celkem === 0;
+        const isEmpty = hasPrecomputedEmptyData || hasLoadedEmptyData;
 
         return (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            {hasLoadedEmptyData ? (
+            {isEmpty ? (
               <button
                 disabled
                 title="Žádné propojené záznamy"
@@ -1223,7 +1324,7 @@ const VemaDenik = () => {
                   color: isExpanded ? '#dc2626' : '#1e40af', 
                   opacity: 0.85 
                 }}>
-                  {isLoading ? '…' : count}
+                  {isLoading ? '…' : displayCount}
                 </span>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
                   {isExpanded ? '−' : '+'}
@@ -1309,7 +1410,10 @@ const VemaDenik = () => {
       size: 120,
       cell: info => {
         const val = info.getValue();
-        return val ? formatExcelDate(val) : '-';
+        if (!val) return '-';
+        if (typeof val === 'number') return formatExcelDate(val);
+        const parsed = new Date(val);
+        return Number.isNaN(parsed.getTime()) ? String(val) : parsed.toLocaleDateString('cs-CZ');
       }
     },
     {
@@ -1318,7 +1422,10 @@ const VemaDenik = () => {
       size: 120,
       cell: info => {
         const val = info.getValue();
-        return val ? formatExcelDate(val) : '-';
+        if (!val) return '-';
+        if (typeof val === 'number') return formatExcelDate(val);
+        const parsed = new Date(val);
+        return Number.isNaN(parsed.getTime()) ? String(val) : parsed.toLocaleDateString('cs-CZ');
       }
     },
     {
@@ -1327,39 +1434,57 @@ const VemaDenik = () => {
       size: 110,
       cell: info => {
         const val = info.getValue();
-        return val ? formatExcelDate(val) : '-';
+        if (!val) return '-';
+        if (typeof val === 'number') return formatExcelDate(val);
+        const parsed = new Date(val);
+        return Number.isNaN(parsed.getTime()) ? String(val) : parsed.toLocaleDateString('cs-CZ');
       }
     },
     {
       accessorKey: 'cobj',
       header: 'Č. objednávky',
-      size: 150,
+      size: 230,
+      minSize: 210,
       cell: info => {
         // Použít formátované číslo objednávky, fallback na původní
         const formatted = info.row.original.cobj_formatovane;
         const original = info.getValue();
         const val = formatted || original;
-        return (val !== null && val !== undefined && val !== '') ? String(val) : '-';
+        return (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {(val !== null && val !== undefined && val !== '') ? String(val) : '-'}
+          </span>
+        );
       }
     },
     {
       accessorKey: 'csml',
       header: 'Č. smlouvy',
-      size: 120,
+      size: 190,
+      minSize: 170,
       cell: info => {
         // Zobrazit původní číslo smlouvy (např. SM2200179)
         const val = info.getValue();
-        return (val !== null && val !== undefined && val !== '') ? String(val) : '-';
+        return (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {(val !== null && val !== undefined && val !== '') ? String(val) : '-'}
+          </span>
+        );
       }
     },
     {
       accessorKey: 'smlouva_ecsml',
       header: 'Ev.číslo',
-      size: 150,
+      size: 210,
+      minSize: 190,
       cell: info => {
         // Zobrazit evidenční číslo smlouvy (např. 007/75030926/17)
         const val = info.getValue();
-        return (val !== null && val !== undefined && val !== '') ? String(val) : '-';
+        return (
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {(val !== null && val !== undefined && val !== '') ? String(val) : '-'}
+          </span>
+        );
       }
     },
     {
@@ -1408,13 +1533,34 @@ const VemaDenik = () => {
       accessorKey: 'dt_importu',
       header: 'Importováno',
       size: 140,
-      cell: info => info.getValue() ? new Date(info.getValue()).toLocaleDateString('cs-CZ', { 
-        day: '2-digit', 
-        month: '2-digit', 
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      }) : '-'
+      cell: info => {
+        if (info.row.original._isEeoOnly) {
+          return (
+            <span
+              style={{
+                display: 'inline-block',
+                padding: '0.15rem 0.4rem',
+                borderRadius: '4px',
+                background: '#dbeafe',
+                color: '#1e40af',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                letterSpacing: '0.02em'
+              }}
+              title="Záznam pochází z EEO"
+            >
+              EEO
+            </span>
+          );
+        }
+        return info.getValue() ? new Date(info.getValue()).toLocaleDateString('cs-CZ', { 
+          day: '2-digit', 
+          month: '2-digit', 
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit'
+        }) : '-';
+      }
     },
     {
       accessorKey: 'kontrola',
@@ -1423,17 +1569,40 @@ const VemaDenik = () => {
       minSize: 100,
       maxSize: 100,
       enableSorting: false,
-      cell: info => (
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <VemaKontrolaCell
-            typZaznamu="faktura"
-            vemaId={info.row.original.cfak}
-            vemaIdSecondary={info.row.original.firma}
-            token={token}
-            username={username}
-          />
-        </div>
-      )
+      cell: info => {
+        const isEeoOnly = !!info.row.original._isEeoOnly;
+        const eeoInternalId = info.row.original.eeo_faktura_id ?? null;
+        const kontrolaVemaId = isEeoOnly
+          ? (eeoInternalId ? `EEOONLY:${String(eeoInternalId)}` : null)
+          : info.row.original.cfak;
+
+        const kontrolaMetadata = isEeoOnly ? {
+          source: 'eeo-bez-vema',
+          eeo_faktura_id: eeoInternalId,
+          eeo_ui_row_id: info.row.original.id || null,
+          eeo_objednavka: info.row.original.cobj || null,
+          eeo_smlouva: info.row.original.csml || null,
+          eeo_vs: info.row.original.vsymb || null,
+          eeo_cdok: info.row.original.cdok || null
+        } : null;
+
+        if (!kontrolaVemaId) {
+          return <span style={{ color: '#94a3b8' }}>—</span>;
+        }
+
+        return (
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <VemaKontrolaCell
+              typZaznamu="faktura"
+              vemaId={kontrolaVemaId}
+              vemaIdSecondary={info.row.original.firma}
+              metadata={kontrolaMetadata}
+              token={token}
+              username={username}
+            />
+          </div>
+        );
+      }
     }
   ], [token, username, propojenData, loadingPropojeni]);
 
@@ -1582,13 +1751,52 @@ const VemaDenik = () => {
     return [];
   }, [activeTab, firmyColumns, fakturyColumns, smlouvyColumns]);
 
+  const filteredFakturyData = useMemo(() => {
+    const hasAnyEeoLink = (item) => {
+      const pocetObj = Number(item.pocet_objednavek || 0);
+      const pocetFa = Number(item.pocet_faktur || 0);
+      const pocetSml = Number(item.pocet_smluv || 0);
+      const pocetRp = Number(item.pocet_rocnich_poplatku || 0);
+      return (pocetObj + pocetFa + pocetSml + pocetRp) > 0;
+    };
+
+    switch (fakturySubTab) {
+      case 'kontrola-obj':
+        return fakturyData.filter(item => {
+          const hasObj = item.cobj && String(item.cobj).trim() !== '';
+          const hasEvidencniSmlouva = item.smlouva_ecsml && String(item.smlouva_ecsml).trim() !== '';
+          return hasObj && !hasEvidencniSmlouva;
+        });
+      case 'kontrola-sml':
+        return fakturyData.filter(item => {
+          const hasEvidencniSmlouva = item.smlouva_ecsml && String(item.smlouva_ecsml).trim() !== '';
+          const hasObj = item.cobj && String(item.cobj).trim() !== '';
+          // Kontrola SML:
+          // 1) existuje ev. číslo smlouvy + existuje číslo objednávky
+          // 2) existuje ev. číslo smlouvy + neexistuje číslo objednávky
+          // => v praxi: stačí existence ev. čísla smlouvy
+          return hasEvidencniSmlouva && (hasObj || !hasObj);
+        });
+      case 'kontrola-rp':
+        return fakturyData.filter(item => (item.pocet_rocnich_poplatku || 0) > 0);
+      case 'vema-bez-eeo':
+        // Doklady z VEMA importu bez JAKÉKOLI vazby na EEO (obj/faktura/roční poplatek)
+        return fakturyData.filter(item => !hasAnyEeoLink(item));
+      case 'eeo-bez-vema':
+        return eeoBezVemaData;
+      case 'tabulka':
+      default:
+        return fakturyData;
+    }
+  }, [fakturyData, fakturySubTab, eeoBezVemaData]);
+
   // Select data based on active tab
   const data = useMemo(() => {
     if (activeTab === 'firmy') return firmyData;
-    if (activeTab === 'faktury') return fakturyData;
+    if (activeTab === 'faktury') return filteredFakturyData;
     if (activeTab === 'smlouvy') return smlouvyData;
     return [];
-  }, [activeTab, firmyData, fakturyData, smlouvyData]);
+  }, [activeTab, firmyData, filteredFakturyData, smlouvyData]);
 
   // TanStack Table
   const table = useReactTable({
@@ -1649,6 +1857,9 @@ const VemaDenik = () => {
   const goToPreviousPage = () => setPageIndex(prev => Math.max(0, prev - 1));
   const goToNextPage = () => setPageIndex(prev => Math.min(totalPages - 1, prev + 1));
   const goToLastPage = () => setPageIndex(totalPages - 1);
+
+  const showRocniPoplatkySection =
+    fakturySubTab === 'tabulka' || fakturySubTab === 'kontrola-rp';
 
   // ============================================================================
   // RENDER EXPANDED CONTENT - VEMA-EEO Propojení (TABULKOVÁ STRUKTURA)
@@ -1983,23 +2194,23 @@ const VemaDenik = () => {
                 <colgroup>
                   <col style={{ width: '11%' }} />
                   <col style={{ width: '12%' }} />
+                  <col style={{ width: '12%' }} />
+                  <col style={{ width: '18%' }} />
                   <col style={{ width: '9%' }} />
                   <col style={{ width: '11%' }} />
-                  <col style={{ width: '18%' }} />
-                  <col style={{ width: '10%' }} />
                   <col style={{ width: '10%' }} />
                   <col style={{ width: '19%' }} />
                 </colgroup>
                 <thead>
                   <tr>
                     <th style={thStyle}>Č. faktury</th>
+                    <th style={thStyle}>Číslo dokladu</th>
                     <th style={thStyle}>Č. obj.</th>
-                    <th style={thStyle}>Vystavení</th>
-                    <th style={thStyle}>Stav</th>
                     <th style={thStyle}>Dodavatel</th>
-                    <th style={thStyle}>VEMA kód</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Částka</th>
+                    <th style={thStyle}>Vystavení</th>
                     <th style={thStyle}>Splatnost</th>
+                    <th style={thStyle}>Stav</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Částka</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -2028,11 +2239,20 @@ const VemaDenik = () => {
                         <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b', fontSize: '0.75rem' }}>
                           {fa.cislo_faktury || '—'}
                         </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                          {fa.fa_vema_kod || '—'}
+                        </td>
                         <td style={{ ...tdStyle, fontSize: '0.75rem' }}>
                           {fa.cislo_objednavky || '—'}
                         </td>
                         <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {fa.dodavatel || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
                           {fa.datum_vystaveni ? new Date(fa.datum_vystaveni).toLocaleDateString('cs-CZ') : '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {fa.datum_splatnosti ? new Date(fa.datum_splatnosti).toLocaleDateString('cs-CZ') : '—'}
                         </td>
                         <td style={tdStyle}>
                           {fa.stav && (
@@ -2052,17 +2272,8 @@ const VemaDenik = () => {
                             </span>
                           )}
                         </td>
-                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
-                          {fa.dodavatel || '—'}
-                        </td>
-                        <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b' }}>
-                          {fa.fa_vema_kod || '—'}
-                        </td>
                         <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
                           {fa.castka ? `${parseFloat(fa.castka).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
-                        </td>
-                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
-                          {fa.datum_splatnosti ? new Date(fa.datum_splatnosti).toLocaleDateString('cs-CZ') : '—'}
                         </td>
                       </tr>
                     );
@@ -2074,7 +2285,7 @@ const VemaDenik = () => {
         )}
 
         {/* ROČNÍ POPLATKY */}
-        {propojeni.rocni_poplatky && propojeni.rocni_poplatky.length > 0 && (
+        {showRocniPoplatkySection && propojeni.rocni_poplatky && propojeni.rocni_poplatky.length > 0 && (
           <>
             <div style={sectionHeaderStyle}>
               <span style={{ fontSize: '1.1rem' }}>💳</span>
@@ -2083,38 +2294,25 @@ const VemaDenik = () => {
             <div style={tableContainerStyle}>
               <table style={tableStyle}>
                 <colgroup>
-                  <col style={{ width: '16%' }} />
-                  <col style={{ width: '20%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '18%' }} />
+                  <col style={{ width: '28%' }} />
+                  <col style={{ width: '14%' }} />
+                  <col style={{ width: '12%' }} />
                   <col style={{ width: '10%' }} />
-                  <col style={{ width: '10%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '12%' }} />
-                  <col style={{ width: '8%' }} />
                 </colgroup>
                 <thead>
                   <tr>
-                    <th style={thStyle}>Č. smlouvy</th>
-                    <th style={thStyle}>Název</th>
-                    <th style={thStyle}>Rok</th>
-                    <th style={thStyle}>Druh</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Celková částka</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Zaplaceno</th>
-                    <th style={{ ...thStyle, textAlign: 'right' }}>Zbývá zaplatit</th>
-                    <th style={thStyle}>Stav</th>
+                    <th style={thStyle}>Číslo dokladu</th>
+                    <th style={thStyle}>Druh / Platba</th>
+                    <th style={thStyle}>Poznámka</th>
+                    <th style={thStyle}>Splatnost</th>
+                    <th style={thStyle}>Zaplaceno</th>
+                    <th style={{ ...thStyle, textAlign: 'right' }}>Částka</th>
                   </tr>
                 </thead>
                 <tbody>
                   {propojeni.rocni_poplatky.map((rp, idx) => {
-                    // Mapování stavů ročních poplatků
-                    const stavMap = {
-                      'NEZAPLACENO': { bg: '#fee2e2', color: '#991b1b', label: 'Nezaplaceno' },
-                      'CASTECNE_ZAPLACENO': { bg: '#fef3c7', color: '#92400e', label: 'Částečně zaplaceno' },
-                      'ZAPLACENO': { bg: '#dcfce7', color: '#166534', label: 'Zaplaceno' },
-                      'STORNOVANO': { bg: '#f3f4f6', color: '#6b7280', label: 'Stornováno' }
-                    };
-                    const stavStyle = rp.stav ? (stavMap[rp.stav] || { bg: '#e0e7ff', color: '#4338ca', label: rp.stav }) : null;
-                    
                     return (
                       <tr key={idx} style={{ 
                         background: idx % 2 === 0 ? 'white' : '#f8fafc',
@@ -2124,65 +2322,47 @@ const VemaDenik = () => {
                       onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#f8fafc'}
                       >
                         <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b', fontSize: '0.75rem' }}>
-                          {rp.cislo_smlouvy || '—'}
+                          {rp.cislo_dokladu || '—'}
+                        </td>
+                        <td style={{ ...tdStyle, fontSize: '0.72rem' }}>
+                          {(() => {
+                            const druh = rp.druh_nazev || rp.druh || '';
+                            const platba = rp.platba_nazev || rp.platba || '';
+
+                            if (!druh && !platba) return '—';
+                            if (!druh) return platba;
+                            if (!platba) return druh;
+
+                            return `${druh} / ${platba}`;
+                          })()}
                         </td>
                         <td style={tdStyle}>
                           <div style={{ fontWeight: 500, fontSize: '0.75rem' }}>
-                            {rp.nazev || '—'}
+                            {rp.poznamka || '—'}
                           </div>
-                          {rp.nazev_smlouvy && (
-                            <div style={{ fontSize: '0.65rem', color: '#64748b', marginTop: '2px' }}>
-                              {rp.nazev_smlouvy}
-                            </div>
-                          )}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'center', fontWeight: 600, fontSize: '0.8rem' }}>
-                          {rp.rok || '—'}
+                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                          {rp.datum_splatnosti ? new Date(rp.datum_splatnosti).toLocaleDateString('cs-CZ') : '—'}
                         </td>
                         <td style={tdStyle}>
-                          {rp.druh && (
-                            <span style={{
-                              padding: '2px 6px',
-                              background: '#f0f9ff',
-                              color: '#0369a1',
-                              borderRadius: '3px',
-                              fontSize: '0.65rem',
-                              fontWeight: 600,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.3px',
-                              display: 'inline-block',
-                              whiteSpace: 'nowrap'
-                            }}>
-                              {rp.druh}
-                            </span>
-                          )}
-                          {!rp.druh && '—'}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#3b82f6', fontSize: '0.75rem' }}>
-                          {rp.celkova_castka ? `${parseFloat(rp.celkova_castka).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#059669', fontSize: '0.75rem' }}>
-                          {rp.zaplaceno_celkem ? `${parseFloat(rp.zaplaceno_celkem).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
-                        </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
-                          {rp.zbyva_zaplatit ? `${parseFloat(rp.zbyva_zaplatit).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
-                        </td>
-                        <td style={tdStyle}>
-                          {stavStyle ? (
+                          {rp.datum_zaplaceno ? (
                             <span style={{
                               padding: '3px 8px',
-                              background: stavStyle.bg,
-                              color: stavStyle.color,
+                              background: '#dcfce7',
+                              color: '#166534',
                               borderRadius: '4px',
                               fontSize: '0.65rem',
                               fontWeight: 600,
-                              textTransform: 'uppercase',
-                              letterSpacing: '0.3px',
                               whiteSpace: 'nowrap'
                             }}>
-                              {stavStyle.label}
+                              {new Date(rp.datum_zaplaceno).toLocaleDateString('cs-CZ')}
                             </span>
-                          ) : '—'}
+                          ) : (
+                            <span style={{ color: '#94a3b8' }}>—</span>
+                          )}
+                        </td>
+                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#3b82f6', fontSize: '0.75rem' }}>
+                          {rp.castka ? `${parseFloat(rp.castka).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
                         </td>
                       </tr>
                     );
@@ -2199,18 +2379,6 @@ const VemaDenik = () => {
   // ============================================================================
   // RENDER
   // ============================================================================
-
-  const fakturySubSections = [
-    { id: 'tabulka', label: 'Veškeré doklady' },
-    { id: 'kontrola-obj', label: 'Kontrola OBJ' },
-    { id: 'kontrola-sml', label: 'Kontrola SML' },
-    { id: 'kontrola-rp', label: 'Kontrola ročních poplatků' },
-    { id: 'vema-bez-eeo', label: 'VEMA doklady bez EEO dokladů' },
-    { id: 'eeo-bez-vema', label: 'Faktury EEO bez VEMA dokladů' }
-  ];
-
-  const isFakturyMainTableView = activeTab !== 'faktury' || fakturySubTab === 'tabulka';
-  const activeFakturySubSection = fakturySubSections.find(section => section.id === fakturySubTab);
 
   return (
     <Container>
@@ -2271,7 +2439,7 @@ const VemaDenik = () => {
 
       {activeTab === 'faktury' && (
         <FakturySubTabs>
-          {fakturySubSections.map(section => (
+          {FAKTURY_SUB_SECTIONS.map(section => (
             <FakturySubTab
               key={section.id}
               $active={fakturySubTab === section.id}
@@ -2290,7 +2458,6 @@ const VemaDenik = () => {
       {error && <ErrorMessage>{error}</ErrorMessage>}
 
       {/* Search + Statistický badge v jednom řádku */}
-      {isFakturyMainTableView && (
       <div style={{ 
         display: 'flex', 
         alignItems: 'center',
@@ -2332,7 +2499,7 @@ const VemaDenik = () => {
             let objAFa = 0;
             let rocniPopl = 0;
             
-            fakturyData.forEach(fa => {
+            data.forEach(fa => {
               const pocetObj = fa.pocet_objednavek || 0;
               const pocetFa = fa.pocet_faktur || 0;
               const pocetRp = fa.pocet_rocnich_poplatku || 0;
@@ -2428,19 +2595,35 @@ const VemaDenik = () => {
                   <span style={{ fontSize: '0.9rem' }}>🟠</span>
                   Roční popl.: {rocniPopl}
                 </span>
+                <span style={{
+                  padding: '0.4rem 0.75rem',
+                  background: '#eef2ff',
+                  border: '1px solid #a5b4fc',
+                  borderRadius: '6px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  color: '#3730a3',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '0.4rem'
+                }}>
+                  <span style={{ fontSize: '0.9rem' }}>📊</span>
+                  Celkem položek: {data.length}
+                </span>
               </>
             );
           })()}
           </div>
         )}
       </div>
-      )}
 
       {/* Table */}
-      {isFakturyMainTableView ? (
       <TableWrapper>
-        {loading ? (
-          <LoadingOverlay>Načítám data...</LoadingOverlay>
+        {(loading || (activeTab === 'faktury' && fakturySubTab === 'eeo-bez-vema' && eeoBezVemaLoading)) ? (
+          <LoadingInline>
+            <LoadingSpinner />
+            <span>Načítám data…</span>
+          </LoadingInline>
         ) : (
           <>
             <Table>
@@ -2555,18 +2738,6 @@ const VemaDenik = () => {
           </>
         )}
       </TableWrapper>
-      ) : (
-        <FakturyPlaceholder>
-          <div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#334155', marginBottom: '0.5rem' }}>
-              {activeFakturySubSection ? activeFakturySubSection.label : 'Sekce'}
-            </div>
-            <div style={{ fontSize: '0.95rem' }}>
-              V přípravě
-            </div>
-          </div>
-        </FakturyPlaceholder>
-      )}
 
       {/* Import Modal */}
       {showImportModal && (

@@ -2211,24 +2211,11 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
   const [loading, setLoading]       = useState(false);
   const [unreadCounts, setUnreadCounts] = useState({});  // {user_id: unread_count}
 
-  // Vlastní auto-refresh widgetu každých 30 minut podle aktuální periody
-  // Optimalizace 2026-06-23 Phase 2: 15 min → 30 minut + visibility check
   useEffect(() => {
-    let cancelled = false;
-    const fetch30 = async () => {
-      const d = await getActiveUsersAdmin({ token, username, period });
-      if (d && !cancelled) setLocalData(d);
-    };
-    fetch30(); // Immediate fetch při mount/reload
-    
-    const iv = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetch30();
-      }
-    }, 30 * 60 * 1000); // 30 minut + visibility check
-    
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [token, username, period]); // re-mounts při změně periody
+    if (data) {
+      setLocalData(data);
+    }
+  }, [data]);
 
   // ✅ Načíst počty nepřečtených zpráv pro všechny uživatele
   useEffect(() => {
@@ -2269,11 +2256,12 @@ function ActiveUsersAdminWidget({ data, navigate, token, username, setQuickMessa
   const switchPeriod = useCallback(async (p) => {
     if (p === period) return;
     try { localStorage.setItem(LS_PERIOD_KEY, p); } catch { /* ignore */ }
-    setPeriod(p); // useEffect výše se spustí s novou periodou
-    if (onPeriodChange) onPeriodChange(p); // Notifikuj parent o změně
+    setPeriod(p);
     setLoading(true);
     try {
-      const d = await getActiveUsersAdmin({ token, username, period: p });
+      const d = onPeriodChange
+        ? await onPeriodChange(p)
+        : await getActiveUsersAdmin({ token, username, period: p });
       if (d) setLocalData(d);
     } finally {
       setLoading(false);
@@ -5223,18 +5211,9 @@ function WelcomeWidget({ user, userDetail, rolesDetected, nameday, newsSinceLogi
     };
 
     loadPlanningMessages();
-    
-    // Auto-refresh každých 30 minut, pouze když je page visible
-    // Optimalizace 2026-06-23: 5 min → 30 min + visibility check
-    const refreshTimer = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        loadPlanningMessages();
-      }
-    }, 30 * 60 * 1000); // 30 minut (bylo 5 min)
 
     return () => {
       isMounted = false;
-      clearInterval(refreshTimer);
     };
   }, []);
 
@@ -8357,12 +8336,12 @@ export default function DashboardPage() {
   const [rssEnabled, setRssEnabled] = useState(false);
   const [rssFeedStatuses, setRssFeedStatuses] = useState([]);
   const [rssMaxItems, setRssMaxItems] = useState(15);
+  const rssCancelledRef = useRef(false);
 
   // Počasí state
   const [weatherData, setWeatherData] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState(false);
-  const weatherRefreshRef = useRef(null);
   const weatherCancelledRef = useRef(false);
 
   // Planning events state (přijímá data z CalendarWidget)
@@ -8377,7 +8356,6 @@ export default function DashboardPage() {
   const [financeData, setFinanceData] = useState(null);
   const [financeLoading, setFinanceLoading] = useState(false);
   const [financeError, setFinanceError] = useState(false);
-  const financeRefreshRef = useRef(null);
   const financeCancelledRef = useRef(false);
 
   // Zastupování state (pro Calendar + Welcome widget)
@@ -8513,26 +8491,6 @@ export default function DashboardPage() {
   const isSuperAdmin = useMemo(() => {
     return (userDetail?.roles || []).some(r => r.kod_role === 'SUPERADMIN');
   }, [userDetail]);
-
-  // Auto-refresh aktivních uživatelů každých 30 minut (SUPERADMIN nebo DASHBOARD_ACTIVE_USERS) – jen pro quick-tile badge count
-  // Optimalizace 2026-06-23: 30s → 30 minut + visibility check (reload dělá fresh fetch)
-  useEffect(() => {
-    const hasAccess = isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS'));
-    if (!hasAccess || !token || !username) return;
-    const fetchActive = async () => {
-      const d = await getActiveUsersAdmin({ token, username, period: '5min' });
-      if (d) setActiveUsersData(d);
-    };
-    fetchActive(); // Immediate fetch při mount/reload
-    
-    const iv = setInterval(() => {
-      if (document.visibilityState === 'visible') {
-        fetchActive();
-      }
-    }, 30 * 60 * 1000); // 30 minut + visibility check (bylo 30s)
-    
-    return () => clearInterval(iv);
-  }, [isSuperAdmin, hasPermission, token, username]);
 
   // Fetch zastupování dat pro Calendar + Welcome widget + planning události pro Můj přehled
   useEffect(() => {
@@ -8790,9 +8748,7 @@ export default function DashboardPage() {
     }, 0);
   }, [data, token, username]);
 
-  // RSS Feed: načtení po přihlášení + auto-refresh dle intervalu z app settings
-  const rssRefreshRef = useRef(null);
-  const rssCancelledRef = useRef(false);
+  // RSS Feed: načtení po přihlášení, další periodické obnovování řídí dashboard checkbox.
 
   const fetchRss = useCallback(async (isBackgroundRefresh = false) => {
     if (!token || !username) return;
@@ -8812,8 +8768,6 @@ export default function DashboardPage() {
             setRssEnabled(cached.rss_enabled !== false);
             if (cached.max_items) setRssMaxItems(cached.max_items);
             setRssError(false);
-            // Načteno z cache, refresh na pozadí
-            setTimeout(() => fetchRss(true), 100);
             return;
           }
         }
@@ -8851,12 +8805,6 @@ export default function DashboardPage() {
           console.warn('RSS cache write error:', e);
         }
 
-        // Nastavit auto-refresh interval z backendu (minuty → ms)
-        const intervalMin = result.refresh_interval || 15;
-        if (rssRefreshRef.current) clearInterval(rssRefreshRef.current);
-        rssRefreshRef.current = setInterval(() => {
-          if (!rssCancelledRef.current) fetchRss(true);
-        }, intervalMin * 60 * 1000);
       } else {
         setRssEnabled(result.rss_enabled === true);
         setRssItems([]);
@@ -8874,11 +8822,10 @@ export default function DashboardPage() {
     fetchRss();
     return () => {
       rssCancelledRef.current = true;
-      if (rssRefreshRef.current) clearInterval(rssRefreshRef.current);
     };
   }, [fetchRss]);
 
-  // ─── Počasí: fetch + 60min auto-refresh ───────────────────────────────────
+  // ─── Počasí: fetch, další periodické obnovování řídí dashboard checkbox ───
   const fetchWeather = useCallback(async (isBackground = false) => {
     const WEATHER_CACHE_KEY = `weather_data_${user?.id || 'default'}`;
     const WEATHER_EXPIRY = 60 * 60 * 1000; // 60 minut
@@ -8892,8 +8839,6 @@ export default function DashboardPage() {
           if (parsed?.data && Date.now() - (parsed.timestamp || 0) < WEATHER_EXPIRY) {
             setWeatherData(parsed.data);
             setWeatherError(false);
-            // Refresh na pozadí
-            setTimeout(() => { if (!weatherCancelledRef.current) fetchWeather(true); }, 200);
             return;
           }
         }
@@ -8955,12 +8900,6 @@ export default function DashboardPage() {
         localStorage.setItem(WEATHER_CACHE_KEY, JSON.stringify({ data: result, timestamp: Date.now() }));
       } catch (e) { /* ignore */ }
 
-      // Nastavit 60min auto-refresh
-      if (weatherRefreshRef.current) clearInterval(weatherRefreshRef.current);
-      weatherRefreshRef.current = setInterval(() => {
-        if (!weatherCancelledRef.current) fetchWeather(true);
-      }, WEATHER_EXPIRY);
-
     } catch (err) {
       if (!weatherCancelledRef.current) setWeatherError(true);
     } finally {
@@ -8973,11 +8912,10 @@ export default function DashboardPage() {
     fetchWeather();
     return () => {
       weatherCancelledRef.current = true;
-      if (weatherRefreshRef.current) clearInterval(weatherRefreshRef.current);
     };
   }, [fetchWeather]);
 
-  // ─── Finanční trhy: fetch přes backend proxy + 30min auto-refresh ───────
+  // ─── Finanční trhy: fetch přes backend proxy, další obnovování řídí checkbox ─
   const fetchFinance = useCallback(async (isBackground = false) => {
     if (!token || !username) return;
 
@@ -8998,7 +8936,6 @@ export default function DashboardPage() {
           if (parsed?.data && Date.now() - (parsed.timestamp || 0) < FINANCE_EXPIRY) {
             setFinanceData(parsed.data);
             setFinanceError(false);
-            setTimeout(() => { if (!financeCancelledRef.current) fetchFinance(true); }, 300);
             return;
           }
         }
@@ -9023,11 +8960,6 @@ export default function DashboardPage() {
           localStorage.setItem(FINANCE_CACHE_KEY, JSON.stringify({ data: res.data, timestamp: Date.now() }));
         } catch (e) { /* ignore */ }
 
-        // Auto-refresh 15 minut
-        if (financeRefreshRef.current) clearInterval(financeRefreshRef.current);
-        financeRefreshRef.current = setInterval(() => {
-          if (!financeCancelledRef.current) fetchFinance(true);
-        }, FINANCE_EXPIRY);
       } else {
         throw new Error('Backend vrátil chybu');
       }
@@ -9044,7 +8976,6 @@ export default function DashboardPage() {
     fetchFinance();
     return () => {
       financeCancelledRef.current = true;
-      if (financeRefreshRef.current) clearInterval(financeRefreshRef.current);
     };
   }, [fetchFinance]);
 
@@ -9071,6 +9002,38 @@ export default function DashboardPage() {
       })
       .map(([id]) => id);
   }, [data?.dashboard_capabilities, hasAdminRole, userDetail, rssEnabled]);
+
+  const isWidgetAutoRefreshActive = useCallback((tileId) => {
+    if (!availableWidgets.includes(tileId)) return false;
+    const cfg = WIDGET_REGISTRY[tileId];
+    if (cfg?.alwaysOn) return true;
+    return visibleTiles.includes(tileId);
+  }, [availableWidgets, visibleTiles]);
+
+  const isActiveUsersShortcutVisible = useMemo(() => {
+    return quickTilesConfig.showModuleShortcuts
+      && (isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS')));
+  }, [quickTilesConfig.showModuleShortcuts, isSuperAdmin, hasPermission]);
+
+  const shouldLoadActiveUsers = useMemo(() => {
+    return isWidgetAutoRefreshActive('active_users_admin') || isActiveUsersShortcutVisible;
+  }, [isWidgetAutoRefreshActive, isActiveUsersShortcutVisible]);
+
+  const shouldAutoRefreshChartTimeline = useMemo(() => {
+    return isWidgetAutoRefreshActive('chart_timeline');
+  }, [isWidgetAutoRefreshActive]);
+
+  const shouldAutoRefreshRss = useMemo(() => {
+    return isWidgetAutoRefreshActive('rss_news');
+  }, [isWidgetAutoRefreshActive]);
+
+  const shouldAutoRefreshWeather = useMemo(() => {
+    return isWidgetAutoRefreshActive('weather');
+  }, [isWidgetAutoRefreshActive]);
+
+  const shouldAutoRefreshFinance = useMemo(() => {
+    return isWidgetAutoRefreshActive('finance_markets');
+  }, [isWidgetAutoRefreshActive]);
 
   // Pomocná funkce: aplikuje uložený dashboard config (tiles + visible) s merge nových widgetů
   const applyDashboardConfig = useCallback((savedTiles, savedVisible) => {
@@ -9144,6 +9107,17 @@ export default function DashboardPage() {
       });
   }, [token, username, user?.id, quickTilesConfig]);
 
+  const fetchActiveUsersData = useCallback(async (periodArg = selectedPeriod) => {
+    const hasAccess = isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS'));
+    if (!hasAccess || !token || !username) return null;
+
+    const dataResult = await getActiveUsersAdmin({ token, username, period: periodArg });
+    if (dataResult) {
+      setActiveUsersData(dataResult);
+    }
+    return dataResult;
+  }, [selectedPeriod, isSuperAdmin, hasPermission, token, username]);
+
   // Fetch data (silent = tichý refresh bez loading spinneru / blikání)
   const fetchData = useCallback(async (silent = false) => {
     // 🔐 Wait for AuthContext to finish loading before fetching dashboard data
@@ -9160,7 +9134,7 @@ export default function DashboardPage() {
     if (!silent) setLoading(true);
     setError(null);
     try {
-      const result = await getDashboardData({ token, username, days: 7 });
+      const result = await getDashboardData({ token, username, days: 7, cashbook_month: cashbookMonth });
       
       if (result.status === 'success') {
         setData(result.data);
@@ -9178,11 +9152,16 @@ export default function DashboardPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [token, username, authLoading]);
+  }, [token, username, authLoading, cashbookMonth]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    if (!shouldLoadActiveUsers) return;
+    fetchActiveUsersData(selectedPeriod);
+  }, [shouldLoadActiveUsers, fetchActiveUsersData, selectedPeriod]);
 
   // ✅ Registrace dashboard refresh callbacku pro automatické obnovení při nových notifikacích
   useEffect(() => {
@@ -9218,16 +9197,68 @@ export default function DashboardPage() {
     if (cashbookMonth && token && username) fetchCashbook();
   }, [cashbookMonth]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Fetch chart timeline (separátní endpoint, tichý reload)
+  const fetchChartTimeline = useCallback(async (days) => {
+    if (!token || !username) return;
+    setChartTimelineLoading(true);
+    try {
+      const result = await getDashboardChartTimeline({ token, username, chart_days: days });
+      if (result.status === 'success') {
+        setChartTimelineData(result.data);
+        setChartTimelineGroupBy(result.group_by || 'day');
+      }
+    } catch (err) {
+      console.error('Chyba při načítání grafu timeline:', err);
+    } finally {
+      setChartTimelineLoading(false);
+    }
+  }, [token, username]);
+
   // Auto-refresh každých 5 minut (pokud je zapnutý) – tichý, bez blikání
   useEffect(() => {
     if (!autoRefreshEnabled) return;
 
     const interval = setInterval(() => {
       fetchData(true);
+
+      if (shouldLoadActiveUsers) {
+        fetchActiveUsersData(selectedPeriod);
+      }
+
+      if (shouldAutoRefreshChartTimeline) {
+        fetchChartTimeline(chartTimelineDays);
+      }
+
+      if (shouldAutoRefreshRss) {
+        fetchRss(true);
+      }
+
+      if (shouldAutoRefreshWeather) {
+        fetchWeather(true);
+      }
+
+      if (shouldAutoRefreshFinance) {
+        fetchFinance(true);
+      }
     }, 5 * 60 * 1000); // 5 minut
 
     return () => clearInterval(interval);
-  }, [autoRefreshEnabled, fetchData]);
+  }, [
+    autoRefreshEnabled,
+    fetchData,
+    fetchActiveUsersData,
+    fetchChartTimeline,
+    fetchRss,
+    fetchWeather,
+    fetchFinance,
+    selectedPeriod,
+    chartTimelineDays,
+    shouldLoadActiveUsers,
+    shouldAutoRefreshChartTimeline,
+    shouldAutoRefreshRss,
+    shouldAutoRefreshWeather,
+    shouldAutoRefreshFinance
+  ]);
 
   // 🔄 Listener pro refresh dashboard po změnách v objednávkách/fakturách (schválení, zrušení, editace)
   useEffect(() => {
@@ -9269,23 +9300,6 @@ export default function DashboardPage() {
       localStorage.setItem('dashboard_auto_refresh', enabled.toString());
     } catch { /* ignore */ }
   }, []);
-
-  // Fetch chart timeline (separátní endpoint, tichý reload)
-  const fetchChartTimeline = useCallback(async (days) => {
-    if (!token || !username) return;
-    setChartTimelineLoading(true);
-    try {
-      const result = await getDashboardChartTimeline({ token, username, chart_days: days });
-      if (result.status === 'success') {
-        setChartTimelineData(result.data);
-        setChartTimelineGroupBy(result.group_by || 'day');
-      }
-    } catch (err) {
-      console.error('Chyba při načítání grafu timeline:', err);
-    } finally {
-      setChartTimelineLoading(false);
-    }
-  }, [token, username]);
 
   // Reaguj na změnu periody grafu
   useEffect(() => {
@@ -9762,8 +9776,11 @@ export default function DashboardPage() {
         );
         break;
       case 'active_users_admin':
-        content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} token={token} username={username} setQuickMessageUser={setQuickMessageUser} onPeriodChange={setSelectedPeriod} />;
-        badgeCount = activeUsersData?.counts?.['5min'] ?? activeUsersData?.count ?? 0;
+        content = <ActiveUsersAdminWidget data={activeUsersData} navigate={navigate} token={token} username={username} setQuickMessageUser={setQuickMessageUser} onPeriodChange={async (nextPeriod) => {
+          setSelectedPeriod(nextPeriod);
+          return fetchActiveUsersData(nextPeriod);
+        }} />;
+        badgeCount = activeUsersData?.counts?.[selectedPeriod] ?? activeUsersData?.count ?? 0;
         break;
       case 'weather':
         // Weather: renderuje celou kartu sám, bez WidgetHeader
@@ -10022,7 +10039,7 @@ export default function DashboardPage() {
             {/* Superadmin nebo DASHBOARD_ACTIVE_USERS: aktivní uživatelé - vedle module shortcuts */}
             {quickTilesConfig.showModuleShortcuts && (isSuperAdmin || (hasPermission && hasPermission('DASHBOARD_ACTIVE_USERS'))) && (
               <SmartTooltip
-                text={`Přehled aktivit uživatelů${activeUsersData?.count > 0 ? ` (${activeUsersData.count})` : ''}`}
+                text={`Přehled aktivit uživatelů${(activeUsersData?.counts?.[selectedPeriod] ?? activeUsersData?.count ?? 0) > 0 ? ` (${activeUsersData?.counts?.[selectedPeriod] ?? activeUsersData?.count ?? 0})` : ''}`}
                 icon="none"
                 preferredPosition="bottom"
               >
@@ -10035,7 +10052,7 @@ export default function DashboardPage() {
                   }}
                 >
                   <QuickTileIcon><FontAwesomeIcon icon={faUsers} /></QuickTileIcon>
-                  {activeUsersData?.count > 0 && <QuickTileCount style={{ background: '#1e3a8a', borderColor: 'white' }}>{activeUsersData.count}</QuickTileCount>}
+                  {(activeUsersData?.counts?.[selectedPeriod] ?? activeUsersData?.count ?? 0) > 0 && <QuickTileCount style={{ background: '#1e3a8a', borderColor: 'white' }}>{activeUsersData?.counts?.[selectedPeriod] ?? activeUsersData?.count ?? 0}</QuickTileCount>}
                 </QuickTile>
               </SmartTooltip>
             )}

@@ -110,6 +110,50 @@ export async function loadVemaFaktury({
 }
 
 /**
+ * Načte EEO faktury bez vazby na VEMA import (server-side anti-match)
+ *
+ * @param {Object} params
+ * @param {string} params.token
+ * @param {string} params.username
+ * @param {number} params.limit
+ * @param {number} params.offset
+ * @param {string} params.search
+ * @returns {Promise<Object>} Response {status, data, count, pagination, message}
+ */
+export async function loadEeoFakturyBezVema({
+  token,
+  username,
+  limit = 50000,
+  offset = 0,
+  search = ''
+}) {
+  if (!token || !username) {
+    throw new Error('Chybí přístupový token nebo uživatelské jméno');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/vema/faktury/eeo-bez-vema/list`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      token,
+      username,
+      limit,
+      offset,
+      search
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
  * Načte seznam smluv z VEMA systému
  * 
  * @param {Object} params
