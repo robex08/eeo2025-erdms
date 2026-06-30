@@ -280,12 +280,20 @@ function handle_vema_faktury_list($input, $config, $queries) {
 
         if ($search !== '') {
             // Fulltext search přes klíčové sloupce faktur
-            // Poznámka: JOIN sloupce (firmy.nazev) nelze použít v WHERE - filtrují se až v aplikační vrstvě
+                        // Poznámka: JOIN sloupce (firmy.nazev) nelze použít v WHERE - filtrují se až v aplikační vrstvě.
+                        // Ev. číslo smlouvy bereme přes EXISTS do 25v_smla (f.csml -> s.csml, s.ecsml).
             $where[] = "(f.cfak LIKE ? OR f.nazevfak LIKE ? OR f.cdok LIKE ? 
                         OR f.csml LIKE ? OR f.cobj LIKE ? OR f.typdok LIKE ? 
                         OR f.ksymb LIKE ? OR f.vsymb LIKE ? OR f.ssymb LIKE ?
                         OR f.dicp LIKE ? OR f.cfakdupl LIKE ? OR f.dobrdok LIKE ?
-                        OR f.dobrfak LIKE ?)";
+                                                OR f.dobrfak LIKE ?
+                                                OR EXISTS (
+                                                        SELECT 1
+                                                        FROM `" . TBL_VEMA_SMLA . "` s_map
+                                                        WHERE s_map.csml = f.csml
+                                                            AND s_map.ecsml LIKE ?
+                                                            AND s_map.stav_zaznamu = 'aktivni'
+                                                ))";
             $search_param = '%' . $search . '%';
             $params[] = $search_param; // cfak
             $params[] = $search_param; // nazevfak
@@ -300,6 +308,7 @@ function handle_vema_faktury_list($input, $config, $queries) {
             $params[] = $search_param; // cfakdupl
             $params[] = $search_param; // dobrdok
             $params[] = $search_param; // dobrfak
+            $params[] = $search_param; // ecsml z 25v_smla
         }
 
         $where_sql = 'WHERE ' . implode(' AND ', $where);
@@ -574,6 +583,187 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
         echo json_encode(array(
             'status' => 'error',
             'message' => 'Chyba při načítání smluv: ' . $e->getMessage()
+        ));
+    }
+}
+
+// ============================================================================
+// 3B. EEO FAKTURY BEZ VEMA VAZBY - POST /vema/faktury/eeo-bez-vema/list
+// ============================================================================
+
+/**
+ * Seznam EEO faktur, které nemají žádnou vazbu na VEMA import.
+ *
+ * Vazby testujeme proti aktivním VEMA fakturám:
+ * - VS (fa_cislo_vema <-> vsymb) + částka
+ * - VEMA kód (fa_vema_kod <-> cdok) + částka
+ * - číslo objednávky (cislo_objednavky <-> cobj)
+ * - evidenční číslo smlouvy (cislo_smlouvy <-> ecsml přes 25v_smla)
+ */
+function handle_vema_faktury_eeo_bez_vema_list($input, $config, $queries) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        return;
+    }
+
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+
+    if (!has_permission($token_data['id'], 'VEMA_VIEW')) {
+        http_response_code(403);
+        echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k zobrazení Deníku VEMA'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $limit = isset($input['limit']) ? (int)$input['limit'] : 50000;
+        $offset = isset($input['offset']) ? (int)$input['offset'] : 0;
+        $search = isset($input['search']) ? trim($input['search']) : '';
+
+        $where = array();
+        $params = array();
+
+        $where[] = "f.aktivni = 1";
+
+        // ⚡ Optimalizace: rozdělené NOT IN podmínky využijí indexy:
+        //  - 25v_fpazahl(vsymb, cdok, cobj)
+        //  - 25v_smla(ecsml)
+        // Sekce hledá EEO faktury, které VEMA vůbec nezná → bez částkové tolerance.
+        $where[] = "(
+            f.fa_cislo_vema IS NULL OR f.fa_cislo_vema = ''
+            OR f.fa_cislo_vema NOT IN (
+                SELECT v.vsymb FROM `" . TBL_VEMA_FPAZAHL . "` v
+                WHERE v.stav_zaznamu = 'aktivni' AND v.vsymb IS NOT NULL AND v.vsymb != ''
+            )
+        )";
+        $where[] = "(
+            f.fa_vema_kod IS NULL OR f.fa_vema_kod = ''
+            OR f.fa_vema_kod NOT IN (
+                SELECT v.cdok FROM `" . TBL_VEMA_FPAZAHL . "` v
+                WHERE v.stav_zaznamu = 'aktivni' AND v.cdok IS NOT NULL AND v.cdok != ''
+            )
+        )";
+        $where[] = "(
+            o.cislo_objednavky IS NULL OR o.cislo_objednavky = ''
+            OR o.cislo_objednavky NOT IN (
+                SELECT v.cobj FROM `" . TBL_VEMA_FPAZAHL . "` v
+                WHERE v.stav_zaznamu = 'aktivni' AND v.cobj IS NOT NULL AND v.cobj != ''
+            )
+        )";
+        $where[] = "(
+            sm.cislo_smlouvy IS NULL OR sm.cislo_smlouvy = ''
+            OR sm.cislo_smlouvy NOT IN (
+                SELECT vs.ecsml FROM `" . TBL_VEMA_SMLA . "` vs
+                WHERE vs.stav_zaznamu = 'aktivni' AND vs.ecsml IS NOT NULL AND vs.ecsml != ''
+            )
+        )";
+
+        if ($search !== '') {
+            $where[] = "(
+                f.fa_cislo_vema LIKE ?
+                OR f.fa_vema_kod LIKE ?
+                OR o.cislo_objednavky LIKE ?
+                OR sm.cislo_smlouvy LIKE ?
+                OR JSON_VALUE(o.financovani, '$.cislo_smlouvy') LIKE ?
+                OR o.dodavatel_nazev LIKE ?
+                OR sm.nazev_firmy LIKE ?
+                OR o.dodavatel_ico LIKE ?
+                OR sm.ico LIKE ?
+                OR CAST(f.id AS CHAR) LIKE ?
+            )";
+            $search_param = '%' . $search . '%';
+            for ($i = 0; $i < 10; $i++) {
+                $params[] = $search_param;
+            }
+        }
+
+        $where_sql = 'WHERE ' . implode(' AND ', $where);
+
+        $count_sql = "SELECT COUNT(*) as total
+                      FROM `" . TBL_FAKTURY . "` f
+                      LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                      LEFT JOIN `" . TBL_SMLOUVY . "` sm ON f.smlouva_id = sm.id
+                      " . $where_sql;
+        $count_stmt = $db->prepare($count_sql);
+        $count_stmt->execute($params);
+        $total = (int)$count_stmt->fetchColumn();
+
+        $sql = "SELECT
+                    CONCAT('EEO-', f.id) as id,
+                    f.id as eeo_faktura_id,
+                    NULL as firma,
+                    f.fa_cislo_vema as cfak,
+                    f.fa_cislo_vema as vsymb,
+                    f.fa_vema_kod as cdok,
+                    COALESCE(NULLIF(o.predmet, ''), NULLIF(sm.nazev_smlouvy, ''), f.fa_cislo_vema) as nazevfak,
+                    COALESCE(NULLIF(o.dodavatel_nazev, ''), NULLIF(sm.nazev_firmy, '')) as firma_nazev,
+                    COALESCE(NULLIF(o.dodavatel_ico, ''), NULLIF(sm.ico, '')) as firma_ico,
+                    f.fa_castka as celkem,
+                    f.fa_datum_vystaveni as dof,
+                    f.fa_datum_doruceni as datpri,
+                    f.fa_datum_splatnosti as spl,
+                    o.cislo_objednavky as cobj,
+                    o.cislo_objednavky as cobj_formatovane,
+                    sm.cislo_smlouvy as csml,
+                    sm.cislo_smlouvy as smlouva_ecsml,
+                    f.stav as stav_zaznamu,
+                    NULL as dt_importu,
+                    0 as pocet_objednavek,
+                    0 as pocet_faktur,
+                    0 as pocet_smluv,
+                    0 as pocet_rocnich_poplatku,
+                    1 as _isEeoOnly
+                FROM `" . TBL_FAKTURY . "` f
+                LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                LEFT JOIN `" . TBL_SMLOUVY . "` sm ON f.smlouva_id = sm.id
+                " . $where_sql . "
+                ORDER BY f.id DESC
+                LIMIT $limit OFFSET $offset";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => $rows,
+            'count' => count($rows),
+            'pagination' => array(
+                'total' => $total,
+                'limit' => $limit,
+                'offset' => $offset,
+                'has_more' => ($offset + $limit) < $total
+            ),
+            'message' => 'Data načtena úspěšně'
+        ));
+    } catch (Exception $e) {
+        error_log('VEMA EEO bez VEMA list error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání EEO faktur bez VEMA vazby: ' . $e->getMessage()
         ));
     }
 }

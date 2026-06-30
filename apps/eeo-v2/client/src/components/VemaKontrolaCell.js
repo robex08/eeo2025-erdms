@@ -243,6 +243,7 @@ const formatUdalostTyp = (typ) => {
  * @param {'faktura'|'firma'|'smlouva'} props.typZaznamu - Typ VEMA záznamu
  * @param {string} props.vemaId - VEMA ID (firma/cfak/csml)
  * @param {string} [props.vemaIdSecondary] - Sekundární VEMA ID (např. firma u faktury)
+ * @param {object|null} [props.metadata] - Volitelná metadata ukládaná do metadata_json
  * @param {string} props.token - Auth token
  * @param {string} props.username - Username
  * @param {function} [props.onSave] - Callback po uložení
@@ -251,6 +252,7 @@ export default function VemaKontrolaCell({
   typZaznamu,
   vemaId,
   vemaIdSecondary = null,
+  metadata = null,
   token,
   username,
   onSave,
@@ -343,7 +345,7 @@ export default function VemaKontrolaCell({
           kontrolaStatus: formStatus,
           priorita: formPriorita,
           poznamka: formPoznamka.trim(),
-          metadata: null, // Pro budoucí rozšíření
+          metadata,
         },
         token,
         username
@@ -367,6 +369,7 @@ export default function VemaKontrolaCell({
     typZaznamu,
     vemaId,
     vemaIdSecondary,
+    metadata,
     formStatus,
     formPriorita,
     formPoznamka,
