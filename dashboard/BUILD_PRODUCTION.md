@@ -18,12 +18,12 @@ nano /var/www/erdms-dev/dashboard/.env.production
 
 ```bash
 # Application version
-VITE_APP_VERSION=1.95   # ← Změň tuto verzi
+VITE_APP_VERSION=1.96   # ← Změň tuto verzi
 ```
 
 Verze se automaticky použije:
-- ✅ V hlavičce dashboardu: `ERDMS portál aplikací v1.95`
-- ✅ V URL pro SSO: `?sso=auto&v=1.95`
+- ✅ V hlavičce dashboardu: `ERDMS portál aplikací v1.96`
+- ✅ V URL pro SSO: `?sso=auto&v=1.96`
 
 ### 2. Kontrola konfigurace
 
@@ -151,7 +151,7 @@ ls -lh /var/www/erdms-platform/apps/dashboard/
 # Zkontroluj že nová verze je v buildu
 grep -o "v[0-9]\+\.[0-9]\+" /var/www/erdms-platform/apps/dashboard/assets/*.js | head -1
 
-# Výstup: v1.95 (nebo tvoje aktuální verze)
+# Výstup: v1.96 (nebo tvoje aktuální verze)
 ```
 
 ### 3. Test v prohlížeči
@@ -159,10 +159,10 @@ grep -o "v[0-9]\+\.[0-9]\+" /var/www/erdms-platform/apps/dashboard/assets/*.js |
 1. **Otevři:** `https://erdms.zachranka.cz`
 2. **Hard refresh:** `Ctrl + Shift + R` (Chrome/Firefox) nebo `Cmd + Shift + R` (Mac)
 3. **Zkontroluj:**
-   - ✅ Verze v hlavičce: `ERDMS portál aplikací v1.95`
-   - ✅ Nové dlaždice (např. Portal HR / Vema)
-   - ✅ Přihlášení funguje
-   - ✅ Aplikace se otevírají
+      - ✅ Verze v hlavičce: `ERDMS portál aplikací v1.96`
+      - ✅ Nové dlaždice (např. Portal HR / Vema)
+      - ✅ Přihlášení funguje
+      - ✅ Aplikace se otevírají
 
 ### 4. Browser Console
 
@@ -171,7 +171,7 @@ grep -o "v[0-9]\+\.[0-9]\+" /var/www/erdms-platform/apps/dashboard/assets/*.js |
 console.log(window.location.href);
 
 // Klikni na aplikaci (např. EEO) a zkontroluj URL:
-// https://erdms.zachranka.cz/eeo-v2/?sso=auto&v=1.95
+// https://erdms.zachranka.cz/eeo-v2/?sso=auto&v=1.96
 ```
 
 ---
@@ -318,7 +318,7 @@ grep -oP 'v\d+\.\d+' /var/www/erdms-platform/apps/dashboard/assets/*.js | head -
 3. **Verze:** Aktualizuj v `.env.production`
 4. **Build:** `bash build-dashboard.sh --prod --deploy`
 5. **Test:** Hard refresh na `https://erdms.zachranka.cz`
-6. **Commit:** `git add . && git commit -m "Dashboard v1.95 - Portal HR"`
+6. **Commit:** `git add . && git commit -m "Dashboard v1.96 - Portal HR"`
 
 ---
 

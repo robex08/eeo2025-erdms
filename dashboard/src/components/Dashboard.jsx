@@ -37,16 +37,194 @@ function Dashboard() {
   const [calendarEvents, setCalendarEvents] = useState([]);
   const [loadingCalendar, setLoadingCalendar] = useState(false);
   const [calendarHoverTimeout, setCalendarHoverTimeout] = useState(null);
+  const [lastSessionCheck, setLastSessionCheck] = useState(null);
+  const [currentDateTime, setCurrentDateTime] = useState(new Date());
+  const [loadingGraphTest, setLoadingGraphTest] = useState(false);
+  const [graphTestData, setGraphTestData] = useState(null);
+  const [graphTestError, setGraphTestError] = useState('');
+  const [graphTestLastRun, setGraphTestLastRun] = useState(null);
+
+  const usernameLower = (user?.username || '').toLowerCase();
+  const upnLower = (user?.upn || '').toLowerCase();
+  const userFullName = user ? `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() : '';
+  const userRole = user?.entraData?.jobTitle || user?.jobTitle || '';
+  const userDepartment = user?.entraData?.department || user?.department || '';
+  const userManager = user?.entraData?.manager?.displayName || '';
+  const userGroupsCount = user?.entraData?.memberOf?.length || 0;
+
+  const withM365LoginHints = (url) => {
+    if (!user?.upn) return url;
+
+    try {
+      const parsedUrl = new URL(url);
+      parsedUrl.searchParams.set('login_hint', user.upn);
+      parsedUrl.searchParams.set('domain_hint', 'organizations');
+      return parsedUrl.toString();
+    } catch (error) {
+      console.warn('Cannot append M365 login hints:', error);
+      return url;
+    }
+  };
+
+  const extractGuid = (value) => {
+    if (!value || typeof value !== 'string') return null;
+    const guidRegex = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    const match = value.match(guidRegex);
+    return match ? match[0] : null;
+  };
   
   // Kontrola zda je admin (u03924, u09721, u09694 nebo u09764)
-  const isAdmin = user?.username?.toLowerCase() === 'u03924' || 
-                  user?.upn?.toLowerCase().startsWith('u03924@') ||
-                  user?.username?.toLowerCase() === 'u09721' || 
-                  user?.upn?.toLowerCase().startsWith('u09721@') ||
-                  user?.username?.toLowerCase() === 'u09694' || 
-                  user?.upn?.toLowerCase().startsWith('u09694@') ||
-                  user?.username?.toLowerCase() === 'u09764' || 
-                  user?.upn?.toLowerCase().startsWith('u09764@');
+  const isAdmin = usernameLower === 'u03924' || 
+                  upnLower.startsWith('u03924@') ||
+                  usernameLower === 'u09721' || 
+                  upnLower.startsWith('u09721@') ||
+                  usernameLower === 'u09694' || 
+                  upnLower.startsWith('u09694@') ||
+                  usernameLower === 'u09764' || 
+                  upnLower.startsWith('u09764@');
+  const isGraphTester = usernameLower === 'u03924' || upnLower.startsWith('u03924@');
+
+  const safeFetchGraph = async (url) => {
+    const startedAt = performance.now();
+    try {
+      const response = await fetch(url, { credentials: 'include' });
+      const durationMs = Math.round(performance.now() - startedAt);
+      const payload = await response.json().catch(() => ({}));
+      return {
+        ok: response.ok,
+        status: response.status,
+        durationMs,
+        payload,
+        error: response.ok ? null : (payload.error || `HTTP ${response.status}`)
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 0,
+        durationMs: Math.round(performance.now() - startedAt),
+        payload: null,
+        error: error.message
+      };
+    }
+  };
+
+  const runGraphApiTest = async () => {
+    if (!isGraphTester || !user) return;
+
+    setLoadingGraphTest(true);
+    setGraphTestError('');
+
+    try {
+      const ownUserId =
+        extractGuid(user?.entraData?.id) ||
+        extractGuid(user?.entra_id) ||
+        extractGuid(user?.id);
+      const ownEmail = user.email;
+      const ownNameQuery = `${user.jmeno || ''} ${user.prijmeni || ''}`.trim();
+
+      if (!ownUserId) {
+        throw new Error('Chybí user.id, nelze spustit Graph test profilů.');
+      }
+
+      const [
+        selfProfile,
+        selfGroups,
+        selfManager,
+        selfDirectReports,
+        calendarEvents,
+        calendarDebug,
+        searchByEmail,
+        usersSample,
+        usersSearch,
+        recentMessages,
+        recentDocuments
+      ] = await Promise.all([
+        safeFetchGraph(`/api/entra/user/${ownUserId}/profile`),
+        safeFetchGraph(`/api/entra/user/${ownUserId}/groups`),
+        safeFetchGraph(`/api/entra/user/${ownUserId}/manager`),
+        safeFetchGraph(`/api/entra/user/${ownUserId}/direct-reports`),
+        safeFetchGraph('/api/entra/me/calendar/events?days=14'),
+        safeFetchGraph('/api/entra/me/calendar/debug'),
+        ownEmail ? safeFetchGraph(`/api/entra/search/user?email=${encodeURIComponent(ownEmail)}`) : Promise.resolve(null),
+        safeFetchGraph('/api/entra/users/paginated?pageSize=20'),
+        ownNameQuery.length >= 3
+          ? safeFetchGraph(`/api/entra/users/search?q=${encodeURIComponent(ownNameQuery)}&limit=20`)
+          : Promise.resolve(null),
+        safeFetchGraph('/api/entra/me/messages/recent?limit=5'),
+        safeFetchGraph('/api/entra/me/documents/recent?limit=5')
+      ]);
+
+      const allCalendarEvents = Array.isArray(calendarEvents?.payload?.data) ? calendarEvents.payload.data : [];
+      const todayDateKey = new Date().toISOString().slice(0, 10);
+      const todayMeetings = allCalendarEvents.filter((event) => {
+        const dt = event?.start?.dateTime;
+        if (!dt) return false;
+        return String(dt).slice(0, 10) === todayDateKey;
+      });
+
+      const messageItems = Array.isArray(recentMessages?.payload?.data) ? recentMessages.payload.data : [];
+      const unreadMessages = messageItems.filter((m) => m?.isRead === false);
+      const documentItems = Array.isArray(recentDocuments?.payload?.data) ? recentDocuments.payload.data : [];
+
+      const endpointHealth = {
+        selfProfile:
+          !!selfProfile?.ok &&
+          !!selfProfile?.payload?.success &&
+          !!selfProfile?.payload?.data?.user,
+        selfGroups: !!selfGroups?.ok && !!selfGroups?.payload?.success,
+        selfManager: !!selfManager?.ok && !!selfManager?.payload?.success,
+        selfDirectReports: !!selfDirectReports?.ok && !!selfDirectReports?.payload?.success,
+        calendarEvents: !!calendarEvents?.ok && !!calendarEvents?.payload?.success,
+        calendarDebug: !!calendarDebug?.ok && !!calendarDebug?.payload?.success,
+        searchByEmail: searchByEmail ? !!searchByEmail?.ok && !!searchByEmail?.payload?.success : true,
+        usersSample: !!usersSample?.ok && !!usersSample?.payload?.success,
+        usersSearch: usersSearch ? !!usersSearch?.ok && !!usersSearch?.payload?.success : true,
+        recentMessages: !!recentMessages?.ok && !!recentMessages?.payload?.success,
+        recentDocuments: !!recentDocuments?.ok && !!recentDocuments?.payload?.success
+      };
+
+      const allResults = {
+        selfProfile,
+        selfGroups,
+        selfManager,
+        selfDirectReports,
+        calendarEvents,
+        calendarDebug,
+        searchByEmail,
+        usersSample,
+        usersSearch,
+        recentMessages,
+        recentDocuments
+      };
+
+      const totalChecks = Object.values(endpointHealth).length;
+      const okChecks = Object.values(endpointHealth).filter(Boolean).length;
+
+      const summary = {
+        totalChecks,
+        okChecks,
+        failedChecks: totalChecks - okChecks,
+        graphUserIdUsed: ownUserId,
+        groupCount: selfGroups?.payload?.count || 0,
+        directReportsCount: selfDirectReports?.payload?.count || 0,
+        calendarEventsCount: Array.isArray(calendarEvents?.payload?.data) ? calendarEvents.payload.data.length : 0,
+        usersSampleCount: usersSample?.payload?.data?.count || usersSample?.payload?.count || 0,
+        managerName: selfManager?.payload?.data?.displayName || null,
+        recentMessagesCount: messageItems.length,
+        unreadMessagesCount: unreadMessages.length,
+        recentDocumentsCount: documentItems.length,
+        todayMeetingsCount: todayMeetings.length
+      };
+
+      setGraphTestData({ summary, endpointHealth, results: allResults });
+      setGraphTestLastRun(new Date());
+    } catch (error) {
+      console.error('Graph API test failed:', error);
+      setGraphTestError(error.message || 'Neočekávaná chyba při Graph testu');
+    } finally {
+      setLoadingGraphTest(false);
+    }
+  };
   
   useEffect(() => {
     loadUser();
@@ -57,6 +235,72 @@ function Dashboard() {
     document.body.classList.toggle('dark-mode', darkMode);
     localStorage.setItem('darkMode', JSON.stringify(darkMode));
   }, [darkMode]);
+
+  useEffect(() => {
+    let minuteIntervalId;
+
+    const updateDateTime = () => {
+      setCurrentDateTime(new Date());
+    };
+
+    const now = new Date();
+    const msToNextMinute = (60 - now.getSeconds()) * 1000 - now.getMilliseconds();
+
+    const firstTickTimeoutId = setTimeout(() => {
+      updateDateTime();
+      minuteIntervalId = setInterval(updateDateTime, 60 * 1000);
+    }, msToNextMinute);
+
+    return () => {
+      clearTimeout(firstTickTimeoutId);
+      if (minuteIntervalId) {
+        clearInterval(minuteIntervalId);
+      }
+    };
+  }, []);
+
+  // Keep-alive session: pravidelný ping + obnovení při návratu do záložky.
+  // Záměrně nemažeme user state při krátkém výpadku sítě, aby nemizely prvky v hlavičce.
+  useEffect(() => {
+    if (!user) return;
+
+    let isMounted = true;
+
+    const keepSessionAlive = async () => {
+      try {
+        const freshUser = await authService.getCurrentUser();
+        if (!isMounted) return;
+
+        if (freshUser) {
+          setUser(freshUser);
+          setLastSessionCheck(Date.now());
+        }
+      } catch (error) {
+        console.warn('Session keep-alive failed:', error);
+      }
+    };
+
+    const intervalId = setInterval(keepSessionAlive, 4 * 60 * 1000);
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        const now = Date.now();
+        if (!lastSessionCheck || now - lastSessionCheck > 60 * 1000) {
+          keepSessionAlive();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
+    };
+  }, [user, lastSessionCheck]);
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
@@ -877,6 +1121,23 @@ function Dashboard() {
           </div>
         </div>
         <div className="user-info">
+          <div className="header-datetime" title="Aktuální datum a čas">
+            <span className="header-datetime-date">
+              {currentDateTime.toLocaleDateString('cs-CZ', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric'
+              })}
+            </span>
+            <span className="header-datetime-time">
+              {currentDateTime.toLocaleTimeString('cs-CZ', {
+                hour: '2-digit',
+                minute: '2-digit',
+                hour12: false
+              })}
+            </span>
+          </div>
+
           {user && user.upn && (
             <div 
               className="calendar-dropdown-container"
@@ -884,7 +1145,7 @@ function Dashboard() {
               onMouseLeave={handleCalendarMouseLeave}
             >
               <a 
-                href={`https://outlook.office.com/calendar/view/week?realm=zachranka.cz&login_hint=${user.upn}`}
+                href={withM365LoginHints(`https://outlook.office.com/calendar/view/week?realm=zachranka.cz`)}
                 className="calendar-icon-btn" 
                 title="Můj kalendář - následující týden"
                 target="_blank"
@@ -981,7 +1242,61 @@ function Dashboard() {
           <CopilotWidget />
           */}
           
-          <span>👤 {user ? `${user.jmeno} ${user.prijmeni}` : 'Načítání...'}</span>
+          {user ? (
+            <div className="user-profile-hover" tabIndex={0} aria-label="Profil přihlášeného uživatele">
+              <span className="user-identity-inline">
+                <span className="user-avatar-chip" aria-hidden="true">
+                  <svg className="user-avatar-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="12" cy="8" r="4" stroke="currentColor" strokeWidth="2"/>
+                    <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  </svg>
+                </span>
+                <span className="user-name-text">{userFullName || 'Neznámý uživatel'}</span>
+              </span>
+
+              <div className="user-profile-tooltip" role="tooltip">
+                <div className="tooltip-title">Můj profil</div>
+                <div className="tooltip-row">
+                  <span className="tooltip-label">Email</span>
+                  <span className="tooltip-value">{user.email || '-'}</span>
+                </div>
+                <div className="tooltip-row">
+                  <span className="tooltip-label">Uživatel</span>
+                  <span className="tooltip-value">{user.username || '-'}</span>
+                </div>
+                {user.upn && (
+                  <div className="tooltip-row">
+                    <span className="tooltip-label">UPN</span>
+                    <span className="tooltip-value">{user.upn}</span>
+                  </div>
+                )}
+                {userRole && (
+                  <div className="tooltip-row">
+                    <span className="tooltip-label">Pozice</span>
+                    <span className="tooltip-value">{userRole}</span>
+                  </div>
+                )}
+                {userDepartment && (
+                  <div className="tooltip-row">
+                    <span className="tooltip-label">Oddělení</span>
+                    <span className="tooltip-value">{userDepartment}</span>
+                  </div>
+                )}
+                {userManager && (
+                  <div className="tooltip-row manager-row">
+                    <span className="tooltip-label">Nadřízený</span>
+                    <span className="tooltip-value">{userManager}</span>
+                  </div>
+                )}
+                <div className="tooltip-row">
+                  <span className="tooltip-label">Skupiny</span>
+                  <span className="tooltip-value">{userGroupsCount}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <span>Načítání...</span>
+          )}
           <button onClick={toggleDarkMode} className="theme-toggle-btn" title={darkMode ? 'Přepnout na světlý režim' : 'Přepnout na tmavý režim'}>
             {darkMode ? (
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1030,6 +1345,19 @@ function Dashboard() {
             }}
           >
             👥 Zaměstnanci
+          </button>
+        )}
+        {isGraphTester && (
+          <button
+            className={`tab-button ${activeTab === 'graph-test' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('graph-test');
+              if (!graphTestData && !loadingGraphTest) {
+                runGraphApiTest();
+              }
+            }}
+          >
+            🔬 Graph API test
           </button>
         )}
         {false && isAdmin && (
@@ -1184,28 +1512,6 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://dms.zachranka.cz/ix-ELO/plugin/auth2/sign-in" className="app-card elo-card" target="_blank" rel="noopener noreferrer">
-                  <div className="app-card-header">
-                    <div className="app-icon-wrapper">
-                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M9 13h6m-6 4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <div className="app-badges">
-                      <span className="app-badge">Aktivní</span>
-                    </div>
-                  </div>
-                  <h3 className="app-title">ELO</h3>
-                  <p className="app-description">Elektronický dokument management systém</p>
-                  <div className="app-footer">
-                    <span className="app-link-text">Otevřít aplikaci</span>
-                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
-                    </svg>
-                  </div>
-                </a>
-
                 <a href="https://editace.zachranka.cz/ZZSDocWeb/" className="app-card editace-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper">
@@ -1270,27 +1576,6 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://copilot.microsoft.com/" className="app-card" target="_blank" rel="noopener noreferrer" 
-                   style={{ background: "linear-gradient(135deg, #00A4EF 0%, #0078D4 100%)" }}>
-                  <div className="app-card-header">
-                    <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
-                      <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M12 2L2 7l10 5 10-5-10-5z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        <path d="M2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    </div>
-                    <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>M365</span>
-                  </div>
-                  <h3 className="app-title">Microsoft Copilot</h3>
-                  <p className="app-description">AI asistent pro produktivitu a kreativitu</p>
-                  <div className="app-footer">
-                    <span className="app-link-text">Otevřít aplikaci</span>
-                    <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">
-                      <path fillRule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clipRule="evenodd"/>
-                    </svg>
-                  </div>
-                </a>
-
                 <a href="https://vzdelavani.zachranka.cz" className="app-card vzdelavani-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
@@ -1302,7 +1587,7 @@ function Dashboard() {
                     </div>
                     <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">Vzdělávací platforma (vzdělávání)</h3>
+                  <h3 className="app-title">Vzdělávací platforma</h3>
                   <p className="app-description">Kurzy a vzdělávací materiály</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1321,7 +1606,7 @@ function Dashboard() {
                     </div>
                     <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">Inspektor (kontrola)</h3>
+                  <h3 className="app-title">Inspektor</h3>
                   <p className="app-description">Inspekční systém a kontroly</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1341,7 +1626,7 @@ function Dashboard() {
                     </div>
                     <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">Redmine (řízení projektů)</h3>
+                  <h3 className="app-title">Redmine</h3>
                   <p className="app-description">Správa projektů a úkolů</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1360,7 +1645,7 @@ function Dashboard() {
                     </div>
                     <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">iTOP (helpdesk)</h3>
+                  <h3 className="app-title">iTOP</h3>
                   <p className="app-description">IT service management a helpdesk</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1376,7 +1661,7 @@ function Dashboard() {
             <div className="apps-section">
               <h2 className="section-title">☁️ Microsoft 365</h2>
               <div className="apps-grid ms-apps-grid">
-                <a href="https://outlook.office.com" className="app-card ms-outlook-card" target="_blank" rel="noopener noreferrer">
+                <a href={withM365LoginHints('https://outlook.office.com')} className="app-card ms-outlook-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1396,7 +1681,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://teams.microsoft.com" className="app-card ms-teams-card" target="_blank" rel="noopener noreferrer">
+                <a href={withM365LoginHints('https://teams.microsoft.com')} className="app-card ms-teams-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1418,7 +1703,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://www.office.com/launch/word" className="app-card ms-word-card" target="_blank" rel="noopener noreferrer">
+                <a href={withM365LoginHints('https://www.office.com/launch/word')} className="app-card ms-word-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1438,7 +1723,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://www.office.com/launch/excel" className="app-card ms-excel-card" target="_blank" rel="noopener noreferrer">
+                <a href={withM365LoginHints('https://www.office.com/launch/excel')} className="app-card ms-excel-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1458,7 +1743,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://m365.cloud.microsoft/" className="app-card ms-copilot-card" target="_blank" rel="noopener noreferrer">
+                <a href={withM365LoginHints('https://m365.cloud.microsoft/')} className="app-card ms-copilot-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1479,7 +1764,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://zachrankacz-my.sharepoint.com/" className="app-card ms-onedrive-card" target="_blank" rel="noopener noreferrer">
+                <a href={withM365LoginHints('https://zachrankacz-my.sharepoint.com/')} className="app-card ms-onedrive-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper ms-icon">
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -2189,6 +2474,208 @@ function Dashboard() {
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'graph-test' && isGraphTester && (
+          <div className="graph-test-section">
+            <div className="graph-test-header">
+              <h2>🔬 Graph API Test (u03924)</h2>
+              <p className="graph-test-subtitle">
+                Diagnostika dostupných dat pro vývoj custom intranet dashboardu. Využívá existující backend endpointy.
+              </p>
+              <div className="graph-test-actions">
+                <button
+                  className="graph-test-run-btn"
+                  onClick={runGraphApiTest}
+                  disabled={loadingGraphTest}
+                >
+                  {loadingGraphTest ? 'Načítám Graph data...' : 'Spustit / obnovit test'}
+                </button>
+                {graphTestLastRun && (
+                  <span className="graph-test-last-run">
+                    Poslední běh: {graphTestLastRun.toLocaleString('cs-CZ')}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {graphTestError && (
+              <div className="graph-test-error">
+                ⚠️ {graphTestError}
+              </div>
+            )}
+
+            {graphTestData && (
+              <>
+                <div className="graph-summary-grid">
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Kontroly OK</div>
+                    <div className="graph-summary-value">{graphTestData.summary.okChecks}/{graphTestData.summary.totalChecks}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Skupiny</div>
+                    <div className="graph-summary-value">{graphTestData.summary.groupCount}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Kalendář události (14 dní)</div>
+                    <div className="graph-summary-value">{graphTestData.summary.calendarEventsCount}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Podřízení</div>
+                    <div className="graph-summary-value">{graphTestData.summary.directReportsCount}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Nadřízený</div>
+                    <div className="graph-summary-value graph-summary-text">{graphTestData.summary.managerName || 'N/A'}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Vzorek uživatelů</div>
+                    <div className="graph-summary-value">{graphTestData.summary.usersSampleCount}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Graph user ID použito</div>
+                    <div className="graph-summary-value graph-summary-text">{graphTestData.summary.graphUserIdUsed || 'N/A'}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Maily (poslední / nepřečtené)</div>
+                    <div className="graph-summary-value">{graphTestData.summary.recentMessagesCount || 0} / {graphTestData.summary.unreadMessagesCount || 0}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Dokumenty (poslední)</div>
+                    <div className="graph-summary-value">{graphTestData.summary.recentDocumentsCount || 0}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Dnešní schůzky</div>
+                    <div className="graph-summary-value">{graphTestData.summary.todayMeetingsCount || 0}</div>
+                  </div>
+                </div>
+
+                <div className="mini-preview-section">
+                  <h3>🧪 Mini produktový náhled (pilot pouze u03924)</h3>
+                  <p className="mini-preview-subtitle">
+                    Prototyp dashboardu z Graph dat: Mail + Dokumenty + Dnešní schůzky.
+                  </p>
+                  <div className="mini-preview-grid">
+                    <div className="mini-preview-card">
+                      <div className="mini-preview-card-title">📧 Mail (poslední)</div>
+                      <div className="mini-preview-list">
+                        {graphTestData.results.recentMessages?.error && (
+                          <div className="mini-preview-error">
+                            Chyba endpointu: {graphTestData.results.recentMessages.error}
+                          </div>
+                        )}
+                        {(graphTestData.results.recentMessages?.payload?.data || []).slice(0, 5).map((msg) => (
+                          <a
+                            key={msg.id}
+                            className="mini-preview-item"
+                            href={msg.webLink || '#'}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <div className="mini-preview-item-main">{msg.subject || '(bez předmětu)'}</div>
+                            <div className="mini-preview-item-meta">
+                              {(msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Neznámý odesílatel')}
+                              {msg.isRead === false ? ' • nepřečtené' : ''}
+                            </div>
+                          </a>
+                        ))}
+                        {!(graphTestData.results.recentMessages?.payload?.data || []).length && (
+                          <div className="mini-preview-empty">Žádné mailové položky.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mini-preview-card">
+                      <div className="mini-preview-card-title">📄 Dokumenty (recent)</div>
+                      <div className="mini-preview-list">
+                        {graphTestData.results.recentDocuments?.error && (
+                          <div className="mini-preview-error">
+                            Chyba endpointu: {graphTestData.results.recentDocuments.error}
+                          </div>
+                        )}
+                        {(graphTestData.results.recentDocuments?.payload?.data || []).slice(0, 5).map((doc, idx) => {
+                          const name = doc.name || doc.remoteItem?.name || 'Dokument';
+                          const link = doc.webUrl || doc.remoteItem?.webUrl || '#';
+                          const modified = doc.lastModifiedDateTime || doc.remoteItem?.lastModifiedDateTime || null;
+                          return (
+                            <a
+                              key={doc.id || `${name}-${idx}`}
+                              className="mini-preview-item"
+                              href={link}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              <div className="mini-preview-item-main">{name}</div>
+                              <div className="mini-preview-item-meta">
+                                {modified ? new Date(modified).toLocaleString('cs-CZ') : 'Bez času úpravy'}
+                              </div>
+                            </a>
+                          );
+                        })}
+                        {!(graphTestData.results.recentDocuments?.payload?.data || []).length && (
+                          <div className="mini-preview-empty">Žádné dokumenty.</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mini-preview-card">
+                      <div className="mini-preview-card-title">📅 Dnešní schůzky</div>
+                      <div className="mini-preview-list">
+                        {(graphTestData.results.calendarEvents?.payload?.data || [])
+                          .filter((event) => {
+                            const dt = event?.start?.dateTime;
+                            if (!dt) return false;
+                            return String(dt).slice(0, 10) === new Date().toISOString().slice(0, 10);
+                          })
+                          .slice(0, 5)
+                          .map((event) => (
+                            <div key={event.id} className="mini-preview-item static">
+                              <div className="mini-preview-item-main">{event.subject || '(bez názvu schůzky)'}</div>
+                              <div className="mini-preview-item-meta">
+                                {event.start?.dateTime ? new Date(event.start.dateTime).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '??:??'}
+                                {' - '}
+                                {event.end?.dateTime ? new Date(event.end.dateTime).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' }) : '??:??'}
+                              </div>
+                            </div>
+                          ))}
+                        {!((graphTestData.results.calendarEvents?.payload?.data || []).filter((event) => {
+                          const dt = event?.start?.dateTime;
+                          if (!dt) return false;
+                          return String(dt).slice(0, 10) === new Date().toISOString().slice(0, 10);
+                        }).length) && (
+                          <div className="mini-preview-empty">Dnes bez schůzky.</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="graph-endpoints-list">
+                  {Object.entries(graphTestData.results).map(([key, result]) => {
+                    if (!result) return null;
+
+                    const semanticOk = graphTestData.endpointHealth?.[key] !== false;
+
+                    return (
+                      <div key={key} className={`graph-endpoint-item ${result.ok && semanticOk ? 'ok' : 'error'}`}>
+                        <div className="graph-endpoint-name">{key}</div>
+                        <div className="graph-endpoint-meta">
+                          <span className="graph-endpoint-status">{result.ok && semanticOk ? 'OK' : 'ERROR'} ({result.status})</span>
+                          <span className="graph-endpoint-time">{result.durationMs} ms</span>
+                        </div>
+                        {result.error && <div className="graph-endpoint-error">{result.error}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <details className="graph-raw-data">
+                  <summary>Raw Graph test payload (pro vývoj)</summary>
+                  <pre>{JSON.stringify(graphTestData, null, 2)}</pre>
+                </details>
+              </>
+            )}
           </div>
         )}
       </div>
