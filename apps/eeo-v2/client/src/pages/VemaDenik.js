@@ -103,6 +103,7 @@ const SubTitle = styled.p`
 // Tabs
 const TabsContainer = styled.div`
   display: flex;
+  align-items: center;
   gap: 0.5rem;
   background: white;
   padding: 0.5rem;
@@ -111,8 +112,8 @@ const TabsContainer = styled.div`
   margin-bottom: 1rem;
 `;
 
-const Tab = styled.button`
-  flex: 1;
+const MainTab = styled.button`
+  flex: 1 1 auto;
   padding: 0.75rem 1.5rem;
   border: none;
   background: ${props => props.$active ? '#202d65' : 'transparent'};
@@ -129,6 +130,70 @@ const Tab = styled.button`
   &:hover {
     background: ${props => props.$active ? '#202d65' : '#f1f5f9'};
   }
+`;
+
+const SecondaryTabs = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+`;
+
+const IconTab = styled.button`
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  border: none;
+  border-radius: 6px;
+  background: ${props => props.$active ? '#202d65' : 'transparent'};
+  color: ${props => props.$active ? 'white' : '#64748b'};
+  cursor: pointer;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+
+  &:hover {
+    background: ${props => props.$active ? '#202d65' : '#f1f5f9'};
+  }
+`;
+
+const FakturySubTabs = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+`;
+
+const FakturySubTab = styled.button`
+  padding: 0.5rem 0.75rem;
+  border: 1px solid ${props => props.$active ? '#202d65' : '#cbd5e1'};
+  background: ${props => props.$active ? '#202d65' : '#ffffff'};
+  color: ${props => props.$active ? '#ffffff' : '#475569'};
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    border-color: #202d65;
+    color: ${props => props.$active ? '#ffffff' : '#202d65'};
+  }
+`;
+
+const FakturyPlaceholder = styled.div`
+  background: #ffffff;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #64748b;
 `;
 
 // Search
@@ -651,6 +716,7 @@ const VemaDenik = () => {
 
   // State
   const [activeTab, setActiveTab] = useState('faktury'); // 'firmy' | 'faktury' | 'smlouvy'
+  const [fakturySubTab, setFakturySubTab] = useState('tabulka');
   const [loading, setLoading] = useState(true); // Initial load = true
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
@@ -2134,6 +2200,18 @@ const VemaDenik = () => {
   // RENDER
   // ============================================================================
 
+  const fakturySubSections = [
+    { id: 'tabulka', label: 'Veškeré doklady' },
+    { id: 'kontrola-obj', label: 'Kontrola OBJ' },
+    { id: 'kontrola-sml', label: 'Kontrola SML' },
+    { id: 'kontrola-rp', label: 'Kontrola ročních poplatků' },
+    { id: 'vema-bez-eeo', label: 'VEMA doklady bez EEO dokladů' },
+    { id: 'eeo-bez-vema', label: 'Faktury EEO bez VEMA dokladů' }
+  ];
+
+  const isFakturyMainTableView = activeTab !== 'faktury' || fakturySubTab === 'tabulka';
+  const activeFakturySubSection = fakturySubSections.find(section => section.id === fakturySubTab);
+
   return (
     <Container>
       <Header>
@@ -2165,24 +2243,54 @@ const VemaDenik = () => {
 
       {/* Tabs */}
       <TabsContainer>
-        <Tab $active={activeTab === 'faktury'} onClick={() => { setActiveTab('faktury'); setPageIndex(0); }}>
+        <MainTab $active={activeTab === 'faktury'} onClick={() => { setActiveTab('faktury'); setPageIndex(0); }}>
           <FontAwesomeIcon icon={faFileInvoice} />
           Faktury ({dataLoaded.faktury ? fakturyData.length : '…'})
-        </Tab>
-        <Tab $active={activeTab === 'smlouvy'} onClick={() => { setActiveTab('smlouvy'); setPageIndex(0); }}>
-          <FontAwesomeIcon icon={faFileContract} />
-          Smlouvy ({dataLoaded.smlouvy ? smlouvyData.length : '…'})
-        </Tab>
-        <Tab $active={activeTab === 'firmy'} onClick={() => { setActiveTab('firmy'); setPageIndex(0); }}>
-          <FontAwesomeIcon icon={faBuilding} />
-          Firmy ({dataLoaded.firmy ? firmyData.length : '…'})
-        </Tab>
+        </MainTab>
+
+        <SecondaryTabs>
+          <IconTab
+            $active={activeTab === 'smlouvy'}
+            onClick={() => { setActiveTab('smlouvy'); setPageIndex(0); }}
+            title={`Smlouvy (${dataLoaded.smlouvy ? smlouvyData.length : '…'})`}
+            aria-label={`Smlouvy (${dataLoaded.smlouvy ? smlouvyData.length : '…'})`}
+          >
+            <FontAwesomeIcon icon={faFileContract} />
+          </IconTab>
+
+          <IconTab
+            $active={activeTab === 'firmy'}
+            onClick={() => { setActiveTab('firmy'); setPageIndex(0); }}
+            title={`Firmy (${dataLoaded.firmy ? firmyData.length : '…'})`}
+            aria-label={`Firmy (${dataLoaded.firmy ? firmyData.length : '…'})`}
+          >
+            <FontAwesomeIcon icon={faBuilding} />
+          </IconTab>
+        </SecondaryTabs>
       </TabsContainer>
+
+      {activeTab === 'faktury' && (
+        <FakturySubTabs>
+          {fakturySubSections.map(section => (
+            <FakturySubTab
+              key={section.id}
+              $active={fakturySubTab === section.id}
+              onClick={() => {
+                setFakturySubTab(section.id);
+                setPageIndex(0);
+              }}
+            >
+              {section.label}
+            </FakturySubTab>
+          ))}
+        </FakturySubTabs>
+      )}
 
       {/* Error */}
       {error && <ErrorMessage>{error}</ErrorMessage>}
 
       {/* Search + Statistický badge v jednom řádku */}
+      {isFakturyMainTableView && (
       <div style={{ 
         display: 'flex', 
         alignItems: 'center',
@@ -2326,8 +2434,10 @@ const VemaDenik = () => {
           </div>
         )}
       </div>
+      )}
 
       {/* Table */}
+      {isFakturyMainTableView ? (
       <TableWrapper>
         {loading ? (
           <LoadingOverlay>Načítám data...</LoadingOverlay>
@@ -2445,6 +2555,18 @@ const VemaDenik = () => {
           </>
         )}
       </TableWrapper>
+      ) : (
+        <FakturyPlaceholder>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#334155', marginBottom: '0.5rem' }}>
+              {activeFakturySubSection ? activeFakturySubSection.label : 'Sekce'}
+            </div>
+            <div style={{ fontSize: '0.95rem' }}>
+              V přípravě
+            </div>
+          </div>
+        </FakturyPlaceholder>
+      )}
 
       {/* Import Modal */}
       {showImportModal && (
