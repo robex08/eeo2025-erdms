@@ -20,27 +20,40 @@ const api = axios.create({
 
 export const KONTROLA_STATUS = {
   NEZKONTROLOVANO: 'nezkontrolovano',
-  V_KONTROLE: 'v_kontrole',
-  ZKONTROLOVANO: 'zkontrolovano',
-  MA_PROBLEM: 'ma_problem',
-  POZASTAVENO: 'pozastaveno',
+  V_PORADKU: 'v_poradku',
+  NELZE_VYRESIT: 'nelze_vyresit',
+  V_RESENI: 'v_reseni',
 };
 
 export const KONTROLA_STATUS_LABELS = {
   [KONTROLA_STATUS.NEZKONTROLOVANO]: 'Nezkontrolováno',
-  [KONTROLA_STATUS.V_KONTROLE]: 'V kontrole',
-  [KONTROLA_STATUS.ZKONTROLOVANO]: 'Zkontrolováno',
-  [KONTROLA_STATUS.MA_PROBLEM]: 'Má problém',
-  [KONTROLA_STATUS.POZASTAVENO]: 'Pozastaveno',
+  [KONTROLA_STATUS.V_PORADKU]: 'V pořádku',
+  [KONTROLA_STATUS.NELZE_VYRESIT]: 'Nelze vyřešit',
+  [KONTROLA_STATUS.V_RESENI]: 'V řešení',
 };
 
 export const KONTROLA_STATUS_COLORS = {
   [KONTROLA_STATUS.NEZKONTROLOVANO]: { bg: '#f1f5f9', border: '#cbd5e1', text: '#64748b', icon: '🔍' },
-  [KONTROLA_STATUS.V_KONTROLE]: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af', icon: '⏳' },
-  [KONTROLA_STATUS.ZKONTROLOVANO]: { bg: '#dcfce7', border: '#22c55e', text: '#166534', icon: '✅' },
-  [KONTROLA_STATUS.MA_PROBLEM]: { bg: '#fee2e2', border: '#ef4444', text: '#991b1b', icon: '⚠️' },
-  [KONTROLA_STATUS.POZASTAVENO]: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e', icon: '⏸️' },
+  [KONTROLA_STATUS.V_PORADKU]: { bg: '#dcfce7', border: '#22c55e', text: '#166534', icon: '✅' },
+  [KONTROLA_STATUS.NELZE_VYRESIT]: { bg: '#fee2e2', border: '#ef4444', text: '#991b1b', icon: '⛔' },
+  [KONTROLA_STATUS.V_RESENI]: { bg: '#dbeafe', border: '#3b82f6', text: '#1e40af', icon: '⏳' },
 };
+
+// Kompatibilita pro staré uložené hodnoty v DB.
+const LEGACY_STATUS_MAP = {
+  v_kontrole: KONTROLA_STATUS.V_RESENI,
+  zkontrolovano: KONTROLA_STATUS.V_PORADKU,
+  ma_problem: KONTROLA_STATUS.NELZE_VYRESIT,
+  pozastaveno: KONTROLA_STATUS.V_RESENI,
+};
+
+export function normalizeKontrolaStatus(status) {
+  if (!status) return KONTROLA_STATUS.NEZKONTROLOVANO;
+  const value = String(status).trim();
+  if (KONTROLA_STATUS_LABELS[value]) return value;
+  if (LEGACY_STATUS_MAP[value]) return LEGACY_STATUS_MAP[value];
+  return KONTROLA_STATUS.NEZKONTROLOVANO;
+}
 
 // -----------------------------------------------------------
 // Konstanty - Priority

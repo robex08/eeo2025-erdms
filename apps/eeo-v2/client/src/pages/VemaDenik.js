@@ -16,7 +16,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBuilding, faFileInvoice, faFileContract, faSearch, faTimes, 
   faChevronLeft, faChevronRight, faAnglesLeft, faAnglesRight,
-  faChevronDown, faChevronUp, faUpload, faCheckCircle, faPlus, faMinus
+  faChevronDown, faChevronUp, faUpload, faCheckCircle, faPlus, faMinus, faBoltLightning
 } from '@fortawesome/free-solid-svg-icons';
 import {
   useReactTable,
@@ -216,7 +216,9 @@ const SearchBox = styled.div`
 
 const SearchInput = styled.input`
   width: 100%;
-  padding: 0.75rem 0.75rem 0.75rem 2.5rem;
+  height: 40px;
+  box-sizing: border-box;
+  padding: 0 0.75rem 0 2.5rem;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 0.875rem;
@@ -244,12 +246,42 @@ const ClearButton = styled.button`
   }
 `;
 
+const FilterToolbar = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  width: 100%;
+  box-sizing: border-box;
+  contain: layout style;
+`;
+
+const FilterToolsRight = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: 0 0 auto;
+`;
+
+const FilterStats = styled.div`
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  max-width: 100%;
+`;
+
 // Table
 const TableWrapper = styled.div`
   background: white;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
+  width: 100%;
+  max-width: 100%;
 `;
 
 const Table = styled.table`
@@ -742,6 +774,8 @@ const VemaDenik = () => {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState(''); // Pro okamžitou aktualizaci inputu
+  const [badgeFilter, setBadgeFilter] = useState('all'); // all | 0 | 1 | 2 | 3plus
+  const [warningOnlyFilter, setWarningOnlyFilter] = useState(false);
 
   // Data
   const [firmyData, setFirmyData] = useState([]);
@@ -809,7 +843,6 @@ const VemaDenik = () => {
         if (response && Array.isArray(response)) {
           setLpSeznam(response);
           setLpLoaded(true);
-          console.log('✅ LP seznam načten:', response.length, 'záznamů');
         }
       } catch (err) {
         console.error('Chyba načítání LP seznamu:', err);
@@ -1172,6 +1205,77 @@ const VemaDenik = () => {
     setLoadingPropojeni(prev => ({ ...prev, [rowId]: true }));
 
     try {
+      if (row.original._groupedKontrola && Array.isArray(row.original._groupInvoices)) {
+        const groupInvoices = row.original._groupInvoices;
+
+        const buildVemaPayload = (source) => ({
+          cfak: source.cfak,
+          cobj: source.cobj,
+          csml: source.csml,
+          vsymb: source.vsymb,
+          cdok: source.cdok,
+          smlouva_ecsml: source.smlouva_ecsml,
+          cobj_formatovane: source.cobj_formatovane,
+          celkem: source.celkem
+        });
+
+        const responses = await Promise.all(
+          groupInvoices.map(async (inv) => {
+            try {
+              return await getVemaFakturaPropojeni(buildVemaPayload(inv), token, username);
+            } catch (e) {
+              console.warn('Nepodařilo se načíst propojení pro fakturu ve skupině:', inv?.cfak, e);
+              return null;
+            }
+          })
+        );
+
+        const dedupeBy = (items, keyBuilder) => {
+          const map = new Map();
+          items.forEach((item, idx) => {
+            const key = keyBuilder(item, idx);
+            if (!map.has(key)) {
+              map.set(key, item);
+            }
+          });
+          return Array.from(map.values());
+        };
+
+        const objednavkyRaw = responses.flatMap((r) => r?.objednavky || []);
+        const fakturyRaw = responses.flatMap((r) => r?.faktury || []);
+        const smlouvyRaw = responses.flatMap((r) => r?.smlouvy || []);
+        const rocniRaw = responses.flatMap((r) => r?.rocni_poplatky || []);
+
+        const objednavky = dedupeBy(objednavkyRaw, (item, idx) =>
+          item?.id ? `obj:${item.id}` : (item?.id_objednavky ? `obj:${item.id_objednavky}` : `obj-fallback:${item?.cislo_objednavky || idx}`)
+        );
+        const faktury = dedupeBy(fakturyRaw, (item, idx) =>
+          item?.id ? `fa:${item.id}` : (item?.id_faktury ? `fa:${item.id_faktury}` : `fa-fallback:${item?.cislo_faktury || item?.fa_vema_kod || idx}`)
+        );
+        const smlouvy = dedupeBy(smlouvyRaw, (item, idx) =>
+          item?.id ? `sml:${item.id}` : (item?.id_smlouvy ? `sml:${item.id_smlouvy}` : `sml-fallback:${item?.cislo_smlouvy || item?.evidencni_cislo || idx}`)
+        );
+        const rocni_poplatky = dedupeBy(rocniRaw, (item, idx) =>
+          item?.id ? `rp:${item.id}` : (item?.id_rocni_poplatek ? `rp:${item.id_rocni_poplatek}` : `rp-fallback:${item?.cislo_dokladu || item?.faktura_id || idx}`)
+        );
+
+        const data = {
+          objednavky,
+          faktury,
+          smlouvy,
+          rocni_poplatky,
+          // konzistentně s běžným řádkem nepočítáme smlouvy do celkem
+          celkem: objednavky.length + faktury.length + rocni_poplatky.length
+        };
+
+        setPropojenData(prev => ({
+          ...prev,
+          [rowId]: data
+        }));
+
+        return;
+      }
+
       const vemaFaktura = {
         cfak: row.original.cfak,
         cobj: row.original.cobj,
@@ -1210,6 +1314,120 @@ const VemaDenik = () => {
       maxSize: 40,
       enableSorting: false,
       cell: ({ row }) => {
+        const includeRocniPoplatkyInBadge = !(fakturySubTab === 'kontrola-obj' || fakturySubTab === 'kontrola-sml');
+        const warningModeObj = fakturySubTab === 'kontrola-obj';
+        const warningModeSml = fakturySubTab === 'kontrola-sml';
+
+        if (row.original._groupedKontrola && Array.isArray(row.original._groupInvoices)) {
+          const rowId = row.id;
+          const isExpanded = row.getIsExpanded();
+          const propojeni = propojenData[rowId];
+          const isLoading = loadingPropojeni[rowId];
+          const hasWarning = warningModeObj
+            ? !!row.original._groupHasChybaObj
+            : (warningModeSml
+                ? !!row.original._groupHasChybaSml
+                : (!!row.original._groupHasChybaObj || !!row.original._groupHasChybaSml));
+          const precomputedCount = Array.isArray(row.original._groupInvoices)
+            ? row.original._groupInvoices.reduce((max, item) => {
+                const pocetObj = Number(item?.pocet_objednavek || 0);
+                const pocetFa = Number(item?.pocet_faktur || 0);
+                const pocetRp = Number(item?.pocet_rocnich_poplatku || 0);
+                const rowCount = includeRocniPoplatkyInBadge
+                  ? (pocetObj + pocetFa + pocetRp)
+                  : (pocetObj + pocetFa);
+                return Math.max(max, rowCount);
+              }, 0)
+            : Number(row.original._groupPrecomputedLinksCount || 0);
+          const displayCount = precomputedCount;
+          const isEmpty = precomputedCount === 0;
+
+          if (isEmpty) {
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <button
+                  disabled
+                  title="Žádné propojené záznamy"
+                  style={{
+                    background: '#f3f4f6',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px',
+                    width: '22px',
+                    cursor: 'not-allowed',
+                    display: 'inline-flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#9ca3af',
+                    flexShrink: 0,
+                    padding: '1px 0',
+                    gap: 0,
+                    lineHeight: 1,
+                    opacity: 0.5
+                  }}
+                >
+                  <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1 }}>0</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>+</span>
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!isExpanded && !propojeni) {
+                    loadPropojeni(row);
+                  }
+                  row.toggleExpanded();
+                }}
+                title={isExpanded ? 'Skrýt propojené záznamy skupiny' : (isLoading ? 'Načítám...' : `Zobrazit propojené záznamy skupiny (${displayCount})`)}
+                style={{
+                  background: isExpanded ? '#fee2e2' : '#eff6ff',
+                  border: `1px solid ${isExpanded ? '#fca5a5' : '#93c5fd'}`,
+                  borderRadius: '4px',
+                  width: '22px',
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: isExpanded ? '#dc2626' : '#3b82f6',
+                  flexShrink: 0,
+                  padding: '1px 0',
+                  gap: 0,
+                  lineHeight: 1
+                }}
+              >
+                <span style={{ fontSize: '0.6rem', fontWeight: 700, lineHeight: 1, color: isExpanded ? '#dc2626' : '#1e40af', opacity: 0.85 }}>
+                  {displayCount}
+                </span>
+                <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
+                  {isExpanded ? '−' : '+'}
+                </span>
+              </button>
+              {hasWarning && (
+                <span
+                  title="Nalezena zřejmá chyba párování v podřádku"
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#dc2626',
+                    fontSize: '0.72rem',
+                    lineHeight: 1,
+                    cursor: 'help'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faBoltLightning} />
+                </span>
+              )}
+            </div>
+          );
+        }
+
         if (row.original._isEeoOnly) {
           return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1245,26 +1463,28 @@ const VemaDenik = () => {
         const propojeni = propojenData[rowId];
         const isLoading = loadingPropojeni[rowId];
         const isExpanded = row.getIsExpanded();
+        const hasWarning = warningModeObj
+          ? Number(row.original?.has_chyba_obj || 0) > 0
+          : (warningModeSml
+              ? Number(row.original?.has_chyba_sml || 0) > 0
+              : (Number(row.original?.has_chyba_obj || 0) > 0 || Number(row.original?.has_chyba_sml || 0) > 0));
         
         // Počítat z backendu (pokud existují)
         const pocetObj = row.original.pocet_objednavek || 0;
         const pocetFa = row.original.pocet_faktur || 0;
         const pocetRp = row.original.pocet_rocnich_poplatku || 0;
-        // DŮLEŽITÉ: musí sedět s backend `propojeni.celkem` (objednávky + faktury + roční poplatky)
-        // `pocet_smluv` zde nezahrnujeme, protože detail smlouvy samostatně nezobrazuje ani nepočítá do celkem.
-        const count = pocetObj + pocetFa + pocetRp;
-        const displayCount = (propojeni && !isLoading && typeof propojeni.celkem === 'number')
-          ? propojeni.celkem
-          : count;
+        // DŮLEŽITÉ: pro Kontrola OBJ/SML nezahrnujeme RP do badge.
+        const count = includeRocniPoplatkyInBadge
+          ? (pocetObj + pocetFa + pocetRp)
+          : (pocetObj + pocetFa);
+        const displayCount = count;
         
         // Pokud backend už vrací count=0, tlačítko má být neaktivní hned.
         const hasPrecomputedEmptyData = count === 0;
-        // Po načtení detailu bereme jako autoritu i propojeni.celkem.
-        const hasLoadedEmptyData = propojeni && !isLoading && propojeni.celkem === 0;
-        const isEmpty = hasPrecomputedEmptyData || hasLoadedEmptyData;
+        const isEmpty = hasPrecomputedEmptyData;
 
         return (
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}>
             {isEmpty ? (
               <button
                 disabled
@@ -1324,12 +1544,28 @@ const VemaDenik = () => {
                   color: isExpanded ? '#dc2626' : '#1e40af', 
                   opacity: 0.85 
                 }}>
-                  {isLoading ? '…' : displayCount}
+                  {displayCount}
                 </span>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, lineHeight: 1 }}>
                   {isExpanded ? '−' : '+'}
                 </span>
               </button>
+            )}
+            {hasWarning && (
+              <span
+                title="Nalezena zřejmá chyba párování v podřádku"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#dc2626',
+                  fontSize: '0.72rem',
+                  lineHeight: 1,
+                  cursor: 'help'
+                }}
+              >
+                <FontAwesomeIcon icon={faBoltLightning} />
+              </span>
             )}
           </div>
         );
@@ -1570,6 +1806,26 @@ const VemaDenik = () => {
       maxSize: 100,
       enableSorting: false,
       cell: info => {
+        if (info.row.original._groupedKontrola) {
+          const kontrolaVemaId = info.row.original._masterCfak || null;
+
+          if (!kontrolaVemaId) {
+            return <span style={{ color: '#94a3b8' }}>—</span>;
+          }
+
+          return (
+            <div style={{ display: 'flex', justifyContent: 'center' }}>
+              <VemaKontrolaCell
+                typZaznamu="faktura"
+                vemaId={kontrolaVemaId}
+                vemaIdSecondary={info.row.original.firma}
+                token={token}
+                username={username}
+              />
+            </div>
+          );
+        }
+
         const isEeoOnly = !!info.row.original._isEeoOnly;
         const eeoInternalId = info.row.original.eeo_faktura_id ?? null;
         const kontrolaVemaId = isEeoOnly
@@ -1604,7 +1860,7 @@ const VemaDenik = () => {
         );
       }
     }
-  ], [token, username, propojenData, loadingPropojeni]);
+  ], [token, username, propojenData, loadingPropojeni, fakturySubTab]);
 
   // Smlouvy columns
   const smlouvyColumns = useMemo(() => [
@@ -1752,6 +2008,69 @@ const VemaDenik = () => {
   }, [activeTab, firmyColumns, fakturyColumns, smlouvyColumns]);
 
   const filteredFakturyData = useMemo(() => {
+    const includeRocniPoplatkyInBadge = !(fakturySubTab === 'kontrola-obj' || fakturySubTab === 'kontrola-sml');
+
+    const getBadgeCount = (item) => {
+      if (item?._groupedKontrola) {
+        if (Array.isArray(item._groupInvoices) && item._groupInvoices.length > 0) {
+          return item._groupInvoices.reduce((max, row) => {
+            const pocetObj = Number(row?.pocet_objednavek || 0);
+            const pocetFa = Number(row?.pocet_faktur || 0);
+            const pocetRp = Number(row?.pocet_rocnich_poplatku || 0);
+            const rowCount = includeRocniPoplatkyInBadge
+              ? (pocetObj + pocetFa + pocetRp)
+              : (pocetObj + pocetFa);
+            return Math.max(max, rowCount);
+          }, 0);
+        }
+
+        return Number(item._groupPrecomputedLinksCount || 0);
+      }
+
+      const pocetObj = Number(item?.pocet_objednavek || 0);
+      const pocetFa = Number(item?.pocet_faktur || 0);
+      const pocetRp = Number(item?.pocet_rocnich_poplatku || 0);
+      return includeRocniPoplatkyInBadge
+        ? (pocetObj + pocetFa + pocetRp)
+        : (pocetObj + pocetFa);
+    };
+
+    const applyBadgeFilter = (items) => {
+      if (badgeFilter === 'all') return items;
+
+      return items.filter((item) => {
+        const count = getBadgeCount(item);
+        if (badgeFilter === '0') return count === 0;
+        if (badgeFilter === '1') return count === 1;
+        if (badgeFilter === '2') return count === 2;
+        if (badgeFilter === '3plus') return count >= 3;
+        return true;
+      });
+    };
+
+    const hasWarningIssue = (item) => {
+      const useObjRules = fakturySubTab === 'kontrola-obj';
+      const useSmlRules = fakturySubTab === 'kontrola-sml';
+
+      if (item?._groupedKontrola) {
+        if (useObjRules) return !!item._groupHasChybaObj;
+        if (useSmlRules) return !!item._groupHasChybaSml;
+        return !!item._groupHasChybaObj || !!item._groupHasChybaSml;
+      }
+
+      const hasObj = Number(item?.has_chyba_obj || 0) > 0;
+      const hasSml = Number(item?.has_chyba_sml || 0) > 0;
+
+      if (useObjRules) return hasObj;
+      if (useSmlRules) return hasSml;
+      return hasObj || hasSml;
+    };
+
+    const applyWarningFilter = (items) => {
+      if (!warningOnlyFilter) return items;
+      return items.filter((item) => hasWarningIssue(item));
+    };
+
     const hasAnyEeoLink = (item) => {
       const pocetObj = Number(item.pocet_objednavek || 0);
       const pocetFa = Number(item.pocet_faktur || 0);
@@ -1760,15 +2079,77 @@ const VemaDenik = () => {
       return (pocetObj + pocetFa + pocetSml + pocetRp) > 0;
     };
 
+    const buildKontrolaGroupKey = (item) => {
+      const obj = String(item.cobj_formatovane || item.cobj || '').trim();
+      const sml = String(item.smlouva_ecsml || item.csml || '').trim();
+      const cdok = String(item.cdok || '').trim();
+
+      // Klíč musí respektovat číslo dokladu, aby se neslučovaly různé VEMA doklady.
+      if (obj && sml && cdok) return `OBJ+SML:${obj}|${sml}|CDOK:${cdok}`;
+      if (obj && cdok) return `OBJ:${obj}|CDOK:${cdok}`;
+      if (sml && cdok) return `SML:${sml}|CDOK:${cdok}`;
+
+      // Pokud chybí číslo dokladu, neseskupujeme agresivně - držíme záznam samostatně.
+      return `UNSET:${item.id || item.cfak || item.vsymb || Math.random()}`;
+    };
+
+    const groupFakturyForKontrola = (items) => {
+      const grouped = new Map();
+      items.forEach((item) => {
+        const key = buildKontrolaGroupKey(item);
+        const current = grouped.get(key) || [];
+        current.push(item);
+        grouped.set(key, current);
+      });
+
+      return Array.from(grouped.entries()).map(([key, groupItems]) => {
+        const sortedGroup = [...groupItems].sort((a, b) => {
+          const aTs = a?.datpri ? new Date(a.datpri).getTime() : 0;
+          const bTs = b?.datpri ? new Date(b.datpri).getTime() : 0;
+          return bTs - aTs;
+        });
+        const base = sortedGroup[0] || {};
+        const invoicesCount = sortedGroup.length;
+        const soucetCastky = sortedGroup.reduce((acc, row) => acc + Number(row.celkem || 0), 0);
+        const precomputedLinksCount = sortedGroup.reduce((max, row) => {
+          const pocetObj = Number(row.pocet_objednavek || 0);
+          const pocetFa = Number(row.pocet_faktur || 0);
+          // V Kontrola OBJ/SML nepočítáme roční poplatky do badge.
+          const rowCount = pocetObj + pocetFa;
+          return Math.max(max, rowCount);
+        }, 0);
+        const hasChybaObj = sortedGroup.some(row => Number(row?.has_chyba_obj || 0) > 0);
+        const hasChybaSml = sortedGroup.some(row => Number(row?.has_chyba_sml || 0) > 0);
+
+        return {
+          ...base,
+          _groupedKontrola: true,
+          _groupRowId: `GROUP_${key}`,
+          _groupKey: key,
+          _masterCfak: base.cfak || null,
+          _groupInvoices: sortedGroup,
+          _groupInvoicesCount: invoicesCount,
+          _groupSoucetCastky: soucetCastky,
+          _groupPrecomputedLinksCount: precomputedLinksCount,
+          _groupHasChybaObj: hasChybaObj,
+          _groupHasChybaSml: hasChybaSml,
+          cfak: invoicesCount > 1 ? `${base.cfak || ''} (+${invoicesCount - 1})` : base.cfak,
+        };
+      });
+    };
+
+    let result = [];
+
     switch (fakturySubTab) {
       case 'kontrola-obj':
-        return fakturyData.filter(item => {
+        result = groupFakturyForKontrola(fakturyData.filter(item => {
           const hasObj = item.cobj && String(item.cobj).trim() !== '';
           const hasEvidencniSmlouva = item.smlouva_ecsml && String(item.smlouva_ecsml).trim() !== '';
           return hasObj && !hasEvidencniSmlouva;
-        });
+        }));
+        break;
       case 'kontrola-sml':
-        return fakturyData.filter(item => {
+        result = groupFakturyForKontrola(fakturyData.filter(item => {
           const hasEvidencniSmlouva = item.smlouva_ecsml && String(item.smlouva_ecsml).trim() !== '';
           const hasObj = item.cobj && String(item.cobj).trim() !== '';
           // Kontrola SML:
@@ -1776,19 +2157,27 @@ const VemaDenik = () => {
           // 2) existuje ev. číslo smlouvy + neexistuje číslo objednávky
           // => v praxi: stačí existence ev. čísla smlouvy
           return hasEvidencniSmlouva && (hasObj || !hasObj);
-        });
+        }));
+        break;
       case 'kontrola-rp':
-        return fakturyData.filter(item => (item.pocet_rocnich_poplatku || 0) > 0);
+        result = fakturyData.filter(item => (item.pocet_rocnich_poplatku || 0) > 0);
+        break;
       case 'vema-bez-eeo':
         // Doklady z VEMA importu bez JAKÉKOLI vazby na EEO (obj/faktura/roční poplatek)
-        return fakturyData.filter(item => !hasAnyEeoLink(item));
+        result = fakturyData.filter(item => !hasAnyEeoLink(item));
+        break;
       case 'eeo-bez-vema':
-        return eeoBezVemaData;
+        result = eeoBezVemaData;
+        break;
       case 'tabulka':
       default:
-        return fakturyData;
+        result = fakturyData;
+        break;
     }
-  }, [fakturyData, fakturySubTab, eeoBezVemaData]);
+
+    const withBadgeFilter = applyBadgeFilter(result);
+    return applyWarningFilter(withBadgeFilter);
+  }, [fakturyData, fakturySubTab, eeoBezVemaData, badgeFilter, warningOnlyFilter]);
 
   // Select data based on active tab
   const data = useMemo(() => {
@@ -1804,6 +2193,9 @@ const VemaDenik = () => {
     columns,
     getRowId: (row, index) => {
       // VEMA data obsahují úplné duplicity! Index garantuje unikátnost
+      if (activeTab === 'faktury' && row._groupRowId) {
+        return row._groupRowId;
+      }
       if (activeTab === 'firmy') {
         return `${row.id || index}_${row.firma || ''}_${index}`;
       } else if (activeTab === 'faktury') {
@@ -1858,14 +2250,13 @@ const VemaDenik = () => {
   const goToNextPage = () => setPageIndex(prev => Math.min(totalPages - 1, prev + 1));
   const goToLastPage = () => setPageIndex(totalPages - 1);
 
-  const showRocniPoplatkySection =
-    fakturySubTab === 'tabulka' || fakturySubTab === 'kontrola-rp';
-
   // ============================================================================
   // RENDER EXPANDED CONTENT - VEMA-EEO Propojení (TABULKOVÁ STRUKTURA)
   // ============================================================================
 
   const renderExpandedContent = (row) => {
+    const showRocniPoplatkySection = !(fakturySubTab === 'kontrola-obj' || fakturySubTab === 'kontrola-sml');
+
     const rowId = row.id;
     const propojeni = propojenData[rowId];
     const isLoading = loadingPropojeni[rowId];
@@ -2215,6 +2606,20 @@ const VemaDenik = () => {
                 </thead>
                 <tbody>
                   {faktury.map((fa, idx) => {
+                    const useObjRules = fakturySubTab === 'kontrola-obj';
+                    const useSmlRules = fakturySubTab === 'kontrola-sml';
+                    const hasObjPairing = !!(fa.cislo_objednavky && String(fa.cislo_objednavky).trim() !== '');
+                    const hasSmlPairing =
+                      !!(fa.cislo_smlouvy && String(fa.cislo_smlouvy).trim() !== '') ||
+                      Number(fa.smlouva_id || 0) > 0;
+
+                    const isObjPairingError = !hasObjPairing;
+                    const isSmlPairingError = !hasObjPairing && !hasSmlPairing;
+
+                    const isPairingError = useObjRules
+                      ? isObjPairingError
+                      : (useSmlRules ? isSmlPairingError : (isObjPairingError || isSmlPairingError));
+
                     // Překlad stavů faktur do češtiny
                     const stavMap = {
                       'ZAEVIDOVANA': 'Zaevidována',
@@ -2227,39 +2632,59 @@ const VemaDenik = () => {
                       'STORNO': 'Storno'
                     };
                     const stavCesky = fa.stav ? (stavMap[fa.stav] || fa.stav) : '—';
+
+                    const rowBg = isPairingError
+                      ? '#7f1d1d'
+                      : (idx % 2 === 0 ? 'white' : '#f8fafc');
+
+                    const rowHoverBg = isPairingError ? '#991b1b' : '#e8f0fe';
+
+                    const baseCellStyle = isPairingError
+                      ? {
+                          ...tdStyle,
+                          color: '#fde68a',
+                          borderBottom: '1px solid #b91c1c'
+                        }
+                      : tdStyle;
                     
                     return (
                       <tr key={idx} style={{ 
-                        background: idx % 2 === 0 ? 'white' : '#f8fafc',
+                        background: rowBg,
                         transition: 'background-color 0.15s ease'
                       }}
-                      onMouseEnter={(e) => e.currentTarget.style.background = '#e8f0fe'}
-                      onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? 'white' : '#f8fafc'}
+                      onMouseEnter={(e) => e.currentTarget.style.background = rowHoverBg}
+                      onMouseLeave={(e) => e.currentTarget.style.background = rowBg}
                       >
-                        <td style={{ ...tdStyle, fontWeight: 600, color: '#1e293b', fontSize: '0.75rem' }}>
+                        <td style={{ ...baseCellStyle, fontWeight: 600, color: isPairingError ? '#fde68a' : '#1e293b', fontSize: '0.75rem' }}>
                           {fa.cislo_faktury || '—'}
                         </td>
-                        <td style={{ ...tdStyle, fontSize: '0.7rem', color: '#64748b', whiteSpace: 'nowrap' }}>
+                        <td style={{ ...baseCellStyle, fontSize: '0.7rem', color: isPairingError ? '#fde68a' : '#64748b', whiteSpace: 'nowrap' }}>
                           {fa.fa_vema_kod || '—'}
                         </td>
-                        <td style={{ ...tdStyle, fontSize: '0.75rem' }}>
-                          {fa.cislo_objednavky || '—'}
+                        <td style={{ ...baseCellStyle, fontSize: '0.75rem', fontWeight: isPairingError ? 700 : 400 }}>
+                          {hasObjPairing
+                            ? fa.cislo_objednavky
+                            : ((fakturySubTab === 'kontrola-sml' || fakturySubTab === 'tabulka') && hasSmlPairing
+                                ? `PŘÍMÁ SML: ${fa.cislo_smlouvy}`
+                                : (isObjPairingError
+                                    ? 'CHYBÍ PÁROVÁNÍ NA OBJ'
+                                    : (isSmlPairingError ? 'CHYBÍ PÁROVÁNÍ NA OBJ/SML' : '—')))}
                         </td>
-                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                        <td style={{ ...baseCellStyle, fontSize: '0.7rem' }}>
                           {fa.dodavatel || '—'}
                         </td>
-                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                        <td style={{ ...baseCellStyle, fontSize: '0.7rem' }}>
                           {fa.datum_vystaveni ? new Date(fa.datum_vystaveni).toLocaleDateString('cs-CZ') : '—'}
                         </td>
-                        <td style={{ ...tdStyle, fontSize: '0.7rem' }}>
+                        <td style={{ ...baseCellStyle, fontSize: '0.7rem' }}>
                           {fa.datum_splatnosti ? new Date(fa.datum_splatnosti).toLocaleDateString('cs-CZ') : '—'}
                         </td>
-                        <td style={tdStyle}>
+                        <td style={baseCellStyle}>
                           {fa.stav && (
                             <span style={{
                               padding: '2px 6px',
-                              background: '#fef3c7',
-                              color: '#92400e',
+                              background: isPairingError ? '#991b1b' : '#fef3c7',
+                              color: isPairingError ? '#fde68a' : '#92400e',
                               borderRadius: '3px',
                               fontSize: '0.65rem',
                               fontWeight: 600,
@@ -2272,7 +2697,7 @@ const VemaDenik = () => {
                             </span>
                           )}
                         </td>
-                        <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 600, color: '#dc2626', fontSize: '0.75rem' }}>
+                        <td style={{ ...baseCellStyle, textAlign: 'right', fontWeight: 600, color: isPairingError ? '#fde68a' : '#dc2626', fontSize: '0.75rem' }}>
                           {fa.castka ? `${parseFloat(fa.castka).toLocaleString('cs-CZ', {minimumFractionDigits: 2, maximumFractionDigits: 2})} Kč` : '—'}
                         </td>
                       </tr>
@@ -2458,20 +2883,14 @@ const VemaDenik = () => {
       {error && <ErrorMessage>{error}</ErrorMessage>}
 
       {/* Search + Statistický badge v jednom řádku */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center',
-        gap: '1rem',
-        marginBottom: '1rem',
-        flexWrap: 'wrap'
-      }}>
+      <FilterToolbar>
         {/* Search - flex-grow pro dynamickou šířku */}
         <SearchContainer style={{ flex: '1 1 300px', margin: 0 }}>
           <SearchBox>
             <FontAwesomeIcon icon={faSearch} />
             <SearchInput
               type="text"
-              placeholder={`Hledat v ${activeTab}...`}
+              placeholder="Hledat v dokladech ..."
               value={searchInput}
               onChange={handleSearchChange}
             />
@@ -2483,14 +2902,62 @@ const VemaDenik = () => {
           </SearchBox>
         </SearchContainer>
 
+        {activeTab === 'faktury' && (
+          <FilterToolsRight>
+            <select
+              value={badgeFilter}
+              onChange={(e) => {
+                setBadgeFilter(e.target.value);
+                setPageIndex(0);
+              }}
+              style={{
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                height: '40px',
+                padding: '0 0.5rem',
+                fontSize: '0.78rem',
+                color: '#1e293b',
+                background: '#fff',
+                width: '96px',
+                minWidth: '96px'
+              }}
+              title="Filtrovat podle počtu dokladů v badge"
+            >
+              <option value="all">Vše</option>
+              <option value="0">Badge 0</option>
+              <option value="1">Badge 1</option>
+              <option value="2">Badge 2</option>
+              <option value="3plus">Badge 3+</option>
+            </select>
+
+            <button
+              onClick={() => {
+                setWarningOnlyFilter((prev) => !prev);
+                setPageIndex(0);
+              }}
+              title={warningOnlyFilter ? 'Filtr varování zapnut (pouze chybové položky)' : 'Zobrazit pouze položky s varováním'}
+              style={{
+                height: '40px',
+                width: '40px',
+                borderRadius: '6px',
+                border: `1px solid ${warningOnlyFilter ? '#ef4444' : '#cbd5e1'}`,
+                background: warningOnlyFilter ? '#fee2e2' : '#ffffff',
+                color: warningOnlyFilter ? '#dc2626' : '#64748b',
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '0.9rem'
+              }}
+            >
+              <FontAwesomeIcon icon={faBoltLightning} />
+            </button>
+          </FilterToolsRight>
+        )}
+
         {/* Statistický badge - pouze pro faktury */}
         {activeTab === 'faktury' && dataLoaded.faktury && (
-          <div style={{ 
-            display: 'flex', 
-            gap: '0.5rem',
-            flexWrap: 'wrap',
-            flex: '0 0 auto'
-          }}>
+          <FilterStats>
           {(() => {
             // Spočítat statistiky
             let bezVazby = 0;
@@ -2517,6 +2984,13 @@ const VemaDenik = () => {
                 pouzeObj++;
               }
             });
+
+            const statCountStyle = {
+              display: 'inline-block',
+              minWidth: '4ch',
+              textAlign: 'right',
+              fontVariantNumeric: 'tabular-nums'
+            };
             
             return (
               <>
@@ -2525,97 +2999,121 @@ const VemaDenik = () => {
                   background: '#f9fafb',
                   border: '1px solid #e5e7eb',
                   borderRadius: '6px',
+                  minWidth: '128px',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   color: '#6b7280',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.4rem'
+                  justifyContent: 'space-between',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums'
                 }}>
                   <span style={{ fontSize: '0.9rem' }}>⚪</span>
-                  Bez vazby: {bezVazby}
+                  <span>Bez vazby: <span style={statCountStyle}>{bezVazby}</span></span>
                 </span>
                 <span style={{
                   padding: '0.4rem 0.75rem',
                   background: '#dbeafe',
                   border: '1px solid #93c5fd',
                   borderRadius: '6px',
+                  minWidth: '136px',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   color: '#1e40af',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.4rem'
+                  justifyContent: 'space-between',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums'
                 }}>
                   <span style={{ fontSize: '0.9rem' }}>🔵</span>
-                  Objednávky: {pouzeObj}
+                  <span>Objednávky: <span style={statCountStyle}>{pouzeObj}</span></span>
                 </span>
                 <span style={{
                   padding: '0.4rem 0.75rem',
                   background: '#dcfce7',
                   border: '1px solid #86efac',
                   borderRadius: '6px',
+                  minWidth: '122px',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   color: '#166534',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.4rem'
+                  justifyContent: 'space-between',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums'
                 }}>
                   <span style={{ fontSize: '0.9rem' }}>🟢</span>
-                  Faktury: {pouzeFa}
+                  <span>Faktury: <span style={statCountStyle}>{pouzeFa}</span></span>
                 </span>
                 <span style={{
                   padding: '0.4rem 0.75rem',
                   background: '#fef3c7',
                   border: '1px solid #fde047',
                   borderRadius: '6px',
+                  minWidth: '122px',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   color: '#92400e',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.4rem'
+                  justifyContent: 'space-between',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums'
                 }}>
                   <span style={{ fontSize: '0.9rem' }}>🟡</span>
-                  Obj + Fa: {objAFa}
+                  <span>Obj + Fa: <span style={statCountStyle}>{objAFa}</span></span>
                 </span>
                 <span style={{
                   padding: '0.4rem 0.75rem',
                   background: '#ffedd5',
                   border: '1px solid #fdba74',
                   borderRadius: '6px',
+                  minWidth: '136px',
                   fontSize: '0.75rem',
                   fontWeight: 600,
                   color: '#9a3412',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.4rem'
+                  justifyContent: 'space-between',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums'
                 }}>
                   <span style={{ fontSize: '0.9rem' }}>🟠</span>
-                  Roční popl.: {rocniPopl}
+                  <span>Roční popl.: <span style={statCountStyle}>{rocniPopl}</span></span>
                 </span>
                 <span style={{
                   padding: '0.4rem 0.75rem',
                   background: '#eef2ff',
                   border: '1px solid #a5b4fc',
                   borderRadius: '6px',
+                  minWidth: '160px',
                   fontSize: '0.75rem',
                   fontWeight: 700,
                   color: '#3730a3',
                   display: 'inline-flex',
                   alignItems: 'center',
-                  gap: '0.4rem'
+                  justifyContent: 'space-between',
+                  gap: '0.4rem',
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums'
                 }}>
                   <span style={{ fontSize: '0.9rem' }}>📊</span>
-                  Celkem položek: {data.length}
+                  <span>Celkem položek: <span style={statCountStyle}>{data.length}</span></span>
                 </span>
               </>
             );
           })()}
-          </div>
+          </FilterStats>
         )}
-      </div>
+      </FilterToolbar>
 
       {/* Table */}
       <TableWrapper>

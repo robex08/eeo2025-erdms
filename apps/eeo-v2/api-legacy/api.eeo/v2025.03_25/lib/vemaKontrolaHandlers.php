@@ -173,6 +173,24 @@ function handle_vema_kontrola_save($input, $config) {
     $metadata = $input['metadata'] ?? null;
     $vema_id_secondary = $input['vema_id_secondary'] ?? null;
 
+    // Povolené stavy (sjednocený číselník)
+    $legacy_status_map = [
+        'v_kontrole' => 'v_reseni',
+        'zkontrolovano' => 'v_poradku',
+        'ma_problem' => 'nelze_vyresit',
+        'pozastaveno' => 'v_reseni'
+    ];
+    if (isset($legacy_status_map[$kontrola_status])) {
+        $kontrola_status = $legacy_status_map[$kontrola_status];
+    }
+
+    $allowed_statuses = ['nezkontrolovano', 'v_poradku', 'nelze_vyresit', 'v_reseni'];
+    if (!in_array($kontrola_status, $allowed_statuses, true)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatná hodnota kontrola_status']);
+        return;
+    }
+
     if (!$token || !$username) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
