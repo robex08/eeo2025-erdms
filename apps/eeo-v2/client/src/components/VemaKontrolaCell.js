@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
+import SmartTooltip from '../styles/SmartTooltip';
 import {
   getVemaKontrola,
   saveVemaKontrola,
   KONTROLA_STATUS,
   KONTROLA_STATUS_LABELS,
   KONTROLA_STATUS_COLORS,
+  normalizeKontrolaStatus,
   KONTROLA_PRIORITA,
   KONTROLA_PRIORITA_LABELS,
   KONTROLA_PRIORITA_COLORS,
@@ -34,6 +36,23 @@ const TriggerBtn = styled.button`
   line-height: 1.3;
   transition: opacity 0.12s;
   &:hover { opacity: 0.8; }
+`;
+
+const NotePreviewWrap = styled.div`
+  margin-top: 0.22rem;
+  max-width: 96px;
+`;
+
+const NotePreviewText = styled.div`
+  display: block;
+  width: 100%;
+  font-size: 0.66rem;
+  color: #64748b;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: help;
 `;
 
 const PopoverOverlay = styled.div`
@@ -234,6 +253,14 @@ const formatUdalostTyp = (typ) => {
   return typy[typ] || typ;
 };
 
+const sanitizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim();
+
+const truncateText = (val, maxLen = 34) => {
+  const text = sanitizeText(val);
+  if (!text) return '';
+  return text.length > maxLen ? `${text.slice(0, Math.max(0, maxLen - 3))}...` : text;
+};
+
 // ─── Komponenta ─────────────────────────────────────────────────────────────
 
 /**
@@ -290,7 +317,7 @@ export default function VemaKontrolaCell({
       
       // Nastavit form hodnoty
       if (data) {
-        setFormStatus(data.kontrola_status || KONTROLA_STATUS.NEZKONTROLOVANO);
+        setFormStatus(normalizeKontrolaStatus(data.kontrola_status));
         setFormPriorita(data.priorita ?? KONTROLA_PRIORITA.NORMALNI);
         setFormPoznamka(data.poznamka || '');
       } else {
@@ -408,8 +435,43 @@ export default function VemaKontrolaCell({
   }, [isOpen]);
 
   // Barvy pro tlačítko
-  const status = kontrola?.kontrola_status || KONTROLA_STATUS.NEZKONTROLOVANO;
+  const status = normalizeKontrolaStatus(kontrola?.kontrola_status || KONTROLA_STATUS.NEZKONTROLOVANO);
   const colors = KONTROLA_STATUS_COLORS[status] || KONTROLA_STATUS_COLORS[KONTROLA_STATUS.NEZKONTROLOVANO];
+
+  const posledniPoznamka = useMemo(() => {
+    const komentarUdalosti = Array.isArray(udalosti)
+      ? udalosti.filter((u) => u?.typ === 'KOMENTAR' && sanitizeText(u?.text_zprava) !== '')
+      : [];
+
+    if (komentarUdalosti.length > 0) {
+      const posledni = [...komentarUdalosti].sort((a, b) => {
+        const aTs = a?.dt_vytvoreni ? new Date(a.dt_vytvoreni).getTime() : 0;
+        const bTs = b?.dt_vytvoreni ? new Date(b.dt_vytvoreni).getTime() : 0;
+        return bTs - aTs;
+      })[0];
+
+      return {
+        text: sanitizeText(posledni?.text_zprava),
+        shortText: truncateText(posledni?.text_zprava),
+        dt: posledni?.dt_vytvoreni || null,
+        user: [posledni?.prijmeni, posledni?.jmeno].filter(Boolean).join(' ').trim(),
+        zdroj: 'Komentář'
+      };
+    }
+
+    const fallbackText = sanitizeText(kontrola?.poznamka);
+    if (fallbackText) {
+      return {
+        text: fallbackText,
+        shortText: truncateText(fallbackText),
+        dt: kontrola?.dt_kontroly || null,
+        user: [kontrola?.kontroloval_prijmeni, kontrola?.kontroloval_jmeno].filter(Boolean).join(' ').trim(),
+        zdroj: 'Poznámka kontroly'
+      };
+    }
+
+    return null;
+  }, [udalosti, kontrola]);
 
   // Názvy typů záznamů pro nadpis
   const typZaznamuLabels = {
@@ -432,6 +494,33 @@ export default function VemaKontrolaCell({
         <span>{colors.icon}</span>
         <span>{KONTROLA_STATUS_LABELS[status]}</span>
       </TriggerBtn>
+
+      {posledniPoznamka?.text && (
+        <NotePreviewWrap>
+          <SmartTooltip
+            text={(
+              <div style={{ minWidth: '260px' }}>
+                <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>📝 Poslední poznámka</div>
+                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{posledniPoznamka.text}</div>
+                <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', opacity: 0.9 }}>
+                  {posledniPoznamka.zdroj}
+                  {' · '}
+                  {posledniPoznamka.user || 'Neznámý uživatel'}
+                  {posledniPoznamka.dt ? ` · ${formatDatum(posledniPoznamka.dt)}` : ''}
+                </div>
+              </div>
+            )}
+            icon="none"
+            multiline
+            interactive
+            preferredPosition="right"
+            maxWidth="360px"
+            stretch
+          >
+            <NotePreviewText>{posledniPoznamka.shortText}</NotePreviewText>
+          </SmartTooltip>
+        </NotePreviewWrap>
+      )}
 
       {isOpen && (
         <>

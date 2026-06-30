@@ -56,12 +56,14 @@ function get_vema_propojeni_counts($vema_faktura, $db) {
                                      WHERE fa_cislo_vema = ?
                                        AND TRIM(COALESCE(fa_vema_kod, '')) = ?
                                        AND ABS(fa_castka - ?) < 0.01
+                                                                             AND aktivni = 1
                                        AND stav != 'STORNO'");
                 $stmt->execute(array($vsymb, $cdok, $vema_castka));
             } else {
                 $stmt = $db->prepare("SELECT COUNT(DISTINCT id) FROM `" . TBL_FAKTURY . "`
                                      WHERE fa_cislo_vema = ?
                                        AND TRIM(COALESCE(fa_vema_kod, '')) = ?
+                                                                             AND aktivni = 1
                                        AND stav != 'STORNO'");
                 $stmt->execute(array($vsymb, $cdok));
             }
@@ -88,12 +90,14 @@ function get_vema_propojeni_counts($vema_faktura, $db) {
                                              WHERE fa_cislo_vema = ?
                                                AND (fa_vema_kod IS NULL OR TRIM(fa_vema_kod) = '')
                                                AND ABS(fa_castka - ?) < 0.01
+                                                                                             AND aktivni = 1
                                                AND stav != 'STORNO'");
                         $stmt->execute(array($vsymb, $vema_castka));
                     } else {
                         $stmt = $db->prepare("SELECT COUNT(DISTINCT id) FROM `" . TBL_FAKTURY . "`
                                              WHERE fa_cislo_vema = ?
                                                AND (fa_vema_kod IS NULL OR TRIM(fa_vema_kod) = '')
+                                                                                             AND aktivni = 1
                                                AND stav != 'STORNO'");
                         $stmt->execute(array($vsymb));
                     }
@@ -107,11 +111,13 @@ function get_vema_propojeni_counts($vema_faktura, $db) {
                 $stmt = $db->prepare("SELECT COUNT(DISTINCT id) FROM `" . TBL_FAKTURY . "`
                                      WHERE fa_cislo_vema = ?
                                        AND ABS(fa_castka - ?) < 0.01
+                                                                             AND aktivni = 1
                                        AND stav != 'STORNO'");
                 $stmt->execute(array($vsymb, $vema_castka));
             } else {
                 $stmt = $db->prepare("SELECT COUNT(DISTINCT id) FROM `" . TBL_FAKTURY . "`
                                      WHERE fa_cislo_vema = ?
+                                                                             AND aktivni = 1
                                        AND stav != 'STORNO'");
                 $stmt->execute(array($vsymb));
             }
@@ -121,11 +127,13 @@ function get_vema_propojeni_counts($vema_faktura, $db) {
                 $stmt = $db->prepare("SELECT COUNT(DISTINCT id) FROM `" . TBL_FAKTURY . "`
                                      WHERE fa_vema_kod = ?
                                        AND ABS(fa_castka - ?) < 0.01
+                                                                             AND aktivni = 1
                                        AND stav != 'STORNO'");
                 $stmt->execute(array($cdok, $vema_castka));
             } else {
                 $stmt = $db->prepare("SELECT COUNT(DISTINCT id) FROM `" . TBL_FAKTURY . "`
                                      WHERE fa_vema_kod = ?
+                                                                             AND aktivni = 1
                                        AND stav != 'STORNO'");
                 $stmt->execute(array($cdok));
             }
@@ -157,6 +165,10 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
         $f['pocet_faktur'] = 0;
         $f['pocet_smluv'] = 0;
         $f['pocet_rocnich_poplatku'] = 0;
+        $f['pocet_chyb_obj'] = 0;
+        $f['pocet_chyb_sml'] = 0;
+        $f['has_chyba_obj'] = 0;
+        $f['has_chyba_sml'] = 0;
     }
     unset($f);
 
@@ -327,6 +339,13 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
         }
 
         // ===== 3. FAKTURY podle vsymb (priorita: exact VS+cdok, pak fallback bez fa_vema_kod) =====
+        // Pro konzistenci s detail endpointem sbíráme ID do setu a až na konci počítáme unikáty.
+        $faktury_id_sets = array(); // idx => [faktura_id => true]
+        $faktury_meta_by_id = array(); // faktura_id => ['objednavka_id' => int, 'smlouva_id' => int]
+        foreach ($vema_faktury as $i => $f) {
+            $faktury_id_sets[$i] = array();
+        }
+
         $vsymb_map = array();
         foreach ($vema_faktury as $i => $f) {
             if (!empty($f['vsymb'])) {
@@ -339,8 +358,9 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
             $unique_vsymb = array_keys($vsymb_map);
             $placeholders = implode(',', array_fill(0, count($unique_vsymb), '?'));
             // OPTIMALIZACE: používá idx_fa_vema_castka_stav (composite index)
-                $sql = "SELECT id, fa_cislo_vema, fa_vema_kod, fa_castka, fa_datum_splatnosti FROM `" . TBL_FAKTURY . "` 
+                $sql = "SELECT id, objednavka_id, smlouva_id, fa_cislo_vema, fa_vema_kod, fa_castka, fa_datum_splatnosti FROM `" . TBL_FAKTURY . "` 
                     WHERE fa_cislo_vema IN ($placeholders) 
+                    AND aktivni = 1
                     AND stav != 'STORNO'";
             $stmt = $db->prepare($sql);
             $stmt->execute($unique_vsymb);
@@ -349,6 +369,14 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
             // Index kandidátů podle VS
             $kandidati_vsymb = array();
             foreach ($rows as $row) {
+                $row_id = isset($row['id']) ? (int)$row['id'] : 0;
+                if ($row_id > 0) {
+                    $faktury_meta_by_id[$row_id] = array(
+                        'objednavka_id' => isset($row['objednavka_id']) ? (int)$row['objednavka_id'] : 0,
+                        'smlouva_id' => isset($row['smlouva_id']) ? (int)$row['smlouva_id'] : 0,
+                    );
+                }
+
                 $k = isset($row['fa_cislo_vema']) ? (string)$row['fa_cislo_vema'] : '';
                 if ($k === '') continue;
                 if (!isset($kandidati_vsymb[$k])) $kandidati_vsymb[$k] = array();
@@ -431,18 +459,23 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
                     }
 
                     if ($cdok !== '' && count($exact_ids) > 0) {
-                        $vema_faktury[$idx]['pocet_faktur'] += count($exact_ids);
+                        foreach ($exact_ids as $fid => $trueVal) {
+                            $faktury_id_sets[$idx][(int)$fid] = true;
+                        }
                     } else {
-                        $vema_faktury[$idx]['pocet_faktur'] += count($fallback_ids);
+                        foreach ($fallback_ids as $fid => $trueVal) {
+                            $faktury_id_sets[$idx][(int)$fid] = true;
+                        }
                     }
                 }
             }
         }
 
-        // ===== 4. FAKTURY podle cdok (fa_vema_kod) jen pokud faktura nemá VS =====
+        // ===== 4. FAKTURY podle cdok (fa_vema_kod) =====
+        // Stejně jako detail endpoint: větev cdok běží vždy (pokud cdok existuje), nejen při chybějícím VS.
         $cdok_map = array();
         foreach ($vema_faktury as $i => $f) {
-            if (!empty($f['cdok']) && empty($f['vsymb'])) {
+            if (!empty($f['cdok'])) {
                 if (!isset($cdok_map[$f['cdok']])) $cdok_map[$f['cdok']] = array();
                 $cdok_map[$f['cdok']][] = $i;
             }
@@ -451,9 +484,10 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
         if (!empty($cdok_map)) {
             $unique_cdok = array_keys($cdok_map);
             $placeholders = implode(',', array_fill(0, count($unique_cdok), '?'));
-            // Vytáhnout všechny faktury s daným VEMA kódem (neagregovat - potřebujeme částku)
-            $sql = "SELECT fa_vema_kod, fa_castka FROM `" . TBL_FAKTURY . "` 
+            // Vytáhnout všechny faktury s daným VEMA kódem (neagregovat - potřebujeme ID + částku)
+                $sql = "SELECT id, objednavka_id, smlouva_id, fa_vema_kod, fa_castka FROM `" . TBL_FAKTURY . "` 
                     WHERE fa_vema_kod IN ($placeholders) 
+                    AND aktivni = 1
                     AND stav != 'STORNO'";
             $stmt = $db->prepare($sql);
             $stmt->execute($unique_cdok);
@@ -462,19 +496,57 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
             // Post-processing: matchovat cdok + částka
             foreach ($rows as $row) {
                 $cdok = $row['fa_vema_kod'];
+                $faktura_id = isset($row['id']) ? (int)$row['id'] : 0;
                 $eeo_castka = floatval($row['fa_castka']);
+                if ($faktura_id <= 0) continue;
+
+                $faktury_meta_by_id[$faktura_id] = array(
+                    'objednavka_id' => isset($row['objednavka_id']) ? (int)$row['objednavka_id'] : 0,
+                    'smlouva_id' => isset($row['smlouva_id']) ? (int)$row['smlouva_id'] : 0,
+                );
                 
                 if (isset($cdok_map[$cdok])) {
                     foreach ($cdok_map[$cdok] as $idx) {
-                        $vema_castka = !empty($vema_faktury[$idx]['celkem']) ? floatval($vema_faktury[$idx]['celkem']) : 0;
-                        // Match pouze pokud částka sedí (tolerance 0.01 Kč)
-                        if (abs($eeo_castka - $vema_castka) < 0.01) {
-                            $vema_faktury[$idx]['pocet_faktur'] += 1;
+                        $vema_castka = !empty($vema_faktury[$idx]['celkem']) ? floatval($vema_faktury[$idx]['celkem']) : null;
+                        // Match pouze pokud částka sedí (tolerance 0.01 Kč); bez částky bereme podle cdok.
+                        if ($vema_castka === null || abs($eeo_castka - $vema_castka) < 0.01) {
+                            $faktury_id_sets[$idx][$faktura_id] = true;
                         }
                     }
                 }
             }
         }
+
+        // Výsledný počet faktur = počet unikátních ID (stejně jako deduplikace v detail endpointu)
+        foreach ($vema_faktury as $idx => &$f) {
+            $f['pocet_faktur'] = isset($faktury_id_sets[$idx]) ? count($faktury_id_sets[$idx]) : 0;
+
+            // Chyba OBJ: faktura bez objednavka_id.
+            // Chyba SML: faktura bez objednavka_id i bez smlouva_id.
+            $obj_err = 0;
+            $sml_err = 0;
+
+            if (!empty($faktury_id_sets[$idx])) {
+                foreach ($faktury_id_sets[$idx] as $fid => $trueVal) {
+                    $meta = isset($faktury_meta_by_id[$fid]) ? $faktury_meta_by_id[$fid] : array('objednavka_id' => 0, 'smlouva_id' => 0);
+                    $obj_id = isset($meta['objednavka_id']) ? (int)$meta['objednavka_id'] : 0;
+                    $sml_id = isset($meta['smlouva_id']) ? (int)$meta['smlouva_id'] : 0;
+
+                    if ($obj_id <= 0) {
+                        $obj_err++;
+                    }
+                    if ($obj_id <= 0 && $sml_id <= 0) {
+                        $sml_err++;
+                    }
+                }
+            }
+
+            $f['pocet_chyb_obj'] = $obj_err;
+            $f['pocet_chyb_sml'] = $sml_err;
+            $f['has_chyba_obj'] = $obj_err > 0 ? 1 : 0;
+            $f['has_chyba_sml'] = $sml_err > 0 ? 1 : 0;
+        }
+        unset($f);
 
     } catch (Exception $e) {
         error_log("⚠️ Chyba při bulk počítání propojení: " . $e->getMessage());
@@ -619,8 +691,8 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                         o.financovani,
                         u.jmeno as zadavatel_jmeno,
                         u.prijmeni as zadavatel_prijmeni,
-                        (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.stav != 'STORNO') as pocet_faktur,
-                        (SELECT SUM(f.fa_castka) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.stav != 'STORNO') as zaplaceno,
+                        (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO') as pocet_faktur,
+                        (SELECT SUM(f.fa_castka) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO') as zaplaceno,
                         'objednavka' as typ_zaznamu
                     FROM `" . TBL_OBJEDNAVKY . "` o
                     LEFT JOIN `" . TBL_UZIVATELE . "` u ON o.uzivatel_id = u.id
@@ -741,6 +813,8 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                                     f.id,
                                     f.fa_cislo_vema as cislo_faktury,
                                     f.fa_vema_kod,
+                                                                        f.smlouva_id,
+                                                                        s.cislo_smlouvy,
                                     f.fa_datum_vystaveni as datum_vystaveni,
                                     f.fa_datum_splatnosti as datum_splatnosti,
                                     f.fa_castka as castka,
@@ -750,9 +824,11 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                                     'faktura' as typ_zaznamu
                                 FROM `" . TBL_FAKTURY . "` f
                                 LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                                                                LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
                                 WHERE f.fa_cislo_vema = ?
                                   AND TRIM(COALESCE(f.fa_vema_kod, '')) = ?
                                   AND ABS(f.fa_castka - ?) < 0.01
+                                                                    AND f.aktivni = 1
                                   AND f.stav != 'STORNO'
                                 LIMIT 50";
 
@@ -763,6 +839,8 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                                     f.id,
                                     f.fa_cislo_vema as cislo_faktury,
                                     f.fa_vema_kod,
+                                                                        f.smlouva_id,
+                                                                        s.cislo_smlouvy,
                                     f.fa_datum_vystaveni as datum_vystaveni,
                                     f.fa_datum_splatnosti as datum_splatnosti,
                                     f.fa_castka as castka,
@@ -772,8 +850,10 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                                     'faktura' as typ_zaznamu
                                 FROM `" . TBL_FAKTURY . "` f
                                 LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                                                                LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
                                 WHERE f.fa_cislo_vema = ?
                                   AND TRIM(COALESCE(f.fa_vema_kod, '')) = ?
+                                                                    AND f.aktivni = 1
                                   AND f.stav != 'STORNO'
                                 LIMIT 50";
 
@@ -805,6 +885,8 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             f.id,
                             f.fa_cislo_vema as cislo_faktury,
                             f.fa_vema_kod,
+                                                        f.smlouva_id,
+                                                        s.cislo_smlouvy,
                             f.fa_datum_vystaveni as datum_vystaveni,
                             f.fa_datum_splatnosti as datum_splatnosti,
                             f.fa_castka as castka,
@@ -814,8 +896,10 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             'faktura' as typ_zaznamu
                         FROM `" . TBL_FAKTURY . "` f
                         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                                                LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
                         WHERE f.fa_cislo_vema = ?
                           AND ABS(f.fa_castka - ?) < 0.01
+                                                    AND f.aktivni = 1
                                                     AND (
                                                                 ? = ''
                                                                 OR f.fa_vema_kod IS NULL
@@ -887,6 +971,8 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             f.id,
                             f.fa_cislo_vema as cislo_faktury,
                             f.fa_vema_kod,
+                            f.smlouva_id,
+                            s.cislo_smlouvy,
                             f.fa_datum_vystaveni as datum_vystaveni,
                             f.fa_datum_splatnosti as datum_splatnosti,
                             f.fa_castka as castka,
@@ -896,7 +982,9 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             'faktura' as typ_zaznamu
                         FROM `" . TBL_FAKTURY . "` f
                         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                        LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
                         WHERE f.fa_cislo_vema = ?
+                                                    AND f.aktivni = 1
                                                     AND (
                                                                 ? = ''
                                                                 OR f.fa_vema_kod IS NULL
@@ -925,6 +1013,8 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             f.id,
                             f.fa_cislo_vema as cislo_faktury,
                             f.fa_vema_kod,
+                                                        f.smlouva_id,
+                                                        s.cislo_smlouvy,
                             f.fa_datum_vystaveni as datum_vystaveni,
                             f.fa_datum_splatnosti as datum_splatnosti,
                             f.fa_castka as castka,
@@ -934,8 +1024,10 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             'faktura' as typ_zaznamu
                         FROM `" . TBL_FAKTURY . "` f
                         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                                                LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
                         WHERE f.fa_vema_kod = ?
                           AND ABS(f.fa_castka - ?) < 0.01
+                                                    AND f.aktivni = 1
                           AND f.stav != 'STORNO'
                         LIMIT 50";
                 
@@ -951,6 +1043,8 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             f.id,
                             f.fa_cislo_vema as cislo_faktury,
                             f.fa_vema_kod,
+                                                        f.smlouva_id,
+                                                        s.cislo_smlouvy,
                             f.fa_datum_vystaveni as datum_vystaveni,
                             f.fa_datum_splatnosti as datum_splatnosti,
                             f.fa_castka as castka,
@@ -960,7 +1054,9 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
                             'faktura' as typ_zaznamu
                         FROM `" . TBL_FAKTURY . "` f
                         LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                                                LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
                         WHERE f.fa_vema_kod = ?
+                                                    AND f.aktivni = 1
                           AND f.stav != 'STORNO'
                         LIMIT 50";
                 
