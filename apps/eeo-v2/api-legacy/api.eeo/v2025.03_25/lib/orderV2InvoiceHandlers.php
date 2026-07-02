@@ -1105,8 +1105,17 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
             }
         }
         
-        // LP guard: potvrzení věcné správnosti u LP financování vyžaduje existenci LP rozkladu.
-        if (isset($input['vecna_spravnost_potvrzeno']) && (int)$input['vecna_spravnost_potvrzeno'] === 1) {
+        // LP guard: kontrolovat pouze při skutečném přechodu do stavu "potvrzena" (0/2 -> 1).
+        // Běžný update může posílat vecna_spravnost_potvrzeno beze změny a nesmí být blokován.
+        $incoming_vecna_status_for_guard = array_key_exists('vecna_spravnost_potvrzeno', $input)
+            ? (int)$input['vecna_spravnost_potvrzeno']
+            : null;
+        $current_vecna_status_for_guard = isset($current_invoice['vecna_spravnost_potvrzeno'])
+            ? (int)$current_invoice['vecna_spravnost_potvrzeno']
+            : 0;
+        $is_transition_to_vecna_approved = ($incoming_vecna_status_for_guard === 1 && $current_vecna_status_for_guard !== 1);
+
+        if ($is_transition_to_vecna_approved) {
             try {
                 ensure_order_v2_lp_split_exists_for_vs_approval($db, $invoice_id, (int)$current_invoice['objednavka_id']);
             } catch (Exception $lpGuardError) {
