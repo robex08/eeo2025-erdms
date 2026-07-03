@@ -148,6 +148,11 @@ export function ApproverDashboard({ user }: Props) {
   const [selectedDate, setSelectedDate] = useState(() => startOfDay(new Date()))
   const [dayPanelOpen, setDayPanelOpen] = useState(false)
   const [mode, setMode] = useState<'month' | 'week'>('month')
+  const [calendarFilters, setCalendarFilters] = useState<{ pending: boolean; approved: boolean; rejected: boolean }>({
+    pending: true,
+    approved: true,
+    rejected: true,
+  })
 
   const loadData = async () => {
     setLoading(true)
@@ -258,26 +263,32 @@ export function ApproverDashboard({ user }: Props) {
       return counters[dayKey]
     }
 
-    pending.forEach((item) => {
-      forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
-        ensure(dayKey).pending += 1
+    if (calendarFilters.pending) {
+      pending.forEach((item) => {
+        forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
+          ensure(dayKey).pending += 1
+        })
       })
-    })
+    }
 
-    assignments.forEach((item) => {
-      forEachOverlappedDay(item.assigned_start, item.assigned_end, (dayKey) => {
-        ensure(dayKey).approved += 1
+    if (calendarFilters.approved) {
+      assignments.forEach((item) => {
+        forEachOverlappedDay(item.assigned_start, item.assigned_end, (dayKey) => {
+          ensure(dayKey).approved += 1
+        })
       })
-    })
+    }
 
-    rejected.forEach((item) => {
-      forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
-        ensure(dayKey).rejected += 1
+    if (calendarFilters.rejected) {
+      rejected.forEach((item) => {
+        forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
+          ensure(dayKey).rejected += 1
+        })
       })
-    })
+    }
 
     return counters
-  }, [assignments, pending, rejected])
+  }, [assignments, calendarFilters, pending, rejected])
 
   const dayBadgeByDate = useMemo(() => {
     const namesByDay: Record<string, { pending: string[]; approved: string[]; rejected: string[] }> = {}
@@ -289,23 +300,29 @@ export function ApproverDashboard({ user }: Props) {
       return namesByDay[dayKey]
     }
 
-    pending.forEach((item) => {
-      forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
-        ensureNames(dayKey).pending.push(compactCandidateName(item.user?.display_name ?? `#${item.user_id}`))
+    if (calendarFilters.pending) {
+      pending.forEach((item) => {
+        forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
+          ensureNames(dayKey).pending.push(compactCandidateName(item.user?.display_name ?? `#${item.user_id}`))
+        })
       })
-    })
+    }
 
-    assignments.forEach((item) => {
-      forEachOverlappedDay(item.assigned_start, item.assigned_end, (dayKey) => {
-        ensureNames(dayKey).approved.push(compactCandidateName(item.user?.display_name ?? `#${item.user_id}`))
+    if (calendarFilters.approved) {
+      assignments.forEach((item) => {
+        forEachOverlappedDay(item.assigned_start, item.assigned_end, (dayKey) => {
+          ensureNames(dayKey).approved.push(compactCandidateName(item.user?.display_name ?? `#${item.user_id}`))
+        })
       })
-    })
+    }
 
-    rejected.forEach((item) => {
-      forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
-        ensureNames(dayKey).rejected.push(compactCandidateName(item.user?.display_name ?? `#${item.user_id}`))
+    if (calendarFilters.rejected) {
+      rejected.forEach((item) => {
+        forEachOverlappedDay(item.start_time, item.end_time, (dayKey) => {
+          ensureNames(dayKey).rejected.push(compactCandidateName(item.user?.display_name ?? `#${item.user_id}`))
+        })
       })
-    })
+    }
 
     return Object.entries(dayStatusByDate).reduce<Record<string, { count: number; tooltip?: ReactNode }>>((acc, [dayKey, value]) => {
       const total = value.pending + value.approved + value.rejected
@@ -338,17 +355,19 @@ export function ApproverDashboard({ user }: Props) {
       }
       return acc
     }, {})
-  }, [assignments, dayStatusByDate, pending, rejected])
+  }, [assignments, calendarFilters, dayStatusByDate, pending, rejected])
 
   const dayHighlightByDate = useMemo(() => {
     const highlighted: Record<string, boolean> = {}
-    assignments.forEach((item) => {
-      forEachOverlappedDay(item.assigned_start, item.assigned_end, (dayKey) => {
-        highlighted[dayKey] = true
+    if (calendarFilters.approved) {
+      assignments.forEach((item) => {
+        forEachOverlappedDay(item.assigned_start, item.assigned_end, (dayKey) => {
+          highlighted[dayKey] = true
+        })
       })
-    })
+    }
     return highlighted
-  }, [assignments])
+  }, [assignments, calendarFilters.approved])
 
   const selectedPending = useMemo(
     () => pending.filter((item) => overlapsDay(item.start_time, item.end_time, selectedDate)),
@@ -362,6 +381,10 @@ export function ApproverDashboard({ user }: Props) {
     () => assignments.filter((item) => overlapsDay(item.assigned_start, item.assigned_end, selectedDate)),
     [assignments, selectedDate],
   )
+  const visiblePending = calendarFilters.pending ? selectedPending : []
+  const visibleApproved = calendarFilters.approved ? selectedApproved : []
+  const visibleRejected = calendarFilters.rejected ? selectedRejected : []
+  const visibleSelectedTotal = visiblePending.length + visibleApproved.length + visibleRejected.length
 
   const openDayPanel = (day: Date) => {
     setSelectedDate(startOfDay(day))
@@ -399,7 +422,7 @@ export function ApproverDashboard({ user }: Props) {
       <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Denní přehled</p>
-          <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-600">{selectedPending.length + selectedApproved.length + selectedRejected.length} položek</span>
+          <span className="rounded-full bg-white px-2 py-1 text-[11px] font-bold text-slate-600">{visibleSelectedTotal} položek</span>
         </div>
         <p className="mt-2 text-sm font-semibold text-slate-800">{selectedDayLabel}</p>
 
@@ -408,16 +431,17 @@ export function ApproverDashboard({ user }: Props) {
         </div>
 
         <div className="mt-3 space-y-3">
+          {calendarFilters.pending && (
           <div className="rounded-2xl border border-amber-100 bg-white p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Čeká na schválení</p>
-              <span className="text-xs font-black text-amber-800">{selectedPending.length}</span>
+              <span className="text-xs font-black text-amber-800">{visiblePending.length}</span>
             </div>
-            {selectedPending.length === 0 ? (
+            {visiblePending.length === 0 ? (
               <p className="text-xs text-slate-500">Bez čekajících žádostí.</p>
             ) : (
               <div className="space-y-2">
-                {selectedPending.map((item) => (
+                {visiblePending.map((item) => (
                   <div key={`pending-sidebar-${item.id}`} className="rounded-xl border border-amber-100 bg-amber-50/40 p-2.5">
                     <p className="text-sm font-bold text-slate-900">{compactCandidateName(item.user?.display_name ?? `#${item.user_id}`)}</p>
                     <p className="text-xs text-slate-600">{dtf.format(new Date(item.start_time))} – {dtf.format(new Date(item.end_time))}</p>
@@ -426,17 +450,19 @@ export function ApproverDashboard({ user }: Props) {
               </div>
             )}
           </div>
+          )}
 
+          {calendarFilters.approved && (
           <div className="rounded-2xl border border-emerald-100 bg-white p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Schválené</p>
-              <span className="text-xs font-black text-emerald-800">{selectedApproved.length}</span>
+              <span className="text-xs font-black text-emerald-800">{visibleApproved.length}</span>
             </div>
-            {selectedApproved.length === 0 ? (
+            {visibleApproved.length === 0 ? (
               <p className="text-xs text-slate-500">Bez schválených směn.</p>
             ) : (
               <div className="space-y-2">
-                {selectedApproved.map((item) => (
+                {visibleApproved.map((item) => (
                   <div key={`approved-sidebar-${item.id}`} className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-2.5">
                     <p className="text-sm font-bold text-slate-900">{compactCandidateName(item.user?.display_name ?? `#${item.user_id}`)}</p>
                     <p className="text-xs text-slate-600">{dtf.format(new Date(item.assigned_start))} – {dtf.format(new Date(item.assigned_end))}</p>
@@ -445,17 +471,19 @@ export function ApproverDashboard({ user }: Props) {
               </div>
             )}
           </div>
+          )}
 
+          {calendarFilters.rejected && (
           <div className="rounded-2xl border border-rose-100 bg-white p-3">
             <div className="mb-2 flex items-center justify-between">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">Zamítnuté</p>
-              <span className="text-xs font-black text-rose-800">{selectedRejected.length}</span>
+              <span className="text-xs font-black text-rose-800">{visibleRejected.length}</span>
             </div>
-            {selectedRejected.length === 0 ? (
+            {visibleRejected.length === 0 ? (
               <p className="text-xs text-slate-500">Bez zamítnutých žádostí.</p>
             ) : (
               <div className="space-y-2">
-                {selectedRejected.map((item) => (
+                {visibleRejected.map((item) => (
                   <div key={`rejected-sidebar-${item.id}`} className="rounded-xl border border-rose-100 bg-rose-50/35 p-2.5">
                     <p className="text-sm font-bold text-slate-900">{compactCandidateName(item.user?.display_name ?? `#${item.user_id}`)}</p>
                     <p className="text-xs text-slate-600">{dtf.format(new Date(item.start_time))} – {dtf.format(new Date(item.end_time))}</p>
@@ -464,6 +492,7 @@ export function ApproverDashboard({ user }: Props) {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>
@@ -493,7 +522,7 @@ export function ApproverDashboard({ user }: Props) {
 
       <ShiftCalendar
         title="Hlavní schvalovací kalendář"
-        subtitle={`Oddělení ${user.department} · ${formatMonthLabel(calendarDate)}. Klik na hlavičku dne jen přepíná denní přehled vpravo, klik do spodního bloku dne otevře slide panel.`}
+        subtitle=""
         currentDate={calendarDate}
         mode={mode}
         onModeChange={setMode}
@@ -501,6 +530,8 @@ export function ApproverDashboard({ user }: Props) {
         onToday={() => setCalendarDate(startOfDay(new Date()))}
         onDayClick={(day) => setSelectedDate(startOfDay(day))}
         onDayBodyClick={openDayPanel}
+        statusFilter={calendarFilters}
+        onToggleStatusFilter={(status) => setCalendarFilters((prev) => ({ ...prev, [status]: !prev[status] }))}
         itemsByDate={{}}
         dayHighlightByDate={dayHighlightByDate}
         dayStatusByDate={dayStatusByDate}
@@ -518,7 +549,7 @@ export function ApproverDashboard({ user }: Props) {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700">Denní přehled schvalování</p>
                 <h4 className="mt-1 text-2xl font-black text-slate-900">{selectedDayLabel}</h4>
-                <p className="mt-2 text-sm text-slate-600">Položky dne: {selectedPending.length + selectedApproved.length + selectedRejected.length}</p>
+                <p className="mt-2 text-sm text-slate-600">Položky dne: {visibleSelectedTotal}</p>
               </div>
               <button type="button" onClick={closeDayPanel} className="rounded-2xl bg-slate-100 p-2 text-slate-600 transition hover:bg-slate-200">
                 <X className="h-5 w-5" />
@@ -526,16 +557,17 @@ export function ApproverDashboard({ user }: Props) {
             </div>
 
             <div className="flex-1 space-y-4 overflow-y-auto p-5">
+              {calendarFilters.pending && (
               <div className="rounded-2xl border border-amber-100 bg-amber-50/40 p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-700">Čeká na schválení</p>
-                  <span className="text-xs font-black text-amber-800">{selectedPending.length}</span>
+                  <span className="text-xs font-black text-amber-800">{visiblePending.length}</span>
                 </div>
-                {selectedPending.length === 0 ? (
+                {visiblePending.length === 0 ? (
                   <p className="text-xs text-slate-600">Bez čekajících žádostí.</p>
                 ) : (
                   <div className="space-y-2">
-                    {selectedPending.map((item) => (
+                    {visiblePending.map((item) => (
                       <div
                         key={`pending-slide-${item.id}`}
                         className="w-full rounded-xl border border-amber-100 bg-white p-3 text-left"
@@ -571,17 +603,19 @@ export function ApproverDashboard({ user }: Props) {
                   </div>
                 )}
               </div>
+              )}
 
+              {calendarFilters.approved && (
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50/35 p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-emerald-700">Schválené</p>
-                  <span className="text-xs font-black text-emerald-800">{selectedApproved.length}</span>
+                  <span className="text-xs font-black text-emerald-800">{visibleApproved.length}</span>
                 </div>
-                {selectedApproved.length === 0 ? (
+                {visibleApproved.length === 0 ? (
                   <p className="text-xs text-slate-600">Bez schválených směn.</p>
                 ) : (
                   <div className="space-y-2">
-                    {selectedApproved.map((item) => (
+                    {visibleApproved.map((item) => (
                       <div key={`approved-slide-${item.id}`} className="rounded-xl border border-emerald-100 bg-white p-3">
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-bold text-slate-900">{compactCandidateName(item.user?.display_name ?? `#${item.user_id}`)}</p>
@@ -612,17 +646,19 @@ export function ApproverDashboard({ user }: Props) {
                   </div>
                 )}
               </div>
+              )}
 
+              {calendarFilters.rejected && (
               <div className="rounded-2xl border border-rose-100 bg-rose-50/35 p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-rose-700">Zamítnuté</p>
-                  <span className="text-xs font-black text-rose-800">{selectedRejected.length}</span>
+                  <span className="text-xs font-black text-rose-800">{visibleRejected.length}</span>
                 </div>
-                {selectedRejected.length === 0 ? (
+                {visibleRejected.length === 0 ? (
                   <p className="text-xs text-slate-600">Bez zamítnutých žádostí.</p>
                 ) : (
                   <div className="space-y-2">
-                    {selectedRejected.map((item) => (
+                    {visibleRejected.map((item) => (
                       <div key={`rejected-slide-${item.id}`} className="rounded-xl border border-rose-100 bg-white p-3">
                         <div className="flex items-start justify-between gap-2">
                           <p className="text-sm font-bold text-slate-900">{compactCandidateName(item.user?.display_name ?? `#${item.user_id}`)}</p>
@@ -653,6 +689,7 @@ export function ApproverDashboard({ user }: Props) {
                   </div>
                 )}
               </div>
+              )}
             </div>
           </div>
         </div>,

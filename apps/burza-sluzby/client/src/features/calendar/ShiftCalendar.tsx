@@ -14,6 +14,8 @@ type Props = {
   onToday: () => void
   onDayClick: (date: Date) => void
   onDayBodyClick?: (date: Date) => void
+  statusFilter?: Partial<Record<'pending' | 'approved' | 'rejected', boolean>>
+  onToggleStatusFilter?: (status: 'pending' | 'approved' | 'rejected') => void
   itemsByDate: Record<string, CalendarItem[]>
   dayHighlightByDate?: Record<string, boolean>
   dayStatusByDate?: Record<string, { pending: number; approved: number; rejected: number }>
@@ -47,6 +49,8 @@ export function ShiftCalendar({
   onToday,
   onDayClick,
   onDayBodyClick,
+  statusFilter,
+  onToggleStatusFilter,
   itemsByDate,
   dayHighlightByDate,
   dayStatusByDate,
@@ -120,9 +124,14 @@ export function ShiftCalendar({
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3 text-sm text-slate-600">
             <div className="flex flex-wrap items-center gap-2">
               {statusLegend.map((entry) => (
-                <span key={entry.label} className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset ${statusStyles[entry.tone]}`}>
+                <button
+                  key={entry.label}
+                  type="button"
+                  onClick={() => onToggleStatusFilter?.(entry.tone)}
+                  className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ring-1 ring-inset transition ${statusStyles[entry.tone]} ${statusFilter && statusFilter[entry.tone] === false ? 'opacity-40 grayscale' : ''}`}
+                >
                   {entry.label}
-                </span>
+                </button>
               ))}
             </div>
             <span className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Klikni na den pro akci</span>
@@ -143,6 +152,9 @@ export function ShiftCalendar({
               const highlightedDay = dayHighlightByDate?.[key] === true
               const statusSummary = dayStatusByDate?.[key]
               const hasStatusSummary = !!statusSummary && (statusSummary.pending + statusSummary.approved + statusSummary.rejected) > 0
+              const showPending = statusFilter?.pending !== false
+              const showApproved = statusFilter?.approved !== false
+              const showRejected = statusFilter?.rejected !== false
               const badge = dayBadgeByDate?.[key]
               const visibleItems = monthGrid ? items.slice(0, 3) : items.slice(0, 5)
               const hiddenCount = Math.max(0, items.length - visibleItems.length)
@@ -188,18 +200,24 @@ export function ShiftCalendar({
                     {visibleItems.length === 0 ? (
                       hasStatusSummary ? (
                         <div className="rounded-2xl border border-slate-200 bg-white/80 px-3 py-2.5 text-xs">
-                          <div className="flex items-center justify-between rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-800">
-                            <span>Čekající</span>
-                            <span>{statusSummary.pending}</span>
-                          </div>
-                          <div className="mt-1 flex items-center justify-between rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-800">
-                            <span>Schválená</span>
-                            <span>{statusSummary.approved}</span>
-                          </div>
-                          <div className="mt-1 flex items-center justify-between rounded-lg bg-rose-50 px-2 py-1 font-semibold text-rose-800">
-                            <span>Zamítnutá</span>
-                            <span>{statusSummary.rejected}</span>
-                          </div>
+                          {showPending ? (
+                            <div className="flex items-center justify-between rounded-lg bg-amber-50 px-2 py-1 font-semibold text-amber-800">
+                              <span>Čekající</span>
+                              <span>{statusSummary.pending}</span>
+                            </div>
+                          ) : null}
+                          {showApproved ? (
+                            <div className={`${showPending ? 'mt-1 ' : ''}flex items-center justify-between rounded-lg bg-emerald-50 px-2 py-1 font-semibold text-emerald-800`}>
+                              <span>Schválená</span>
+                              <span>{statusSummary.approved}</span>
+                            </div>
+                          ) : null}
+                          {showRejected ? (
+                            <div className={`${showPending || showApproved ? 'mt-1 ' : ''}flex items-center justify-between rounded-lg bg-rose-50 px-2 py-1 font-semibold text-rose-800`}>
+                              <span>Zamítnutá</span>
+                              <span>{statusSummary.rejected}</span>
+                            </div>
+                          ) : null}
                         </div>
                       ) : (
                         <div className="flex min-h-[2.875rem] flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/70 px-3 py-2.5 text-center text-xs font-semibold text-slate-400">
