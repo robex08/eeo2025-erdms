@@ -3027,7 +3027,12 @@ function handle_hierarchy_lp_codes_list($data, $pdo) {
                 COUNT(DISTINCT o.id) as orderCount
             FROM " . TBL_LP_MASTER . " lp
             LEFT JOIN " . TBL_USEKY . " us ON us.id = lp.usek_id
-            LEFT JOIN " . TBL_OBJEDNAVKY . " o ON JSON_CONTAINS(o.financovani, CONCAT('\"', lp.cislo_lp, '\"'))
+            LEFT JOIN " . TBL_OBJEDNAVKY . " o ON o.aktivni = 1 AND (
+                JSON_CONTAINS(o.financovani, CAST(lp.id AS CHAR), '$.lp_kody')
+                OR JSON_SEARCH(o.financovani, 'one', CAST(lp.id AS CHAR), NULL, '$.lp_kody[*]') IS NOT NULL
+                OR JSON_SEARCH(o.financovani, 'one', lp.cislo_lp, NULL, '$.lp_kod[*]') IS NOT NULL
+                OR JSON_SEARCH(o.financovani, 'one', lp.cislo_lp, NULL, '$.doplnujici_data.lp_kod[*]') IS NOT NULL
+            )
             GROUP BY lp.id, lp.cislo_lp, lp.nazev_uctu, us.usek_zkr
             ORDER BY lp.cislo_lp
         ";
@@ -3859,6 +3864,57 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
     $normalizedNodes = array();
     foreach ($nodes as $node) {
         $normalizedNode = $node;
+        $normalizedNodeType = $normalizedNode['typ'] ?? ($normalizedNode['data']['type'] ?? null);
+
+        // Sjednotit top-level typ i data.type (novy i legacy parser)
+        if ($normalizedNodeType) {
+            $normalizedNode['typ'] = $normalizedNodeType;
+            if (!isset($normalizedNode['data'])) {
+                $normalizedNode['data'] = array();
+            }
+            $normalizedNode['data']['type'] = $normalizedNodeType;
+        }
+
+        // Udrzovat aliasy klicu pro kompatibilitu parseru (user/location/department/role/lp)
+        if ($normalizedNodeType === 'user') {
+            $uid = $normalizedNode['data']['userId'] ?? ($normalizedNode['data']['uzivatel_id'] ?? null);
+            if ($uid !== null && $uid !== '') {
+                $uid = (int)$uid;
+                $normalizedNode['data']['userId'] = $uid;
+                $normalizedNode['data']['uzivatel_id'] = $uid;
+            }
+        } elseif ($normalizedNodeType === 'location') {
+            $locId = $normalizedNode['data']['locationId'] ?? ($normalizedNode['data']['lokalita_id'] ?? null);
+            if ($locId !== null && $locId !== '') {
+                $locId = (int)$locId;
+                $normalizedNode['data']['locationId'] = $locId;
+                $normalizedNode['data']['lokalita_id'] = $locId;
+            }
+        } elseif ($normalizedNodeType === 'department') {
+            $deptId = $normalizedNode['data']['departmentId'] ?? ($normalizedNode['data']['usek_id'] ?? null);
+            if ($deptId !== null && $deptId !== '') {
+                $deptId = (int)$deptId;
+                $normalizedNode['data']['departmentId'] = $deptId;
+                $normalizedNode['data']['usek_id'] = $deptId;
+            }
+        } elseif ($normalizedNodeType === 'role') {
+            $roleId = $normalizedNode['data']['roleId'] ?? ($normalizedNode['data']['role_id'] ?? null);
+            if ($roleId !== null && $roleId !== '') {
+                $roleId = (int)$roleId;
+                $normalizedNode['data']['roleId'] = $roleId;
+                $normalizedNode['data']['role_id'] = $roleId;
+            }
+        } elseif ($normalizedNodeType === 'lp_kod') {
+            $lpId = $normalizedNode['data']['lp_id'] ?? null;
+            if ($lpId !== null && $lpId !== '') {
+                $normalizedNode['data']['lp_id'] = (int)$lpId;
+            }
+            if (!empty($normalizedNode['data']['lp_cislo'])) {
+                $normalizedNode['data']['cislo_lp'] = (string)$normalizedNode['data']['lp_cislo'];
+            } elseif (!empty($normalizedNode['data']['cislo_lp'])) {
+                $normalizedNode['data']['lp_cislo'] = (string)$normalizedNode['data']['cislo_lp'];
+            }
+        }
         
         // VALIDACE TARGET NODE - DYNAMIC_FROM_ENTITY s multi-field podporou
         if (isset($node['data']['scopeDefinition'])) {
@@ -3908,6 +3964,68 @@ function handle_hierarchy_profiles_save_structure($data, $pdo) {
     $normalizedEdges = array();
     foreach ($edges as $edge) {
         $normalizedEdge = $edge;
+
+        if (!isset($normalizedEdge['data']) || !is_array($normalizedEdge['data'])) {
+            $normalizedEdge['data'] = array();
+        }
+
+        // Alias relationshipType <-> druh_vztahu
+        if (!isset($normalizedEdge['data']['relationshipType']) && isset($normalizedEdge['data']['druh_vztahu'])) {
+            $normalizedEdge['data']['relationshipType'] = $normalizedEdge['data']['druh_vztahu'];
+        }
+        if (!isset($normalizedEdge['data']['druh_vztahu']) && isset($normalizedEdge['data']['relationshipType'])) {
+            $normalizedEdge['data']['druh_vztahu'] = $normalizedEdge['data']['relationshipType'];
+        }
+        if (!isset($normalizedEdge['data']['scope']) || $normalizedEdge['data']['scope'] === '') {
+            $normalizedEdge['data']['scope'] = 'OWN';
+        }
+
+        // Default modules map (vsechny klice vzdy pritomne)
+        if (!isset($normalizedEdge['data']['modules']) || !is_array($normalizedEdge['data']['modules'])) {
+            $normalizedEdge['data']['modules'] = array();
+        }
+        $normalizedEdge['data']['modules'] = array_merge(array(
+            'orders' => false,
+            'invoices' => false,
+            'contracts' => false,
+            'cashbook' => false,
+            'cashbookReadonly' => false,
+            'users' => false,
+            'lp' => false
+        ), $normalizedEdge['data']['modules']);
+
+        // Default extended map + aliasy kombinaci
+        if (!isset($normalizedEdge['data']['extended']) || !is_array($normalizedEdge['data']['extended'])) {
+            $normalizedEdge['data']['extended'] = array();
+        }
+        $normalizedEdge['data']['extended'] = array_merge(array(
+            'locations' => array(),
+            'departments' => array(),
+            'combinations' => array()
+        ), $normalizedEdge['data']['extended']);
+
+        if (is_array($normalizedEdge['data']['extended']['combinations'])) {
+            $normalizedCombinations = array();
+            foreach ($normalizedEdge['data']['extended']['combinations'] as $combo) {
+                if (!is_array($combo)) {
+                    continue;
+                }
+                $locationId = $combo['locationId'] ?? ($combo['lokalita_id'] ?? null);
+                $departmentId = $combo['departmentId'] ?? ($combo['usek_id'] ?? null);
+                $normalizedCombo = array(
+                    'locationId' => $locationId !== null && $locationId !== '' ? (int)$locationId : null,
+                    'departmentId' => $departmentId !== null && $departmentId !== '' ? (int)$departmentId : null
+                );
+                if ($normalizedCombo['locationId'] !== null) {
+                    $normalizedCombo['lokalita_id'] = $normalizedCombo['locationId'];
+                }
+                if ($normalizedCombo['departmentId'] !== null) {
+                    $normalizedCombo['usek_id'] = $normalizedCombo['departmentId'];
+                }
+                $normalizedCombinations[] = $normalizedCombo;
+            }
+            $normalizedEdge['data']['extended']['combinations'] = $normalizedCombinations;
+        }
         
         if (isset($edge['data']['source_info_recipients'])) {
             $sourceInfo = $edge['data']['source_info_recipients'];
@@ -4129,8 +4247,22 @@ function migrateHierarchyStructureToV2($structure) {
     // MIGRACE NODES
     if (isset($structure['nodes'])) {
         foreach ($structure['nodes'] as &$node) {
+            $nodeType = $node['typ'] ?? ($node['type'] ?? ($node['data']['type'] ?? null));
+            if ($nodeType !== null) {
+                $node['typ'] = $nodeType;
+                if (!isset($node['type'])) {
+                    $node['type'] = $nodeType;
+                }
+                if (!isset($node['data'])) {
+                    $node['data'] = array();
+                }
+                if (!isset($node['data']['type'])) {
+                    $node['data']['type'] = $nodeType;
+                }
+            }
+
             // TEMPLATE nodes - přejmenování variant
-            if ($node['type'] === 'template') {
+            if ($nodeType === 'template') {
                 // normalVariant → warningVariant
                 if (isset($node['data']['normalVariant'])) {
                     $node['data']['warningVariant'] = $node['data']['normalVariant'];
@@ -4147,7 +4279,7 @@ function migrateHierarchyStructureToV2($structure) {
             }
             
             // TARGET nodes (role/department/user) - přidat scopeDefinition a delivery
-            if (in_array($node['type'], ['role', 'department', 'user'])) {
+            if (in_array($nodeType, ['role', 'department', 'user'], true)) {
                 // Přidat defaultní scopeDefinition pokud chybí
                 if (!isset($node['data']['scopeDefinition'])) {
                     $node['data']['scopeDefinition'] = ['type' => 'ALL'];

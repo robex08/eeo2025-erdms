@@ -153,11 +153,13 @@ function applyOrderV3UserPermissions($user_id, $db, &$where_conditions, &$where_
     }
     
     // 2️⃣ HIERARCHIE - ROZŠÍŘENÍ (pokud je aktivní)
+    // Pouze legacy structure_json logika přes hierarchyOrderFilters.php
     if (function_exists('applyHierarchyFilterToOrders')) {
         $hierarchyFilter = applyHierarchyFilterToOrders($user_id, $db);
-        
+
         if ($hierarchyFilter !== null) {
             $visibilityConditions[] = $hierarchyFilter;
+            error_log("[OrderV3 Permissions] Hierarchy filter ADDED from hierarchyOrderFilters");
         }
     }
     
@@ -1403,6 +1405,108 @@ function enrichRegistrZverejneniV3($db, &$order) {
  */
 
 /**
+ * 🚀 BATCH SUBSTITUTION ENRICHMENT
+ * Nahradí per-order N+1 loop (get_substitution_info_for_action)
+ * jedním dotazem na TBL_ZASTUPOVANI_AKCE_LOG pro celou stránku objednávek.
+ */
+function enrichOrdersV3WithSubstitutionBatch($db, &$orders) {
+    if (empty($orders)) return;
+    if (!defined('TBL_ZASTUPOVANI_AKCE_LOG')) {
+        foreach ($orders as &$order) {
+            if (!isset($order['substitution_info'])) $order['substitution_info'] = [];
+        }
+        unset($order);
+        return;
+    }
+
+    $order_ids = array();
+    foreach ($orders as $order) {
+        $order_ids[] = (int)$order['id'];
+    }
+    $order_ids = array_values(array_unique(array_filter($order_ids)));
+    if (empty($order_ids)) return;
+
+    $ids_sql = implode(',', $order_ids);
+    try {
+        $sql = "SELECT z.zastupce_id, z.zastupovany_id, z.objekt_id, z.akce_typ, z.dt_akce,
+                       u.jmeno AS zastupovany_jmeno_first, u.prijmeni AS zastupovany_jmeno_last
+                FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " z
+                LEFT JOIN " . TBL_UZIVATELE . " u ON z.zastupovany_id = u.id
+                WHERE z.objekt_typ = 'OBJEDNAVKA'
+                  AND z.objekt_id IN ($ids_sql)";
+        $stmt = $db->query($sql);
+        $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : array();
+    } catch (Exception $e) {
+        error_log('[OrderV3 SubBatch] query failed: ' . $e->getMessage());
+        $rows = array();
+    }
+
+    // Index: log_index[objekt_id][zastupce_id][] = row
+    $log_index = array();
+    foreach ($rows as $row) {
+        $oid = (int)$row['objekt_id'];
+        $zid = (int)$row['zastupce_id'];
+        $log_index[$oid][$zid][] = $row;
+    }
+
+    $find_match = function($oid, $zastupce_id, $action_types, $dt_akce) use ($log_index) {
+        if (empty($log_index[$oid][$zastupce_id])) return false;
+        $target_ts = strtotime((string)$dt_akce);
+        if ($target_ts === false) return false;
+        $priority = array_flip(array_values($action_types));
+
+        $best = null;
+        $best_score = PHP_INT_MAX;
+        $fallback = null;
+        $fallback_score = PHP_INT_MAX;
+        foreach ($log_index[$oid][$zastupce_id] as $candidate) {
+            if (!isset($priority[$candidate['akce_typ']])) continue;
+            $cand_ts = strtotime((string)$candidate['dt_akce']);
+            if ($cand_ts === false) continue;
+            $diff = abs($cand_ts - $target_ts);
+            $score = $priority[$candidate['akce_typ']] * 1000000 + $diff;
+            if ($score < $fallback_score) {
+                $fallback_score = $score;
+                $fallback = $candidate;
+            }
+            if ($diff <= 60 && $score < $best_score) {
+                $best_score = $score;
+                $best = $candidate;
+            }
+        }
+        $winner = $best !== null ? $best : $fallback;
+        if ($winner === null) return false;
+        return array(
+            'is_substitution' => true,
+            'zastupovany_id' => (int)$winner['zastupovany_id'],
+            'zastupovany_jmeno' => trim(($winner['zastupovany_jmeno_first'] ?? '') . ' ' . ($winner['zastupovany_jmeno_last'] ?? '')),
+            'dt_akce' => $winner['dt_akce']
+        );
+    };
+
+    foreach ($orders as &$order) {
+        if (!isset($order['substitution_info']) || !is_array($order['substitution_info'])) {
+            $order['substitution_info'] = array();
+        }
+        $oid = (int)$order['id'];
+
+        // Schvalovatel
+        if (!empty($order['schvalovatel_id']) && !empty($order['dt_schvaleni'])) {
+            $action_types = resolveOrderApprovalActionTypesForSubstitution($order);
+            $info = $find_match($oid, (int)$order['schvalovatel_id'], $action_types, $order['dt_schvaleni']);
+            if ($info) $order['substitution_info']['schvalovatel'] = $info;
+        }
+
+        // Potvrdil věcnou správnost
+        if (!empty($order['potvrdil_vecnou_spravnost_id']) && !empty($order['dt_potvrzeni_vecne_spravnosti'])) {
+            $info = $find_match($oid, (int)$order['potvrdil_vecnou_spravnost_id'], array('CONFIRM'), $order['dt_potvrzeni_vecne_spravnosti']);
+            if ($info) $order['substitution_info']['potvrdil_vecnou_spravnost'] = $info;
+        }
+    }
+    unset($order);
+}
+
+/**
  * 🚀 MASTER BATCH ENRICHMENT FUNKCE
  * Nahrazuje per-order enrichment loop - optimalizace N+1 → batch queries
  * 
@@ -1685,7 +1789,7 @@ function handle_order_v3_list($input, $config, $queries) {
     try {
         // 3. Parametry paginace
         $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
-        $per_page = isset($input['per_page']) ? max(1, min(500, (int)$input['per_page'])) : 50;
+        $per_page = isset($input['per_page']) ? max(1, min(1000, (int)$input['per_page'])) : 50;
         $offset = ($page - 1) * $per_page;
         
         // DEBUG: Log pagination params
@@ -2662,93 +2766,44 @@ function handle_order_v3_list($input, $config, $queries) {
                 u11.titul_pred as aktualizoval_titul_pred,
                 u11.titul_za as aktualizoval_titul_za,
                 
-                -- Počet položek
-                (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as pocet_polozek,
-                
-                -- Součet cen položek (cena_s_dph)
-                (SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id) as cena_s_dph,
-                
-                -- Počet příloh
-                (SELECT COUNT(*) FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr WHERE pr.objednavka_id = o.id) as pocet_priloh,
-                
-                -- Faktury - součet a count
-                (SELECT COUNT(*) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as pocet_faktur,
-                (SELECT COALESCE(SUM(f.fa_castka), 0) FROM " . TBL_FAKTURY . " f WHERE f.objednavka_id = o.id AND f.aktivni = 1) as faktury_celkova_castka_s_dph,
-                
-                -- 🔍 Indikátor: 1 = všechny faktury jsou ZAPLACENO/DOKONCENA, 0 = jinak
-                (
-                  CASE 
-                    WHEN (
-                      SELECT COUNT(*) FROM " . TBL_FAKTURY . " f 
-                      WHERE f.objednavka_id = o.id AND f.aktivni = 1
-                    ) = 0 THEN 0
-                    WHEN (
-                      SELECT COUNT(*) FROM " . TBL_FAKTURY . " f 
-                      WHERE f.objednavka_id = o.id AND f.aktivni = 1
-                      AND LOWER(REPLACE(REPLACE(REPLACE(REPLACE(f.stav, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ů', 'u')) NOT IN ('zaplaceno', 'dokoncena')
-                    ) = 0 THEN 1
-                    ELSE 0
-                  END
-                ) as faktury_vs_zaplaceno,
-                
-                -- 🔍 Indikátor: 1 = alespoň jedna faktura má zamítnutou věcnou správnost (vecna_spravnost_potvrzeno = 2)
-                (
-                  SELECT COUNT(*) 
-                  FROM " . TBL_FAKTURY . " f 
-                  WHERE f.objednavka_id = o.id 
-                    AND f.aktivni = 1 
-                    AND f.vecna_spravnost_potvrzeno = 2
-                ) > 0 as faktury_vecna_spravnost_zamitnuta,
-                
-                -- 🔍 Počet zamítnutých faktur
-                (
-                  SELECT COUNT(*) 
-                  FROM " . TBL_FAKTURY . " f 
-                  WHERE f.objednavka_id = o.id 
-                    AND f.aktivni = 1 
-                    AND f.vecna_spravnost_potvrzeno = 2
-                ) as faktury_vecna_spravnost_zamitnuto_count,
-                
-                -- 🔍 Důvod zamítnutí věcné správnosti (z první zamítnuté faktury)
-                (
-                  SELECT f.vecna_spravnost_duvod
-                  FROM " . TBL_FAKTURY . " f 
-                  WHERE f.objednavka_id = o.id 
-                    AND f.aktivni = 1 
-                    AND f.vecna_spravnost_potvrzeno = 2
-                  LIMIT 1
-                ) as faktury_vecna_spravnost_duvod,
-                
-                -- 🔍 Poznámka k zamítnutí věcné správnosti (z první zamítnuté faktury)
-                (
-                  SELECT f.vecna_spravnost_poznamka
-                  FROM " . TBL_FAKTURY . " f 
-                  WHERE f.objednavka_id = o.id 
-                    AND f.aktivni = 1 
-                    AND f.vecna_spravnost_potvrzeno = 2
-                  LIMIT 1
-                ) as faktury_vecna_spravnost_poznamka,
+                                -- Položky (agregované v jednom JOINu)
+                                COALESCE(polagg.pocet_polozek, 0) as pocet_polozek,
+                                COALESCE(polagg.cena_s_dph, 0) as cena_s_dph,
+
+                                -- Přílohy (agregované v jednom JOINu)
+                                COALESCE(pragg.pocet_priloh, 0) as pocet_priloh,
+
+                                -- Faktury - součet a count (agregované v jednom JOINu)
+                                COALESCE(fagg.pocet_faktur, 0) as pocet_faktur,
+                                COALESCE(fagg.faktury_celkova_castka_s_dph, 0) as faktury_celkova_castka_s_dph,
+
+                                -- 🔍 Indikátor: 1 = všechny faktury jsou ZAPLACENO/DOKONCENA, 0 = jinak
+                                (
+                                    CASE
+                                        WHEN COALESCE(fagg.pocet_faktur, 0) = 0 THEN 0
+                                        WHEN COALESCE(fagg.nezaplacene_faktury_count, 0) = 0 THEN 1
+                                        ELSE 0
+                                    END
+                                ) as faktury_vs_zaplaceno,
+
+                                -- 🔍 Indikátor: 1 = alespoň jedna faktura má zamítnutou věcnou správnost (vecna_spravnost_potvrzeno = 2)
+                                (COALESCE(fagg.vecna_spravnost_zamitnuto_count, 0) > 0) as faktury_vecna_spravnost_zamitnuta,
+
+                                -- 🔍 Počet zamítnutých faktur
+                                COALESCE(fagg.vecna_spravnost_zamitnuto_count, 0) as faktury_vecna_spravnost_zamitnuto_count,
+
+                                -- 🔍 Důvod/poznámka zamítnutí věcné správnosti (z první zamítnuté faktury)
+                                frejf.vecna_spravnost_duvod as faktury_vecna_spravnost_duvod,
+                                frejf.vecna_spravnost_poznamka as faktury_vecna_spravnost_poznamka,
                 
                 -- Střediska (JSON array kódů)
                 o.strediska_kod,
                 
                 -- 🆕 Kontrola a komentáře (Order V3)
                 o.kontrola_metadata,
-                (SELECT COUNT(*) FROM 25a_objednavky_komentare kom WHERE kom.objednavka_id = o.id AND kom.smazano = 0) as comments_count,
-                
-                -- 🆕 Poslední komentář (pro bubble tooltip)
-                (SELECT CONCAT(u.jmeno, ' ', u.prijmeni)
-                 FROM 25a_objednavky_komentare kom
-                 INNER JOIN " . TBL_UZIVATELE . " u ON kom.user_id = u.id
-                 WHERE kom.objednavka_id = o.id AND kom.smazano = 0
-                 ORDER BY kom.dt_vytvoreni DESC
-                 LIMIT 1) as last_comment_author,
-                
-                (SELECT kom.dt_vytvoreni
-                 FROM 25a_objednavky_komentare kom
-                 WHERE kom.objednavka_id = o.id AND kom.smazano = 0
-                 ORDER BY kom.dt_vytvoreni DESC
-                 LIMIT 1) as last_comment_date
+                COALESCE(komagg.comments_count, 0) as comments_count,
+                komlast.last_comment_author,
+                komagg.last_comment_date
                 
                 -- 🆕 Zjistit, zda aktuální uživatel reagoval na nějaký komentář
                 -- ⚠️ DISABLED: Způsobovalo problém s PDO parametry
@@ -2771,6 +2826,69 @@ function handle_order_v3_list($input, $config, $queries) {
             LEFT JOIN " . TBL_UZIVATELE . " u9 ON o.fakturant_id = u9.id
             LEFT JOIN " . TBL_UZIVATELE . " u10 ON o.potvrdil_vecnou_spravnost_id = u10.id
             LEFT JOIN " . TBL_UZIVATELE . " u11 ON o.uzivatel_akt_id = u11.id
+            LEFT JOIN (
+                SELECT
+                    pol.objednavka_id,
+                    COUNT(*) as pocet_polozek,
+                    COALESCE(SUM(pol.cena_s_dph), 0) as cena_s_dph
+                FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol
+                GROUP BY pol.objednavka_id
+            ) polagg ON polagg.objednavka_id = o.id
+            LEFT JOIN (
+                SELECT
+                    pr.objednavka_id,
+                    COUNT(*) as pocet_priloh
+                FROM " . TBL_OBJEDNAVKY_PRILOHY . " pr
+                GROUP BY pr.objednavka_id
+            ) pragg ON pragg.objednavka_id = o.id
+            LEFT JOIN (
+                SELECT
+                    f.objednavka_id,
+                    COUNT(*) as pocet_faktur,
+                    COALESCE(SUM(f.fa_castka), 0) as faktury_celkova_castka_s_dph,
+                    SUM(
+                        CASE
+                            WHEN LOWER(REPLACE(REPLACE(REPLACE(REPLACE(f.stav, 'á', 'a'), 'é', 'e'), 'í', 'i'), 'ů', 'u')) NOT IN ('zaplaceno', 'dokoncena') THEN 1
+                            ELSE 0
+                        END
+                    ) as nezaplacene_faktury_count,
+                    SUM(CASE WHEN f.vecna_spravnost_potvrzeno = 2 THEN 1 ELSE 0 END) as vecna_spravnost_zamitnuto_count
+                FROM " . TBL_FAKTURY . " f
+                WHERE f.aktivni = 1
+                GROUP BY f.objednavka_id
+            ) fagg ON fagg.objednavka_id = o.id
+            LEFT JOIN (
+                SELECT
+                    f.objednavka_id,
+                    MIN(f.id) as first_reject_faktura_id
+                FROM " . TBL_FAKTURY . " f
+                WHERE f.aktivni = 1
+                  AND f.vecna_spravnost_potvrzeno = 2
+                GROUP BY f.objednavka_id
+            ) frej ON frej.objednavka_id = o.id
+            LEFT JOIN " . TBL_FAKTURY . " frejf ON frejf.id = frej.first_reject_faktura_id
+            LEFT JOIN (
+                SELECT
+                    kom.objednavka_id,
+                    COUNT(*) as comments_count,
+                    MAX(kom.dt_vytvoreni) as last_comment_date
+                FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom
+                WHERE kom.smazano = 0
+                GROUP BY kom.objednavka_id
+            ) komagg ON komagg.objednavka_id = o.id
+            LEFT JOIN (
+                SELECT
+                    kom.objednavka_id,
+                    SUBSTRING_INDEX(
+                        GROUP_CONCAT(CONCAT(COALESCE(u.jmeno, ''), ' ', COALESCE(u.prijmeni, '')) ORDER BY kom.dt_vytvoreni DESC, kom.id DESC SEPARATOR '||'),
+                        '||',
+                        1
+                    ) as last_comment_author
+                FROM " . TBL_OBJEDNAVKY_KOMENTARE . " kom
+                LEFT JOIN " . TBL_UZIVATELE . " u ON u.id = kom.user_id
+                WHERE kom.smazano = 0
+                GROUP BY kom.objednavka_id
+            ) komlast ON komlast.objednavka_id = o.id
             WHERE $where_sql
             ORDER BY $order_by_sql
             LIMIT $per_page OFFSET $offset
@@ -2781,9 +2899,11 @@ function handle_order_v3_list($input, $config, $queries) {
         // ⚠️ DISABLED: user_has_replied subselect removed, no need for extra param
         $final_params = $where_params;
         
+        $t_main = microtime(true);
         $stmt_orders = $db->prepare($sql_orders);
         $stmt_orders->execute($final_params);
         $orders = $stmt_orders->fetchAll(PDO::FETCH_ASSOC);
+        error_log(sprintf("[OrderV3 PERF] mainSelect: %.1f ms (rows=%d)", (microtime(true) - $t_main) * 1000, count($orders)));
         if (count($orders) > 0) {
             $order_ids = array_column($orders, 'id');
             $order_nums = array_column($orders, 'cislo_objednavky');
@@ -2825,7 +2945,9 @@ function handle_order_v3_list($input, $config, $queries) {
         // 13.2 🚀 BATCH ENRICHMENT - optimalizované obohacení dat (NOVÁ VERZE)
         // Nahrazuje per-order loop který volal 5× enrichment funkcí pro každou objednávku
         // Nová verze: VŠECHNY dotazy najednou → 300-400 dotazů → ~10 dotazů
+        $t_enrich = microtime(true);
         enrichOrdersV3Batch($db, $orders);
+        error_log(sprintf("[OrderV3 PERF] enrichOrdersV3Batch: %.1f ms", (microtime(true) - $t_enrich) * 1000));
         
         // 13.3 Jednotlivé enrichmenty které používají existující JOIN data (bez DB volání)
         foreach ($orders as &$order) {
@@ -2836,32 +2958,14 @@ function handle_order_v3_list($input, $config, $queries) {
         unset($order);
         
         // 13.4 🎯 SUBSTITUTION INFO - Přidej informace o zastoupení ke každé akci
+        // 🚀 BATCH VERZE: nahrazuje per-order N+1 loop jedním query na TBL_ZASTUPOVANI_AKCE_LOG
+        $t_sub = microtime(true);
         foreach ($orders as &$order) {
-            // Inicializuj pole pro substitution info
-            $order['substitution_info'] = [];
-            
-            // Schvalovatel objednávky (schválení/zamítnutí/čeká se) - s fallbackem typů akcí
-            $sub_info = resolveOrderApprovalSubstitutionInfo($db, $order);
-            if ($sub_info) {
-                $order['substitution_info']['schvalovatel'] = $sub_info;
-            }
-            
-            // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)
-            if (!empty($order['potvrdil_vecnou_spravnost_id']) && !empty($order['dt_potvrzeni_vecne_spravnosti'])) {
-                $sub_info = get_substitution_info_for_action(
-                    $db,
-                    (int)$order['potvrdil_vecnou_spravnost_id'],
-                    'CONFIRM',
-                    'OBJEDNAVKA',
-                    (int)$order['id'],
-                    $order['dt_potvrzeni_vecne_spravnosti']
-                );
-                if ($sub_info) {
-                    $order['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
-                }
-            }
+            if (!isset($order['substitution_info'])) $order['substitution_info'] = [];
         }
         unset($order);
+        enrichOrdersV3WithSubstitutionBatch($db, $orders);
+        error_log(sprintf("[OrderV3 PERF] substitutionBatch: %.1f ms", (microtime(true) - $t_sub) * 1000));
 
         // 14. Úspěšná odpověď
         http_response_code(200);
@@ -3167,7 +3271,7 @@ function handle_order_v3_majetek_list($input, $config, $queries) {
         TimezoneHelper::setMysqlTimezone($db);
 
         $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
-        $per_page = isset($input['per_page']) ? max(1, min(500, (int)$input['per_page'])) : 50;
+        $per_page = isset($input['per_page']) ? max(1, min(1000, (int)$input['per_page'])) : 50;
         $offset = ($page - 1) * $per_page;
 
         $period = isset($input['period']) ? $input['period'] : 'last-month';

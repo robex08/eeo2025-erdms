@@ -6,6 +6,101 @@ import './Dashboard.css';
 // Verze aplikace z environment
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0';
 
+const OUTLOOK_EXPORT_HEADERS = [
+  'Titul',
+  'Jméno',
+  '2. křestní jméno',
+  'Příjmení',
+  'Za příjmením',
+  'Společnost',
+  'Oddělení',
+  'Funkce',
+  'Ulice (zam.)',
+  'Ulice 2 (zam.)',
+  'Ulice 3 (zam.)',
+  'Město (zam.)',
+  'Země/oblast (zam.)',
+  'PSČ (zam.)',
+  'Země/oblast (zaměstnání)',
+  'Ulice (dom.)',
+  'Ulice 2 (dom.)',
+  'Ulice 3 (dom.)',
+  'Město (dom.)',
+  'Země/oblast (dom.)',
+  'PSČ (dom.)',
+  'Země/oblast (domů)',
+  'Jiná ulice',
+  'Jiná ulice 2',
+  'Jiná ulice 3',
+  'Jiné město',
+  'Jiný okres',
+  'Jiné PSČ',
+  'Jiná země/oblast',
+  'Telefon asistenta',
+  'Fax (zam.)',
+  'Telefon (zam.)',
+  'Telefon 2 (zam.)',
+  'Zpětné volání',
+  'Telefon do auta',
+  'Telefon společnosti',
+  'Fax domů',
+  'Telefon domů',
+  'Telefon 2 domů',
+  'ISDN',
+  'Mobilní telefon',
+  'Jiný fax',
+  'Jiný telefon',
+  'Pager',
+  'Primární telefon',
+  'Radiotelefon',
+  'Pro neslyšící',
+  'Dálnopis',
+  'Adresářový server',
+  'Citlivost',
+  'Číslo průkazu totožnosti',
+  'Děti',
+  'Doporučil',
+  'E-mailová adresa',
+  'Typ e-mailu',
+  'Zobrazované jméno e-mailu',
+  'E-mailová adresa 2',
+  'Typ e-mailu 2',
+  'Zobrazované jméno e-mailu 2',
+  'E-mailová adresa 3',
+  'Typ e-mailu 3',
+  'Zobrazované jméno e-mailu 3',
+  'Fakturační údaje',
+  'IČO',
+  'Informace o volném čase v síti Internet',
+  'Iniciály',
+  'Jazyk',
+  'Jiná poštovní přihrádka',
+  'Jméno asistenta',
+  'Jméno správce',
+  'Kategorie',
+  'Klíč. slova',
+  'Manžel(ka)/partner(ka)',
+  'Narozeniny',
+  'Pohlaví',
+  'Poštovní přihrádka domů',
+  'Poštovní přihrádka zaměstnání',
+  'Poznámky',
+  'Priorita',
+  'Profese',
+  'Sídlo pracoviště',
+  'Soukromé',
+  'Účet',
+  'Umístění',
+  'Uživatel 1',
+  'Uživatel 2',
+  'Uživatel 3',
+  'Uživatel 4',
+  'Výročí',
+  'Vzdálenost',
+  'Webová stránka',
+  'Záliby'
+];
+
 function Dashboard() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -498,6 +593,114 @@ function Dashboard() {
   // Normalizace textu - odstraní diakritiku a převede na lowercase
   const normalizeText = (text) => {
     return (text || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  };
+
+  const toCsvValue = (value) => {
+    return `"${String(value ?? '').replace(/"/g, '""')}"`;
+  };
+
+  const encodeWindows1250 = (text) => {
+    const cp1250Map = {
+      'Á': 0xc1, 'Ä': 0xc4, 'Č': 0xc8, 'Ď': 0xcf, 'É': 0xc9, 'Ě': 0xcc,
+      'Í': 0xcd, 'Ň': 0xd2, 'Ó': 0xd3, 'Ö': 0xd6, 'Ř': 0xd8, 'Š': 0x8a,
+      'Ť': 0x8d, 'Ú': 0xda, 'Ů': 0xd9, 'Ü': 0xdc, 'Ý': 0xdd, 'Ž': 0x8e,
+      'á': 0xe1, 'ä': 0xe4, 'č': 0xe8, 'ď': 0xef, 'é': 0xe9, 'ě': 0xec,
+      'í': 0xed, 'ň': 0xf2, 'ó': 0xf3, 'ö': 0xf6, 'ř': 0xf8, 'š': 0x9a,
+      'ť': 0x9d, 'ú': 0xfa, 'ů': 0xf9, 'ü': 0xfc, 'ý': 0xfd, 'ž': 0x9e,
+      '€': 0x80, '‚': 0x82, '„': 0x84, '…': 0x85, '†': 0x86, '‡': 0x87,
+      '‰': 0x89, '‹': 0x8b, 'Ś': 0x8c, 'Ź': 0x8f, '‘': 0x91, '’': 0x92,
+      '“': 0x93, '”': 0x94, '•': 0x95, '–': 0x96, '—': 0x97, '™': 0x99,
+      '›': 0x9b, 'ś': 0x9c, 'ź': 0x9f, ' ': 0xa0, 'ˇ': 0xa1, '˘': 0xa2,
+      'Ł': 0xa3, '¤': 0xa4, 'Ą': 0xa5, '¦': 0xa6, '§': 0xa7, '¨': 0xa8,
+      '©': 0xa9, 'Ş': 0xaa, '«': 0xab, '¬': 0xac, '­': 0xad, '®': 0xae,
+      'Ż': 0xaf, '°': 0xb0, '±': 0xb1, '˛': 0xb2, 'ł': 0xb3, '´': 0xb4,
+      'µ': 0xb5, '¶': 0xb6, '·': 0xb7, '¸': 0xb8, 'ą': 0xb9, 'ş': 0xba,
+      '»': 0xbb, 'Ľ': 0xbc, '˝': 0xbd, 'ľ': 0xbe, 'ż': 0xbf
+    };
+
+    const bytes = [];
+    for (const ch of text) {
+      const code = ch.charCodeAt(0);
+      if (code <= 0x7f) {
+        bytes.push(code);
+      } else if (Object.prototype.hasOwnProperty.call(cp1250Map, ch)) {
+        bytes.push(cp1250Map[ch]);
+      } else {
+        bytes.push(0x3f);
+      }
+    }
+
+    return new Uint8Array(bytes);
+  };
+
+  const getOutlookExportEmployees = () => {
+    return getFilteredEmployees().filter((emp) => {
+      const email = (emp.mail || '').trim().toLowerCase();
+      const department = (emp.department || '').trim();
+
+      return emp.accountEnabled === true &&
+        email.endsWith('@zachranka.cz') &&
+        department.length > 0;
+    });
+  };
+
+  const buildOutlookContactRow = (emp) => {
+    const firstName = (emp.givenName || '').trim();
+    const lastName = (emp.surname || '').trim();
+    const displayName = (emp.displayName || `${firstName} ${lastName}`.trim()).trim();
+    const email = (emp.mail || '').trim();
+    const businessPhone = Array.isArray(emp.businessPhones) ? (emp.businessPhones[0] || '') : '';
+    const initials = `${firstName[0] || ''}.${lastName[0] || ''}.`.replace(/^\.+|\.+$/g, '');
+
+    const row = Object.fromEntries(OUTLOOK_EXPORT_HEADERS.map((header) => [header, '']));
+
+    row['Jméno'] = firstName;
+    row['Příjmení'] = lastName;
+    row['Společnost'] = 'ZZS SK, p.o.';
+    row['Oddělení'] = emp.department || '';
+    row['Funkce'] = emp.jobTitle || '';
+    row['Město (zam.)'] = emp.city || '';
+    row['Telefon (zam.)'] = businessPhone;
+    row['Mobilní telefon'] = emp.mobilePhone || '';
+    row['E-mailová adresa'] = email;
+    row['Typ e-mailu'] = email ? 'SMTP' : '';
+    row['Zobrazované jméno e-mailu'] = email ? `${displayName} | ZZSSK (${email})` : '';
+    row['Citlivost'] = 'Normální';
+    row['Iniciály'] = initials;
+    row['Priorita'] = 'Střední';
+    row['Soukromé'] = 'False';
+    row['Umístění'] = emp.officeLocation || '';
+
+    return row;
+  };
+
+  const handleExportOutlookContacts = () => {
+    const exportEmployees = getOutlookExportEmployees();
+
+    if (exportEmployees.length === 0) {
+      window.alert('Nebyli nalezeni žádní zaměstnanci pro export (aktivní, @zachranka.cz, s vyplněným oddělením).');
+      return;
+    }
+
+    const csvHeader = OUTLOOK_EXPORT_HEADERS.map(toCsvValue).join(',');
+    const csvRows = exportEmployees.map((emp) => {
+      const row = buildOutlookContactRow(emp);
+      return OUTLOOK_EXPORT_HEADERS.map((header) => toCsvValue(row[header])).join(',');
+    });
+
+    const csvContent = [csvHeader, ...csvRows].join('\r\n');
+    const csvBytes = encodeWindows1250(csvContent);
+    const blob = new Blob([csvBytes], { type: 'text/csv;charset=windows-1250;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const dateStamp = new Date().toISOString().slice(0, 10);
+
+    link.href = url;
+    link.download = `outlook-kontakty-aktivni-zachranka-s-oddelenim-${dateStamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
   };
 
   const handleSearch = (query) => {
@@ -2125,7 +2328,18 @@ function Dashboard() {
           <div className="employees-section">
             <div className="employees-header">
               <div className="employees-title-wrapper">
-                <h2>Přehled zaměstnanců</h2>
+                <div className="employees-title-row">
+                  <h2>Přehled zaměstnanců</h2>
+                  <button
+                    type="button"
+                    className="outlook-export-btn"
+                    onClick={handleExportOutlookContacts}
+                    disabled={loadingEmployees || employees.length === 0}
+                    title="Export kontaktů do Outlook CSV"
+                  >
+                    📤 Export kontaktů do Outlooku (admin)
+                  </button>
+                </div>
                 {totalEmployees > 0 && (
                   <p className="employees-count">
                     {searchQuery.length >= 3 

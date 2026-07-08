@@ -292,12 +292,32 @@ const withFsFont = (opts, sz = 15) => ({
 });
 
 const LOCAL_STORAGE_PREFIX = 'stats_reports';
-const MAX_ORDERS_BATCH = 1000;
+const MAX_ORDERS_BATCH = 500;
 const MAX_INVOICE_PAGE = 500;
 const MAX_PAGES = 20;
 const TABLE_PAGE_SIZES = [5, 10, 25, 50, 100, 200, 250, 500];
 const DEFAULT_TABLE_PAGE_SIZE = 25;
 const CHART_COLORS = ['#1d4ed8', '#7c3aed', '#06b6d4', '#f97316', '#f43f5e', '#10b981', '#0ea5e9', '#f59e0b'];
+const IS_DEV = process.env.NODE_ENV !== 'production';
+
+const startDevTimer = (label, meta) => {
+  if (!IS_DEV || typeof console === 'undefined') return () => {};
+  const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+  if (meta !== undefined) {
+    console.log(`[StatsReports] ${label} start`, meta);
+  } else {
+    console.log(`[StatsReports] ${label} start`);
+  }
+  return (endMeta) => {
+    const finishedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const elapsedMs = Math.max(0, finishedAt - startedAt);
+    if (endMeta !== undefined) {
+      console.log(`[StatsReports] ${label} end (${elapsedMs.toFixed(1)} ms)`, endMeta);
+    } else {
+      console.log(`[StatsReports] ${label} end (${elapsedMs.toFixed(1)} ms)`);
+    }
+  };
+};
 
 const PageWrapper = styled.div`
   min-height: 100vh;
@@ -1185,19 +1205,19 @@ const Table = styled.table`
   }
 
   /* Sticky první sloupec */
-  thead th:first-child,
-  tbody td:first-child {
+  thead th:first-of-type,
+  tbody td:first-of-type {
     position: sticky;
     left: 0;
     z-index: 10;
   }
-  thead th:first-child {
+  thead th:first-of-type {
     z-index: 11;
     background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
   }
   /* Ostatní buňky mají nižší z-index */
-  tbody td:not(:first-child) {
+  tbody td:not(:first-of-type) {
     z-index: 1;
   }
   /* Globální tbody td:first-child pravidla ODSTRANĚNA - řeší se v TbodyGroup */
@@ -1225,20 +1245,20 @@ const Tr = styled.tr`
 
   /* ✅ FIX: Sticky první sloupec musí mít stejné pozadí jako zbytek řádku */
   ${props => props.$bgColor ? `
-    & td:first-child {
+    & td:first-of-type {
       background: ${props.$bgColor} !important;
       box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
     }
   ` : `
-    & td:first-child {
+    & td:first-of-type {
       box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
     }
-    &:nth-of-type(even) td:first-child {
+    &:nth-of-type(even) td:first-of-type {
       background: #f8fafc !important;
     }
   `}
 
-  &:hover td:first-child {
+  &:hover td:first-of-type {
     background: #e2e8f0 !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
   }
@@ -1258,7 +1278,7 @@ const TbodyGroup = styled.tbody`
   &:nth-of-type(odd) tr {
     background-color: #fff;
   }
-  &:nth-of-type(odd) tr td:first-child { 
+  &:nth-of-type(odd) tr td:first-of-type { 
     background: #fff !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1267,7 +1287,7 @@ const TbodyGroup = styled.tbody`
   &:nth-of-type(even) tr {
     background-color: #f8fafc;
   }
-  &:nth-of-type(even) tr td:first-child { 
+  &:nth-of-type(even) tr td:first-of-type { 
     background: #f8fafc !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1276,13 +1296,13 @@ const TbodyGroup = styled.tbody`
   &:hover tr {
     background-color: #e8f0fe !important;
   }
-  &:hover tr td:first-child { 
+  &:hover tr td:first-of-type { 
     background: #e8f0fe !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
   }
   
   /* Čárkovaná čára mezi fakturami v rámci jedné objednávky */
-  & tr:not(:first-child) {
+  & tr:not(:first-of-type) {
     border-top: 1px dashed #c7d2fe;
   }
 `;
@@ -1290,7 +1310,7 @@ const TbodyGroup = styled.tbody`
 // Zvýrazněná skupina řádků pro objednávky se zálohovou + vyúčtovací fakturou
 const TbodyGroupHighlighted = styled(TbodyGroup)`
   /* Zelený border na levé straně první buňky */
-  & tr:first-child td:first-child {
+  & tr:first-of-type td:first-of-type {
     border-left: 4px solid #16a34a;
     padding-left: 0.6rem;
   }
@@ -1299,7 +1319,7 @@ const TbodyGroupHighlighted = styled(TbodyGroup)`
   &:nth-of-type(odd) tr {
     background-color: #f0fdf4;
   }
-  &:nth-of-type(odd) tr td:first-child { 
+  &:nth-of-type(odd) tr td:first-of-type { 
     background: #f0fdf4 !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1308,7 +1328,7 @@ const TbodyGroupHighlighted = styled(TbodyGroup)`
   &:nth-of-type(even) tr {
     background-color: #f0fdf4;
   }
-  &:nth-of-type(even) tr td:first-child { 
+  &:nth-of-type(even) tr td:first-of-type { 
     background: #f0fdf4 !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1317,7 +1337,7 @@ const TbodyGroupHighlighted = styled(TbodyGroup)`
   &:hover tr {
     background-color: #dcfce7 !important;
   }
-  &:hover tr td:first-child { 
+  &:hover tr td:first-of-type { 
     background: #dcfce7 !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
   }
@@ -1326,7 +1346,7 @@ const TbodyGroupHighlighted = styled(TbodyGroup)`
 // Oranžová skupina řádků pro objednávky blízko dokončení (chybí jen certifikát)
 const TbodyGroupOrange = styled(TbodyGroup)`
   /* Oranžový border na levé straně první buňky */
-  & tr:first-child td:first-child {
+  & tr:first-of-type td:first-of-type {
     border-left: 4px solid #f59e0b;
     padding-left: 0.6rem;
   }
@@ -1369,7 +1389,7 @@ const TbodyGroupCompleting = styled(TbodyGroup)`
   &:nth-of-type(odd) tr {
     background-color: #f5f3ff;
   }
-  &:nth-of-type(odd) tr td:first-child {
+  &:nth-of-type(odd) tr td:first-of-type {
     background: #f5f3ff !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1377,7 +1397,7 @@ const TbodyGroupCompleting = styled(TbodyGroup)`
   &:nth-of-type(even) tr {
     background-color: #f5f3ff;
   }
-  &:nth-of-type(even) tr td:first-child {
+  &:nth-of-type(even) tr td:first-of-type {
     background: #f5f3ff !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1385,7 +1405,7 @@ const TbodyGroupCompleting = styled(TbodyGroup)`
   &:hover tr {
     background-color: #ddd6fe !important;
   }
-  &:hover tr td:first-child {
+  &:hover tr td:first-of-type {
     background: #ddd6fe !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
   }
@@ -1393,7 +1413,7 @@ const TbodyGroupCompleting = styled(TbodyGroup)`
 
 // Modrá skupina řádků pro čerstvě dokončené objednávky
 const TbodyGroupCompleted = styled(TbodyGroup)`
-  & tr:first-child td:first-child {
+  & tr:first-of-type td:first-of-type {
     border-left: 4px solid #0ea5e9;
     padding-left: 0.6rem;
   }
@@ -1401,7 +1421,7 @@ const TbodyGroupCompleted = styled(TbodyGroup)`
   &:nth-of-type(odd) tr {
     background-color: #e0f2fe;
   }
-  &:nth-of-type(odd) tr td:first-child { 
+  &:nth-of-type(odd) tr td:first-of-type {
     background: #e0f2fe !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1409,7 +1429,7 @@ const TbodyGroupCompleted = styled(TbodyGroup)`
   &:nth-of-type(even) tr {
     background-color: #e0f2fe;
   }
-  &:nth-of-type(even) tr td:first-child { 
+  &:nth-of-type(even) tr td:first-of-type {
     background: #e0f2fe !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.12);
   }
@@ -1417,7 +1437,7 @@ const TbodyGroupCompleted = styled(TbodyGroup)`
   &:hover tr {
     background-color: #bae6fd !important;
   }
-  &:hover tr td:first-child { 
+  &:hover tr td:first-of-type {
     background: #bae6fd !important;
     box-shadow: 3px 0 10px rgba(0, 0, 0, 0.15);
   }
@@ -3686,13 +3706,50 @@ export default function StatsReportsPage() {
   }, [token, username]);
 
   const loadOrders = useCallback(async (options = {}) => {
-    const { accessContext = null } = options;
+    const { accessContext = null, source = 'unknown' } = options;
     const all = [];
     const backendFilters = {};
     if (filters.dateFrom) backendFilters.datum_od = filters.dateFrom;
     if (filters.dateTo) backendFilters.datum_do = filters.dateTo;
 
-    for (let page = 1; page <= MAX_PAGES; page += 1) {
+    const firstResponse = await listOrdersV3({
+      token,
+      username,
+      page: 1,
+      per_page: MAX_ORDERS_BATCH,
+      period: 'all',
+      filters: backendFilters,
+      access_context: accessContext || undefined,
+      exclude_cancelled: true,
+      debugSource: source
+    });
+
+    const { orders: firstBatch, pagination, status, message } = parseOrdersResponse(firstResponse);
+
+    if (status) {
+      const normalized = String(status).toLowerCase();
+      if (normalized !== 'ok' && normalized !== 'success') {
+        throw new Error(message || 'Nepodařilo se načíst objednávky.');
+      }
+    }
+
+    all.push(...firstBatch);
+    const totalPages = pagination?.total_pages || 0;
+    if (totalPages <= 1) {
+      return { data: all, truncated: false, accessContext };
+    }
+
+    const pagesToFetch = Math.min(totalPages, MAX_PAGES);
+    const remainingPages = [];
+    for (let page = 2; page <= pagesToFetch; page += 1) {
+      remainingPages.push(page);
+    }
+
+    if (remainingPages.length === 0) {
+      return { data: all, truncated: false, accessContext };
+    }
+
+    const remainingResponses = await Promise.all(remainingPages.map(async (page) => {
       const response = await listOrdersV3({
         token,
         username,
@@ -3701,34 +3758,65 @@ export default function StatsReportsPage() {
         period: 'all',
         filters: backendFilters,
         access_context: accessContext || undefined,
-        exclude_cancelled: true
+        exclude_cancelled: true,
+        debugSource: source
       });
+      const parsed = parseOrdersResponse(response);
+      if (parsed.status) {
+        const normalized = String(parsed.status).toLowerCase();
+        if (normalized !== 'ok' && normalized !== 'success') {
+          throw new Error(parsed.message || 'Nepodařilo se načíst objednávky.');
+        }
+      }
+      return { page, batch: parsed.orders || [] };
+    }));
 
-      const { orders: batch, pagination, status, message } = parseOrdersResponse(response);
-
-          if (status) {
-            const normalized = String(status).toLowerCase();
-            if (normalized !== 'ok' && normalized !== 'success') {
-              throw new Error(message || 'Nepodařilo se načíst objednávky.');
-            }
-          }
-
+    remainingResponses.sort((left, right) => left.page - right.page).forEach(({ batch }) => {
       all.push(...batch);
-      if (pagination?.total_pages && page >= pagination.total_pages) {
-        return { data: all, truncated: false, accessContext };
-      }
-      if (!pagination && batch.length < MAX_ORDERS_BATCH) {
-        return { data: all, truncated: false, accessContext };
-      }
-    }
+    });
 
-    return { data: all, truncated: true, accessContext };
+    return { data: all, truncated: totalPages > MAX_PAGES, accessContext };
   }, [token, username, filters.dateFrom, filters.dateTo]);
 
   const loadInvoices = useCallback(async (options = {}) => {
-    const { accessContext = null } = options;
+    const { accessContext = null, source = 'unknown' } = options;
     const all = [];
-    for (let page = 1; page <= MAX_PAGES; page += 1) {
+
+    const firstResponse = await listInvoices25({
+      token,
+      username,
+      page: 1,
+      per_page: MAX_INVOICE_PAGE,
+      year: filters.year || undefined,
+      datum_od: filters.dateFrom || undefined,
+      datum_do: filters.dateTo || undefined,
+      usek_id: filters.usekIds.length === 1 ? filters.usekIds[0] : undefined,
+      access_context: accessContext || undefined,
+      debugSource: source
+    });
+    const firstBatch = (firstResponse.faktury || []).map(normalizeInvoice);
+    all.push(...firstBatch);
+
+    const invoicePagination = firstResponse?.pagination || firstResponse?.data?.pagination || null;
+    const totalPages = invoicePagination?.total_pages || 0;
+    if (totalPages <= 1) {
+      if (firstBatch.length < MAX_INVOICE_PAGE) {
+        return { data: all, truncated: false };
+      }
+      return { data: all, truncated: true };
+    }
+
+    const pagesToFetch = Math.min(totalPages, MAX_PAGES);
+    const remainingPages = [];
+    for (let page = 2; page <= pagesToFetch; page += 1) {
+      remainingPages.push(page);
+    }
+
+    if (remainingPages.length === 0) {
+      return { data: all, truncated: false };
+    }
+
+    const remainingResponses = await Promise.all(remainingPages.map(async (page) => {
       const response = await listInvoices25({
         token,
         username,
@@ -3738,15 +3826,20 @@ export default function StatsReportsPage() {
         datum_od: filters.dateFrom || undefined,
         datum_do: filters.dateTo || undefined,
         usek_id: filters.usekIds.length === 1 ? filters.usekIds[0] : undefined,
-        access_context: accessContext || undefined
+        access_context: accessContext || undefined,
+        debugSource: source
       });
-      const batch = (response.faktury || []).map(normalizeInvoice);
+      return {
+        page,
+        batch: (response.faktury || []).map(normalizeInvoice)
+      };
+    }));
+
+    remainingResponses.sort((left, right) => left.page - right.page).forEach(({ batch }) => {
       all.push(...batch);
-      if (batch.length < MAX_INVOICE_PAGE) {
-        return { data: all, truncated: false };
-      }
-    }
-    return { data: all, truncated: true };
+    });
+
+    return { data: all, truncated: totalPages > MAX_PAGES };
   }, [token, username, filters.year, filters.dateFrom, filters.dateTo, filters.usekIds]);
 
   const loadContracts = useCallback(async () => {
@@ -3916,8 +4009,8 @@ export default function StatsReportsPage() {
       });
 
       const [ordersResult, invoicesResult, orderAttachmentsResult] = await Promise.all([
-        trackProgress(loadOrders()),
-        trackProgress(loadInvoices()),
+        trackProgress(loadOrders({ source: 'control' })),
+        trackProgress(loadInvoices({ source: 'control' })),
         trackProgress(listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; }))
       ]);
       
@@ -3952,6 +4045,11 @@ export default function StatsReportsPage() {
     if (loadingTabsRef.current.has('stats')) return;
     if (!forceReload && loadedTabsRef.current.has('stats')) return;
     if (!forceReload && failedTabsRef.current.has('stats')) return;
+    const endTimer = startDevTimer('tab:stats', {
+      silent,
+      forceReload,
+      needsOrders: forceReload ? true : orders.length === 0
+    });
     if (forceReload && failedTabsRef.current.has('stats')) {
       setFailedTabs(prev => {
         const next = new Set(prev);
@@ -3968,7 +4066,7 @@ export default function StatsReportsPage() {
     try {
       if (needsOrders) {
         const [ordersResult, timelineResult] = await Promise.all([
-          loadOrders(),
+          loadOrders({ source: 'stats' }),
           fetchOrderTimelineV3({ token, username, year: new Date().getFullYear() })
         ]);
         setOrders(ordersResult.data || []);
@@ -3996,6 +4094,10 @@ export default function StatsReportsPage() {
         next.delete('stats');
         return next;
       });
+      endTimer({
+        loaded: loadedTabsRef.current.has('stats'),
+        failed: failedTabsRef.current.has('stats')
+      });
     }
   }, [token, username, loadOrders, orders.length]);
 
@@ -4021,7 +4123,8 @@ export default function StatsReportsPage() {
     try {
       const promises = [];
       if (needsOrders) promises.push(loadOrders());
-      if (needsInvoices) promises.push(loadInvoices());
+      if (needsOrders) promises.push(loadOrders({ source: 'spend' }));
+      if (needsInvoices) promises.push(loadInvoices({ source: 'spend' }));
       promises.push(loadContracts());
       
       const results = await Promise.all(promises);
@@ -4057,6 +4160,13 @@ export default function StatsReportsPage() {
     if (loadingTabsRef.current.has('reports')) return;
     if (!forceReload && loadedTabsRef.current.has('reports')) return;
     if (!forceReload && failedTabsRef.current.has('reports')) return;
+    const endTimer = startDevTimer('tab:reports', {
+      silent,
+      forceReload,
+      needsOrders: forceReload ? true : orders.length === 0,
+      needsInvoices: forceReload ? true : invoices.length === 0,
+      needsOrderAttachments: forceReload ? true : orderAttachments.length === 0
+    });
     if (forceReload && failedTabsRef.current.has('reports')) {
       setFailedTabs(prev => {
         const next = new Set(prev);
@@ -4073,8 +4183,8 @@ export default function StatsReportsPage() {
     setLoadingTabs(prev => new Set([...prev, 'reports']));
     try {
       const promises = [];
-      if (needsOrders) promises.push(loadOrders());
-      if (needsInvoices) promises.push(loadInvoices());
+      if (needsOrders) promises.push(loadOrders({ source: 'reports' }));
+      if (needsInvoices) promises.push(loadInvoices({ source: 'reports' }));
       if (needsOrderAttachments) promises.push(listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; }));
       promises.push(getAllAnnualFeeAttachments({ token, username }).catch(() => ({ success: false, data: [] })));
       
@@ -4105,6 +4215,10 @@ export default function StatsReportsPage() {
         const next = new Set(prev);
         next.delete('reports');
         return next;
+      });
+      endTimer({
+        loaded: loadedTabsRef.current.has('reports'),
+        failed: failedTabsRef.current.has('reports')
       });
     }
   }, [token, username, loadOrders, loadInvoices, orders.length, invoices.length, orderAttachments.length]);
@@ -4151,8 +4265,8 @@ export default function StatsReportsPage() {
       const needsInvoices = forceReload ? true : invoices.length === 0;
 
       const results = await Promise.all([
-        needsOrders ? loadOrders({ accessContext: 'vzdel' }) : Promise.resolve(null),
-        needsInvoices ? loadInvoices({ accessContext: 'vzdel' }) : Promise.resolve(null)
+        needsOrders ? loadOrders({ accessContext: 'vzdel', source: 'vzdel' }) : Promise.resolve(null),
+        needsInvoices ? loadInvoices({ accessContext: 'vzdel', source: 'vzdel' }) : Promise.resolve(null)
       ]);
 
       const ordersResult = results[0];
@@ -4211,7 +4325,7 @@ export default function StatsReportsPage() {
     if (!silent) setLoading(true);
     setLoadingTabs(prev => new Set([...prev, 'pivot']));
     try {
-      const ordersResult = await loadOrders();
+      const ordersResult = await loadOrders({ source: 'pivot' });
       setOrders(ordersResult.data || []);
       setLoadedTabs(prev => new Set([...prev, 'pivot']));
     } catch (e) {
@@ -4232,6 +4346,7 @@ export default function StatsReportsPage() {
   const handleLoadData = useCallback(async () => {
     if (!token || !username) return;
     backgroundLoadRef.current = false;
+    const endTimer = startDevTimer('page:init-load', { activeTab });
     setLoading(true);
     setLoadError('');
     setLoadedTabs(new Set());
@@ -4260,6 +4375,7 @@ export default function StatsReportsPage() {
     } finally {
       setLoading(false);
       setTimeout(() => setIsInitialized(true), 300);
+      endTimer();
     }
   }, [token, username, activeTab, loadCommonData, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData, progress]);
 
@@ -4360,8 +4476,10 @@ export default function StatsReportsPage() {
     if (userKey && userKey !== 'guest' && lsLoadedForKey.current !== userKey) return;
     if (backgroundLoadRef.current) return;
 
-    const preloadTabs = ['control', 'stats', 'spend', 'reports', 'vzdel', 'pivot'];
-    if (!preloadTabs.includes(activeTab)) return;
+    const preloadTabs = activeTab === 'control'
+      ? ['stats', 'spend', 'pivot']
+      : ['control', 'stats', 'spend', 'reports', 'pivot'];
+    if (!preloadTabs.includes(activeTab) && activeTab !== 'control') return;
 
     // Aktivní tab MUSÍ být opravdu načtený, jinak preload nespouštíme.
     if (loading) return;
@@ -4371,12 +4489,16 @@ export default function StatsReportsPage() {
 
     backgroundLoadRef.current = true;
 
+    let cancelled = false;
+
     const timer = setTimeout(async () => {
       const orderedTabs = [activeTab].concat(preloadTabs.filter(t => t !== activeTab));
       for (const tab of orderedTabs) {
+        if (cancelled) break;
         if (tab === activeTab) continue;
         if (loadedTabsRef.current.has(tab) || loadingTabsRef.current.has(tab) || failedTabsRef.current.has(tab)) continue;
-        await new Promise(resolve => setTimeout(resolve, 350));
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (cancelled) break;
         if (tab === 'control') await loadControlTabDataRef.current(true);
         else if (tab === 'stats') await loadStatsTabDataRef.current(true);
         else if (tab === 'spend') await loadSpendTabDataRef.current(true);
@@ -4384,9 +4506,12 @@ export default function StatsReportsPage() {
         else if (tab === 'vzdel') await loadVzdelTabDataRef.current(true);
         else if (tab === 'pivot') await loadPivotTabDataRef.current(true);
       }
-    }, 1200);
+    }, 3500);
 
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [token, username, filtersReady, isInitialized, userKey, activeTab, loading]);
 
   const [applyTrigger, setApplyTrigger] = useState(0);
@@ -8558,8 +8683,8 @@ export default function StatsReportsPage() {
     try {
       const isVzdelContext = activeTab === 'vzdel';
       const [ordersResult, invoicesResult, attachmentsResult] = await Promise.all([
-        (isVzdelContext ? loadOrders({ accessContext: 'vzdel' }) : loadOrders()).catch(e => { console.warn('Reload orders failed:', e); return null; }),
-        (isVzdelContext ? loadInvoices({ accessContext: 'vzdel' }) : Promise.resolve(null)).catch(e => { console.warn('Reload invoices failed:', e); return null; }),
+        (isVzdelContext ? loadOrders({ accessContext: 'vzdel', source: 'edit-reload' }) : loadOrders({ source: 'edit-reload' })).catch(e => { console.warn('Reload orders failed:', e); return null; }),
+        (isVzdelContext ? loadInvoices({ accessContext: 'vzdel', source: 'edit-reload' }) : Promise.resolve(null)).catch(e => { console.warn('Reload invoices failed:', e); return null; }),
         listAllOrderAttachments(username, token, 10000, 0).catch(e => { console.warn('Reload attachments failed:', e); return null; })
       ]);
       if (ordersResult) {

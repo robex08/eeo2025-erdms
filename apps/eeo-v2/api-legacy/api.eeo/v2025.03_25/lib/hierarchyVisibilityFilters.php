@@ -291,11 +291,13 @@ function getOrderIdsByLocationAndDepartment($locationId, $departmentId, $pdo) {
  * @param PDO $pdo Databázové připojení
  * @return bool True pokud může vidět
  */
-function canUserViewOrder($userId, $orderId, $pdo) {
-  // Optimalizovaný dotaz - načte jen ID
-  $visibleOrderIds = getVisibleOrderIdsForUser($userId, $pdo, "hierarchy_user_{$userId}_orders");
-  
-  return in_array($orderId, $visibleOrderIds);
+if (!function_exists('canUserViewOrder')) {
+  function canUserViewOrder($userId, $orderId, $pdo) {
+    // Optimalizovaný dotaz - načte jen ID
+    $visibleOrderIds = getVisibleOrderIdsForUser($userId, $pdo, "hierarchy_user_{$userId}_orders");
+
+    return in_array($orderId, $visibleOrderIds);
+  }
 }
 
 /**

@@ -22,6 +22,48 @@ const api25invoices = axios.create({
   baseURL: process.env.REACT_APP_API2_BASE_URL,
   headers: { 'Content-Type': 'application/json' }
 });
+const IS_DEV = process.env.NODE_ENV !== 'production';
+const invoices25RequestCache = new Map();
+const invoices25InFlight = new Map();
+const INVOICES25_CACHE_TTL_MS = 15000;
+
+const startDevTimer = (label, meta) => {
+  if (!IS_DEV || typeof console === 'undefined') return () => {};
+  const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+  if (meta !== undefined) {
+    console.log(`[api25invoices] ${label} start`, meta);
+  } else {
+    console.log(`[api25invoices] ${label} start`);
+  }
+  return (endMeta) => {
+    const finishedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const elapsedMs = Math.max(0, finishedAt - startedAt);
+    if (endMeta !== undefined) {
+      console.log(`[api25invoices] ${label} end (${elapsedMs.toFixed(1)} ms)`, endMeta);
+    } else {
+      console.log(`[api25invoices] ${label} end (${elapsedMs.toFixed(1)} ms)`);
+    }
+  };
+};
+
+const getInvoices25CacheKey = (payload) => JSON.stringify(payload);
+
+const getCachedInvoices25Response = (cacheKey) => {
+  const cached = invoices25RequestCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.expiresAt < Date.now()) {
+    invoices25RequestCache.delete(cacheKey);
+    return null;
+  }
+  return cached.value;
+};
+
+const storeCachedInvoices25Response = (cacheKey, value) => {
+  invoices25RequestCache.set(cacheKey, {
+    value,
+    expiresAt: Date.now() + INVOICES25_CACHE_TTL_MS
+  });
+};
 
 // Response interceptor to handle token expiration
 api25invoices.interceptors.response.use(
@@ -1747,9 +1789,61 @@ export async function listInvoices25({
   show_only_inactive,  // 🔧 ADMIN FEATURE: Zobrazení pouze neaktivních faktur (aktivni = 0)
   order_by,    // 📊 Třídění - sloupec pro řazení
   order_direction  // 📊 Třídění - směr řazení (ASC/DESC)
+  ,debugSource = 'unknown'
 }) {
   if (!token || !username) {
     throw new Error('Chybí přístupový token nebo uživatelské jméno. Přihlaste se prosím znovu.');
+  }
+
+  const endTimer = startDevTimer('invoices25/list', { page, per_page, year, access_context, filter_status });
+
+  const requestPayload = {
+    token,
+    username,
+    page,
+    per_page,
+    year,
+    objednavka_id,
+    fa_dorucena,
+    fa_cislo_vema,
+    datum_od,
+    datum_do,
+    stredisko,
+    organizace_id,
+    usek_id,
+    access_context,
+    filter_status,
+    search_term,
+    cislo_objednavky,
+    filter_datum_doruceni,
+    filter_datum_vystaveni,
+    filter_datum_splatnosti,
+    filter_dt_aktualizace,
+    filter_stav,
+    filter_vytvoril_uzivatel,
+    filter_fa_typ,
+    castka_gt,
+    castka_lt,
+    castka_eq,
+    filter_ma_prilohy,
+    filter_vecna_kontrola,
+    filter_vecna_spravnost_status,
+    filter_vecnou_provedl,
+    filter_predano_zamestnanec,
+    filter_kontrola_radku,
+    show_only_inactive,
+    order_by,
+    order_direction
+  };
+  const cacheKey = getInvoices25CacheKey(requestPayload);
+  const cached = getCachedInvoices25Response(cacheKey);
+  if (cached) {
+    if (IS_DEV) console.log('[api25invoices] invoices25/list cache hit', { debugSource, page, per_page, year, access_context, filter_status });
+    return cached;
+  }
+  if (invoices25InFlight.has(cacheKey)) {
+    if (IS_DEV) console.log('[api25invoices] invoices25/list join in-flight', { debugSource, page, per_page, year, access_context, filter_status });
+    return invoices25InFlight.get(cacheKey);
   }
 
   try {
@@ -1811,25 +1905,22 @@ export async function listInvoices25({
     if (order_by !== undefined && order_by !== '') payload.order_by = order_by;
     if (order_direction !== undefined && order_direction !== '') payload.order_direction = order_direction;
 
-    const response = await api25invoices.post('invoices25/list', payload, {
+    const responsePromise = api25invoices.post('invoices25/list', payload, {
       timeout: 30000
-    });
+    }).then((response) => {
+      if (response.status !== 200) {
+        throw new Error('Neočekávaný kód odpovědi při načítání faktur');
+      }
 
-    if (response.status !== 200) {
-      throw new Error('Neočekávaný kód odpovědi při načítání faktur');
-    }
+      const data = response.data;
 
-    const data = response.data;
+      // Kontrola chyb
+      if (data.status === 'error' || data.err || data.error) {
+        const errorMsg = data.message || data.err || data.error || 'Chyba při načítání faktur';
+        throw new Error(errorMsg);
+      }
 
-    // Kontrola chyb
-    if (data.status === 'error' || data.err || data.error) {
-      const errorMsg = data.message || data.err || data.error || 'Chyba při načítání faktur';
-      throw new Error(errorMsg);
-    }
-
-    // ✅ Vrátit data podle BE dokumentace (status: "ok")
-    if (data.status === 'ok') {
-      return {
+      const result = data.status === 'ok' ? {
         status: data.status,
         message: data.message,
         test: data.test,
@@ -1837,19 +1928,26 @@ export async function listInvoices25({
         pagination: data.pagination || { page: 1, per_page: 50, total: 0, total_pages: 0 },
         statistiky: data.statistiky || null,
         user_info: data.user_info || null
+      } : {
+        faktury: [],
+        pagination: { page: 1, per_page: 50, total: 0, total_pages: 0 },
+        statistiky: null,
+        user_info: null
       };
-    }
 
-    // Fallback - prázdná data
-    return {
-      faktury: [],
-      pagination: { page: 1, per_page: 50, total: 0, total_pages: 0 },
-      statistiky: null,
-      user_info: null
-    };
+      storeCachedInvoices25Response(cacheKey, result);
+      endTimer({ rows: Array.isArray(result?.faktury) ? result.faktury.length : undefined, debugSource });
+      return result;
+    });
+
+    invoices25InFlight.set(cacheKey, responsePromise);
+    return await responsePromise;
 
   } catch (error) {
+    endTimer({ error: error?.message || String(error), debugSource });
     throw new Error(normalizeApi25InvoicesError(error));
+  } finally {
+    invoices25InFlight.delete(cacheKey);
   }
 }
 

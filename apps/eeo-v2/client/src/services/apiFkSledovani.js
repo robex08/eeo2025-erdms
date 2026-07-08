@@ -17,6 +17,22 @@ const api = axios.create({
   headers: { 'Content-Type': 'application/json' }
 });
 
+// Cache and in-flight deduplication to prevent N+1 storms on large tables.
+const fkCaseCache = new Map();
+const fkCaseInFlight = new Map();
+
+function getFkEntityKey({ objednavkaId = 0, fakturaId = 0 } = {}) {
+  const o = Number(objednavkaId) || 0;
+  const f = Number(fakturaId) || 0;
+  return `${o}:${f}`;
+}
+
+function invalidateFkCaseCache(entity) {
+  const key = getFkEntityKey(entity);
+  fkCaseCache.delete(key);
+  fkCaseInFlight.delete(key);
+}
+
 // -----------------------------------------------------------
 // GET-BY-ENTITY
 // -----------------------------------------------------------
@@ -28,21 +44,39 @@ const api = axios.create({
  * @param {string} username
  * @returns {Promise<{case: object|null, udalosti: Array}>}
  */
-export async function getFkCase({ objednavkaId = 0, fakturaId = 0 }, token, username) {
+export async function getFkCase({ objednavkaId = 0, fakturaId = 0 }, token, username, options = {}) {
   if (!token || !username) throw new Error('Chybí autentizační údaje');
 
-  const response = await api.post('/fk/get-by-entity', {
+  const forceRefresh = !!options.forceRefresh;
+  const entity = { objednavkaId: objednavkaId || 0, fakturaId: fakturaId || 0 };
+  const cacheKey = getFkEntityKey(entity);
+
+  if (!forceRefresh && fkCaseCache.has(cacheKey)) {
+    return fkCaseCache.get(cacheKey);
+  }
+
+  if (!forceRefresh && fkCaseInFlight.has(cacheKey)) {
+    return fkCaseInFlight.get(cacheKey);
+  }
+
+  const requestPromise = api.post('/fk/get-by-entity', {
     token,
     username,
-    objednavka_id: objednavkaId || 0,
-    faktura_id:    fakturaId    || 0,
+    objednavka_id: entity.objednavkaId,
+    faktura_id: entity.fakturaId,
+  }).then((response) => {
+    // {status:'success', data: {case, udalosti} | null}
+    if (response.data && response.data.status === 'success') {
+      fkCaseCache.set(cacheKey, response.data.data);
+      return response.data.data;
+    }
+    throw new Error(response.data?.message || 'Chyba API fk/get-by-entity');
+  }).finally(() => {
+    fkCaseInFlight.delete(cacheKey);
   });
 
-  // {status:'success', data: {case, udalosti} | null}
-  if (response.data && response.data.status === 'success') {
-    return response.data.data; // null nebo {case, udalosti}
-  }
-  throw new Error(response.data?.message || 'Chyba API fk/get-by-entity');
+  fkCaseInFlight.set(cacheKey, requestPromise);
+  return requestPromise;
 }
 
 // -----------------------------------------------------------
@@ -86,6 +120,7 @@ export async function fkUpsert(
   });
 
   if (response.data && response.data.status === 'success') {
+    invalidateFkCaseCache({ objednavkaId, fakturaId });
     return response.data.data; // {case, udalosti}
   }
   throw new Error(response.data?.message || 'Chyba API fk/upsert');
@@ -116,6 +151,7 @@ export async function fkAddKomentar({ objednavkaId = 0, fakturaId = 0 }, textZpr
   });
 
   if (response.data && response.data.status === 'success') {
+    invalidateFkCaseCache({ objednavkaId, fakturaId });
     return response.data.data;
   }
   throw new Error(response.data?.message || 'Chyba API fk/add-komentar');
@@ -145,6 +181,7 @@ export async function fkSetStav({ objednavkaId = 0, fakturaId = 0 }, stav, token
   });
 
   if (response.data && response.data.status === 'success') {
+    invalidateFkCaseCache({ objednavkaId, fakturaId });
     return response.data.data;
   }
   throw new Error(response.data?.message || 'Chyba API fk/set-stav');
