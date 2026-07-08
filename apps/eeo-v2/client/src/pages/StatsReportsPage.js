@@ -4045,11 +4045,6 @@ export default function StatsReportsPage() {
     if (loadingTabsRef.current.has('stats')) return;
     if (!forceReload && loadedTabsRef.current.has('stats')) return;
     if (!forceReload && failedTabsRef.current.has('stats')) return;
-    const endTimer = startDevTimer('tab:stats', {
-      silent,
-      forceReload,
-      needsOrders: forceReload ? true : orders.length === 0
-    });
     if (forceReload && failedTabsRef.current.has('stats')) {
       setFailedTabs(prev => {
         const next = new Set(prev);
@@ -4093,10 +4088,6 @@ export default function StatsReportsPage() {
         const next = new Set(prev);
         next.delete('stats');
         return next;
-      });
-      endTimer({
-        loaded: loadedTabsRef.current.has('stats'),
-        failed: failedTabsRef.current.has('stats')
       });
     }
   }, [token, username, loadOrders, orders.length]);
@@ -4160,13 +4151,6 @@ export default function StatsReportsPage() {
     if (loadingTabsRef.current.has('reports')) return;
     if (!forceReload && loadedTabsRef.current.has('reports')) return;
     if (!forceReload && failedTabsRef.current.has('reports')) return;
-    const endTimer = startDevTimer('tab:reports', {
-      silent,
-      forceReload,
-      needsOrders: forceReload ? true : orders.length === 0,
-      needsInvoices: forceReload ? true : invoices.length === 0,
-      needsOrderAttachments: forceReload ? true : orderAttachments.length === 0
-    });
     if (forceReload && failedTabsRef.current.has('reports')) {
       setFailedTabs(prev => {
         const next = new Set(prev);
@@ -4215,10 +4199,6 @@ export default function StatsReportsPage() {
         const next = new Set(prev);
         next.delete('reports');
         return next;
-      });
-      endTimer({
-        loaded: loadedTabsRef.current.has('reports'),
-        failed: failedTabsRef.current.has('reports')
       });
     }
   }, [token, username, loadOrders, loadInvoices, orders.length, invoices.length, orderAttachments.length]);
@@ -4346,7 +4326,6 @@ export default function StatsReportsPage() {
   const handleLoadData = useCallback(async () => {
     if (!token || !username) return;
     backgroundLoadRef.current = false;
-    const endTimer = startDevTimer('page:init-load', { activeTab });
     setLoading(true);
     setLoadError('');
     setLoadedTabs(new Set());
@@ -4375,7 +4354,6 @@ export default function StatsReportsPage() {
     } finally {
       setLoading(false);
       setTimeout(() => setIsInitialized(true), 300);
-      endTimer();
     }
   }, [token, username, activeTab, loadCommonData, loadControlTabData, loadStatsTabData, loadSpendTabData, loadReportsTabData, loadVzdelTabData, loadPivotTabData, progress]);
 
@@ -12512,12 +12490,13 @@ export default function StatsReportsPage() {
                                       {/* Stav */}
                                       {limit > 0 ? (
                                         <SmlouvyJezStatusBadge $level={level}>
-                                          {level === 'critical'
-                                            ? <><FontAwesomeIcon icon={faTriangleExclamation} /> Kritické</>
-                                            : level === 'warning'
-                                              ? <><FontAwesomeIcon icon={faTriangleExclamation} /> Pozor</>
-                                              : <><FontAwesomeIcon icon={faCheckCircle} /> V normě</>
-                                          }
+                                          {level === 'critical' ? (
+                                            <span><FontAwesomeIcon icon={faTriangleExclamation} /> Kritické</span>
+                                          ) : level === 'warning' ? (
+                                            <span><FontAwesomeIcon icon={faTriangleExclamation} /> Pozor</span>
+                                          ) : (
+                                            <span><FontAwesomeIcon icon={faCheckCircle} /> V normě</span>
+                                          )}
                                         </SmlouvyJezStatusBadge>
                                       ) : (
                                         <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>

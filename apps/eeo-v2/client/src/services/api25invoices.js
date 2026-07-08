@@ -22,29 +22,11 @@ const api25invoices = axios.create({
   baseURL: process.env.REACT_APP_API2_BASE_URL,
   headers: { 'Content-Type': 'application/json' }
 });
-const IS_DEV = process.env.NODE_ENV !== 'production';
 const invoices25RequestCache = new Map();
 const invoices25InFlight = new Map();
 const INVOICES25_CACHE_TTL_MS = 15000;
 
-const startDevTimer = (label, meta) => {
-  if (!IS_DEV || typeof console === 'undefined') return () => {};
-  const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-  if (meta !== undefined) {
-    console.log(`[api25invoices] ${label} start`, meta);
-  } else {
-    console.log(`[api25invoices] ${label} start`);
-  }
-  return (endMeta) => {
-    const finishedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-    const elapsedMs = Math.max(0, finishedAt - startedAt);
-    if (endMeta !== undefined) {
-      console.log(`[api25invoices] ${label} end (${elapsedMs.toFixed(1)} ms)`, endMeta);
-    } else {
-      console.log(`[api25invoices] ${label} end (${elapsedMs.toFixed(1)} ms)`);
-    }
-  };
-};
+const startDevTimer = () => () => {};
 
 const getInvoices25CacheKey = (payload) => JSON.stringify(payload);
 
@@ -1838,11 +1820,9 @@ export async function listInvoices25({
   const cacheKey = getInvoices25CacheKey(requestPayload);
   const cached = getCachedInvoices25Response(cacheKey);
   if (cached) {
-    if (IS_DEV) console.log('[api25invoices] invoices25/list cache hit', { debugSource, page, per_page, year, access_context, filter_status });
     return cached;
   }
   if (invoices25InFlight.has(cacheKey)) {
-    if (IS_DEV) console.log('[api25invoices] invoices25/list join in-flight', { debugSource, page, per_page, year, access_context, filter_status });
     return invoices25InFlight.get(cacheKey);
   }
 
