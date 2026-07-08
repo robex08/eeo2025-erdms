@@ -3646,47 +3646,17 @@ const Layout = ({ children }) => {
     const stayUrl = `${location?.pathname || window.location.pathname}${location?.search || window.location.search}${location?.hash || window.location.hash}`;
     sessionStorage.setItem('impersonation_return_url', stayUrl);
     try {
-      const success = await stopImpersonationContext();
+      const success = await stopImpersonationContext({ deferUiCommit: true });
       if (success) {
-        // 🔄 Reload user settings pro původního admina (helper avatar, tool icons visibility)
-        window.dispatchEvent(new Event('userSettingsChanged'));
-        
-        if (showToast) {
-          // Sestavit kompletní jméno admina
-          let adminName = 'původní účet';
-          if (originalAdminUser?.userDetail) {
-            const ud = originalAdminUser.userDetail;
-            adminName = [
-              ud.titul_pred,
-              ud.jmeno,
-              ud.prijmeni,
-              ud.titul_za ? `, ${ud.titul_za}` : ''
-            ].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-          } else if (originalAdminUser?.username) {
-            adminName = originalAdminUser.username;
-          }
-          
-          showToast(`Vráceno na ${adminName}`, { type: 'success', timeout: 5000 });
-        }
-        
-        // 🔄 AUTOMATICKÝ RELOAD stránky pro aplikování správných práv
-        // Po přepnutí zpět na admina je nutné znovu načíst stránku, aby se aplikovala správná práva
-        sessionStorage.removeItem('impersonation_return_url'); // Vyčistit před reload
-        setTimeout(() => {
-          window.location.reload();
-        }, 1000); // 1s delay pro zobrazení toast zprávy
-        
-        // Poznámka: Následující kód navigace již nebude proveden kvůli reload
-        // const forcedReturnUrl = sessionStorage.getItem('impersonation_return_url');
-        // if (forcedReturnUrl) {
-        //   setTimeout(() => {
-        //     const currentUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-        //     if (currentUrl !== forcedReturnUrl) {
-        //       navigate(forcedReturnUrl, { replace: true });
-        //     }
-        //     sessionStorage.removeItem('impersonation_return_url');
-        //   }, 50);
-        // }
+        // Žádný mezistav pod adminem bez reloadu → okamžitě přebootovat app na stejné URL.
+        // location.pathname z Routeru je bez basename, proto musíme PUBLIC_URL prefix doplnit ručně.
+        const appBase = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+        const normalizedStayPath = stayUrl.startsWith('/') ? stayUrl : `/${stayUrl}`;
+        const targetUrl = appBase ? `${appBase}${normalizedStayPath}` : normalizedStayPath;
+
+        sessionStorage.removeItem('impersonation_return_url');
+        window.location.replace(targetUrl);
+        return;
       } else if (!success && showToast) {
         showToast('Nepodařilo se vrátit na původní účet', { type: 'error', timeout: 5000 });
       }

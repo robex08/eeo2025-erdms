@@ -53,8 +53,10 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null)
     
     // Najít user node
     $userNodeId = null;
-    foreach ($structure['nodes'] as $node) {
-        if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id']) && $node['data']['uzivatel_id'] == $userId) {
+        foreach ($structure['nodes'] as $node) {
+            $nodeType = $node['typ'] ?? ($node['data']['type'] ?? null);
+            $nodeUserId = $node['data']['userId'] ?? ($node['data']['uzivatel_id'] ?? null);
+            if ($nodeType === 'user' && $nodeUserId !== null && (int)$nodeUserId === (int)$userId) {
             $userNodeId = $node['id'];
             break;
         }
@@ -80,12 +82,13 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null)
         $targetNodeId = ($edge['source'] === $userNodeId) ? $edge['target'] : $edge['source'];
         
         foreach ($structure['nodes'] as $node) {
-            if ($node['id'] === $targetNodeId) {
-                $relationships[] = [
-                    'node' => $node,
-                    'scope' => isset($edge['data']['scope']) ? $edge['data']['scope'] : 'OWN'
-                ];
-                break;
+                if ($node['id'] === $targetNodeId) {
+                    $relationships[] = [
+                        'node' => $node,
+                        'scope' => isset($edge['data']['scope']) ? $edge['data']['scope'] : 'OWN',
+                        'extended' => isset($edge['data']['extended']) && is_array($edge['data']['extended']) ? $edge['data']['extended'] : []
+                    ];
+                    break;
             }
         }
     }
@@ -104,8 +107,9 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null)
         $node = $rel['node'];
         $scope = $rel['scope'];
         
-        if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id'])) {
-            $subordinateUserId = $node['data']['uzivatel_id'];
+            $nodeType = $node['typ'] ?? ($node['data']['type'] ?? null);
+            if ($nodeType === 'user' && (($node['data']['userId'] ?? $node['data']['uzivatel_id'] ?? null) !== null)) {
+                $subordinateUserId = (int)($node['data']['userId'] ?? $node['data']['uzivatel_id']);
             
             // Získat údaje podřízeného
             $subordinate = getUserById($pdo, $subordinateUserId);
@@ -137,8 +141,8 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null)
         }
         
         // Rozšířené lokality
-        if (!empty($rel['rozsirene_lokality'])) {
-            $extendedLocations = json_decode($rel['rozsirene_lokality'], true);
+            if (!empty($rel['extended']['locations']) && is_array($rel['extended']['locations'])) {
+                $extendedLocations = $rel['extended']['locations'];
             if (is_array($extendedLocations)) {
                 foreach ($extendedLocations as $locationId) {
                     $locationUsers = getUsersByLocation($pdo, $locationId);
@@ -148,8 +152,8 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null)
         }
         
         // Rozšířené úseky
-        if (!empty($rel['rozsirene_useky'])) {
-            $extendedDepartments = json_decode($rel['rozsirene_useky'], true);
+            if (!empty($rel['extended']['departments']) && is_array($rel['extended']['departments'])) {
+                $extendedDepartments = $rel['extended']['departments'];
             if (is_array($extendedDepartments)) {
                 foreach ($extendedDepartments as $deptId) {
                     $deptUsers = getUsersByDepartment($pdo, $deptId);
@@ -159,14 +163,19 @@ function getVisibleRecordsByHierarchy($pdo, $userId, $module, $profileId = null)
         }
         
         // Kombinace lokalita+úsek
-        if (!empty($rel['kombinace_lokalita_usek'])) {
-            $combinations = json_decode($rel['kombinace_lokalita_usek'], true);
+            if (!empty($rel['extended']['combinations']) && is_array($rel['extended']['combinations'])) {
+                $combinations = $rel['extended']['combinations'];
             if (is_array($combinations)) {
                 foreach ($combinations as $combo) {
+                        $locationId = $combo['locationId'] ?? ($combo['lokalita_id'] ?? null);
+                        $departmentId = $combo['departmentId'] ?? ($combo['usek_id'] ?? null);
+                        if ($locationId === null || $departmentId === null) {
+                            continue;
+                        }
                     $comboUsers = getUsersByLocationAndDepartment(
                         $pdo, 
-                        $combo['locationId'], 
-                        $combo['departmentId']
+                            (int)$locationId,
+                            (int)$departmentId
                     );
                     $visibleUserIds = array_merge($visibleUserIds, array_column($comboUsers, 'uzivatel_id'));
                 }
@@ -231,9 +240,16 @@ function getHierarchyFilterSQL($pdo, $userId, $module, $alias = 'o', $profileId 
         return "1=0"; // Block all
     }
     
-    // Filtr podle vytvoril_user_id
+    // Filtr podle autora záznamu (modulově mapované sloupce)
     $ids = implode(',', array_map('intval', $visibleUserIds));
-    return "{$alias}.vytvoril_user_id IN ($ids)";
+    $creatorColumnByModule = [
+        'orders' => 'uzivatel_id',
+        'invoices' => 'vytvoril_uzivatel_id',
+        'cashbook' => 'uzivatel_id',
+        'contracts' => 'vytvoril_uzivatel_id'
+    ];
+    $creatorColumn = isset($creatorColumnByModule[$module]) ? $creatorColumnByModule[$module] : 'uzivatel_id';
+    return "{$alias}.{$creatorColumn} IN ($ids)";
 }
 
 // ============================================================================
@@ -242,9 +258,9 @@ function getHierarchyFilterSQL($pdo, $userId, $module, $alias = 'o', $profileId 
 
 function getUserById($pdo, $userId) {
     $stmt = $pdo->prepare("
-        SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
+        SELECT id AS uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
         FROM " . TBL_UZIVATELE . "
-        WHERE uzivatel_id = :userId AND aktivni = 1
+        WHERE id = :userId AND aktivni = 1
     ");
     $stmt->execute(['userId' => $userId]);
     return $stmt->fetch(PDO::FETCH_ASSOC);
@@ -252,7 +268,7 @@ function getUserById($pdo, $userId) {
 
 function getUsersByDepartment($pdo, $departmentId) {
     $stmt = $pdo->prepare("
-        SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
+        SELECT id AS uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
         FROM " . TBL_UZIVATELE . "
         WHERE usek_id = :deptId AND aktivni = 1
     ");
@@ -262,7 +278,7 @@ function getUsersByDepartment($pdo, $departmentId) {
 
 function getUsersByLocation($pdo, $locationId) {
     $stmt = $pdo->prepare("
-        SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
+        SELECT id AS uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
         FROM " . TBL_UZIVATELE . "
         WHERE lokalita_id = :locationId AND aktivni = 1
     ");
@@ -272,7 +288,7 @@ function getUsersByLocation($pdo, $locationId) {
 
 function getUsersByLocationAndDepartment($pdo, $locationId, $departmentId) {
     $stmt = $pdo->prepare("
-        SELECT uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
+                SELECT id AS uzivatel_id, jmeno, prijmeni, email, lokalita_id, usek_id
         FROM " . TBL_UZIVATELE . "
         WHERE lokalita_id = :locationId 
           AND usek_id = :deptId 
@@ -298,11 +314,19 @@ function getRecordCreatorId($pdo, $module, $recordId) {
     }
     
     $table = $tables[$module];
-    $stmt = $pdo->prepare("SELECT vytvoril_user_id FROM $table WHERE id = :recordId");
+    $creatorColumnByModule = [
+        'orders' => 'uzivatel_id',
+        'invoices' => 'vytvoril_uzivatel_id',
+        'cashbook' => 'uzivatel_id',
+        'contracts' => 'vytvoril_uzivatel_id'
+    ];
+
+    $creatorColumn = isset($creatorColumnByModule[$module]) ? $creatorColumnByModule[$module] : 'uzivatel_id';
+    $stmt = $pdo->prepare("SELECT $creatorColumn AS creator_id FROM $table WHERE id = :recordId");
     $stmt->execute(['recordId' => $recordId]);
     $result = $stmt->fetch(PDO::FETCH_ASSOC);
     
-    return $result ? $result['vytvoril_user_id'] : null;
+    return $result ? (int)$result['creator_id'] : null;
 }
 
 // ============================================================================
@@ -319,7 +343,7 @@ $hierarchyFilter = getHierarchyFilterSQL($pdo, $userId, 'orders', 'o');
 $sql = "
     SELECT o.*, u.jmeno, u.prijmeni
     FROM " . TBL_OBJEDNAVKY . " o
-    INNER JOIN " . TBL_UZIVATELE . " u ON o.vytvoril_user_id = u.uzivatel_id
+        INNER JOIN " . TBL_UZIVATELE . " u ON o.uzivatel_id = u.id
     WHERE $hierarchyFilter
       AND o.aktivni = 1
     ORDER BY o.dt_vytvoreni DESC

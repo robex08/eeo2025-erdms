@@ -5,6 +5,12 @@
 !**/.env.*.example
 !**/.env.example.*
 
+# Explicit app-level env protection (defense in depth)
+apps/*/.env
+apps/*/.env.*
+!apps/*/.env.example
+!apps/*/.env.*.example
+
 # Explicitly ignore backup env snapshots
 **/.env.backup*
 

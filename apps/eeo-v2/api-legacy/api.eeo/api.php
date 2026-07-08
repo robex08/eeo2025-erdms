@@ -7017,8 +7017,121 @@ switch ($endpoint) {
                 } elseif ($usek_id) {
                     // REŽIM 3: Všechna LP pro úsek + LP ze kterých uživatel čerpal (i z jiných úseků)
                     try {
+                        $hierarchy_lp_codes = array();
+
                         // Pokud je requesting_user_id, přidat UNION s LP ze kterých čerpal
                         if ($requesting_user_id) {
+                            // Rozšířená viditelnost z org hierarchie (PRIKAZCI)
+                            try {
+                                $stmt_settings = $pdo->prepare("SELECT klic, hodnota FROM 25a_nastaveni_globalni WHERE klic IN ('hierarchy_enabled', 'hierarchy_profile_id')");
+                                $stmt_settings->execute();
+                                $settings_rows = $stmt_settings->fetchAll(PDO::FETCH_ASSOC);
+
+                                $hierarchy_enabled = false;
+                                $hierarchy_profile_id = null;
+                                foreach ($settings_rows as $s_row) {
+                                    if ($s_row['klic'] === 'hierarchy_enabled') {
+                                        $hierarchy_enabled = ((string)$s_row['hodnota'] === '1');
+                                    }
+                                    if ($s_row['klic'] === 'hierarchy_profile_id' && $s_row['hodnota'] !== null && $s_row['hodnota'] !== '' && strtoupper((string)$s_row['hodnota']) !== 'NULL') {
+                                        $hierarchy_profile_id = (int)$s_row['hodnota'];
+                                    }
+                                }
+
+                                if ($hierarchy_enabled && $hierarchy_profile_id) {
+                                    $stmt_prof = $pdo->prepare("SELECT structure_json FROM " . TBL_HIERARCHIE_PROFILY . " WHERE id = ? LIMIT 1");
+                                    $stmt_prof->execute(array($hierarchy_profile_id));
+                                    $profile_row = $stmt_prof->fetch(PDO::FETCH_ASSOC);
+
+                                    if ($profile_row && !empty($profile_row['structure_json'])) {
+                                        $structure = json_decode($profile_row['structure_json'], true);
+                                        if ($structure && isset($structure['nodes']) && isset($structure['edges'])) {
+                                            $userNodeIds = array();
+                                            foreach ($structure['nodes'] as $node) {
+                                                $nodeUserId = $node['data']['uzivatel_id'] ?? ($node['data']['userId'] ?? null);
+                                                if (($node['typ'] ?? null) === 'user' && $nodeUserId !== null && (int)$nodeUserId === (int)$requesting_user_id) {
+                                                    $userNodeIds[] = $node['id'];
+                                                }
+                                            }
+
+                                            $visibleUsekIds = array();
+                                            $scopeAll = false;
+
+                                            foreach ($structure['edges'] as $edge) {
+                                                if (!isset($edge['source']) || !isset($edge['target'])) {
+                                                    continue;
+                                                }
+
+                                                $isUserEdge = in_array($edge['source'], $userNodeIds, true) || in_array($edge['target'], $userNodeIds, true);
+                                                if (!$isUserEdge) {
+                                                    continue;
+                                                }
+
+                                                if (isset($edge['data']['scope']) && strtoupper((string)$edge['data']['scope']) === 'ALL') {
+                                                    $scopeAll = true;
+                                                }
+
+                                                if (!empty($edge['data']['extended']['departments']) && is_array($edge['data']['extended']['departments'])) {
+                                                    foreach ($edge['data']['extended']['departments'] as $extUsekId) {
+                                                        $visibleUsekIds[] = (int)$extUsekId;
+                                                    }
+                                                }
+
+                                                $targetNodeId = in_array($edge['source'], $userNodeIds, true) ? $edge['target'] : $edge['source'];
+                                                foreach ($structure['nodes'] as $targetNode) {
+                                                    if (!isset($targetNode['id']) || $targetNode['id'] !== $targetNodeId) {
+                                                        continue;
+                                                    }
+
+                                                    $targetType = $targetNode['typ'] ?? null;
+                                                    if ($targetType === 'lp_kod' && !empty($targetNode['data']['lp_cislo'])) {
+                                                        $hierarchy_lp_codes[] = trim((string)$targetNode['data']['lp_cislo']);
+                                                    } elseif ($targetType === 'department' && (!empty($targetNode['data']['usek_id']) || !empty($targetNode['data']['departmentId']))) {
+                                                        $visibleUsekIds[] = (int)($targetNode['data']['usek_id'] ?? $targetNode['data']['departmentId']);
+                                                    } elseif ($targetType === 'user' && (!empty($targetNode['data']['uzivatel_id']) || !empty($targetNode['data']['userId']))) {
+                                                        $targetUserId = (int)($targetNode['data']['uzivatel_id'] ?? $targetNode['data']['userId']);
+                                                        $u2_stmt = $pdo->prepare("SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+                                                        $u2_stmt->execute(array($targetUserId));
+                                                        $u2_row = $u2_stmt->fetch(PDO::FETCH_ASSOC);
+                                                        if ($u2_row && !empty($u2_row['usek_id'])) {
+                                                            $visibleUsekIds[] = (int)$u2_row['usek_id'];
+                                                        }
+                                                    }
+                                                    break;
+                                                }
+                                            }
+
+                                            if ($scopeAll) {
+                                                $lp_all_stmt = $pdo->query("SELECT DISTINCT cislo_lp FROM " . TBL_LP_MASTER . " WHERE cislo_lp IS NOT NULL AND cislo_lp <> ''");
+                                                $hierarchy_lp_codes = array_merge($hierarchy_lp_codes, $lp_all_stmt->fetchAll(PDO::FETCH_COLUMN));
+                                            } else {
+                                                $visibleUsekIds = array_values(array_unique(array_filter($visibleUsekIds, function($v) {
+                                                    return $v > 0;
+                                                })));
+
+                                                if (!empty($visibleUsekIds)) {
+                                                    $usek_placeholder = implode(',', array_fill(0, count($visibleUsekIds), '?'));
+                                                    $lp_by_usek_stmt = $pdo->prepare("SELECT DISTINCT cislo_lp FROM " . TBL_LP_MASTER . " WHERE usek_id IN ($usek_placeholder) AND cislo_lp IS NOT NULL AND cislo_lp <> ''");
+                                                    $lp_by_usek_stmt->execute($visibleUsekIds);
+                                                    $hierarchy_lp_codes = array_merge($hierarchy_lp_codes, $lp_by_usek_stmt->fetchAll(PDO::FETCH_COLUMN));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch (Exception $e) {
+                                error_log("⚠️ LP /stav: Chyba při načítání rozšířené viditelnosti z hierarchie: " . $e->getMessage());
+                            }
+
+                            $hierarchy_lp_codes = array_values(array_unique(array_filter(array_map('trim', $hierarchy_lp_codes))));
+                            $hierarchy_lp_extra_sql = '';
+                            $hierarchy_lp_extra_params = array();
+                            if (!empty($hierarchy_lp_codes)) {
+                                $hierarchy_lp_ph = implode(',', array_fill(0, count($hierarchy_lp_codes), '?'));
+                                $hierarchy_lp_extra_sql = " OR c.cislo_lp IN ($hierarchy_lp_ph)";
+                                $hierarchy_lp_extra_params = $hierarchy_lp_codes;
+                            }
+
                             // LP úseku + LP ze kterých uživatel čerpal - z agregované tabulky
                             $stmt = $pdo->prepare("
                                 SELECT DISTINCT
@@ -7113,11 +7226,12 @@ switch ($endpoint) {
                                     WHERE k.uzivatel_id = ?
                                       AND d.lp_kod IS NOT NULL
                                       AND d.lp_kod != ''
-                                ))
+                                )" . $hierarchy_lp_extra_sql . ")
                                 AND c.rok = ?
                                 ORDER BY c.kategorie, c.cislo_lp
                             ");
-                            $stmt->execute([$usek_id, $requesting_user_id, $requesting_user_id, $rok]);
+                            $sql_params = array_merge(array($usek_id, $requesting_user_id, $requesting_user_id), $hierarchy_lp_extra_params, array($rok));
+                            $stmt->execute($sql_params);
                         } else {
                             // Jen LP úseku (bez requesting_user_id) - z agregované tabulky
                             $stmt = $pdo->prepare("
@@ -7210,6 +7324,12 @@ switch ($endpoint) {
                     
                     $lp_list = array();
                     foreach ($result as $row) {
+                        $is_hierarchy_expanded = false;
+                        if (!empty($hierarchy_lp_codes) && isset($row['cislo_lp'])) {
+                            $is_hierarchy_expanded = in_array((string)$row['cislo_lp'], $hierarchy_lp_codes, true)
+                                && (isset($row['usek_id']) ? ((int)$row['usek_id'] !== (int)$usek_id) : true);
+                        }
+
                         $lp_list[] = array(
                             'id' => (int)$row['id'],
                             'lp_master_id' => (int)$row['lp_master_id'],
@@ -7234,6 +7354,7 @@ switch ($endpoint) {
                             'pocet_zaznamu' => (int)$row['pocet_zaznamu'],
                             'pocet_objednavek' => (int)$row['pocet_objednavek'],
                             'ma_navyseni' => (bool)$row['ma_navyseni'],
+                            'hierarchy_expanded' => $is_hierarchy_expanded,
                             'spravce' => array(
                                 'prijmeni' => $row['prijmeni'],
                                 'jmeno' => $row['jmeno']
@@ -7406,63 +7527,116 @@ switch ($endpoint) {
                     // non-fatal
                 }
                 
-                // NOVÉ: Načíst org hierarchii - LP na která má uživatel práva (cross-manager)
+                // Načíst org hierarchii - LP na která má uživatel práva (cross-manager)
+                // Používáme pouze existující structure_json v 25_hierarchie_profily.
                 $user_accessible_lp_codes = array();
                 try {
-                    error_log("🔍 LP /moje-cerpani: Načítám org hierarchii pro user_id=$vytvoril_user_id");
-                    
-                    $stmt_prof = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
-                    $stmt_prof->execute();
+                    error_log("🔍 LP /moje-cerpani: Načítám structure_json hierarchii pro user_id=$vytvoril_user_id");
+
+                    // Zdroj pravdy profilu: globální nastavení hierarchy_profile_id
+                    $stmt_settings = $db->prepare("SELECT klic, hodnota FROM 25a_nastaveni_globalni WHERE klic IN ('hierarchy_enabled', 'hierarchy_profile_id')");
+                    $stmt_settings->execute();
+                    $settings_rows = $stmt_settings->fetchAll(PDO::FETCH_ASSOC);
+
+                    $hierarchy_enabled = false;
+                    $hierarchy_profile_id = null;
+                    foreach ($settings_rows as $s_row) {
+                        if ($s_row['klic'] === 'hierarchy_enabled') {
+                            $hierarchy_enabled = ((string)$s_row['hodnota'] === '1');
+                        }
+                        if ($s_row['klic'] === 'hierarchy_profile_id' && $s_row['hodnota'] !== null && $s_row['hodnota'] !== '' && strtoupper((string)$s_row['hodnota']) !== 'NULL') {
+                            $hierarchy_profile_id = (int)$s_row['hodnota'];
+                        }
+                    }
+
+                    if (!$hierarchy_enabled || !$hierarchy_profile_id) {
+                        error_log("⚠️ LP /moje-cerpani: Hierarchie není zapnutá nebo chybí hierarchy_profile_id v 25a_nastaveni_globalni");
+                    }
+
+                    $stmt_prof = $db->prepare("SELECT id, structure_json FROM " . TBL_HIERARCHIE_PROFILY . " WHERE id = ? LIMIT 1");
+                    $stmt_prof->execute(array($hierarchy_profile_id));
                     $profile = $stmt_prof->fetch(PDO::FETCH_ASSOC);
-                    
+
                     if ($profile && !empty($profile['structure_json'])) {
                         $structure = json_decode($profile['structure_json'], true);
-                        
+
                         if ($structure && isset($structure['nodes']) && isset($structure['edges'])) {
-                            error_log("🔍 LP /moje-cerpani: Struktura má " . count($structure['nodes']) . " nodes a " . count($structure['edges']) . " edges");
-                            
-                            // Najít user node
-                            $userNodeId = null;
+                            $userNodeIds = array();
                             foreach ($structure['nodes'] as $node) {
-                                if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id']) && $node['data']['uzivatel_id'] == $vytvoril_user_id) {
-                                    $userNodeId = $node['id'];
-                                    error_log("🔍 LP /moje-cerpani: Našel user node: $userNodeId");
+                                if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id']) && (int)$node['data']['uzivatel_id'] === (int)$vytvoril_user_id) {
+                                    $userNodeIds[] = $node['id'];
+                                }
+                            }
+
+                            $visibleUsekIds = array();
+                            $scopeAll = false;
+
+                            foreach ($structure['edges'] as $edge) {
+                                if (!isset($edge['source']) || !isset($edge['target'])) {
+                                    continue;
+                                }
+
+                                $isUserEdge = in_array($edge['source'], $userNodeIds) || in_array($edge['target'], $userNodeIds);
+                                if (!$isUserEdge) {
+                                    continue;
+                                }
+
+                                if (isset($edge['data']['scope']) && strtoupper((string)$edge['data']['scope']) === 'ALL') {
+                                    $scopeAll = true;
+                                }
+
+                                if (!empty($edge['data']['extended']['departments']) && is_array($edge['data']['extended']['departments'])) {
+                                    foreach ($edge['data']['extended']['departments'] as $extUsekId) {
+                                        $visibleUsekIds[] = (int)$extUsekId;
+                                    }
+                                }
+
+                                $targetNodeId = in_array($edge['source'], $userNodeIds) ? $edge['target'] : $edge['source'];
+                                foreach ($structure['nodes'] as $targetNode) {
+                                    if (!isset($targetNode['id']) || $targetNode['id'] !== $targetNodeId) {
+                                        continue;
+                                    }
+
+                                    if (($targetNode['typ'] ?? null) === 'lp_kod' && !empty($targetNode['data']['lp_cislo'])) {
+                                        $user_accessible_lp_codes[] = trim((string)$targetNode['data']['lp_cislo']);
+                                    } elseif (($targetNode['typ'] ?? null) === 'department' && !empty($targetNode['data']['usek_id'])) {
+                                        $visibleUsekIds[] = (int)$targetNode['data']['usek_id'];
+                                    } elseif (($targetNode['typ'] ?? null) === 'user' && !empty($targetNode['data']['uzivatel_id'])) {
+                                        $u2_stmt = $db->prepare("SELECT usek_id FROM " . TBL_UZIVATELE . " WHERE id = ? LIMIT 1");
+                                        $u2_stmt->execute(array((int)$targetNode['data']['uzivatel_id']));
+                                        $u2_row = $u2_stmt->fetch(PDO::FETCH_ASSOC);
+                                        if ($u2_row && !empty($u2_row['usek_id'])) {
+                                            $visibleUsekIds[] = (int)$u2_row['usek_id'];
+                                        }
+                                    }
+
                                     break;
                                 }
                             }
-                            
-                            // Pokud máme user node, najít všechny reachable LP nodes
-                            if ($userNodeId) {
-                                foreach ($structure['edges'] as $edge) {
-                                    $lp_node_id = null;
-                                    
-                                    // Je edge od user node?
-                                    if ($edge['source'] === $userNodeId || $edge['target'] === $userNodeId) {
-                                        $lp_node_id = ($edge['source'] === $userNodeId) ? $edge['target'] : $edge['source'];
-                                    }
-                                    
-                                    // Pokud máme LP node ID, najít jej v nodes
-                                    if ($lp_node_id) {
-                                        foreach ($structure['nodes'] as $node) {
-                                            if ($node['id'] === $lp_node_id && $node['typ'] === 'lp_kod' && isset($node['data']['lp_cislo'])) {
-                                                $lp_code = trim($node['data']['lp_cislo']);
-                                                if (!empty($lp_code)) {
-                                                    $user_accessible_lp_codes[] = $lp_code;
-                                                    error_log("🔍 LP /moje-cerpani: Přidáno LP z hierarchie: $lp_code");
-                                                }
-                                            }
-                                        }
-                                    }
+
+                            if ($scopeAll) {
+                                $lp_all_stmt = $db->query("SELECT DISTINCT cislo_lp FROM " . TBL_LP_MASTER . " WHERE cislo_lp IS NOT NULL AND cislo_lp <> ''");
+                                $user_accessible_lp_codes = array_merge($user_accessible_lp_codes, $lp_all_stmt->fetchAll(PDO::FETCH_COLUMN));
+                            } else {
+                                $visibleUsekIds = array_values(array_unique(array_filter($visibleUsekIds, function($v) {
+                                    return $v > 0;
+                                })));
+
+                                if (!empty($visibleUsekIds)) {
+                                    $usek_placeholder = implode(',', array_fill(0, count($visibleUsekIds), '?'));
+                                    $lp_by_usek_stmt = $db->prepare("SELECT DISTINCT cislo_lp FROM " . TBL_LP_MASTER . " WHERE usek_id IN ($usek_placeholder) AND cislo_lp IS NOT NULL AND cislo_lp <> ''");
+                                    $lp_by_usek_stmt->execute($visibleUsekIds);
+                                    $user_accessible_lp_codes = array_merge($user_accessible_lp_codes, $lp_by_usek_stmt->fetchAll(PDO::FETCH_COLUMN));
                                 }
                             }
                         }
                     }
                 } catch (Exception $e) {
-                    error_log("⚠️ LP /moje-cerpani: Chyba při načítání org hierarchie: " . $e->getMessage());
-                    // Non-fatal - pokračuj bez hierarchie
+                    error_log("⚠️ LP /moje-cerpani: Chyba při načítání structure_json hierarchie: " . $e->getMessage());
                 }
-                
-                error_log("🔍 LP /moje-cerpani: Celkem LP z hierarchie: " . count($user_accessible_lp_codes) . " - " . implode(", ", $user_accessible_lp_codes));
+
+                $user_accessible_lp_codes = array_values(array_unique(array_filter(array_map('trim', $user_accessible_lp_codes))));
+                error_log("🔍 LP /moje-cerpani: Celkem LP ze structure_json hierarchie: " . count($user_accessible_lp_codes) . " - " . implode(", ", $user_accessible_lp_codes));
                 
                 // KROK 0: Načíst všechna LP metadata z agregační tabulky
                 $lp_metadata = array(); // cislo_lp => metadata

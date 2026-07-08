@@ -1084,6 +1084,19 @@ function App() {
     return <RouteLoadingFallback />; // Zobrazit lightweight loader místo bílé stránky
   }
 
+  // Self-healing: pokud je app otevřena bez PUBLIC_URL prefixu, oprav URL dříve než se mountne Router.
+  const routerBase = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+  if (routerBase && typeof window !== 'undefined') {
+    const currentPath = window.location.pathname || '/';
+    const hasBase = currentPath === routerBase || currentPath.startsWith(`${routerBase}/`);
+
+    if (!hasBase) {
+      const fixedUrl = `${routerBase}${currentPath}${window.location.search || ''}${window.location.hash || ''}`;
+      window.location.replace(fixedUrl);
+      return null;
+    }
+  }
+
   // 📱 MOBILE VERSION: Pokud je zařízení mobilní, zobrazí se mobilní verze
   if (isMobile) {
     return (

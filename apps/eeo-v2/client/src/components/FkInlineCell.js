@@ -248,13 +248,13 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
   );
 
   // ── Lazy load on popover open ──────────────────────────────────────────────
-  const loadCase = useCallback(async () => {
+  const loadCase = useCallback(async (forceRefresh = false) => {
     if (!token || !username) return;
     if (loading) return;
     setLoading(true);
     setErr('');
     try {
-      const data = await getFkCase(entity, token, username);
+      const data = await getFkCase(entity, token, username, { forceRefresh });
       setFkData(data); // null or {case, udalosti}
       if (data) {
         setPendingStav(data.case.stav);
@@ -272,14 +272,14 @@ function FkInlineCell({ objednavkaId = 0, fakturaId = 0, entityType = 'OBJ', sec
 
   // Eager load on mount – zobrazí aktuální stav bez nutnosti kliknout
   useEffect(() => {
-    if (token && username) loadCase();
+    if (token && username) loadCase(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Refresh při každém otevření popoveru (aktuální data)
   useEffect(() => {
     if (open && !loading) {
-      loadCase();
+      loadCase(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);

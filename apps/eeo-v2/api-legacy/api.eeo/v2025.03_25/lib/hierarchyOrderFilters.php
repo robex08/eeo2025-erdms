@@ -26,13 +26,18 @@
  * @param PDO $db Database connection
  * @return array Pole vztahů ve formátu kompatibilním se starým kódem
  */
-function getUserRelationshipsFromStructure($userId, $db) {
+function getUserRelationshipsFromStructure($userId, $db, $profileId = null) {
     // 🔥 FIX: Použij přímo název tabulky místo konstanty
     error_log("🔍 HIERARCHY: getUserRelationshipsFromStructure() START for userId=$userId");
     
-    // Načíst aktivní profil
-    $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
-    $stmt->execute();
+    // Načíst profil z nastavení (pokud je předán profileId), jinak aktivní profil
+    if ($profileId) {
+        $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE id = :profileId LIMIT 1");
+        $stmt->execute(array('profileId' => (int)$profileId));
+    } else {
+        $stmt = $db->prepare("SELECT id, structure_json FROM 25_hierarchie_profily WHERE aktivni = 1 LIMIT 1");
+        $stmt->execute();
+    }
     $profile = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$profile || empty($profile['structure_json'])) {
@@ -53,7 +58,9 @@ function getUserRelationshipsFromStructure($userId, $db) {
     // Najít user node
     $userNodeId = null;
     foreach ($structure['nodes'] as $node) {
-        if ($node['typ'] === 'user' && isset($node['data']['uzivatel_id']) && $node['data']['uzivatel_id'] == $userId) {
+        $nodeType = $node['typ'] ?? ($node['data']['type'] ?? null);
+        $nodeUserId = $node['data']['uzivatel_id'] ?? ($node['data']['userId'] ?? null);
+        if ($nodeType === 'user' && $nodeUserId !== null && (int)$nodeUserId === (int)$userId) {
             $userNodeId = $node['id'];
             break;
         }
@@ -100,7 +107,9 @@ function getUserRelationshipsFromStructure($userId, $db) {
         // Nebo je edge od role node, kterou user má?
         if (!$isUserRelation && !empty($userRoles)) {
             foreach ($structure['nodes'] as $node) {
-                if ($node['typ'] === 'role' && isset($node['data']['role_id']) && in_array($node['data']['role_id'], $userRoles)) {
+                $nodeType = $node['typ'] ?? ($node['data']['type'] ?? null);
+                $nodeRoleId = $node['data']['role_id'] ?? ($node['data']['roleId'] ?? null);
+                if ($nodeType === 'role' && $nodeRoleId !== null && in_array((int)$nodeRoleId, array_map('intval', $userRoles), true)) {
                     if ($edge['source'] === $node['id'] || $edge['target'] === $node['id']) {
                         $isUserRelation = true;
                         $targetNodeId = ($edge['source'] === $node['id']) ? $edge['target'] : $edge['source'];
@@ -126,7 +135,7 @@ function getUserRelationshipsFromStructure($userId, $db) {
             }
             
             $rel = [
-                'typ_vztahu' => $targetNode['typ'],
+                'typ_vztahu' => ($targetNode['typ'] ?? ($targetNode['data']['type'] ?? null)),
                 'user_id_1' => null,
                 'user_id_2' => null,
                 'lokalita_id' => null,
@@ -134,17 +143,19 @@ function getUserRelationshipsFromStructure($userId, $db) {
                 'role_id' => null
             ];
             
-            if ($targetNode['typ'] === 'user' && isset($targetNode['data']['uzivatel_id'])) {
-                $rel['user_id_2'] = $targetNode['data']['uzivatel_id'];
+            $targetType = $targetNode['typ'] ?? ($targetNode['data']['type'] ?? null);
+
+            if ($targetType === 'user' && ($targetNode['data']['uzivatel_id'] ?? $targetNode['data']['userId'] ?? null) !== null) {
+                $rel['user_id_2'] = (int)($targetNode['data']['uzivatel_id'] ?? $targetNode['data']['userId']);
                 $rel['typ_vztahu'] = 'user-user';
-            } elseif ($targetNode['typ'] === 'location' && isset($targetNode['data']['lokalita_id'])) {
-                $rel['lokalita_id'] = $targetNode['data']['lokalita_id'];
+            } elseif ($targetType === 'location' && ($targetNode['data']['lokalita_id'] ?? $targetNode['data']['locationId'] ?? null) !== null) {
+                $rel['lokalita_id'] = (int)($targetNode['data']['lokalita_id'] ?? $targetNode['data']['locationId']);
                 $rel['typ_vztahu'] = 'user-location';
-            } elseif ($targetNode['typ'] === 'department' && isset($targetNode['data']['usek_id'])) {
-                $rel['usek_id'] = $targetNode['data']['usek_id'];
+            } elseif ($targetType === 'department' && ($targetNode['data']['usek_id'] ?? $targetNode['data']['departmentId'] ?? null) !== null) {
+                $rel['usek_id'] = (int)($targetNode['data']['usek_id'] ?? $targetNode['data']['departmentId']);
                 $rel['typ_vztahu'] = 'user-department';
-            } elseif ($targetNode['typ'] === 'role' && isset($targetNode['data']['role_id'])) {
-                $rel['role_id'] = $targetNode['data']['role_id'];
+            } elseif ($targetType === 'role' && ($targetNode['data']['role_id'] ?? $targetNode['data']['roleId'] ?? null) !== null) {
+                $rel['role_id'] = (int)($targetNode['data']['role_id'] ?? $targetNode['data']['roleId']);
                 $rel['typ_vztahu'] = 'user-role';
             }
             
@@ -330,7 +341,7 @@ function applyHierarchyFilterToOrders($userId, $db) {
     error_log("🔍 HIERARCHY DEBUG: Loading relationships for user $userId, profile $profileId from structure_json");
     
     try {
-        $relationships = getUserRelationshipsFromStructure($userId, $db);
+        $relationships = getUserRelationshipsFromStructure($userId, $db, $profileId);
         
         // 🔥 Ulož do debug info
         $HIERARCHY_DEBUG_INFO['relationships'] = $relationships;

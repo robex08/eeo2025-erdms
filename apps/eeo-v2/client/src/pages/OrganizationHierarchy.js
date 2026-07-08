@@ -2460,9 +2460,72 @@ const OrganizationHierarchy = () => {
   const LS_SEARCH_DEPARTMENTS = 'hierarchy_search_departments';
   const LS_SEARCH_TEMPLATES = 'hierarchy_search_templates';
   const LS_EXPANDED_SECTIONS = 'hierarchy_expanded_sections';
+  const LS_VIEWPORT_PREFIX = 'hierarchy_viewport';
 
   // State pro sledování, zda byl draft načten
   const [hasDraft, setHasDraft] = useState(false);
+  const viewportAppliedRef = useRef(false);
+
+  const getViewportStorageKey = useCallback((profileId) => {
+    return `${LS_VIEWPORT_PREFIX}_${profileId || 'default'}`;
+  }, []);
+
+  const persistViewport = useCallback((viewport, profileId = currentProfile?.id) => {
+    if (!viewport || typeof viewport.x !== 'number' || typeof viewport.y !== 'number' || typeof viewport.zoom !== 'number') {
+      return;
+    }
+
+    try {
+      localStorage.setItem(getViewportStorageKey(profileId), JSON.stringify({
+        x: viewport.x,
+        y: viewport.y,
+        zoom: viewport.zoom,
+        savedAt: Date.now()
+      }));
+    } catch (err) {
+      console.warn('⚠️ Failed to persist hierarchy viewport:', err);
+    }
+  }, [currentProfile?.id, getViewportStorageKey]);
+
+  const restoreViewport = useCallback((instance, profileId = currentProfile?.id) => {
+    if (!instance) return false;
+
+    try {
+      const raw = localStorage.getItem(getViewportStorageKey(profileId));
+      if (!raw) return false;
+
+      const parsed = JSON.parse(raw);
+      if (
+        typeof parsed?.x === 'number' &&
+        typeof parsed?.y === 'number' &&
+        typeof parsed?.zoom === 'number'
+      ) {
+        instance.setViewport({ x: parsed.x, y: parsed.y, zoom: parsed.zoom }, { duration: 0 });
+        return true;
+      }
+    } catch (err) {
+      console.warn('⚠️ Failed to restore hierarchy viewport:', err);
+    }
+
+    return false;
+  }, [currentProfile?.id, getViewportStorageKey]);
+
+  useEffect(() => {
+    // Při změně profilu dovol znovu aplikovat uložený viewport/fallback fit jednorázově.
+    viewportAppliedRef.current = false;
+  }, [currentProfile?.id]);
+
+  useEffect(() => {
+    if (!reactFlowInstance || nodes.length === 0 || viewportAppliedRef.current) {
+      return;
+    }
+
+    const restored = restoreViewport(reactFlowInstance, currentProfile?.id);
+    if (!restored) {
+      reactFlowInstance.fitView({ padding: 0.2, duration: 300 });
+    }
+    viewportAppliedRef.current = true;
+  }, [reactFlowInstance, nodes.length, currentProfile?.id, restoreViewport]);
 
   // Auto-save search terms do localStorage
   useEffect(() => {
@@ -3030,16 +3093,6 @@ const OrganizationHierarchy = () => {
     }
   }, [currentProfile?.id]);
 
-  // Auto-fit graf po načtení nodes
-  useEffect(() => {
-    if (nodes.length > 0 && reactFlowInstance) {
-      // Počkat na render a pak fitView
-      setTimeout(() => {
-        reactFlowInstance.fitView({ padding: 0.2, duration: 400 });
-      }, 100);
-    }
-  }, [nodes.length, reactFlowInstance]);
-
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -3153,6 +3206,52 @@ const OrganizationHierarchy = () => {
         return node;
       }));
   }, [edges, nodes.length]); // Závislost na edges a počtu nodes (ne na nodes samotných, aby se zabránilo nekonečné smyčce)
+
+  // Synchronizovat LP metadata (orderCount) podle aktuálních dat z API.
+  useEffect(() => {
+    if (!allLpCodes || allLpCodes.length === 0) {
+      return;
+    }
+
+    setNodes((nds) => nds.map((node) => {
+      if (node?.data?.type !== 'lp_kod') {
+        return node;
+      }
+
+      const matchedLp = allLpCodes.find((lp) => {
+        const lpMasterId = lp.lp_id ?? lp.id;
+        return (
+          String(lpMasterId) === String(node.data.lp_id ?? '') ||
+          String(lp.lp_cislo || '') === String(node.data.lp_cislo || '')
+        );
+      });
+
+      if (!matchedLp) {
+        return node;
+      }
+
+      const nextOrderCount = parseInt(
+        matchedLp.orderCount ?? matchedLp.order_count ?? matchedLp.pocet_objednavek ?? 0,
+        10
+      ) || 0;
+      const currentOrderCount = parseInt(node.data?.metadata?.orderCount ?? 0, 10) || 0;
+
+      if (currentOrderCount === nextOrderCount) {
+        return node;
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          metadata: {
+            ...node.data.metadata,
+            orderCount: nextOrderCount
+          }
+        }
+      };
+    }));
+  }, [allLpCodes]);
 
   const onNodeClick = useCallback((event, node) => {
     // Pokud není CTRL/CMD, zobrazit detail panel (single selection)
@@ -4988,6 +5087,11 @@ const OrganizationHierarchy = () => {
       }
     }
     
+    // Uložit aktuální viewport před přepnutím profilu
+    if (reactFlowInstance) {
+      persistViewport(reactFlowInstance.getViewport(), currentProfile?.id);
+    }
+
     setCurrentProfile(profile);
     
     // Uložit vybraný profil do LocalStorage
@@ -5029,11 +5133,13 @@ const OrganizationHierarchy = () => {
           setEdges(apiEdges);
           
           
-          // 🆕 FORCE RE-RENDER: Po načtení profilu znovu vyfituj viewport
-          // Malé zpoždění aby se ReactFlow stihl inicializovat
+          // Obnovit poslední viewport pro vybraný profil (pokud existuje)
           setTimeout(() => {
             if (reactFlowInstance) {
-              reactFlowInstance.fitView({ padding: 0.2, duration: 800 });
+              const restored = restoreViewport(reactFlowInstance, parseInt(profileId, 10));
+              if (!restored) {
+                reactFlowInstance.fitView({ padding: 0.2, duration: 300 });
+              }
             }
           }, 100);
         }
@@ -6535,16 +6641,21 @@ const OrganizationHierarchy = () => {
               onNodeClick={onNodeClick}
               onEdgeClick={onEdgeClick}
               onNodeDragStop={onNodeDragStop}
+              onMoveEnd={(event, viewport) => {
+                persistViewport(viewport);
+              }}
               onInit={(instance) => {
                 setReactFlowInstance(instance);
-                // 🆕 Fit view hned po inicializaci (opraví zobrazení po F5)
+                // Obnovit poslední známý viewport (zoom/pan) po reloadu.
                 setTimeout(() => {
-                  instance.fitView({ padding: 0.2, duration: 800 });
-                }, 100);
+                  const restored = restoreViewport(instance, currentProfile?.id);
+                  if (!restored && nodes.length > 0) {
+                    instance.fitView({ padding: 0.2, duration: 300 });
+                  }
+                }, 50);
               }}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
-              fitView
               attributionPosition="bottom-left"
               selectionOnDrag
               panOnDrag
@@ -6767,7 +6878,14 @@ const OrganizationHierarchy = () => {
                 setNodes((nds) =>
                   nds.map((n) => ({
                     ...n,
+                    selected: false,
                     data: { ...n.data, isSelected: false }
+                  }))
+                );
+                setEdges((eds) =>
+                  eds.map((e) => ({
+                    ...e,
+                    selected: false
                   }))
                 );
               }}>
@@ -8594,6 +8712,25 @@ const OrganizationHierarchy = () => {
                 
                 {/* ✅ NOVÉ: LP KÓD NODE */}
                 {selectedNode && selectedNode.data.type === 'lp_kod' && (
+                  (() => {
+                    const matchedLp = allLpCodes.find((lp) => {
+                      const lpMasterId = lp.lp_id ?? lp.id;
+                      return (
+                        String(lpMasterId) === String(selectedNode.data.lp_id ?? '') ||
+                        String(lp.lp_cislo || '') === String(selectedNode.data.lp_cislo || '')
+                      );
+                    });
+
+                    const lpOrderCount = parseInt(
+                      matchedLp?.orderCount ??
+                      matchedLp?.order_count ??
+                      matchedLp?.pocet_objednavek ??
+                      selectedNode.data.metadata?.orderCount ??
+                      0,
+                      10
+                    ) || 0;
+
+                    return (
                   <>
                     <FormGroup>
                       <Label>LP kód (Číslo limitovaného příslibu)</Label>
@@ -8607,12 +8744,10 @@ const OrganizationHierarchy = () => {
                       <Label>Úsek</Label>
                       <Input value={selectedNode.data.usek || 'Neuvedeno'} readOnly style={{ background: '#f0fdf4', fontWeight: '500', border: '1px solid #86efac' }} />
                     </FormGroup>
-                    {selectedNode.data.metadata?.orderCount !== undefined && (
-                      <FormGroup>
-                        <Label>Počet objednávek s tímto LP</Label>
-                        <Input value={selectedNode.data.metadata.orderCount || 0} readOnly style={{ background: '#fef3c7', fontWeight: '600', border: '1px solid #f59e0b' }} />
-                      </FormGroup>
-                    )}
+                    <FormGroup>
+                      <Label>Počet objednávek s tímto LP</Label>
+                      <Input value={lpOrderCount} readOnly style={{ background: '#fef3c7', fontWeight: '600', border: '1px solid #f59e0b' }} />
+                    </FormGroup>
                     
                     <div style={{
                       marginTop: '16px',
@@ -8696,6 +8831,8 @@ const OrganizationHierarchy = () => {
                       })()}
                     </div>
                   </>
+                    );
+                  })()
                 )}
                 
                 {/* ✅ NOVÉ: FINANCOVÁNÍ NODE */}

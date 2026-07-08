@@ -12,6 +12,48 @@
  */
 
 const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
+const IS_DEV = process.env.NODE_ENV !== 'production';
+const orderV3RequestCache = new Map();
+const orderV3InFlight = new Map();
+const ORDER_V3_CACHE_TTL_MS = 15000;
+
+const startDevTimer = (label, meta) => {
+  if (!IS_DEV || typeof console === 'undefined') return () => {};
+  const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+  if (meta !== undefined) {
+    console.log(`[apiOrdersV3] ${label} start`, meta);
+  } else {
+    console.log(`[apiOrdersV3] ${label} start`);
+  }
+  return (endMeta) => {
+    const finishedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
+    const elapsedMs = Math.max(0, finishedAt - startedAt);
+    if (endMeta !== undefined) {
+      console.log(`[apiOrdersV3] ${label} end (${elapsedMs.toFixed(1)} ms)`, endMeta);
+    } else {
+      console.log(`[apiOrdersV3] ${label} end (${elapsedMs.toFixed(1)} ms)`);
+    }
+  };
+};
+
+const getOrderV3CacheKey = (kind, payload) => `${kind}:${JSON.stringify(payload)}`;
+
+const getCachedOrderV3Response = (cacheKey) => {
+  const cached = orderV3RequestCache.get(cacheKey);
+  if (!cached) return null;
+  if (cached.expiresAt < Date.now()) {
+    orderV3RequestCache.delete(cacheKey);
+    return null;
+  }
+  return cached.value;
+};
+
+const storeCachedOrderV3Response = (cacheKey, value) => {
+  orderV3RequestCache.set(cacheKey, {
+    value,
+    expiresAt: Date.now() + ORDER_V3_CACHE_TTL_MS
+  });
+};
 
 /**
  * Načte seznam aktivních limitovaných příslibů
@@ -61,34 +103,42 @@ export async function listOrdersV3({
   sorting = [],
   access_context = null,
   exclude_cancelled = false,
+  debugSource = 'unknown',
   signal = undefined
 }) {
-  const response = await fetch(`${API_BASE_URL}/order-v3/list`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    signal,
-    body: JSON.stringify({
-      token,
-      username,
-      page,
-      per_page,
-      period,
-      filters,
-      sorting,
-      access_context,
-      exclude_cancelled
-    }),
-  });
+  const endTimer = startDevTimer('order-v3/list', { page, per_page, period, access_context, exclude_cancelled });
+  try {
+    const response = await fetch(`${API_BASE_URL}/order-v3/list`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      signal,
+      body: JSON.stringify({
+        token,
+        username,
+        page,
+        per_page,
+        period,
+        filters,
+        sorting,
+        access_context,
+        exclude_cancelled
+      }),
+    });
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    endTimer({ rows: Array.isArray(responseData?.data?.orders) ? responseData.data.orders.length : undefined, debugSource });
+    return responseData;
+  } catch (error) {
+    endTimer({ error: error?.message || String(error), debugSource });
+    throw error;
   }
-
-  const responseData = await response.json();
-  return responseData;
 }
 
 /**
@@ -445,6 +495,12 @@ export async function deleteOrderComment({ token, username, comment_id }) {
  * @returns {Promise<Object>} Response {status, data: {timeline: [...], year, start_date, end_date}, message}
  */
 export async function fetchOrderTimelineV3({ token, username, year = new Date().getFullYear() }) {
+  const cacheKey = getOrderV3CacheKey('timeline', { token, username, year });
+  const cached = getCachedOrderV3Response(cacheKey);
+  if (cached) return cached;
+  if (orderV3InFlight.has(cacheKey)) return orderV3InFlight.get(cacheKey);
+
+  const requestPromise = (async () => {
   const response = await fetch(`${API_BASE_URL}/order-v3/timeline`, {
     method: 'POST',
     headers: {
@@ -462,6 +518,16 @@ export async function fetchOrderTimelineV3({ token, username, year = new Date().
     throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
   }
 
-  return response.json();
+  const data = await response.json();
+  storeCachedOrderV3Response(cacheKey, data);
+  return data;
+  })();
+
+  orderV3InFlight.set(cacheKey, requestPromise);
+  try {
+    return await requestPromise;
+  } finally {
+    orderV3InFlight.delete(cacheKey);
+  }
 }
 

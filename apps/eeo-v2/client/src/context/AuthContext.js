@@ -549,10 +549,14 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * 🔙 USER IMPERSONATION: Ukončit impersonation - vrátit se zpět na admina
+   * @param {object} options
+   * @param {boolean} options.deferUiCommit - pokud true, pouze uloží nové auth údaje a UI commit se nechá na hard reload
    * @returns {Promise<boolean>} - true pokud úspěšné, false pokud chyba
    */
-  const stopImpersonationContext = useCallback(async () => {
+  const stopImpersonationContext = useCallback(async (options = {}) => {
     try {
+      const deferUiCommit = !!options.deferUiCommit;
+
       if (!originalAdminUser || !originalAdminUser.token || !originalAdminUser.username) {
         console.error('❌ Chybí původní admin data pro návrat');
         return false;
@@ -584,6 +588,12 @@ export const AuthProvider = ({ children }) => {
       await saveAuthData.user({ id: data.id, username: data.username });
       await saveAuthData.token(data.token);
       await saveAuthData.userDetail(data.userDetail);
+
+      // Při hard reload flow nechceme mezistav s překreslením pod adminem.
+      // Stačí mít správná data v úložišti a UI commit udělá nový bootstrap po reloadu.
+      if (deferUiCommit) {
+        return true;
+      }
 
       // Obnovit práva admina
       const adminPerms = extractPermissionCodes(data.userDetail || {});

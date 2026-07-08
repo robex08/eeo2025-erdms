@@ -2242,6 +2242,7 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
           usek_nazev: lp.usek_nazev || lp.usek || '',
           usek_id: parseInt(lp.usek_id || 0),
           user_id: parseInt(lp.user_id || userId || 0), // Pro moje-cerpani použít aktuálního usera
+          hierarchy_expanded: (lp.hierarchy_expanded === true || lp.hierarchy_expanded === 1 || lp.hierarchy_expanded === '1'),
           rok: parseInt(lp.rok || new Date().getFullYear()),
           posledni_prepocet: lp.posledni_prepocet || lp.dt_aktualizace,
           
@@ -4989,11 +4990,26 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
         // ===== VIEW_OWN: LP vlastního úseku + osobně čerpané z cizích úseků =====
         (() => {
           const vlastniUsek = filteredData.filter(lp => lp.usek_id && Number(lp.usek_id) === Number(userUsekId));
-          
-          // Pro cizí LP použít data z myUsageData (jen osobní čerpání)
-          const ciziLPFromMyUsage = myUsageData?.lp_cerpani?.filter(lp => 
-            !lp.usek_id || Number(lp.usek_id) !== Number(userUsekId)
+          const expandedCodes = new Set(
+            filteredData
+              .filter(lp =>
+                (!lp.usek_id || Number(lp.usek_id) !== Number(userUsekId)) &&
+                (lp.hierarchy_expanded === true || lp.hierarchy_expanded === 1 || lp.hierarchy_expanded === '1')
+              )
+              .map(lp => lp.cislo_lp)
+          );
+
+          // LP osobního čerpání zobrazovat jen pokud nejsou v explicitním org rozšíření
+          const ciziLPFromMyUsage = myUsageData?.lp_cerpani?.filter(lp =>
+            (!lp.usek_id || Number(lp.usek_id) !== Number(userUsekId)) &&
+            !expandedCodes.has(lp.cislo_lp)
           ) || [];
+
+          // LP z /stav navíc proti osobnímu čerpání = explicitní org rozšíření
+          const ciziUsekyRozsirenaViditelnost = filteredData.filter(lp =>
+            (!lp.usek_id || Number(lp.usek_id) !== Number(userUsekId)) &&
+            (lp.hierarchy_expanded === true || lp.hierarchy_expanded === 1 || lp.hierarchy_expanded === '1')
+          );
           
           return (
             <>
@@ -5008,6 +5024,19 @@ const LimitovanePrislibyManager = ({ forceFullAccess = false, viewOwnOnly = fals
                 ? renderLPTable(vlastniUsek, true)
                 : <p style={{ color: '#6b7280', fontStyle: 'italic', marginBottom: '1.5rem' }}>Žádná LP pro váš úsek.</p>
               }
+
+              {ciziUsekyRozsirenaViditelnost.length > 0 && (
+                <>
+                  <InfoBox style={{ marginBottom: '1.5rem', marginTop: '2rem', background: '#eff6ff', borderColor: '#3b82f6' }}>
+                    <Building2 size={20} style={{ color: '#2563eb' }} />
+                    <div>
+                      <h4 style={{ color: '#1d4ed8' }}>LP z rozšířené viditelnosti</h4>
+                      <p>Zobrazeny jsou LP kódy z jiných úseků podle nastavení org hierarchie, včetně celkového čerpání.</p>
+                    </div>
+                  </InfoBox>
+                  {renderLPTable(ciziUsekyRozsirenaViditelnost, true)}
+                </>
+              )}
 
               {ciziLPFromMyUsage.length > 0 && (
                 <>

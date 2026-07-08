@@ -168,6 +168,100 @@ if (!function_exists('invoices25_sync_order_invoice_tracking_metadata')) {
 }
 
 /**
+ * 🚀 BATCH SUBSTITUTION ENRICHMENT pro faktury
+ * Nahrazuje per-invoice N+1 loop (resolveInvoiceMaterialCheckSubstitutionInfo)
+ * jedním dotazem na TBL_ZASTUPOVANI_AKCE_LOG pro celou stránku faktur.
+ */
+if (!function_exists('enrichInvoicesWithSubstitutionBatch')) {
+    function enrichInvoicesWithSubstitutionBatch($db, &$faktury) {
+        if (empty($faktury)) return;
+        foreach ($faktury as &$f) {
+            if (!isset($f['substitution_info']) || !is_array($f['substitution_info'])) {
+                $f['substitution_info'] = array();
+            }
+        }
+        unset($f);
+        if (!defined('TBL_ZASTUPOVANI_AKCE_LOG')) return;
+
+        $invoice_ids = array();
+        foreach ($faktury as $f) {
+            if (!empty($f['id']) && !empty($f['potvrdil_vecnou_spravnost_id']) && !empty($f['dt_potvrzeni_vecne_spravnosti'])) {
+                $invoice_ids[] = (int)$f['id'];
+            }
+        }
+        $invoice_ids = array_values(array_unique(array_filter($invoice_ids)));
+        if (empty($invoice_ids)) return;
+
+        $ids_sql = implode(',', $invoice_ids);
+        try {
+            $sql = "SELECT z.zastupce_id, z.zastupovany_id, z.objekt_id, z.akce_typ, z.dt_akce,
+                           u.jmeno AS zastupovany_jmeno_first, u.prijmeni AS zastupovany_jmeno_last
+                    FROM " . TBL_ZASTUPOVANI_AKCE_LOG . " z
+                    LEFT JOIN " . TBL_UZIVATELE . " u ON z.zastupovany_id = u.id
+                    WHERE z.objekt_typ = 'FAKTURA'
+                      AND z.objekt_id IN ($ids_sql)";
+            $stmt = $db->query($sql);
+            $rows = $stmt ? $stmt->fetchAll(PDO::FETCH_ASSOC) : array();
+        } catch (Exception $e) {
+            error_log('[Invoices25 SubBatch] query failed: ' . $e->getMessage());
+            $rows = array();
+        }
+
+        $log_index = array();
+        foreach ($rows as $row) {
+            $iid = (int)$row['objekt_id'];
+            $zid = (int)$row['zastupce_id'];
+            $log_index[$iid][$zid][] = $row;
+        }
+
+        foreach ($faktury as &$f) {
+            $iid = (int)$f['id'];
+            if (empty($f['potvrdil_vecnou_spravnost_id']) || empty($f['dt_potvrzeni_vecne_spravnosti'])) {
+                continue;
+            }
+            $zid = (int)$f['potvrdil_vecnou_spravnost_id'];
+            if (empty($log_index[$iid][$zid])) continue;
+
+            $status = isset($f['vecna_spravnost_potvrzeno']) ? (int)$f['vecna_spravnost_potvrzeno'] : 0;
+            $action_types = ($status === 2) ? array('REJECT', 'CONFIRM') : array('CONFIRM', 'REJECT');
+            $priority = array_flip(array_values($action_types));
+
+            $target_ts = strtotime((string)$f['dt_potvrzeni_vecne_spravnosti']);
+            if ($target_ts === false) continue;
+
+            $best = null;
+            $best_score = PHP_INT_MAX;
+            $fallback = null;
+            $fallback_score = PHP_INT_MAX;
+            foreach ($log_index[$iid][$zid] as $c) {
+                if (!isset($priority[$c['akce_typ']])) continue;
+                $cts = strtotime((string)$c['dt_akce']);
+                if ($cts === false) continue;
+                $diff = abs($cts - $target_ts);
+                $score = $priority[$c['akce_typ']] * 1000000 + $diff;
+                if ($score < $fallback_score) {
+                    $fallback_score = $score;
+                    $fallback = $c;
+                }
+                if ($diff <= 60 && $score < $best_score) {
+                    $best_score = $score;
+                    $best = $c;
+                }
+            }
+            $winner = $best !== null ? $best : $fallback;
+            if ($winner === null) continue;
+            $f['substitution_info']['potvrdil_vecnou_spravnost'] = array(
+                'is_substitution' => true,
+                'zastupovany_id' => (int)$winner['zastupovany_id'],
+                'zastupovany_jmeno' => trim(($winner['zastupovany_jmeno_first'] ?? '') . ' ' . ($winner['zastupovany_jmeno_last'] ?? '')),
+                'dt_akce' => $winner['dt_akce']
+            );
+        }
+        unset($f);
+    }
+}
+
+/**
  * POST - Načte faktury pro konkrétní objednávku
  * Endpoint: invoices25/by-order
  * POST: {token, username, objednavka_id}
@@ -1922,22 +2016,7 @@ function handle_invoices25_create_with_attachment($input, $config, $queries) {
  * Response: {faktury: [...], pagination: {...}, stats: {...}}
  */
 function handle_invoices25_list($input, $config, $queries) {
-    // ==========================================
-    // 🐛 DEV DEBUG LOGGING - MODUL FAKTUR
-    // ==========================================
-    
-    // � FORCE WARNING TEST
-    trigger_error("TEST WARNING - Tento warning MUSÍ být v logu!", E_USER_WARNING);
-    
-    // �🐛 DEBUG: Log úplný payload
-    
-    // 🔍 DEBUG: Specifically log amount filter parameters
-    if (isset($input['castka_gt']) || isset($input['castka_lt']) || isset($input['castka_eq'])) {
-    }
-    
-    if (isset($input['filter_dt_aktualizace'])) {
-    } else {
-    }
+    // Hot path endpoint for large grids: keep startup logging minimal.
     
     // Ověření tokenu
     $token = isset($input['token']) ? $input['token'] : '';
@@ -1984,8 +2063,6 @@ function handle_invoices25_list($input, $config, $queries) {
         $filters = isset($input['filters']) && is_array($input['filters']) ? $input['filters'] : array();
         $access_context = isset($input['access_context']) ? $input['access_context'] : null;
         
-        // DEBUG: Log raw input to see what we receive
-        
         // Merge root level parametrů do filters (pro FE kompatibilitu)
         // FE může poslat přímo: { token, username, year, objednavka_id, fa_dorucena, usek_id, filter_status, ... }
         $filter_keys = array(
@@ -2011,25 +2088,14 @@ function handle_invoices25_list($input, $config, $queries) {
             }
         }
         
-        // DEBUG: Log merged filters
-        debug_log("Invoices25 LIST: Final filters array", $filters);
-        
         // 🔧 ADMIN FEATURE: Zobrazení POUZE neaktivních faktur (aktivni = 0)
         // Tento filtr je viditelný pouze pro role ADMINISTRATOR a SUPERADMIN
         // Pokud je show_only_inactive = 1 → zobrazí POUZE neaktivní faktury (soft-deleted)
         $show_only_inactive = isset($filters['show_only_inactive']) && (int)$filters['show_only_inactive'] === 1;
-        debug_log("Invoices25 LIST: show_only_inactive check", [
-            'isset' => isset($filters['show_only_inactive']),
-            'value' => isset($filters['show_only_inactive']) ? $filters['show_only_inactive'] : null,
-            'result' => $show_only_inactive
-        ]);
-        
         if ($show_only_inactive) {
             $where_conditions = array('f.aktivni = 0');
-            debug_log("Invoices25 LIST: ADMIN MODE - showing ONLY inactive invoices (aktivni = 0)");
         } else {
             $where_conditions = array('f.aktivni = 1');
-            debug_log("Invoices25 LIST: STANDARD MODE - showing only active invoices (aktivni = 1)");
         }
         $params = array();
         
@@ -2826,7 +2892,7 @@ function handle_invoices25_list($input, $config, $queries) {
             szl.id AS spisovka_tracking_id,
             szl.dokument_id AS spisovka_dokument_id,
             szl.spisovka_priloha_id AS spisovka_priloha_id,
-            (SELECT COUNT(*) FROM `" . TBL_FAKTURY_LP_CERPANI . "` lpc WHERE lpc.faktura_id = f.id) AS lp_cerpani_count,
+            COALESCE(lpcagg.lp_cerpani_count, 0) AS lp_cerpani_count,
             olp.id AS odbory_lp_id,
             olp.lp_id AS odbory_lp_lp_id,
             olp.poznamka AS odbory_lp_poznamka,
@@ -2848,7 +2914,20 @@ function handle_invoices25_list($input, $config, $queries) {
         LEFT JOIN `25_uzivatele` u_vecna ON f.potvrdil_vecnou_spravnost_id = u_vecna.id
         LEFT JOIN `25_uzivatele` u_predana ON f.fa_predana_zam_id = u_predana.id
         LEFT JOIN `25_uzivatele` u_aktualizoval ON f.aktualizoval_uzivatel_id = u_aktualizoval.id
-        LEFT JOIN `25_spisovka_zpracovani_log` szl ON f.id = szl.faktura_id
+        LEFT JOIN (
+            SELECT sz.faktura_id, sz.id, sz.dokument_id, sz.spisovka_priloha_id
+            FROM `25_spisovka_zpracovani_log` sz
+            INNER JOIN (
+                SELECT faktura_id, MIN(id) AS id
+                FROM `25_spisovka_zpracovani_log`
+                GROUP BY faktura_id
+            ) sz_min ON sz.id = sz_min.id
+        ) szl ON f.id = szl.faktura_id
+        LEFT JOIN (
+            SELECT lpc.faktura_id, COUNT(*) AS lp_cerpani_count
+            FROM `" . TBL_FAKTURY_LP_CERPANI . "` lpc
+            GROUP BY lpc.faktura_id
+        ) lpcagg ON lpcagg.faktura_id = f.id
         LEFT JOIN `" . TBL_ODBORY_LP_PRIRAZENI . "` olp ON f.id = olp.faktura_id
         LEFT JOIN `" . TBL_LIMITOVANE_PRISLIBY . "` lp_odbory ON olp.lp_id = lp_odbory.id
         WHERE $where_sql
@@ -3310,17 +3389,10 @@ function handle_invoices25_list($input, $config, $queries) {
         }
 
         // 🎯 SUBSTITUTION INFO - Přidej informace o zastoupení ke každé faktuře
-        foreach ($faktury as &$faktura) {
-            // Inicializuj pole pro substitution info
-            $faktura['substitution_info'] = [];
-            
-            // Potvrzení věcné správnosti (potvrdil_vecnou_spravnost_id + dt_potvrzeni_vecne_spravnosti)
-            $sub_info = resolveInvoiceMaterialCheckSubstitutionInfo($db, $faktura);
-            if ($sub_info) {
-                $faktura['substitution_info']['potvrdil_vecnou_spravnost'] = $sub_info;
-            }
-        }
-        unset($faktura); // ⚠️ KRITICKÉ: Unset reference
+        // 🚀 BATCH VERZE: nahrazuje per-invoice N+1 loop jedním query na TBL_ZASTUPOVANI_AKCE_LOG
+        $t_sub = microtime(true);
+        enrichInvoicesWithSubstitutionBatch($db, $faktury);
+        error_log(sprintf("[Invoices25 PERF] substitutionBatch: %.1f ms (rows=%d)", (microtime(true) - $t_sub) * 1000, count($faktury)));
 
         // Vypočítat pagination metadata
         $total_pages = $use_pagination ? (int)ceil($total_count / $per_page) : 1;
