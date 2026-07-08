@@ -12,29 +12,11 @@
  */
 
 const API_BASE_URL = (process.env.REACT_APP_API2_BASE_URL || '/api.eeo').replace(/\/$/, '');
-const IS_DEV = process.env.NODE_ENV !== 'production';
 const orderV3RequestCache = new Map();
 const orderV3InFlight = new Map();
 const ORDER_V3_CACHE_TTL_MS = 15000;
 
-const startDevTimer = (label, meta) => {
-  if (!IS_DEV || typeof console === 'undefined') return () => {};
-  const startedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-  if (meta !== undefined) {
-    console.log(`[apiOrdersV3] ${label} start`, meta);
-  } else {
-    console.log(`[apiOrdersV3] ${label} start`);
-  }
-  return (endMeta) => {
-    const finishedAt = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-    const elapsedMs = Math.max(0, finishedAt - startedAt);
-    if (endMeta !== undefined) {
-      console.log(`[apiOrdersV3] ${label} end (${elapsedMs.toFixed(1)} ms)`, endMeta);
-    } else {
-      console.log(`[apiOrdersV3] ${label} end (${elapsedMs.toFixed(1)} ms)`);
-    }
-  };
-};
+const startDevTimer = () => () => {};
 
 const getOrderV3CacheKey = (kind, payload) => `${kind}:${JSON.stringify(payload)}`;
 
@@ -106,7 +88,7 @@ export async function listOrdersV3({
   debugSource = 'unknown',
   signal = undefined
 }) {
-  const endTimer = startDevTimer('order-v3/list', { page, per_page, period, access_context, exclude_cancelled });
+  const endTimer = () => {};
   try {
     const response = await fetch(`${API_BASE_URL}/order-v3/list`, {
       method: 'POST',
