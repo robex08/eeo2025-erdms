@@ -1934,7 +1934,7 @@ function handle_limitovane_prisliby($input, $config, $queries) {
                 lp.cislo_uctu, lp.nazev_uctu, lp.vyuziti, lp.vyse_financniho_kryti, 
                 lp.platne_od, lp.platne_do, lp.modul,
                 u.usek_zkr, u.usek_nazev,
-                uz.jmeno as prikazce_jmeno, uz.prijmeni as prikazce_prijmeni, uz.titul_pred as prikazce_titul,
+                uz.jmeno as prikazce_jmeno, uz.prijmeni as prikazce_prijmeni, uz.titul_pred as prikazce_titul, uz.titul_za as prikazce_titul_za,
                 COALESCE(c.rezervovano, 0) as rezervovano,
                 COALESCE(c.predpokladane_cerpani, 0) as predpoklad,
                 COALESCE(c.skutecne_cerpano, 0) as fakturovano,
