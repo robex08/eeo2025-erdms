@@ -19,12 +19,22 @@ if (!cashbookSettlementFontsRegistered) {
 const styles = StyleSheet.create({
   page: {
     paddingTop: 14,
-    paddingBottom: 14,
+    paddingBottom: 24,
     paddingHorizontal: 18,
     fontSize: 9,
     color: '#111111',
     fontFamily: 'LiberationSansPdf',
     lineHeight: 1.15,
+  },
+  footerPageNumber: {
+    position: 'absolute',
+    bottom: 11,
+    left: 18,
+    right: 18,
+    textAlign: 'center',
+    fontSize: 10,
+    fontWeight: 400,
+    color: '#111111',
   },
   outerBorder: {
     borderWidth: 1,
@@ -246,10 +256,15 @@ const styles = StyleSheet.create({
   signText: { fontSize: 9.5, lineHeight: 1.2 },
 });
 
-const chunk = (arr, size) => {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
+const paginateRows = (rows = [], fullPageRows = 28) => {
+  const safeFull = Number(fullPageRows) > 0 ? Number(fullPageRows) : 28;
+  if (!Array.isArray(rows) || rows.length === 0) return [[]];
+
+  const pages = [];
+  for (let i = 0; i < rows.length; i += safeFull) {
+    pages.push(rows.slice(i, i + safeFull));
+  }
+  return pages;
 };
 
 const buildRows = (entries = [], totalRows = 15) => {
@@ -402,7 +417,8 @@ export default function CashbookSettlementTemplatePDF({
   cashbookPeriodLabel = '',
   entries = [],
   totalRows = 15,
-  rowsPerPage = 15,
+  fullPageRows = 28,
+  lastPageRows = 12,
   totalAmount = 0,
   providedAdvance = 0,
   toSettle = 0,
@@ -412,18 +428,22 @@ export default function CashbookSettlementTemplatePDF({
   prikazceName = '',
 }) {
   const rows = buildRows(entries, totalRows);
-  const pages = chunk(rows, rowsPerPage);
+  const dataPages = paginateRows(rows, fullPageRows);
+  const lastDataPageSize = dataPages.length ? dataPages[dataPages.length - 1].length : 0;
+  const summaryOnDataLastPage = lastDataPageSize <= lastPageRows;
+  const totalPages = summaryOnDataLastPage ? dataPages.length : (dataPages.length + 1);
 
   return (
     <Document>
-      {pages.map((pageRows, pageIndex) => {
-        const isLastPage = pageIndex === pages.length - 1;
+      {dataPages.map((pageRows, pageIndex) => {
+        const isLastDataPage = pageIndex === dataPages.length - 1;
+        const renderSummaryHere = summaryOnDataLastPage && isLastDataPage;
         return (
           <Page size="A4" style={styles.page} key={`cashbook_page_${pageIndex + 1}`}>
             <View style={styles.outerBorder}>
               <Header utvarNazev={utvarNazev} cashbookPeriodLabel={cashbookPeriodLabel} />
               <Table rows={pageRows} />
-              {isLastPage ? (
+              {renderSummaryHere ? (
                 <LastPageSections
                   totalAmount={totalAmount}
                   providedAdvance={providedAdvance}
@@ -435,9 +455,31 @@ export default function CashbookSettlementTemplatePDF({
                 />
               ) : null}
             </View>
+            <Text
+              style={styles.footerPageNumber}
+            >{`Strana ${pageIndex + 1}/${totalPages}`}</Text>
           </Page>
         );
       })}
+
+      {!summaryOnDataLastPage && (
+        <Page size="A4" style={styles.page} key="cashbook_summary_page">
+          <View style={styles.outerBorder}>
+            <Header utvarNazev={utvarNazev} cashbookPeriodLabel={cashbookPeriodLabel} />
+            <Table rows={[]} />
+            <LastPageSections
+              totalAmount={totalAmount}
+              providedAdvance={providedAdvance}
+              toSettle={toSettle}
+              attachmentsCount={attachmentsCount}
+              preparedBy={preparedBy}
+              preparedDate={preparedDate}
+              prikazceName={prikazceName}
+            />
+          </View>
+          <Text style={styles.footerPageNumber}>{`Strana ${totalPages}/${totalPages}`}</Text>
+        </Page>
+      )}
     </Document>
   );
 }
