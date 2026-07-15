@@ -91,8 +91,7 @@ import { getStrediska25, completeOrder25 } from '../services/api25orders';
 import FkInlineCell from '../components/FkInlineCell';
 import { getCashbookOverview, getCashbookOverviewEntries } from '../services/apiCashbookOverview';
 import { fetchDohadnePolozky } from '../services/api25reports';
-import { exportToExcel } from '../utils/excelExport';
-import CashbookSettlementTemplatePDF from '../components/CashbookSettlementTemplatePDF';
+import CashbookPrintPdfP from '../components/CashbookPrintPdfP';
 import JSZip from 'jszip';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement);
@@ -2815,7 +2814,7 @@ const getFinancingIcon = (label) => {
 export default function StatsReportsPage() {
   const { token, username, user, user_id, fullName, userDetail, userPermissions, hasPermission, hasAdminRole } = useContext(AuthContext);
   const progress = useContext(ProgressContext);
-  const { showToast } = useContext(ToastContext) || {};
+  const { showToast, setToasts } = useContext(ToastContext) || {};
   const navigate = useNavigate();
   const userKey = user_id || user?.id || username || 'guest';
 
@@ -3034,12 +3033,6 @@ export default function StatsReportsPage() {
       return raw || 'all';
     } catch (e) {}
     return 'all';
-  });
-  const [cashbookPdfSaveToFolder, setCashbookPdfSaveToFolder] = useState(() => {
-    try {
-      return localStorage.getItem(`${LOCAL_STORAGE_PREFIX}_cashbook_pdf_save_to_folder`) === '1';
-    } catch (e) {}
-    return false;
   });
   const [expandedCashbookRows, setExpandedCashbookRows] = useState(() => new Set());
   const [cashbookEntries, setCashbookEntries] = useState({});
@@ -4894,12 +4887,6 @@ export default function StatsReportsPage() {
       localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_pdf_selected_book`, cashbookPdfSelectedBook || 'all');
     } catch (_) {}
   }, [cashbookPdfSelectedBook]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(`${LOCAL_STORAGE_PREFIX}_cashbook_pdf_save_to_folder`, cashbookPdfSaveToFolder ? '1' : '0');
-    } catch (_) {}
-  }, [cashbookPdfSaveToFolder]);
 
   // Automatické rozbalení řádků se shodami
   useEffect(() => {
@@ -8055,7 +8042,7 @@ export default function StatsReportsPage() {
   }, [controlSections.cancelledOrders, invoicesByOrderId, orderToCsvRow, downloadCsv, getSearchQuery, searchInVisibleColumns]);
 
   // ─── Export: Všechny sekce finanční kontroly do Excel ───────────────────────
-  const handleExportAllToExcel = useCallback(() => {
+  const handleExportAllToExcel = useCallback(async () => {
     try {
       // Pomocná funkce pro získání FK filtrace
       const getFkFilteredData = (data, sectionKey) => {
@@ -8188,7 +8175,13 @@ export default function StatsReportsPage() {
         return;
       }
 
-      exportToExcel(sheets, 'ExportFinKontrola');
+      const excelExportModule = await import('../utils/excelExport');
+      const exportToExcelFn = excelExportModule?.exportToExcel;
+      if (!exportToExcelFn) {
+        throw new Error('Excel export modul není dostupný.');
+      }
+
+      exportToExcelFn(sheets, 'ExportFinKontrola');
       showToast && showToast(`Export dokončen: ${sheets.length} sekcí exportováno do Excel`, { type: 'success' });
     } catch (error) {
       console.error('Chyba při exportu do Excel:', error);
@@ -8477,6 +8470,12 @@ export default function StatsReportsPage() {
   }, [cashbookBooksToRender, downloadCsv]);
 
   const handleExportPdf_cashbookOverview = useCallback(async () => {
+    const loadingMessage = 'Probíhá generování PDF sestav, prosím čekej...';
+    const clearLoadingToast = () => {
+      if (!setToasts) return;
+      setToasts((prev) => prev.filter((t) => !(t.type === 'loading' && t.message === loadingMessage)));
+    };
+
     try {
       const mesice = ['Leden', 'Unor', 'Brezen', 'Duben', 'Kveten', 'Cerven', 'Cervenec', 'Srpen', 'Zari', 'Rijen', 'Listopad', 'Prosinec'];
       const period = cashbookFilters.mesic
@@ -8495,30 +8494,7 @@ export default function StatsReportsPage() {
         return;
       }
 
-      const canUseDirectoryApi = typeof window !== 'undefined'
-        && typeof window.showDirectoryPicker === 'function'
-        && !!window.isSecureContext;
-      let directoryHandle = null;
-      if (cashbookPdfSaveToFolder) {
-        if (!canUseDirectoryApi) {
-          showToast && showToast('Režim uložení do složky zde není dostupný. Vyžaduje Chrome/Edge v secure contextu (HTTPS nebo localhost).', { type: 'warning' });
-          return;
-        } else {
-          try {
-            directoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-          } catch (pickError) {
-            if (pickError?.name === 'AbortError') {
-              showToast && showToast('Výběr složky byl zrušen.', { type: 'info' });
-              return;
-            }
-            if (pickError?.name === 'SecurityError' || pickError?.name === 'NotAllowedError') {
-              showToast && showToast('Prohlížeč zablokoval výběr složky (oprávnění/kontext). Zkontroluj HTTPS a oprávnění webu.', { type: 'error' });
-              return;
-            }
-            throw pickError;
-          }
-        }
-      }
+      showToast && showToast(loadingMessage, { type: 'loading', timeout: 0 });
 
       const normalizeLpCode = (value) => String(value || '').trim().toUpperCase();
       const buildPersonNameWithTitles = ({ titulPred, jmeno, prijmeni, titulZa }) => {
@@ -8652,6 +8628,12 @@ export default function StatsReportsPage() {
       let skippedRowsWithoutLpMaster = 0;
       const pendingBrowserDownloads = [];
 
+      const settlementPdfModule = await import('../components/CashbookSettlementTemplatePDF');
+      const CashbookSettlementTemplatePDFLazy = settlementPdfModule?.default;
+      if (!CashbookSettlementTemplatePDFLazy) {
+        throw new Error('PDF šablona PO/LP není dostupná.');
+      }
+
       const triggerBlobDownload = (blob, fileName) => {
         const url = window.URL.createObjectURL(blob);
         const link = document.createElement('a');
@@ -8767,7 +8749,7 @@ export default function StatsReportsPage() {
           }));
 
           const blob = await pdf(
-            <CashbookSettlementTemplatePDF
+            <CashbookSettlementTemplatePDFLazy
               utvarNazev={`${target.nazev || 'Pokladna'}${target.cislo ? ` č. ${target.cislo}` : ''}`}
               cashbookPeriodLabel={periodLabel}
               entries={pdfRows}
@@ -8789,19 +8771,12 @@ export default function StatsReportsPage() {
           const safePrikazce = sanitizeFileName(prikazceName || 'neurceno') || 'neurceno';
           const fileName = `vytuctovani-drobneho-vydani-${safeBook}-${safeCategory}-${safePrikazce}-${period}.pdf`;
 
-          if (directoryHandle) {
-            const fileHandle = await directoryHandle.getFileHandle(fileName, { create: true });
-            const writable = await fileHandle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-          } else {
-            pendingBrowserDownloads.push({ fileName, blob });
-          }
+          pendingBrowserDownloads.push({ fileName, blob });
           generatedCount += 1;
         }
       }
 
-      if (!directoryHandle && pendingBrowserDownloads.length > 0) {
+      if (pendingBrowserDownloads.length > 0) {
         if (pendingBrowserDownloads.length === 1) {
           const only = pendingBrowserDownloads[0];
           triggerBlobDownload(only.blob, only.fileName);
@@ -8825,11 +8800,11 @@ export default function StatsReportsPage() {
       }
 
       if (generatedCount === 0) {
+        clearLoadingToast();
         showToast && showToast('Pro výběr nejsou dostupná data k vygenerování PDF.', { type: 'warning' });
       } else {
-        if (directoryHandle) {
-          showToast && showToast(`Bylo vygenerováno ${generatedCount} PDF sestav.`, { type: 'success' });
-        } else if (pendingBrowserDownloads.length > 1) {
+        clearLoadingToast();
+        if (pendingBrowserDownloads.length > 1) {
           showToast && showToast(`Bylo vygenerováno ${generatedCount} PDF sestav a staženo jako jeden ZIP soubor.`, { type: 'success' });
         } else {
           showToast && showToast(`Bylo vygenerováno ${generatedCount} PDF sestav.`, { type: 'success' });
@@ -8840,6 +8815,7 @@ export default function StatsReportsPage() {
         showToast && showToast(`Pozor: ${skippedRowsWithoutLpMaster} položek nemělo vazbu na LP tabulku 25_limitovane_prisliby a bylo přeskočeno.`, { type: 'warning' });
       }
     } catch (error) {
+      clearLoadingToast();
       console.error('Chyba při generování PDF šablony pokladny:', error);
       showToast && showToast(`Chyba při generování PDF šablony: ${error.message || error}`, { type: 'error' });
     }
@@ -8848,11 +8824,351 @@ export default function StatsReportsPage() {
     cashbookFilters.rok,
     showToast,
     cashbookPdfSelectedBook,
-    cashbookPdfSaveToFolder,
     cashbookPdfBookOptions,
     fullName,
     userDetail,
     user,
+    setToasts,
+    username,
+    cashbookEntries,
+    token,
+    cashbookData,
+  ]);
+
+  const handleExportPdfP_cashbookOverview = useCallback(async () => {
+    const loadingMessage = 'Probíhá generování PDF (P), prosím čekej...';
+    const clearLoadingToast = () => {
+      if (!setToasts) return;
+      setToasts((prev) => prev.filter((t) => !(t.type === 'loading' && t.message === loadingMessage)));
+    };
+
+    try {
+      const mesice = ['Leden', 'Unor', 'Brezen', 'Duben', 'Kveten', 'Cerven', 'Cervenec', 'Srpen', 'Zari', 'Rijen', 'Listopad', 'Prosinec'];
+      const period = cashbookFilters.mesic
+        ? `${mesice[cashbookFilters.mesic - 1]}_${cashbookFilters.rok}`
+        : `Rok_${cashbookFilters.rok}`;
+
+      const targets = cashbookPdfSelectedBook === 'all'
+        ? cashbookPdfBookOptions
+        : cashbookPdfBookOptions.filter((item) => item.value === cashbookPdfSelectedBook);
+
+      if (!targets.length) {
+        showToast && showToast('Vybraná pokladna není dostupná pro aktuální období.', { type: 'warning' });
+        return;
+      }
+
+      showToast && showToast(loadingMessage, { type: 'loading', timeout: 0 });
+
+      const parseAmount = (value) => {
+        if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+        const raw = String(value ?? '').trim();
+        if (!raw) return 0;
+        const compact = raw
+          .replace(/\s+/g, '')
+          .replace(/\u00A0/g, '');
+
+        let normalized = compact;
+        if (compact.includes(',') && compact.includes('.')) {
+          normalized = compact.replace(/\./g, '').replace(',', '.');
+        } else if (compact.includes(',')) {
+          normalized = compact.replace(',', '.');
+        }
+
+        const num = Number(normalized);
+        return Number.isFinite(num) ? num : 0;
+      };
+
+      const sanitizeFileName = (value) => String(value || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9_-]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .toLowerCase();
+
+      const triggerBlobDownload = (blob, fileName) => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        window.URL.revokeObjectURL(url);
+      };
+
+      const fetchEntriesForBook = async (knihaId) => {
+        if (!knihaId) return [];
+        if (Array.isArray(cashbookEntries[knihaId])) return cashbookEntries[knihaId];
+
+        const response = await getCashbookOverviewEntries({
+          username,
+          token,
+          kniha_id: knihaId,
+          page: 1,
+          limit: 1000,
+        });
+        const loaded = response?.status === 'ok' ? (response?.data?.entries || []) : [];
+        setCashbookEntries((prev) => ({ ...prev, [knihaId]: loaded }));
+        return loaded;
+      };
+
+      const generatedBy = {
+        fullName: `${userDetail?.titul_pred || ''} ${userDetail?.jmeno || user?.jmeno || ''} ${userDetail?.prijmeni || user?.prijmeni || ''} ${userDetail?.titul_za || ''}`.trim() || fullName || username || '',
+        usekZkr: userDetail?.usek_zkr?.[0] || user?.usek_zkr?.[0] || '',
+        lokalita: userDetail?.usek_nazev || user?.usek_nazev || '',
+      };
+
+      const normalizeLpCode = (value) => String(value || '').trim().toUpperCase();
+      const buildPersonNameWithTitles = ({ titulPred, jmeno, prijmeni, titulZa }) => {
+        const baseName = buildFullName(jmeno, prijmeni);
+        const left = [String(titulPred || '').trim(), baseName].filter(Boolean).join(' ').trim();
+        const right = String(titulZa || '').trim();
+        if (left && right) return `${left}, ${right}`;
+        return left || right || '';
+      };
+
+      const lpRows = await fetchLimitovanePrisliby({ token, username, context: 'cashbook_pdf_p' });
+      const lpMetaByCode = new Map();
+      (Array.isArray(lpRows) ? lpRows : []).forEach((lp) => {
+        const lpCode = normalizeLpCode(lp?.cislo_lp);
+        if (!lpCode || lpMetaByCode.has(lpCode)) return;
+
+        const prikazce = buildPersonNameWithTitles({
+          titulPred: lp?.prikazce_titul || lp?.prikazce_titul_pred,
+          jmeno: lp?.prikazce_jmeno,
+          prijmeni: lp?.prikazce_prijmeni,
+          titulZa: lp?.prikazce_titul_za,
+        }) || 'Neurčeno';
+
+        lpMetaByCode.set(lpCode, {
+          cisloLp: lp?.cislo_lp || lpCode,
+          prikazce,
+          prikazceKey: lp?.user_id != null ? String(lp.user_id) : prikazce,
+          prikazceSortKey: `${String(lp?.prikazce_prijmeni || '').trim()} ${String(lp?.prikazce_jmeno || '').trim()}`.trim().toLocaleLowerCase('cs-CZ'),
+        });
+      });
+
+      const resolveCanonicalLpCode = (rawCode) => {
+        const normalized = normalizeLpCode(rawCode);
+        if (!normalized) return '';
+        if (lpMetaByCode.has(normalized)) return normalized;
+
+        let bestPrefix = '';
+        lpMetaByCode.forEach((_, lpCode) => {
+          if (normalized.startsWith(lpCode) && lpCode.length > bestPrefix.length) {
+            bestPrefix = lpCode;
+          }
+        });
+        if (bestPrefix) return bestPrefix;
+
+        const strippedDigits = normalized.replace(/\d+$/, '');
+        if (strippedDigits && lpMetaByCode.has(strippedDigits)) return strippedDigits;
+
+        return normalized;
+      };
+
+      const generatedPdfs = [];
+      let generatedCount = 0;
+
+      for (const target of targets) {
+        const targetBooks = (cashbookData?.books || []).filter((book) => {
+          const bookKey = String(book?.pokladna_id ?? book?.cislo_pokladny ?? '').trim();
+          return bookKey === target.value;
+        });
+        if (!targetBooks.length) continue;
+
+        const allEntries = [];
+        for (const book of targetBooks) {
+          if (book?.mesic && book?.kniha_id) {
+            const entries = await fetchEntriesForBook(book.kniha_id);
+            entries.forEach((entry) => {
+              allEntries.push({ entry, rok: book.rok, mesic: book.mesic });
+            });
+          } else if (Array.isArray(book?.mesice)) {
+            for (const month of book.mesice) {
+              const entries = await fetchEntriesForBook(month?.kniha_id);
+              entries.forEach((entry) => {
+                allEntries.push({ entry, rok: book.rok, mesic: month?.mesic });
+              });
+            }
+          }
+        }
+
+        if (!allEntries.length) continue;
+
+        const sortedEntries = [...allEntries].sort((a, b) => {
+          const aTime = a?.entry?.datum_zapisu ? new Date(a.entry.datum_zapisu).getTime() : 0;
+          const bTime = b?.entry?.datum_zapisu ? new Date(b.entry.datum_zapisu).getTime() : 0;
+          const safeATime = Number.isFinite(aTime) ? aTime : 0;
+          const safeBTime = Number.isFinite(bTime) ? bTime : 0;
+          if (safeATime !== safeBTime) return safeATime - safeBTime;
+          return String(a?.entry?.cislo_dokladu || '').localeCompare(String(b?.entry?.cislo_dokladu || ''), 'cs-CZ');
+        });
+
+        const firstBook = targetBooks[0] || {};
+        const carryOverAmount = parseAmount(firstBook.prevod_z_predchoziho ?? firstBook.pocatecni_stav_rok ?? 0);
+        let runningBalance = carryOverAmount;
+
+        const mappedEntries = sortedEntries.map(({ entry }, idx) => {
+          const income = parseAmount(entry?.castka_prijem);
+          const expense = parseAmount(entry?.castka_vydaj);
+          const dbBalanceRaw = entry?.zustatek_po_operaci ?? entry?.zustatek;
+          const hasDbBalance = dbBalanceRaw !== null && dbBalanceRaw !== undefined && dbBalanceRaw !== '';
+
+          if (hasDbBalance) {
+            runningBalance = parseAmount(dbBalanceRaw);
+          } else {
+            runningBalance += income - expense;
+          }
+
+          return {
+            id: entry?.id || `${entry?.datum_zapisu || ''}_${idx}`,
+            date: entry?.datum_zapisu || '',
+            documentNumber: entry?.cislo_dokladu || '',
+            description: entry?.obsah_zapisu || '',
+            person: entry?.komu_od_koho || '',
+            income,
+            expense,
+            balance: runningBalance,
+            lpCode: entry?.lp_kod || '',
+            detailItems: Array.isArray(entry?.detail_items) ? entry.detail_items : [],
+            note: entry?.poznamka || '',
+          };
+        });
+
+        const totalIncome = mappedEntries.reduce((sum, row) => sum + (Number(row.income) || 0), 0);
+        const totalExpenses = mappedEntries.reduce((sum, row) => sum + (Number(row.expense) || 0), 0);
+        const currentBalance = mappedEntries.length > 0
+          ? (Number(mappedEntries[mappedEntries.length - 1].balance) || 0)
+          : carryOverAmount;
+
+        const prikazceLpMap = new Map();
+        sortedEntries.forEach(({ entry }) => {
+          const addLpAmount = (rawLpCode, rawAmount) => {
+            const amount = parseAmount(rawAmount);
+            if (amount <= 0) return;
+
+            const canonicalLp = resolveCanonicalLpCode(rawLpCode);
+            if (!canonicalLp) return;
+
+            const lpMeta = lpMetaByCode.get(canonicalLp);
+            const lpCode = String(lpMeta?.cisloLp || canonicalLp).trim().toUpperCase();
+
+            const prikazce = lpMeta?.prikazce || 'Neurčeno';
+            const prikazceKey = lpMeta?.prikazceKey || prikazce;
+            const prikazceSortKey = lpMeta?.prikazceSortKey || prikazce.toLocaleLowerCase('cs-CZ');
+            const mapKey = `${prikazceKey}__${lpCode}`;
+            const current = prikazceLpMap.get(mapKey) || {
+              prikazce,
+              prikazceKey,
+              prikazceSortKey,
+              lpKod: lpCode,
+              amount: 0,
+            };
+            current.amount += amount;
+            prikazceLpMap.set(mapKey, current);
+          };
+
+          if (Array.isArray(entry?.detail_items) && entry.detail_items.length > 0) {
+            entry.detail_items.forEach((item) => {
+              addLpAmount(item?.lp_kod || entry?.lp_kod, item?.castka);
+            });
+          } else {
+            addLpAmount(entry?.lp_kod, entry?.castka_vydaj);
+          }
+        });
+
+        const prikazceLpSummary = Array.from(prikazceLpMap.values());
+
+        const monthLabel = cashbookFilters.mesic
+          ? new Date(cashbookFilters.rok, cashbookFilters.mesic - 1, 1).toLocaleDateString('cs-CZ', { month: 'long' })
+          : 'celý rok';
+
+        const blob = await pdf(
+          <CashbookPrintPdfP
+            organizationInfo={{
+              workplace: target.nazev || 'Pokladna',
+              cashboxNumber: target.cislo || target.value,
+              month: monthLabel,
+              year: cashbookFilters.rok,
+            }}
+            carryOverAmount={carryOverAmount}
+            totals={{
+              totalIncome,
+              totalExpenses,
+              currentBalance,
+            }}
+            entries={mappedEntries}
+            generatedBy={generatedBy}
+            prikazceLpSummary={prikazceLpSummary}
+          />
+        ).toBlob();
+
+        const safeBook = sanitizeFileName(target.nazev || `pokladna-${target.cislo || target.value}`) || `pokladna-${target.cislo || target.value}`;
+        const fileName = `pokladni-kniha-${safeBook}-${period}.pdf`;
+
+        generatedPdfs.push({ fileName, blob });
+        generatedCount += 1;
+      }
+
+      if (generatedCount === 0) {
+        clearLoadingToast();
+        showToast && showToast('Pro výběr nejsou dostupná data k vygenerování PDF (P).', { type: 'warning' });
+        return;
+      }
+
+      if (generatedPdfs.length === 1) {
+        const only = generatedPdfs[0];
+        triggerBlobDownload(only.blob, only.fileName);
+      } else if (generatedPdfs.length > 1) {
+        const pdfLibModule = await import('pdf-lib');
+        const PDFLibDocument = pdfLibModule?.PDFDocument;
+        if (!PDFLibDocument) {
+          throw new Error('Knihovna pdf-lib není dostupná pro sloučení PDF.');
+        }
+
+        // Sloučit více PDF do jednoho dokumentu: každá pokladna začne na novém listu.
+        const mergedPdf = await PDFLibDocument.create();
+        for (const file of generatedPdfs) {
+          const bytes = await file.blob.arrayBuffer();
+          const sourcePdf = await PDFLibDocument.load(bytes);
+          const pageIndices = sourcePdf.getPageIndices();
+          const copiedPages = await mergedPdf.copyPages(sourcePdf, pageIndices);
+          copiedPages.forEach((page) => mergedPdf.addPage(page));
+        }
+        const mergedBytes = await mergedPdf.save();
+        const mergedBlob = new Blob([mergedBytes], { type: 'application/pdf' });
+
+        const mergedScope = cashbookPdfSelectedBook === 'all'
+          ? 'vsechny-pokladny'
+          : sanitizeFileName(targets[0]?.nazev || targets[0]?.value || 'pokladna');
+        const mergedName = `pokladni-kniha-${mergedScope}-${period}.pdf`;
+        triggerBlobDownload(mergedBlob, mergedName);
+      }
+
+      clearLoadingToast();
+      if (generatedPdfs.length > 1) {
+        if (cashbookPdfSelectedBook === 'all') {
+          showToast && showToast(`Bylo vygenerováno ${generatedCount} pokladen do jednoho PDF souboru.`, { type: 'success' });
+        } else {
+          showToast && showToast(`Bylo vygenerováno ${generatedCount} PDF (P) sestav do jednoho PDF souboru.`, { type: 'success' });
+        }
+      } else {
+        showToast && showToast(`Bylo vygenerováno ${generatedCount} PDF (P) sestav.`, { type: 'success' });
+      }
+    } catch (error) {
+      clearLoadingToast();
+      console.error('Chyba při generování PDF (P):', error);
+      showToast && showToast(`Chyba při generování PDF (P): ${error.message || error}`, { type: 'error' });
+    }
+  }, [
+    cashbookFilters.mesic,
+    cashbookFilters.rok,
+    showToast,
+    cashbookPdfSelectedBook,
+    cashbookPdfBookOptions,
+    fullName,
+    userDetail,
+    user,
+    setToasts,
     username,
     cashbookEntries,
     token,
@@ -15351,16 +15667,8 @@ export default function StatsReportsPage() {
                             </option>
                           ))}
                         </select>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.75rem', color: '#334155', userSelect: 'none', whiteSpace: 'nowrap' }} title="Vybereš složku jednou a všechna PDF se uloží přímo do ní (podporováno v Chromium prohlížečích)">
-                          <input
-                            type="checkbox"
-                            checked={cashbookPdfSaveToFolder}
-                            onChange={(e) => setCashbookPdfSaveToFolder(e.target.checked)}
-                            style={{ margin: 0, cursor: 'pointer' }}
-                          />
-                          Uložit PDF do složky
-                        </label>
-                        <button onClick={handleExportPdf_cashbookOverview} title="Exportovat do PDF" style={{ border: '1px solid #fecaca', background: '#fff1f2', color: '#b91c1c', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faFilePdf} />PDF</button>
+                        <button onClick={handleExportPdf_cashbookOverview} title="Exportovat do PDF (PO/LP)" style={{ border: '1px solid #fecaca', background: '#fff1f2', color: '#b91c1c', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faFilePdf} />PDF (PO/LP)</button>
+                        <button onClick={handleExportPdfP_cashbookOverview} title="Exportovat do PDF (P)" style={{ border: '1px solid #fecaca', background: '#fff', color: '#9f1239', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faFilePdf} />PDF (P)</button>
                         {(cashbookLoading || cashbookEntriesLoading) && <SectionBadge $tone="info">Načítám...</SectionBadge>}
                       </div>
                     </SectionHeader>

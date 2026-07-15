@@ -43,6 +43,11 @@ export function ToastProvider({ children }) {
   return (
     <ToastContext.Provider value={{ showToast, removeToast, toasts, setToasts }}>
       <style>{`
+        @keyframes toast-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
         @keyframes pulse {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.9; transform: scale(1.02); }
@@ -56,6 +61,7 @@ export function ToastProvider({ children }) {
             error: 'Chyba',
             info: 'Info',
             warning: 'Varování',
+            loading: 'Generování',
             greeting: '', // Prázdný nadpis pro pozdravy
             alarm: 'ALARM', // Toast notifikace pro TODO alarm
             alarm_high: 'HIGH ALARM' // Toast notifikace pro HIGH alarm
@@ -82,9 +88,28 @@ export function ToastProvider({ children }) {
             }
             // Standardní styly
             return {
-              background: t.type === 'error' ? '#fee2e2' : t.type === 'warning' ? '#fef3c7' : (t.type === 'success' ? '#ecfdf5' : '#eef2ff'),
+              background:
+                t.type === 'error'
+                  ? '#fee2e2'
+                  : t.type === 'warning'
+                    ? '#fef3c7'
+                    : t.type === 'success'
+                      ? '#ecfdf5'
+                      : t.type === 'loading'
+                        ? '#e0f2fe'
+                        : '#eef2ff',
               color: '#0f172a',
-              borderLeft: `4px solid ${t.type === 'error' ? '#ef4444' : t.type === 'warning' ? '#f59e0b' : (t.type === 'success' ? '#10b981' : '#6366f1')}`
+              borderLeft: `4px solid ${
+                t.type === 'error'
+                  ? '#ef4444'
+                  : t.type === 'warning'
+                    ? '#f59e0b'
+                    : t.type === 'success'
+                      ? '#10b981'
+                      : t.type === 'loading'
+                        ? '#0284c7'
+                        : '#6366f1'
+              }`
             };
           };
 
@@ -108,7 +133,25 @@ export function ToastProvider({ children }) {
             >
               {heading && <div style={{ fontWeight: 600, marginBottom: 4 }}>{heading}</div>}
               <div style={{ whiteSpace: 'pre-wrap', marginBottom: t.action ? 8 : 0, lineHeight: '1.5' }}>
-                {t.message}
+                {t.type === 'loading' ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      aria-hidden="true"
+                      style={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        border: '2px solid #bae6fd',
+                        borderTopColor: '#0284c7',
+                        animation: 'toast-spin 0.9s linear infinite',
+                        flexShrink: 0
+                      }}
+                    />
+                    <span>{t.message}</span>
+                  </div>
+                ) : (
+                  t.message
+                )}
               </div>
                 {t.action && (
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
