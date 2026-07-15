@@ -42,7 +42,7 @@ const MsgMeta = styled.table`
     border-bottom: 1px solid #f1f5f9;
     vertical-align: top;
   }
-  td:first-child {
+  td:first-of-type {
     width: 90px;
     font-weight: 600;
     color: #64748b;

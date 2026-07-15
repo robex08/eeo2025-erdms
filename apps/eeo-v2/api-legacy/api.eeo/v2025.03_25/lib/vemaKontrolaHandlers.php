@@ -15,6 +15,35 @@ require_once __DIR__ . '/dbconfig.php';
 require_once __DIR__ . '/handlers.php';
 require_once __DIR__ . '/TimezoneHelper.php';
 
+// Sjednocené statusy pro API/UI a mapování na legacy DB ENUM hodnoty.
+const VEMA_STATUS_DB_TO_API = [
+    'nezkontrolovano' => 'nezkontrolovano',
+    'v_kontrole' => 'v_reseni',
+    'zkontrolovano' => 'v_poradku',
+    'ma_problem' => 'nelze_vyresit',
+    'pozastaveno' => 'v_reseni'
+];
+
+const VEMA_STATUS_API_TO_DB = [
+    'nezkontrolovano' => 'nezkontrolovano',
+    'v_poradku' => 'zkontrolovano',
+    'nelze_vyresit' => 'ma_problem',
+    'v_reseni' => 'v_kontrole'
+];
+
+function vema_normalize_status_for_api($status) {
+    $value = trim((string)$status);
+    if ($value === '') return 'nezkontrolovano';
+    if (isset(VEMA_STATUS_DB_TO_API[$value])) return VEMA_STATUS_DB_TO_API[$value];
+    if (isset(VEMA_STATUS_API_TO_DB[$value])) return $value;
+    return 'nezkontrolovano';
+}
+
+function vema_status_to_db($status) {
+    $normalized = vema_normalize_status_for_api($status);
+    return VEMA_STATUS_API_TO_DB[$normalized] ?? 'nezkontrolovano';
+}
+
 // ====================================================
 // POMOCNÉ FUNKCE PRO HISTORII
 // ====================================================
@@ -126,10 +155,21 @@ function handle_vema_kontrola_get($input, $config) {
             $kontrola['metadata'] = json_decode($kontrola['metadata_json'], true);
         }
 
+        if ($kontrola) {
+            $kontrola['kontrola_status'] = vema_normalize_status_for_api($kontrola['kontrola_status'] ?? null);
+        }
+
         // Načti historii událostí
         $udalosti = [];
         if ($kontrola) {
             $udalosti = vema_get_udalosti($db, $kontrola['id']);
+            foreach ($udalosti as &$u) {
+                if (($u['typ'] ?? '') === 'ZMENA_STAVU') {
+                    $u['stav_pred'] = vema_normalize_status_for_api($u['stav_pred'] ?? null);
+                    $u['stav_po'] = vema_normalize_status_for_api($u['stav_po'] ?? null);
+                }
+            }
+            unset($u);
         }
 
         http_response_code(200);
@@ -173,17 +213,7 @@ function handle_vema_kontrola_save($input, $config) {
     $metadata = $input['metadata'] ?? null;
     $vema_id_secondary = $input['vema_id_secondary'] ?? null;
 
-    // Povolené stavy (sjednocený číselník)
-    $legacy_status_map = [
-        'v_kontrole' => 'v_reseni',
-        'zkontrolovano' => 'v_poradku',
-        'ma_problem' => 'nelze_vyresit',
-        'pozastaveno' => 'v_reseni'
-    ];
-    if (isset($legacy_status_map[$kontrola_status])) {
-        $kontrola_status = $legacy_status_map[$kontrola_status];
-    }
-
+    $kontrola_status = vema_normalize_status_for_api($kontrola_status);
     $allowed_statuses = ['nezkontrolovano', 'v_poradku', 'nelze_vyresit', 'v_reseni'];
     if (!in_array($kontrola_status, $allowed_statuses, true)) {
         http_response_code(400);
@@ -220,6 +250,7 @@ function handle_vema_kontrola_save($input, $config) {
 
         $user_id = $token_data['id'];
         $now = date('Y-m-d H:i:s');
+        $kontrola_status_db = vema_status_to_db($kontrola_status);
         
         // Převeď metadata na JSON
         $metadata_json = null;
@@ -231,6 +262,9 @@ function handle_vema_kontrola_save($input, $config) {
         $check = $db->prepare("SELECT * FROM `25v_kontrola_metadata` WHERE typ_zaznamu = ? AND vema_id = ?");
         $check->execute([$typ_zaznamu, $vema_id]);
         $existing = $check->fetch(PDO::FETCH_ASSOC);
+        $existing_status_api = vema_normalize_status_for_api(
+            is_array($existing) ? ($existing['kontrola_status'] ?? null) : null
+        );
 
         if ($existing) {
             // UPDATE existujícího záznamu
@@ -249,7 +283,7 @@ function handle_vema_kontrola_save($input, $config) {
             ";
             $stmt = $db->prepare($query);
             $stmt->execute([
-                $kontrola_status,
+                $kontrola_status_db,
                 $poznamka,
                 $priorita,
                 $metadata_json,
@@ -267,13 +301,13 @@ function handle_vema_kontrola_save($input, $config) {
             // 📝 HISTORIE: Zjisti co se změnilo a zapiš do historie
             
             // Změna stavu?
-            if ($existing['kontrola_status'] !== $kontrola_status) {
+            if ($existing_status_api !== $kontrola_status) {
                 vema_add_udalost(
                     $db, 
                     $result_id, 
                     'ZMENA_STAVU', 
                     null, 
-                    $existing['kontrola_status'], 
+                    $existing_status_api, 
                     $kontrola_status, 
                     $user_id
                 );
@@ -320,7 +354,7 @@ function handle_vema_kontrola_save($input, $config) {
                 $typ_zaznamu,
                 $vema_id,
                 $vema_id_secondary,
-                $kontrola_status,
+                $kontrola_status_db,
                 $poznamka,
                 $priorita,
                 $metadata_json,
@@ -423,6 +457,7 @@ function handle_vema_kontrola_list($input, $config) {
         }
 
         if ($kontrola_status) {
+            $kontrola_status = vema_status_to_db($kontrola_status);
             $where[] = "k.kontrola_status = ?";
             $params[] = $kontrola_status;
         }
@@ -453,7 +488,9 @@ function handle_vema_kontrola_list($input, $config) {
             if (!empty($k['metadata_json'])) {
                 $k['metadata'] = json_decode($k['metadata_json'], true);
             }
+            $k['kontrola_status'] = vema_normalize_status_for_api($k['kontrola_status'] ?? null);
         }
+        unset($k);
 
         http_response_code(200);
         echo json_encode([
@@ -525,10 +562,27 @@ function handle_vema_kontrola_stats($input, $config) {
         $stmt->execute($params);
         $stats = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+        $normalized_stats = [];
+        foreach ($stats as $row) {
+            $normalized_status = vema_normalize_status_for_api($row['kontrola_status'] ?? null);
+            if (!isset($normalized_stats[$normalized_status])) {
+                $normalized_stats[$normalized_status] = 0;
+            }
+            $normalized_stats[$normalized_status] += (int)($row['pocet'] ?? 0);
+        }
+
+        $stats_result = [];
+        foreach ($normalized_stats as $status => $count) {
+            $stats_result[] = [
+                'kontrola_status' => $status,
+                'pocet' => $count
+            ];
+        }
+
         http_response_code(200);
         echo json_encode([
             'status' => 'success',
-            'data' => $stats,
+            'data' => $stats_result,
             'message' => 'Statistiky načteny'
         ]);
 

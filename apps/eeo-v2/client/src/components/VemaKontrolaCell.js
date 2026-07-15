@@ -35,7 +35,39 @@ const TriggerBtn = styled.button`
   white-space: nowrap;
   line-height: 1.3;
   transition: opacity 0.12s;
+  ${({ $priority }) => $priority === KONTROLA_PRIORITA.VYSOKA && `
+    box-shadow: inset 0 0 0 1px #f59e0b;
+  `}
+  ${({ $priority }) => $priority === KONTROLA_PRIORITA.KRITICKA && `
+    box-shadow: inset 0 0 0 1px #dc2626, 0 0 0 1px rgba(220, 38, 38, 0.18);
+    font-weight: 700;
+  `}
   &:hover { opacity: 0.8; }
+`;
+
+const PriorityBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.2rem;
+  padding: 0.03rem 0.3rem;
+  border-radius: 999px;
+  border: none;
+  background: ${({ $bgcolor }) => $bgcolor || '#f8fafc'};
+  color: ${({ $textcolor }) => $textcolor || '#475569'};
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.15;
+`;
+
+const PriorityBadgeIcon = styled.span`
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.78rem;
+  height: 0.78rem;
+  font-size: 0.78rem;
+  line-height: 1;
 `;
 
 const NotePreviewWrap = styled.div`
@@ -78,6 +110,25 @@ const Popover = styled.div`
   @keyframes fadeIn {
     from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+  &::-webkit-scrollbar {
+    width: 10px;
+  }
+  &::-webkit-scrollbar-track {
+    background: #e2e8f0;
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #94a3b8, #64748b);
+    border-radius: 999px;
+    border: 2px solid #e2e8f0;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #64748b, #475569);
   }
 `;
 
@@ -208,6 +259,25 @@ const JournalList = styled.div`
   background: #f8fafc;
   border-radius: 4px;
   border: 1px solid #e2e8f0;
+
+  /* Custom scrollbar */
+  scrollbar-width: thin;
+  scrollbar-color: #94a3b8 #e2e8f0;
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  &::-webkit-scrollbar-track {
+    background: #e2e8f0;
+    border-radius: 999px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #94a3b8, #64748b);
+    border-radius: 999px;
+    border: 1px solid #e2e8f0;
+  }
+  &::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #64748b, #475569);
+  }
 `;
 
 const JournalItem = styled.div`
@@ -251,6 +321,12 @@ const formatUdalostTyp = (typ) => {
     'AUTO_SYSTEM': '🤖 Systém'
   };
   return typy[typ] || typ;
+};
+
+const PRIORITA_ICON = {
+  [KONTROLA_PRIORITA.NORMALNI]: '',
+  [KONTROLA_PRIORITA.VYSOKA]: '⚡',
+  [KONTROLA_PRIORITA.KRITICKA]: '❗'
 };
 
 const sanitizeText = (val) => String(val || '').replace(/\s+/g, ' ').trim();
@@ -413,30 +489,103 @@ export default function VemaKontrolaCell({
   useEffect(() => {
     if (!isOpen || !btnRef.current) return;
 
-    const rect = btnRef.current.getBoundingClientRect();
-    const popoverWidth = 380;
-    const popoverHeight = 500; // estimate
+    const updatePosition = () => {
+      if (!btnRef.current) return;
 
-    let left = rect.left;
-    let top = rect.bottom + 8;
+      const vv = window.visualViewport;
+      const viewportWidth = vv?.width || window.innerWidth || document.documentElement.clientWidth || 1280;
+      const viewportHeight = vv?.height || window.innerHeight || document.documentElement.clientHeight || 720;
+      const margin = 12;
+      const rightMargin = 4;
+      const gap = 8;
 
-    // Pokud by přetekl vpravo
-    if (left + popoverWidth > window.innerWidth) {
-      left = window.innerWidth - popoverWidth - 16;
-    }
+      const triggerRect = btnRef.current.getBoundingClientRect();
+      const popoverEl = popoverRef.current;
 
-    // Pokud by přetekl dolů
-    if (top + popoverHeight > window.innerHeight) {
-      top = rect.top - popoverHeight - 8;
-      if (top < 0) top = 16; // fallback
-    }
+      // Rezerva kvůli fixním prvkům dole (FAB/patička) + safe-area.
+      let bottomFixedReserve = 0;
+      const fixedElements = document?.body ? Array.from(document.body.querySelectorAll('*')) : [];
+      fixedElements.forEach((el) => {
+        if (!el || !popoverEl) return;
+        if (el === popoverEl || el.contains(popoverEl) || popoverEl.contains(el)) return;
 
-    setPopoverStyle({ left: `${left}px`, top: `${top}px` });
+        const styles = window.getComputedStyle(el);
+        if (styles.position !== 'fixed') return;
+        if (styles.display === 'none' || styles.visibility === 'hidden' || Number(styles.opacity || '1') === 0) return;
+
+        const rect = el.getBoundingClientRect();
+        if (rect.width < 24 || rect.height < 24) return;
+        if (rect.height > viewportHeight * 0.9) return;
+        if (rect.top < viewportHeight * 0.45) return;
+
+        const touchesBottom = rect.bottom >= (viewportHeight - 2);
+        if (!touchesBottom) return;
+
+        const overlapFromBottom = Math.max(0, viewportHeight - rect.top);
+        bottomFixedReserve = Math.max(bottomFixedReserve, overlapFromBottom + 8);
+      });
+
+      const safeAreaInsetBottom = 8;
+      bottomFixedReserve = Math.max(bottomFixedReserve, safeAreaInsetBottom);
+      const bottomLimit = viewportHeight - margin - bottomFixedReserve;
+
+      const popoverWidth = popoverEl?.offsetWidth || 380;
+      const availableHeight = Math.max(220, bottomLimit - margin);
+      const popoverHeight = Math.min(popoverEl?.scrollHeight || 520, availableHeight);
+
+      // Horizontální pozice - zarovnat vlevo k triggeru, ale vždy držet ve viewportu.
+      let left = triggerRect.left;
+      if (left + popoverWidth > viewportWidth - rightMargin) {
+        // Lepší napasování ke kliknuté buňce: preferuj zarovnání pravého okraje popupu k pravému okraji triggeru.
+        const alignedToTriggerRight = triggerRect.right - popoverWidth;
+        const alignedToViewportRight = viewportWidth - popoverWidth - rightMargin;
+        left = Math.min(alignedToTriggerRight, alignedToViewportRight);
+      }
+      if (left < margin) left = margin;
+
+      // Vertikální pozice - preferovat pod triggerem, fallback nad triggerem.
+      const topIfBelow = triggerRect.bottom + gap;
+      const topIfAbove = triggerRect.top - popoverHeight - gap;
+
+      let top = topIfBelow;
+      if (topIfBelow + popoverHeight > bottomLimit && topIfAbove >= margin) {
+        top = topIfAbove;
+      }
+
+      // Finální clamp na viewport.
+      if (top + popoverHeight > bottomLimit) {
+        top = bottomLimit - popoverHeight;
+      }
+      if (top < margin) top = margin;
+
+      setPopoverStyle({
+        left: `${left}px`,
+        top: `${top}px`,
+        maxHeight: `${availableHeight}px`
+      });
+    };
+
+    updatePosition();
+
+    const raf = requestAnimationFrame(updatePosition);
+    const timeout = setTimeout(updatePosition, 80);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('orientationchange', updatePosition);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(timeout);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('orientationchange', updatePosition);
+    };
   }, [isOpen]);
 
   // Barvy pro tlačítko
   const status = normalizeKontrolaStatus(kontrola?.kontrola_status || KONTROLA_STATUS.NEZKONTROLOVANO);
   const colors = KONTROLA_STATUS_COLORS[status] || KONTROLA_STATUS_COLORS[KONTROLA_STATUS.NEZKONTROLOVANO];
+  const priorita = Number(kontrola?.priorita ?? KONTROLA_PRIORITA.NORMALNI);
+  const prioritaColors = KONTROLA_PRIORITA_COLORS[priorita] || KONTROLA_PRIORITA_COLORS[KONTROLA_PRIORITA.NORMALNI];
+  const prioritaLabel = KONTROLA_PRIORITA_LABELS[priorita] || KONTROLA_PRIORITA_LABELS[KONTROLA_PRIORITA.NORMALNI];
 
   const posledniPoznamka = useMemo(() => {
     const komentarUdalosti = Array.isArray(udalosti)
@@ -481,46 +630,73 @@ export default function VemaKontrolaCell({
   };
   const typLabel = typZaznamuLabels[typZaznamu] || 'Záznam';
 
+  const kontrolaTooltip = (
+    <div style={{ minWidth: '300px' }}>
+      <div style={{ fontWeight: 700, marginBottom: '0.4rem' }}>🔎 Kontrola: {typLabel}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '84px 1fr', rowGap: '0.28rem', columnGap: '0.5rem', lineHeight: 1.4 }}>
+        <div style={{ color: '#64748b', fontWeight: 600 }}>Stav</div>
+        <div>{KONTROLA_STATUS_LABELS[status]}</div>
+        <div style={{ color: '#64748b', fontWeight: 600 }}>Priorita</div>
+        <div>{prioritaLabel}</div>
+        {posledniPoznamka?.text && (
+          <>
+            <div style={{ color: '#64748b', fontWeight: 600 }}>Poznámka</div>
+            <div style={{ whiteSpace: 'pre-wrap' }}>{posledniPoznamka.text}</div>
+          </>
+        )}
+      </div>
+      {posledniPoznamka?.text && (
+        <div style={{ marginTop: '0.45rem', fontSize: '0.75rem', color: '#64748b' }}>
+          {posledniPoznamka.zdroj}
+          {' · '}
+          {posledniPoznamka.user || 'Neznámý uživatel'}
+          {posledniPoznamka.dt ? ` · ${formatDatum(posledniPoznamka.dt)}` : ''}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <CellWrap>
-      <TriggerBtn
-        ref={btnRef}
-        onClick={handleOpen}
-        $bgcolor={colors.bg}
-        $color={colors.border}
-        $textcolor={colors.text}
-        title="VEMA kontrola – klikněte pro editaci"
+      <SmartTooltip
+        text={kontrolaTooltip}
+        icon="none"
+        multiline
+        interactive
+        preferredPosition="top"
+        maxWidth="420px"
       >
-        <span>{colors.icon}</span>
-        <span>{KONTROLA_STATUS_LABELS[status]}</span>
-      </TriggerBtn>
-
-      {posledniPoznamka?.text && (
-        <NotePreviewWrap>
-          <SmartTooltip
-            text={(
-              <div style={{ minWidth: '260px' }}>
-                <div style={{ fontWeight: 700, marginBottom: '0.25rem' }}>📝 Poslední poznámka</div>
-                <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{posledniPoznamka.text}</div>
-                <div style={{ marginTop: '0.4rem', fontSize: '0.75rem', opacity: 0.9 }}>
-                  {posledniPoznamka.zdroj}
-                  {' · '}
-                  {posledniPoznamka.user || 'Neznámý uživatel'}
-                  {posledniPoznamka.dt ? ` · ${formatDatum(posledniPoznamka.dt)}` : ''}
-                </div>
-              </div>
-            )}
-            icon="none"
-            multiline
-            interactive
-            preferredPosition="right"
-            maxWidth="360px"
-            stretch
+        <div style={{ display: 'inline-block' }}>
+          <TriggerBtn
+            ref={btnRef}
+            onClick={handleOpen}
+            $bgcolor={colors.bg}
+            $color={colors.border}
+            $textcolor={colors.text}
+            $priority={priorita}
+            title={`VEMA kontrola (${prioritaLabel}) – klikněte pro editaci`}
           >
-            <NotePreviewText>{posledniPoznamka.shortText}</NotePreviewText>
-          </SmartTooltip>
-        </NotePreviewWrap>
-      )}
+            <span>{colors.icon}</span>
+            <span>{KONTROLA_STATUS_LABELS[status]}</span>
+            {priorita > KONTROLA_PRIORITA.NORMALNI && (
+              <PriorityBadge
+                $bgcolor={prioritaColors.bg}
+                $color={prioritaColors.border}
+                $textcolor={prioritaColors.text}
+                aria-label={`Priorita ${prioritaLabel}`}
+              >
+                <PriorityBadgeIcon>{PRIORITA_ICON[priorita]}</PriorityBadgeIcon>
+              </PriorityBadge>
+            )}
+          </TriggerBtn>
+
+          {posledniPoznamka?.text && (
+            <NotePreviewWrap>
+              <NotePreviewText>{posledniPoznamka.shortText}</NotePreviewText>
+            </NotePreviewWrap>
+          )}
+        </div>
+      </SmartTooltip>
 
       {isOpen && (
         <>

@@ -1223,9 +1223,16 @@ const Orders = () => {
   const [isArrowHovered, setIsArrowHovered] = useState(false); // Hover nad šipkou (aby nezmizelá když na ni najedeš)
   const tableContainerRef = useRef(null);
   const tableWrapperRef = useRef(null); // Pro wrapper s shadow efekty
+  const tableWrapperCleanupRef = useRef(null);
+  const tableContainerCleanupRef = useRef(null);
 
   // Callback ref pro TableScrollWrapper - detekuje hover nad CELOU tabulkou
   const setTableWrapperRef = useCallback((node) => {
+    if (tableWrapperCleanupRef.current) {
+      tableWrapperCleanupRef.current();
+      tableWrapperCleanupRef.current = null;
+    }
+
     tableWrapperRef.current = node;
 
     if (node) {
@@ -1241,7 +1248,7 @@ const Orders = () => {
       node.addEventListener('mouseenter', handleMouseEnter);
       node.addEventListener('mouseleave', handleMouseLeave);
 
-      return () => {
+      tableWrapperCleanupRef.current = () => {
         node.removeEventListener('mouseenter', handleMouseEnter);
         node.removeEventListener('mouseleave', handleMouseLeave);
       };
@@ -1250,6 +1257,11 @@ const Orders = () => {
 
   // Callback ref pro TableContainer s automatickou detekcí scrollování
   const setTableContainerRef = useCallback((node) => {
+    if (tableContainerCleanupRef.current) {
+      tableContainerCleanupRef.current();
+      tableContainerCleanupRef.current = null;
+    }
+
     tableContainerRef.current = node;
 
     if (node) {
@@ -1282,11 +1294,25 @@ const Orders = () => {
       window.addEventListener('resize', updateScrollIndicators);
 
       // Cleanup
-      return () => {
+      tableContainerCleanupRef.current = () => {
         node.removeEventListener('scroll', handleScroll);
         window.removeEventListener('resize', updateScrollIndicators);
       };
     }
+  }, []);
+
+  // Cleanup callback-ref listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (tableWrapperCleanupRef.current) {
+        tableWrapperCleanupRef.current();
+        tableWrapperCleanupRef.current = null;
+      }
+      if (tableContainerCleanupRef.current) {
+        tableContainerCleanupRef.current();
+        tableContainerCleanupRef.current = null;
+      }
+    };
   }, []);
 
   // 📏 Handler pro scroll šipky - scrolluj o šířku viewportu
@@ -1703,16 +1729,6 @@ const Orders = () => {
 
       // ✅ OPRAVA: Použij calculateDateRange aby se respektoval selectedMonth (např. Q4)
       const { yearFrom, yearTo } = calculateDateRange(value, selectedMonth);
-
-      // 🐛 DEBUG - Co se posílá na server?
-      if (process.env.NODE_ENV === 'development') {
-        console.log('📅 handleYearFilterChange - Datový rozsah:', {
-          yearFilter: value,
-          selectedMonth,
-          yearFrom,
-          yearTo
-        });
-      }
 
       // Připrav názvy tabulek
       const tabulkaObj = selectedDbSource || process.env.REACT_APP_DB_ORDER_KEY;
@@ -2137,16 +2153,6 @@ const Orders = () => {
 
         // Vypočítej rozsah dat podle roku a měsíce
         const { yearFrom, yearTo } = calculateDateRange(yearFilter, selectedMonth);
-
-        // 🐛 DEBUG - Co se posílá na server?
-        if (process.env.NODE_ENV === 'development') {
-          console.log('📅 Orders.js - Datový rozsah:', {
-            yearFilter,
-            selectedMonth,
-            yearFrom,
-            yearTo
-          });
-        }
 
         // Připrav názvy tabulek
         const tabulkaObj = selectedDbSource || process.env.REACT_APP_DB_ORDER_KEY;

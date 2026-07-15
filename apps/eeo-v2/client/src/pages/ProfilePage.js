@@ -1631,7 +1631,7 @@ const getDefaultSettings = (hasPermission, userDetail) => {
   return {
     // Chování aplikace (podle screenu z 28.12.2025)
     zapamatovat_filtry: true,
-    vychozi_sekce_po_prihlaseni: defaultSection || 'orders',
+    vychozi_sekce_po_prihlaseni: defaultSection || 'dashboard',
     vychozi_filtry_stavu_objednavek: [],
     auto_sbalit_zamcene_sekce: true,
     
@@ -2018,9 +2018,12 @@ const mergeSettingsForReducer = (defaultSettings, loadedSettings) => {
   }
   
   // Validace sekce (přesunuto do komponentní funkce - potřebuje hasPermission, userDetail)
-  let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'orders';
+  let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'dashboard';
   if (typeof targetSection === 'object' && targetSection.value) {
     targetSection = targetSection.value;
+  }
+  if (targetSection === 'orders') {
+    targetSection = 'orders25-list';
   }
   merged.vychozi_sekce_po_prihlaseni = targetSection;
   
@@ -2414,9 +2417,12 @@ const ProfilePage = () => {
     }
     
     // Validace a úprava vychozi_sekce_po_prihlaseni
-    let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'orders';
+    let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'dashboard';
     if (typeof targetSection === 'object' && targetSection.value) {
       targetSection = targetSection.value;
+    }
+    if (targetSection === 'orders') {
+      targetSection = 'orders25-list';
     }
     if (!isSectionAvailable(targetSection, hasPermission, userDetail)) {
       console.warn('⚠️ Uživatel nemá oprávnění k sekci:', targetSection, '→ Použije se první dostupná sekce');
@@ -4381,7 +4387,7 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Layout size={16} />}
-                        value={userSettings.vychozi_sekce_po_prihlaseni || 'orders'}
+                        value={userSettings.vychozi_sekce_po_prihlaseni || 'dashboard'}
                         onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_sekce_po_prihlaseni', value: e.target.value } })}
                         options={MENU_TAB_OPTIONS}
                         placeholder="Vyberte sekci..."

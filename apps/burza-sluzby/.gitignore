@@ -1,0 +1,11 @@
+# Burza Sluzby local secrets
+api/.env
+client/.env
+
+# Allow templates
+!api/.env.example
+
+# Local runtime artifacts
+api/logs/
+api/.sessions/
+*.local

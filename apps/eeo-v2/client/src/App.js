@@ -251,7 +251,7 @@ function MaintenanceModeWrapper({ isLoggedIn, userDetail, children }) {
 }
 
 // Simple helper component for last route restoration
-function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail, moduleSettings, moduleSettingsLoaded }) {
+function RestoreLastRoute({ isLoggedIn, userId, user, token, username, hasPermission, userDetail, moduleSettings, moduleSettingsLoaded }) {
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -259,7 +259,34 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
   useEffect(() => {
     if (isLoggedIn && location.pathname !== '/login' && location.pathname !== '/') {
       // Whitelist of routes that should be saved for restoration
-      const validRoutes = ['/order-form-25', '/orders25-list', '/users', '/dictionaries', '/profile', '/address-book', '/change-password', '/statistics', '/orders', '/debug', '/cash-book', '/cerpani', '/majetek-overview'];
+      const validRoutes = [
+        '/order-form-25',
+        '/dashboard',
+        '/orders25-list',
+        '/orders25-list-v3',
+        '/invoices25-list',
+        '/annual-fees',
+        '/users',
+        '/dictionaries',
+        '/profile',
+        '/address-book',
+        '/contacts',
+        '/vema-denik',
+        '/notifications',
+        '/change-password',
+        '/statistics',
+        '/stats-reports',
+        '/reports',
+        '/orders',
+        '/debug',
+        '/cash-book',
+        '/cerpani',
+        '/majetek-overview',
+        '/app-settings',
+        '/organization-hierarchy',
+        '/planning',
+        '/help'
+      ];
 
       if (validRoutes.includes(location.pathname) && userId) {
         // Per-user localStorage key
@@ -305,6 +332,9 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
     
     // ⏳ KRITICKÉ: Počkat na načtení moduleSettings PŘED navigací
     if (isLoggedIn && location.pathname === '/' && moduleSettingsLoaded) {
+      let isCancelled = false;
+
+      const runRedirectResolution = async () => {
       // 🔗 NOVINKA: Pokud má URL parametry (např. eventId=1&openPanel=true), NEPROVÁDĚT redirect!
       const searchParams = new URLSearchParams(location.search);
       const hasEventParams = searchParams.has('eventId') && searchParams.has('openPanel');
@@ -313,39 +343,51 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
         if (process.env.NODE_ENV === 'development') {
           console.debug('[App] Deep-link parametry detekovány, přesměrování na /dashboard zachováno.');
         }
+        if (isCancelled) return;
         navigate('/dashboard' + location.search, { replace: true });
         return;
       }
       
-      // 🎨 PRIORITA: userSettings.vychozi_sekce_po_prihlaseni → lastRoute → fallback
-      // Po čerstvém přihlášení má prioritu nastavení uživatele
+      // 🎨 PRIORITA:
+      // 1) userSettings.vychozi_sekce_po_prihlaseni (pokud je vyplněná)
+      // 2) lastRoute z localStorage
+      // 3) dashboard
       
+      const user_id = userId || user?.id;
+
       try {
-        // ✅ OPRAVA: Načíst user_id z AuthContext místo neexistujícího localStorage klíče
-        const user_id = userId || user?.id;
-        
         if (user_id) {
-          const { loadSettingsFromLocalStorage } = require('./services/userSettingsApi');
-          const userSettings = loadSettingsFromLocalStorage(user_id);
+          const { loadSettingsFromLocalStorage, fetchUserSettings } = require('./services/userSettingsApi');
+
+          // 1) nejdřív localStorage cache
+          // 2) pokud chybí, dotáhni nastavení z backendu (zabrání race condition po loginu)
+          let userSettings = loadSettingsFromLocalStorage(user_id);
+          if (!userSettings && token && username) {
+            userSettings = await fetchUserSettings({ token, username, userId: user_id });
+          }
           
-          // PRIORITA 1: userSettings.vychozi_sekce_po_prihlaseni (pokud je dostupná)
+          // PRIORITA 1: userSettings.vychozi_sekce_po_prihlaseni (pro všechny uživatele)
           if (userSettings?.vychozi_sekce_po_prihlaseni) {
             // ✅ SPRÁVNÉ MAPOVÁNÍ: Podle availableSections.js
             const sectionMap = {
               'address-book': '/address-book',
               'contacts': '/contacts',
+              'vema-denik': '/vema-denik',
               'dictionaries': '/dictionaries',
               'debug': '/debug',
               'suppliers': '/address-book', // Dodavatelé jsou v adresáři (alias)
               'notifications': '/notifications',
+              'orders': '/orders25-list', // Legacy hodnota ve starších user settings
               'orders-old': '/orders', // Staré objednávky před 2026
               'reports': '/reports',
               'statistics': '/statistics',
+              'stats-reports': '/stats-reports',
               'cerpani': '/cerpani',
               'material-overview': '/majetek-overview',
               'majetek-overview': '/majetek-overview',
               'app-settings': '/app-settings',
               'organization-hierarchy': '/organization-hierarchy',
+              'planning': '/planning',
               'cash-book': '/cash-book',
               'profile': '/profile',
               'orders25-list': '/orders25-list',
@@ -357,90 +399,99 @@ function RestoreLastRoute({ isLoggedIn, userId, user, hasPermission, userDetail,
               'dashboard': '/dashboard' // Nový dashboard
             };
             
-            const targetSection = userSettings.vychozi_sekce_po_prihlaseni;
+            const targetSectionRaw = userSettings.vychozi_sekce_po_prihlaseni;
+            const targetSection = (typeof targetSectionRaw === 'object' && targetSectionRaw?.value)
+              ? targetSectionRaw.value
+              : targetSectionRaw;
             const targetRoute = sectionMap[targetSection];
-            
-            // 🔒 SECURITY: Zkontroluj, zda má uživatel oprávnění k této sekci
+            const sectionForAvailability = targetSection === 'orders' ? 'orders25-list' : targetSection;
+
             const { isSectionAvailable } = require('./utils/availableSections');
-            
-            if (targetRoute && isSectionAvailable(targetSection, hasPermission, userDetail)) {
-              // ✅ User settings sekce JE dostupná → použij ji (NEJVYŠŠÍ PRIORITA)
-              // (bez logování)
+
+            if (targetRoute && isSectionAvailable(sectionForAvailability, hasPermission, userDetail)) {
+              // ✅ User settings sekce JE vyplněná, mapovatelná a dostupná → použij ji (NEJVYŠŠÍ PRIORITA)
+              if (isCancelled) return;
               navigate(targetRoute, { replace: true });
               return;
             } else {
-              console.warn('⚠️ User settings sekce není dostupná:', targetSection);
-              // Pokračuj na PRIORITU 2 (global homepage)
+              console.warn('⚠️ User settings sekce není dostupná nebo mapovatelná:', targetSection);
+              // Pokračuj na PRIORITU 2 (lastRoute)
             }
           }
         }
       } catch (error) {
         console.warn('⚠️ Chyba při načítání user settings:', error);
       }
-      
-      // PRIORITA 2: Global homepage (pokud je dostupná)
-      try {
-        const { getDefaultHomepageSync } = require('./utils/homepageHelper');
-        const { isSectionAvailable } = require('./utils/availableSections');
-        
-        const homepage = getDefaultHomepageSync();
-        const homepageSection = homepage.replace('/', '').replace('-', '_');
-        
-        // Kontrola dostupnosti homepage
-        const homepageSectionKey = homepage.replace('/', '');
-        if (homepageSectionKey && isSectionAvailable(homepageSectionKey, hasPermission, userDetail)) {
-          console.log('✅ PRIORITA 2: Použita global homepage:', homepage);
-          navigate(homepage, { replace: true });
-          return;
-        } else {
-          console.warn('⚠️ Global homepage není dostupná:', homepage);
-          // Pokračuj na PRIORITU 3 (lastRoute)
-        }
-      } catch (error) {
-        console.warn('⚠️ Chyba při načítání global homepage:', error);
-      }
-      
-      // PRIORITA 3: lastRoute per-user
+
+      // PRIORITA 2: lastRoute per-user
       // ⚠️ VALIDACE: Ignoruj neplatné nebo problematické cesty
-      const lastRoute = userId ? localStorage.getItem(`app_lastRoute_user_${userId}`) : null;
+      const lastRoute = user_id ? localStorage.getItem(`app_lastRoute_user_${user_id}`) : null;
       const invalidRoutes = ['/orders-list-new', '/login', '/logout', '/', ''];
+      const routeToSectionMap = {
+        '/dashboard': 'dashboard',
+        '/orders25-list': 'orders25-list',
+        '/orders25-list-v3': 'orders25-list-v3',
+        '/orders': 'orders-old',
+        '/annual-fees': 'annual-fees',
+        '/invoices25-list': 'invoices25-list',
+        '/stats-reports': 'stats-reports',
+        '/statistics': 'stats-reports',
+        '/reports': 'stats-reports',
+        '/cerpani': 'cerpani',
+        '/majetek-overview': 'majetek-overview',
+        '/material-overview': 'majetek-overview',
+        '/address-book': 'address-book',
+        '/contacts': 'contacts',
+        '/vema-denik': 'vema-denik',
+        '/dictionaries': 'dictionaries',
+        '/users': 'users',
+        '/app-settings': 'app-settings',
+        '/organization-hierarchy': 'organization-hierarchy',
+        '/planning': 'planning',
+        '/cash-book': 'cash-book',
+        '/profile': 'profile',
+        '/help': 'help',
+        '/notifications': 'notifications'
+      };
       
       if (lastRoute && !invalidRoutes.includes(lastRoute)) {
         // ✅ BEZPEČNÉ: Validuj že route začíná s '/' a neobsahuje podezřelé znaky
         if (lastRoute.startsWith('/') && !/[<>{}]/.test(lastRoute)) {
           try {
-            console.log('✅ PRIORITA 3: Použita lastRoute:', lastRoute);
+            const { isSectionAvailable } = require('./utils/availableSections');
+            const mappedSection = routeToSectionMap[lastRoute];
+            const isRouteAvailable = mappedSection
+              ? isSectionAvailable(mappedSection, hasPermission, userDetail)
+              : true;
+
+            if (!isRouteAvailable) {
+              console.warn('⚠️ LastRoute není dostupná podle práv/modulů:', lastRoute);
+            } else {
+            console.log('✅ PRIORITA 2: Použita lastRoute:', lastRoute);
+            if (isCancelled) return;
             navigate(lastRoute, { replace: true });
             return;
+            }
           } catch (navError) {
             console.warn('⚠️ Chyba při navigaci na lastRoute:', lastRoute, navError);
-            // Pokračuj na PRIORITU 4 (ultimate fallback)
+            // Pokračuj na PRIORITU 3 (dashboard)
           }
         }
       }
-      
-      // PRIORITA 4: Ultimate fallback - první dostupný modul nebo /profile
-      try {
-        const { getFirstAvailableSection } = require('./utils/availableSections');
-        const fallbackSection = getFirstAvailableSection(hasPermission, userDetail);
-        
-        const fallbackMap = {
-          'orders25-list': '/orders25-list',
-          'orders25-list-v3': '/orders25-list-v3',
-          'invoices25-list': '/invoices25-list',
-          'profile': '/profile'
-        };
-        
-        const fallbackRoute = fallbackMap[fallbackSection] || '/profile';
-        console.log('✅ PRIORITA 4 (ultimate fallback):', fallbackRoute);
-        navigate(fallbackRoute, { replace: true });
-      } catch (error) {
-        console.error('❌ Kritická chyba při fallback navigaci:', error);
-        navigate('/profile', { replace: true });
-      }
+
+      // PRIORITA 3: dashboard (požadovaný výchozí fallback)
+      if (isCancelled) return;
+      navigate('/dashboard', { replace: true });
+      };
+
+      runRedirectResolution();
+
+      return () => {
+        isCancelled = true;
+      };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, navigate, location.pathname, moduleSettingsLoaded]);
+  }, [isLoggedIn, navigate, location.pathname, moduleSettingsLoaded, location.search, token, username, userId, user]);
 
   return null;
 }
@@ -459,6 +510,10 @@ function App() {
     module_orders_v3_visible: false,
     module_invoices_visible: true,
     module_annual_fees_visible: true,
+    module_assets_visible: true,
+    module_contacts_visible: true,
+    module_stats_reports_visible: true,
+    module_cerpani_visible: true,
     module_default_homepage: 'orders25-list' // 'orders25-list' nebo 'orders25-list-v3'
   });
   const [moduleSettingsLoaded, setModuleSettingsLoaded] = useState(false);
@@ -619,6 +674,10 @@ function App() {
           module_orders_v3_visible: settings.module_orders_v3_visible ?? false,
           module_invoices_visible: settings.module_invoices_visible ?? true,
           module_annual_fees_visible: settings.module_annual_fees_visible ?? true,
+          module_assets_visible: settings.module_assets_visible ?? true,
+          module_contacts_visible: settings.module_contacts_visible ?? true,
+          module_stats_reports_visible: settings.module_stats_reports_visible ?? true,
+          module_cerpani_visible: settings.module_cerpani_visible ?? true,
           module_default_homepage: settings.module_default_homepage ?? 'orders25-list'
         };
         setModuleSettings(moduleSettingsData);
@@ -678,6 +737,8 @@ function App() {
 
   // 🚫 CRITICAL: Track jestli už byly tasky zaregistrovány (zamezí infinite loop)
   const tasksRegisteredRef = useRef(false);
+  const authErrorLogoutScheduledRef = useRef(false);
+  const authErrorLogoutTimerRef = useRef(null);
 
   // Initialize debug functions for development
   useEffect(() => {
@@ -694,6 +755,11 @@ function App() {
   // 🔐 KRITICKÉ: Token expiration handler - redirect na login s toast notifikací
   useEffect(() => {
     const handleAuthError = (event) => {
+      if (!isLoggedIn || authErrorLogoutScheduledRef.current) {
+        return;
+      }
+
+      authErrorLogoutScheduledRef.current = true;
       const message = event.detail?.message || 'Vaše přihlášení vypršelo. Budete přesměrováni na přihlašovací stránku.';
 
       // 🎯 KRITICKÉ: Toast notifikace
@@ -702,16 +768,30 @@ function App() {
       }
 
       // ⏱️ Po 1.5 sekundách odhlásit
-      setTimeout(() => {
+      authErrorLogoutTimerRef.current = setTimeout(() => {
         if (logout) {
+          window.__erdmsAuthLogoutInProgress = true;
           logout('token_expired');
         }
       }, 1500);
     };
 
     window.addEventListener('authError', handleAuthError);
-    return () => window.removeEventListener('authError', handleAuthError);
-  }, [showToast, logout]);
+    return () => {
+      window.removeEventListener('authError', handleAuthError);
+      if (authErrorLogoutTimerRef.current) {
+        clearTimeout(authErrorLogoutTimerRef.current);
+        authErrorLogoutTimerRef.current = null;
+      }
+    };
+  }, [showToast, logout, isLoggedIn]);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      authErrorLogoutScheduledRef.current = false;
+      window.__erdmsAuthLogoutInProgress = false;
+    }
+  }, [isLoggedIn]);
 
   // 🎉 Uvítací toast po přihlášení s jmeninami
   useEffect(() => {
@@ -1122,7 +1202,7 @@ function App() {
               {/* Logout redirect listener */}
               <LogoutRedirectListener isLoggedIn={isLoggedIn} />
               {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
-              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} hasPermission={hasPermission} userDetail={userDetail} moduleSettings={moduleSettings} moduleSettingsLoaded={moduleSettingsLoaded} />
+              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} token={token} username={username} hasPermission={hasPermission} userDetail={userDetail} moduleSettings={moduleSettings} moduleSettingsLoaded={moduleSettingsLoaded} />
               <Suspense fallback={<RouteLoadingFallback />}>
                 <Routes>
                   {!isLoggedIn && <Route path="*" element={<NavigateToLoginWithQuery />} />}
@@ -1133,7 +1213,13 @@ function App() {
                   {/* Root route "/" is handled by RestoreLastRoute component */}
                   {isLoggedIn && <Route path="/" element={<div style={{display:'none'}} />} />}
 
-                  {isLoggedIn && <Route path="/orders" element={<Orders />} />}
+                  {isLoggedIn && hasPermission && (
+                    hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')
+                  ) && (
+                    moduleSettings.module_orders_old_visible ||
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && <Route path="/orders" element={<Orders />} />}
 
                   {/* 📋 Objednávky - pokud disabled → jen admin/BETA_TESTER */}
                   {isLoggedIn && hasPermission && (
@@ -1191,7 +1277,11 @@ function App() {
                     hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE')
                   ) && <Route path="/dictionaries" element={<DictionariesNew />} />}
                   {isLoggedIn && hasAdminRole && hasAdminRole() && <Route path="/reports-old" element={<ReportsPlaceholder />} />}
-                  {isLoggedIn && <Route path="/cerpani" element={
+                  {isLoggedIn && (
+                    moduleSettings.module_cerpani_visible ||
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && <Route path="/cerpani" element={
                     cerpaniAccessMode
                       ? <CerpaniPage
                           mode={cerpaniAccessMode.mode}
@@ -1199,12 +1289,16 @@ function App() {
                           lpUnrestricted={cerpaniAccessMode.lpUnrestricted}
                           lpViewOwnOnly={cerpaniAccessMode.lpViewOwnOnly || false}
                         />
-                      : <Navigate to="/access-denied" replace />
-                  } />}
+                        : <Navigate to="/access-denied" replace />
+                      } />}
                   {/* Staré routes /reports a /statistics → přesměrování na nový modul */}
                   {isLoggedIn && <Route path="/reports" element={<Navigate to="/stats-reports" replace />} />}
                   {isLoggedIn && <Route path="/statistics" element={<Navigate to="/stats-reports" replace />} />}
                   {isLoggedIn && (
+                    moduleSettings.module_stats_reports_visible ||
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && (
                     (hasAdminRole && hasAdminRole()) ||
                     (hasPermission && (
                       hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE') ||
@@ -1219,12 +1313,20 @@ function App() {
                     ))
                   ) && <Route path="/stats-reports" element={<StatsReportsPage />} />}
                   {isLoggedIn && (
+                    moduleSettings.module_assets_visible ||
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && (
                     (hasAdminRole && hasAdminRole()) ||
                     (hasPermission && (
                       hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
                     ))
                   ) && <Route path="/majetek-overview" element={<MajetekOverviewPage />} />}
                   {isLoggedIn && (
+                    moduleSettings.module_assets_visible ||
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && (
                     (hasAdminRole && hasAdminRole()) ||
                     (hasPermission && (
                       hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
@@ -1242,8 +1344,16 @@ function App() {
                       hasPermission('PHONEBOOK_MANAGE')
                     ))
                   ) && <Route path="/address-book" element={<AddressBookPage />} />}
-                  {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
-                  {isLoggedIn && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('VEMA_VIEW'))) && <Route path="/vema-denik" element={<VemaDenik />} />}
+                  {isLoggedIn && (
+                    moduleSettings.module_contacts_visible ||
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) && <Route path="/contacts" element={<ContactsPage />} />}
+                  {isLoggedIn && (
+                    moduleSettings.module_contacts_visible ||
+                    (hasAdminRole && hasAdminRole()) ||
+                    (hasPermission && hasPermission('BETA_TESTER'))
+                  ) && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('VEMA_VIEW'))) && <Route path="/vema-denik" element={<VemaDenik />} />}
                   {isLoggedIn && <Route path="/profile" element={<ProfilePage />} />}
                   {isLoggedIn && <Route path="/dashboard" element={<DashboardPage />} />}
                   {/* Redirect root to dashboard for logged in users */}

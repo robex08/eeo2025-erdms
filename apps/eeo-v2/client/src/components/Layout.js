@@ -2572,6 +2572,21 @@ const Layout = ({ children }) => {
     );
   }, [hasAdminRole, hasPermission]);
 
+  const canAccessVemaComparison = useMemo(() => {
+    if (typeof hasPermission !== 'function') return false;
+
+    return (
+      (typeof hasAdminRole === 'function' && hasAdminRole()) ||
+      hasPermission('SUPERADMIN') ||
+      hasPermission('ADMINISTRATOR') ||
+      hasPermission('VEMA_VIEW')
+    );
+  }, [hasAdminRole, hasPermission]);
+
+  const canAccessAnalyticsMenu = useMemo(() => {
+    return hasAnalyticsManagePermission || canAccessVemaComparison;
+  }, [hasAnalyticsManagePermission, canAccessVemaComparison]);
+
   const [hasAssignedCashbook, setHasAssignedCashbook] = useState(false);
 
   const isCashBookAdminOrManage = useMemo(() => {
@@ -4586,7 +4601,7 @@ const Layout = ({ children }) => {
             )}
             
             {/* Manažerské analýzy - zobrazit pokud má právo k reportům nebo statistikám */}
-            { hasAnalyticsManagePermission && (
+            { canAccessAnalyticsMenu && (
               <MenuDropdownWrapper>
                 <MenuDropdownButton 
                   ref={analyticsButtonRef}
@@ -4603,7 +4618,7 @@ const Layout = ({ children }) => {
                   }}
                   data-open={analyticsMenuOpen}
                 >
-                  <FontAwesomeIcon icon={faChartBar} /> Manažerské analýzy
+                  <FontAwesomeIcon icon={faChartBar} /> Analýzy a kontroly
                   <span className="chevron" style={{fontSize: '0.7em', marginLeft: '0.5em', fontWeight: 'bold'}}>
                     {analyticsMenuOpen ? '▴' : '▾'}
                   </span>
@@ -4643,6 +4658,14 @@ const Layout = ({ children }) => {
                         onClick={() => setAnalyticsMenuOpen(false)}
                       >
                         <FontAwesomeIcon icon={faChartBar} /> Statistika a reporty
+                      </MenuDropdownItem>
+                    )}
+                    {canAccessVemaComparison && (
+                      <MenuDropdownItem 
+                        to="/vema-denik" 
+                        onClick={() => setAnalyticsMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faFileContract} fixedWidth style={{color: '#8b5cf6'}} /> EEO vs VEMA <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                   </MenuDropdownContent>,
@@ -4753,14 +4776,6 @@ const Layout = ({ children }) => {
                         onClick={() => setBetaMenuOpen(false)}
                       >
                         <FontAwesomeIcon icon={faAddressBook} fixedWidth /> Kontakty <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
-                      </MenuDropdownItem>
-                    )}
-                    {hasBetaMenuAccess && ((hasAdminRole && hasAdminRole()) || (hasPermission && hasPermission('VEMA_VIEW'))) && (
-                      <MenuDropdownItem 
-                        to="/vema-denik" 
-                        onClick={() => setBetaMenuOpen(false)}
-                      >
-                        <FontAwesomeIcon icon={faFileContract} fixedWidth style={{color: '#8b5cf6'}} /> Deník VEMA <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     {hasBetaMenuAccess && !moduleSettings.module_stats_reports_visible && (

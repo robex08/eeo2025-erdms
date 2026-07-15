@@ -18,6 +18,28 @@ export const api2NoInterceptor = axios.create({
 // 🕐 Grace period pro page reload - neodhlašovat okamžitě po načtení stránky
 let pageLoadTimestamp = Date.now();
 const PAGE_LOAD_GRACE_PERIOD = 10000; // 10 sekund
+const AUTH_ERROR_THROTTLE_MS = 5000;
+let lastAuthErrorDispatchAt = 0;
+
+function dispatchAuthErrorEvent(message) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  // Pokud už logout běží, neposílej další authError eventy.
+  if (window.__erdmsAuthLogoutInProgress) {
+    return;
+  }
+
+  const now = Date.now();
+  if (now - lastAuthErrorDispatchAt < AUTH_ERROR_THROTTLE_MS) {
+    return;
+  }
+
+  lastAuthErrorDispatchAt = now;
+  const event = new CustomEvent('authError', { detail: { message } });
+  window.dispatchEvent(event);
+}
 
 try {
   if (typeof window !== 'undefined') {
@@ -102,12 +124,7 @@ api2.interceptors.response.use(
       
       // Pokud jsme se dostali sem, 401 je pravděpodobně skutečný auth error
       // Trigger authError event pro logout
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
+      dispatchAuthErrorEvent('Vaše přihlášení vypršelo. Přihlaste se prosím znovu.');
     }
 
     return Promise.reject(error);
@@ -492,16 +509,6 @@ export async function fetchOldOrders({
 
   try {
     const response = await api2.post('/old_endpoints.php', payload);
-    
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ fetchOldOrders response:', {
-        status: response.status,
-        dataType: typeof response.data,
-        isArray: Array.isArray(response.data),
-        dataLength: Array.isArray(response.data) ? response.data.length : 'N/A',
-        dataSample: Array.isArray(response.data) ? response.data.slice(0, 2) : response.data
-      });
-    }
     
     if (response.status !== 200) {
       throw new Error('Neočekávaný kód odpovědi ze serveru');

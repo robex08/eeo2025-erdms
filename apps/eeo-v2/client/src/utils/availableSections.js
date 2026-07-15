@@ -11,9 +11,17 @@
 export const getAvailableSections = (hasPermission, userDetail) => {
   const sections = [];
   
-  // Helper pro kontrolu admin role
-  const isAdmin = !!(hasPermission && hasPermission('ADMIN'));
-  const isSuperAdmin = !!(hasPermission && hasPermission('SUPERADMIN'));
+  // Helper pro kontrolu admin role (sjednoceno s route guardy v App.js)
+  const hasAdminRoleByUserDetail = !!(userDetail?.roles && userDetail.roles.some(role =>
+    role.kod_role === 'SUPERADMIN' || role.kod_role === 'ADMINISTRATOR'
+  ));
+  const hasSuperAdminRoleByUserDetail = !!(userDetail?.roles && userDetail.roles.some(role =>
+    role.kod_role === 'SUPERADMIN'
+  ));
+
+  const isAdmin = !!(hasAdminRoleByUserDetail || (hasPermission && hasPermission('ADMIN')));
+  const isSuperAdmin = !!(hasSuperAdminRoleByUserDetail || (hasPermission && hasPermission('SUPERADMIN')));
+  const hasBetaTesterPermission = !!(hasPermission && hasPermission('BETA_TESTER'));
 
   // 🏠 DASHBOARD - vždy dostupný pro všechny přihlášené
   sections.push({ value: 'dashboard', label: 'Domovská stránka' });
@@ -37,49 +45,78 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_DELETE_OWN')
   );
   
-  // ✅ Kontrola module visibility - admin má vždy přístup
-  if (hasOrderPermission && (isAdmin || moduleSettings.module_orders_visible)) {
+  // ✅ Kontrola module visibility - při vypnutí vidí modul admin/BETA_TESTER
+  if (hasOrderPermission && (moduleSettings.module_orders_visible || isAdmin || hasBetaTesterPermission)) {
     sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
   }
   
   // 🚀 OBJEDNÁVKY V3 - logika:
   // 1. Pokud je modul GLOBÁLNĚ POVOLENÝ → dostupné VŠEM s ORDER permissí
   // 2. Pokud je modul ZAKÁZANÝ → dostupné POUZE pro admin/BETA_TESTER
-  const hasBetaTesterPermission = hasPermission && hasPermission('BETA_TESTER');
   const isV3GloballyEnabled = moduleSettings.module_orders_v3_visible;
   
   if (isV3GloballyEnabled && hasOrderPermission) {
     // Modul je globálně povolený → dostupný všem s ORDER permissí
     sections.push({ value: 'orders25-list-v3', label: 'Objednávky V3 (BETA)' });
-  } else if (!isV3GloballyEnabled && (isAdmin || hasBetaTesterPermission)) {
+  } else if (!isV3GloballyEnabled && hasOrderPermission && (isAdmin || hasBetaTesterPermission)) {
     // Modul je zakázaný → dostupný pouze admin/BETA_TESTER
     sections.push({ value: 'orders25-list-v3', label: 'Objednávky V3 (BETA)' });
   }
+
+  // Objednávky <2026 - respektuje globální viditelnost modulu
+  if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) &&
+      (moduleSettings.module_orders_old_visible || isAdmin || hasBetaTesterPermission)) {
+    sections.push({ value: 'orders-old', label: 'Objednávky (<2026)' });
+  }
   
-  // 💰 ROČNÍ POPLATKY - admin má vždy přístup nebo pokud je modul povolený
-  if (isAdmin && (isAdmin || moduleSettings.module_annual_fees_visible)) {
+  // 💰 ROČNÍ POPLATKY - stejné podmínky jako route guard v App.js
+  const hasAnnualFeesPermission = hasPermission && (
+    hasPermission('ANNUAL_FEES_MANAGE') ||
+    hasPermission('ANNUAL_FEES_VIEW') ||
+    hasPermission('ANNUAL_FEES_CREATE') ||
+    hasPermission('ANNUAL_FEES_EDIT') ||
+    hasPermission('ADMIN')
+  );
+  if ((hasAnnualFeesPermission || isAdmin || hasBetaTesterPermission) &&
+      (moduleSettings.module_annual_fees_visible || isAdmin || hasBetaTesterPermission)) {
     sections.push({ value: 'annual-fees', label: 'Roční poplatky' });
   }
   
-  // FAKTURY - INVOICE_MANAGE nebo INVOICE_VIEW + kontrola module visibility
-  if ((isAdmin || (hasPermission && (hasPermission('INVOICE_MANAGE') || hasPermission('INVOICE_VIEW')))) && 
-      (isAdmin || moduleSettings.module_invoices_visible)) {
+  // FAKTURY - stejné podmínky jako route guard (modul visible nebo admin/beta)
+  if (moduleSettings.module_invoices_visible || isAdmin || hasBetaTesterPermission) {
     sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });
   }
   
-  // ADRESÁŘ - SUPPLIER_MANAGE nebo SUPPLIER_VIEW/EDIT/CREATE
-  if (hasPermission && (hasPermission('SUPPLIER_MANAGE') || hasPermission('SUPPLIER_VIEW') || 
-      hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_CREATE'))) {
+  // ADRESÁŘ - stejné podmínky jako route guard
+  const canAccessAddressBook = isAdmin || (hasPermission && (
+      hasPermission('SUPPLIER_MANAGE') || hasPermission('SUPPLIER_VIEW') ||
+      hasPermission('SUPPLIER_EDIT') || hasPermission('SUPPLIER_CREATE') ||
+      hasPermission('PHONEBOOK_MANAGE')
+  ));
+  if (canAccessAddressBook) {
     sections.push({ value: 'address-book', label: 'Adresář' });
   }
-  
-  // KONTAKTY - PHONEBOOK_VIEW nebo ADMIN
-  if (isAdmin || (hasPermission && hasPermission('PHONEBOOK_VIEW'))) {
-    sections.push({ value: 'contacts', label: 'Kontakty' });
+
+  // EEO vs VEMA - stejné podmínky jako route guard
+  if ((moduleSettings.module_contacts_visible || isAdmin || hasBetaTesterPermission) &&
+      (isAdmin || (hasPermission && hasPermission('VEMA_VIEW')))) {
+    sections.push({ value: 'vema-denik', label: 'EEO vs VEMA' });
   }
   
-  // ČÍSELNÍKY - DICT_VIEW nebo DICT_MANAGE
-  if (hasPermission && (hasPermission('DICT_VIEW') || hasPermission('DICT_MANAGE'))) {
+  // ČÍSELNÍKY - stejné podmínky jako route guard v App.js
+  if (isAdmin || (hasPermission && (
+      hasPermission('DICT_MANAGE') ||
+      hasPermission('LOCATIONS_VIEW') || hasPermission('LOCATIONS_CREATE') || hasPermission('LOCATIONS_EDIT') || hasPermission('LOCATIONS_DELETE') ||
+      hasPermission('POSITIONS_VIEW') || hasPermission('POSITIONS_CREATE') || hasPermission('POSITIONS_EDIT') || hasPermission('POSITIONS_DELETE') ||
+      hasPermission('CONTRACT_VIEW') || hasPermission('CONTRACT_CREATE') || hasPermission('CONTRACT_EDIT') || hasPermission('CONTRACT_DELETE') ||
+      hasPermission('ORGANIZATIONS_VIEW') || hasPermission('ORGANIZATIONS_CREATE') || hasPermission('ORGANIZATIONS_EDIT') || hasPermission('ORGANIZATIONS_DELETE') ||
+      hasPermission('DEPARTMENTS_VIEW') || hasPermission('DEPARTMENTS_CREATE') || hasPermission('DEPARTMENTS_EDIT') || hasPermission('DEPARTMENTS_DELETE') ||
+      hasPermission('STATES_VIEW') || hasPermission('STATES_CREATE') || hasPermission('STATES_EDIT') || hasPermission('STATES_DELETE') ||
+      hasPermission('ROLES_VIEW') || hasPermission('ROLES_CREATE') || hasPermission('ROLES_EDIT') || hasPermission('ROLES_DELETE') ||
+      hasPermission('PERMISSIONS_VIEW') || hasPermission('PERMISSIONS_CREATE') || hasPermission('PERMISSIONS_EDIT') || hasPermission('PERMISSIONS_DELETE') ||
+      hasPermission('DOCX_TEMPLATES_VIEW') || hasPermission('DOCX_TEMPLATES_CREATE') || hasPermission('DOCX_TEMPLATES_EDIT') || hasPermission('DOCX_TEMPLATES_DELETE') ||
+      hasPermission('CASH_BOOKS_VIEW') || hasPermission('CASH_BOOKS_CREATE') || hasPermission('CASH_BOOKS_EDIT') || hasPermission('CASH_BOOKS_DELETE')
+  ))) {
     sections.push({ value: 'dictionaries', label: 'Číselníky' });
   }
   
@@ -88,38 +125,38 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'debug', label: 'Debug panel' });
   }
   
-  // DODAVATELÉ - všichni přihlášení (není podmínka v Layout)
-  sections.push({ value: 'suppliers', label: 'Dodavatelé' });
+  // DODAVATELÉ - alias na adresář
+  if (canAccessAddressBook) {
+    sections.push({ value: 'suppliers', label: 'Dodavatelé' });
+  }
   
   // NOTIFIKACE - všichni přihlášení (není podmínka v Layout)
   sections.push({ value: 'notifications', label: 'Notifikace' });
   
-  // OBJEDNÁVKY PŘED 2026 - ORDER_MANAGE nebo ORDER_OLD
-  if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD'))) {
-    sections.push({ value: 'orders-old', label: 'Objednávky (<2026)' });
-  }
-  
   // 🚀 BETA SEKCE - dostupné pro admin a BETA_TESTER
-  // (hasBetaTesterPermission je definováno výše u V3 logiky)
   const hasBetaAccess = isAdmin || hasBetaTesterPermission;
   
   // PŘEHLED MAJETKU - admin nebo uživatel s ASSET oprávněním
-  if (isAdmin || (hasPermission && (
-    hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
-  ))) {
+  if ((moduleSettings.module_assets_visible || hasBetaAccess) &&
+      (isAdmin || (hasPermission && (
+        hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
+  )))) {
     sections.push({ value: 'majetek-overview', label: 'Přehled majetku' });
   }
   
-  // STATISTIKA A REPORTY - admin nebo uživatel s jakýmkoliv stats/reports oprávněním
-  if (isAdmin || (hasPermission && (
+  // STATISTIKA A REPORTY - stejné podmínky jako route guard
+  if ((moduleSettings.module_stats_reports_visible || hasBetaAccess) &&
+      (isAdmin || (hasPermission && (
     hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE') ||
     hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') ||
     hasPermission('ATTACHMENTS_VIEW') || hasPermission('ATTACHMENTS_MANAGE') ||
     hasPermission('PIVOT_VIEW') || hasPermission('PIVOT_EDIT') || hasPermission('PIVOT_MANAGE') ||
     hasPermission('REPORT_VIEW') || hasPermission('REPORT_EDIT') || hasPermission('REPORT_MANAGE') ||
     hasPermission('STATISTICS_VIEW') || hasPermission('STATISTICS_EDIT') || hasPermission('STATISTICS_MANAGE') ||
-    hasPermission('STATS_SPENDING_VIEW') || hasPermission('STATS_SPENDING_EDIT') || hasPermission('STATS_SPENDING_MANAGE')
-  ))) {
+    hasPermission('STATS_SPENDING_VIEW') || hasPermission('STATS_SPENDING_EDIT') || hasPermission('STATS_SPENDING_MANAGE') ||
+    hasPermission('CASHBOOK_REPORTS_VIEW') || hasPermission('CASHBOOK_REPORTS_MANAGE') || hasPermission('CASHBOOK_REPORTS_EXPORT') ||
+    hasPermission('DEFERRALS_VIEW') || hasPermission('DEFERRALS_EDIT') || hasPermission('DEFERRALS_MANAGE')
+  )))) {
     sections.push({ value: 'stats-reports', label: 'Statistika a reporty' });
   }
   
@@ -128,13 +165,17 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('SPENDING_MANAGE') || hasPermission('LP_MANAGE') || hasPermission('CONTRACT_MANAGE') ||
     hasPermission('SPEDNIG_MANAGE') || hasPermission('SPNDING_MANAGE') ||
     hasPermission('SPEDNIG_VIEW_ALL') || hasPermission('SPNDING_VIEW_ALL') ||
+    hasPermission('SPEDNING_VIEW_ALL') || hasPermission('SPENDING_VIEW_ALL') ||
+    hasPermission('SPEDNIG_VIEW_OWN') || hasPermission('SPNDING_VIEW_OWN') ||
+    hasPermission('SPEDNING_VIEW_OWN') || hasPermission('SPENDING_VIEW_OWN') ||
     hasPermission('SPENDING_CONTRACT_VIEW_ALL') || hasPermission('SPENDING_CONTRACT_VIEW_OWN') ||
     hasPermission('SPENDING_LP_VIEW_ALL') || hasPermission('SPENDING_LP_VIEW_OWN') ||
+    hasPermission('CERPANI_VIEW_ALL') || hasPermission('CERPANI_VIEW_OWN') ||
     hasPermission('LP_VIEW_ALL') || hasPermission('LP_VIEW_OWN') ||
     hasPermission('CONTRACT_VIEW_ALL') || hasPermission('CONTRACT_VIEW_OWN')
   ));
   
-  if (canAccessCerpani) {
+  if ((moduleSettings.module_cerpani_visible || hasBetaAccess) && canAccessCerpani) {
     sections.push({ value: 'cerpani', label: 'Čerpání' });
   }
   
@@ -147,9 +188,14 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'app-settings', label: 'Nastavení aplikace' });
   }
   
-  // SYSTÉM WORKFLOW A NOTIFIKACÍ (HIERARCHIE) - pouze pro ADMIN
-  if (isAdmin) {
+  // SYSTÉM WORKFLOW A NOTIFIKACÍ (HIERARCHIE) - pouze pro SUPERADMIN
+  if (isSuperAdmin) {
     sections.push({ value: 'organization-hierarchy', label: 'Systém workflow a notifikací' });
+  }
+
+  // Plánování - explicitní oprávnění
+  if (hasPermission && hasPermission('PLANNING_MANAGE')) {
+    sections.push({ value: 'planning', label: 'Plánování' });
   }
   
   // POKLADNA - Admin/SuperAdmin NEBO jakékolé CASH_BOOK oprávnění
@@ -170,6 +216,12 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   
   if (isCashBookAllowed) {
     sections.push({ value: 'cash-book', label: 'Pokladní kniha' });
+  }
+
+  // Kontakty - respektuje globální viditelnost modulu kontaktů
+  if ((moduleSettings.module_contacts_visible || hasBetaAccess) &&
+      (isAdmin || (hasPermission && hasPermission('PHONEBOOK_VIEW')))) {
+    sections.push({ value: 'contacts', label: 'Kontakty' });
   }
   
   // PROFIL UŽIVATELE - vždy dostupný pro všechny přihlášené

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import axios from 'axios';
 
 export interface User {
@@ -26,12 +26,19 @@ const AuthContext = createContext<AuthContextType | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const lastStableUserRef = useRef<User | null>(null);
+  const refreshInFlightRef = useRef<Promise<void> | null>(null);
 
   const refreshProfile = useCallback(async () => {
+    if (refreshInFlightRef.current) {
+      return refreshInFlightRef.current;
+    }
+
+    const refreshPromise = (async () => {
     try {
       // DEV MODE: Mock user pro localhost
       if (window.location.hostname === 'localhost') {
-        setUser({
+        const devUser = {
           id: '999',
           email: 'dev@test.cz',
           name: 'Dev Testovací',
@@ -41,18 +48,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           department: 'IT',
           jobTitle: 'Developer',
           entraData: {}
-        });
+        };
+        setUser(devUser);
+        lastStableUserRef.current = devUser;
         setIsLoading(false);
         return;
       }
 
       // PRODUCTION: Volá centrální Auth API (EntraID) přes cookie session
       const response = await axios.get('https://erdms.zachranka.cz/auth/me', {
+        timeout: 8000,
         withCredentials: true // Pošle erdms_session cookie
       });
       
       const entradata = response.data;
-      setUser({
+      const resolvedUser = {
         id: entradata.id || entradata.entra_id || '0',
         email: entradata.email || '',
         name: entradata.displayName || entradata.name || '',
@@ -62,12 +72,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         department: entradata.entraData?.department,
         jobTitle: entradata.jobTitle || '',
         entraData: entradata.entraData
-      });
+      };
+      setUser(resolvedUser);
+      lastStableUserRef.current = resolvedUser;
     } catch (error) {
       console.error('Failed to load profile:', error);
-      setUser(null);
+
+      const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+      const isAuthError = status === 401 || status === 403;
+
+      // Pro skutečný auth error uživatele odhlásíme.
+      if (isAuthError) {
+        setUser(null);
+        lastStableUserRef.current = null;
+      } else {
+        // Pro timeout/network chyby držíme poslední validní session, aby UI neblikalo.
+        setUser((prev) => prev || lastStableUserRef.current);
+      }
     } finally {
       setIsLoading(false);
+    }
+    })();
+
+    refreshInFlightRef.current = refreshPromise;
+    try {
+      await refreshPromise;
+    } finally {
+      refreshInFlightRef.current = null;
     }
   }, []);
 
