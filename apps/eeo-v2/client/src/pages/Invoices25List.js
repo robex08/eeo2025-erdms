@@ -1122,6 +1122,143 @@ const TableHeader = styled.th`
     border-top: none !important;
     border-bottom: none !important;
     box-shadow: none;
+
+    /* ========== JEDNOTNÝ VZHLED VŠECH FILTRŮ ========== */
+    --filter-height: 32px;
+    --filter-padding-x: 8px;
+    --filter-font-size: 0.75rem;
+    --filter-border: 1px solid #cbd5e1;
+    --filter-border-radius: 6px;
+    --filter-bg: #ffffff;
+
+    /* Wrappery pro všechny typy filtrů */
+    .text-filter-wrapper,
+    .date-filter-wrapper,
+    .select-filter-wrapper,
+    .operator-filter-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 100%;
+      height: var(--filter-height);
+      box-sizing: border-box;
+    }
+
+    /* TEXT FILTR - wrapper s ikonou a clear buttonem */
+    .text-filter-wrapper {
+      background: var(--filter-bg);
+      border: var(--filter-border);
+      border-radius: var(--filter-border-radius);
+      transition: border-color 0.15s ease;
+
+      &:focus-within {
+        border-color: #2563eb;
+      }
+
+      .filter-icon {
+        position: absolute;
+        left: 8px;
+        color: #94a3b8;
+        font-size: 0.7rem;
+        pointer-events: none;
+        z-index: 1;
+      }
+
+      .filter-input {
+        width: 100%;
+        height: 100%;
+        border: none;
+        outline: none;
+        background: transparent;
+        padding: 0 24px 0 26px;
+        font-size: var(--filter-font-size);
+        font-family: inherit;
+        color: #1e293b;
+        box-sizing: border-box;
+        line-height: 1;
+
+        &::placeholder {
+          color: #94a3b8;
+          font-weight: 400;
+        }
+      }
+
+      .filter-clear {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: transparent;
+        border: none;
+        color: #9ca3af;
+        cursor: pointer;
+        padding: 0;
+        width: 16px;
+        height: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        line-height: 1;
+        border-radius: 3px;
+        transition: color 0.15s ease;
+
+        &:hover {
+          color: #6b7280;
+        }
+      }
+    }
+
+    /* DATE / SELECT / OPERATOR wrappery – vnitřní komponenty vyrovnají výšku samy,
+       ale forcujeme box-sizing a shodnou výšku */
+    .date-filter-wrapper > *,
+    .select-filter-wrapper > *,
+    .operator-filter-wrapper > * {
+      height: var(--filter-height) !important;
+      box-sizing: border-box !important;
+      font-size: var(--filter-font-size) !important;
+    }
+
+    /* DATE FILTER (DatePicker compact) - vnitřní input */
+    .date-filter-wrapper input {
+      height: var(--filter-height) !important;
+      font-size: var(--filter-font-size) !important;
+      padding: 0 var(--filter-padding-x) !important;
+      border-radius: var(--filter-border-radius) !important;
+      border: var(--filter-border) !important;
+      box-sizing: border-box !important;
+      line-height: 1 !important;
+    }
+    .date-filter-wrapper > div {
+      width: 100%;
+    }
+
+    /* SELECT FILTER (CustomSelect) - override výšky */
+    .select-filter-wrapper > div,
+    .select-filter-wrapper [data-custom-select] {
+      width: 100% !important;
+      min-width: 0 !important;
+      height: var(--filter-height) !important;
+      min-height: var(--filter-height) !important;
+      box-sizing: border-box !important;
+    }
+
+    .select-filter-wrapper [data-custom-select] > div:first-of-type {
+      min-height: var(--filter-height) !important;
+      height: var(--filter-height) !important;
+      font-size: var(--filter-font-size) !important;
+      padding: 0 28px 0 var(--filter-padding-x) !important;
+      border-radius: var(--filter-border-radius) !important;
+      border: var(--filter-border) !important;
+      background: var(--filter-bg) !important;
+      box-sizing: border-box !important;
+      line-height: 1 !important;
+      display: flex;
+      align-items: center;
+      width: 100% !important;
+      min-width: 0 !important;
+      box-shadow: none !important;
+    }
   }
 
   &.filter-cell:hover {
@@ -3128,7 +3265,7 @@ const Invoices25List = () => {
       }
       
       // Částka - operátor-based filtr (=, <, >)
-      // Format: "=5000" nebo ">1000" nebo "<500"
+      // Format: "=5000" nebo ">1000" nebo "<500" nebo "=-500" (záporné hodnoty)
       // POZOR: Pokud je jen operátor bez čísla (např. ">"), ignoruj (neparsuj)
       if (debouncedColumnFilters.castka && debouncedColumnFilters.castka.trim()) {
         const castkaTrimmed = debouncedColumnFilters.castka.trim();
@@ -3138,10 +3275,10 @@ const Invoices25List = () => {
           const operator = match[1];
           const amountStr = match[2].replace(/\s/g, '').replace(/,/g, '');
           
-          if (amountStr) { // ✅ Kontrola že není prázdný string
+          if (amountStr && amountStr !== '-') { // ✅ Kontrola že není prázdný string a není jen minus
             const amount = parseFloat(amountStr);
             
-            if (!isNaN(amount) && amount > 0) { // ✅ Kontrola že je to platné číslo větší než 0
+            if (!isNaN(amount)) { // ✅ Povolit všechna čísla včetně 0 a záporných
               // Přeložit operátor na API parametry
               if (operator === '=') {
                 apiParams.castka_eq = amount;

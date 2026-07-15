@@ -4622,6 +4622,7 @@ export default function InvoiceEvidencePage() {
     
     // Kategorie: Informace o objednateli
     if (!faktura?.fa_cislo_vema) categories.objednateli.errors.push('Číslo faktury');
+    if (!faktura?.fa_datum_vystaveni) categories.objednateli.errors.push('Datum vystavení');
     if (!faktura?.fa_datum_splatnosti) categories.objednateli.errors.push('Datum splatnosti');
     if (!faktura?.fa_castka) categories.objednateli.errors.push('Částka');
     
@@ -4633,7 +4634,8 @@ export default function InvoiceEvidencePage() {
     return {
       isValid: allErrors.length === 0,
       isISDOC: false,
-      categories
+      categories,
+      missingFields: allErrors
     };
   }, [editingInvoiceId]);
 
@@ -5720,6 +5722,15 @@ export default function InvoiceEvidencePage() {
         || result?.invoice_id
         || result?.id;
 
+      const originalVecnaStatus = Number(originalFormData?.vecna_spravnost_potvrzeno || 0);
+      const currentVecnaStatus = Number(formData?.vecna_spravnost_potvrzeno || 0);
+      const vecnaStayedResolvedOnEdit = Boolean(
+        editingInvoiceId &&
+        (originalVecnaStatus === 1 || originalVecnaStatus === 2) &&
+        !resetVecna &&
+        currentVecnaStatus === originalVecnaStatus
+      );
+
       if (!savedInvoiceId) {
         throw new Error('Nepodařilo se potvrdit uložení faktury (chybí ID).');
       }
@@ -5846,7 +5857,7 @@ export default function InvoiceEvidencePage() {
         const stavChanged = (originalStav !== currentStav);
         const isPredanaStav = ['PREDANA', 'PREDANA_PO', 'PREDANA_VECNA'].includes(currentStav?.toUpperCase());
         
-        if (stavChanged && isPredanaStav) {
+        if (stavChanged && isPredanaStav && !vecnaStayedResolvedOnEdit) {
           try {
             const timestamp = new Date().toLocaleString('cs-CZ');
             // PRO OBJEDNÁVKY
@@ -5894,17 +5905,23 @@ export default function InvoiceEvidencePage() {
       if (formData.fa_predana_zam_id && invoiceIdForNotification) {
         const originalPredanoKomu = originalFormData?.fa_predana_zam_id;
         const currentPredanoKomu = formData.fa_predana_zam_id;
+        const normalizedOriginalPredanoKomu = originalPredanoKomu == null || originalPredanoKomu === ''
+          ? null
+          : String(originalPredanoKomu);
+        const normalizedCurrentPredanoKomu = currentPredanoKomu == null || currentPredanoKomu === ''
+          ? null
+          : String(currentPredanoKomu);
         const hasDatePredani = !!formData.fa_datum_predani_zam;
         const hasDateVraceni = !!formData.fa_datum_vraceni_zam;
         const isCreate = !editingInvoiceId; // Nová faktura
-        const hasChanged = !isCreate && (originalPredanoKomu !== currentPredanoKomu); // Změna při UPDATE
+        const hasChanged = !isCreate && (normalizedOriginalPredanoKomu !== normalizedCurrentPredanoKomu); // Změna při UPDATE
         
         // 🔥 DŮLEŽITÉ: Pokud se resetovala věcná správnost (změnily se klíčové údaje faktury),
         // pošli notifikaci znovu aby zaměstnanec znovu zkontroloval materiál
         const shouldResendNotification = shouldResetVecnaSpravnost && currentPredanoKomu && hasDatePredani && !hasDateVraceni;
         
         // Pošli notifikaci pokud: (CREATE s fa_predana_zam_id) NEBO (UPDATE a změnilo se) NEBO (zrušení věcné správnosti)
-        if ((isCreate || hasChanged || shouldResendNotification) && currentPredanoKomu && hasDatePredani && !hasDateVraceni) {
+        if ((isCreate || hasChanged || shouldResendNotification) && currentPredanoKomu && hasDatePredani && !hasDateVraceni && !(vecnaStayedResolvedOnEdit && !shouldResendNotification)) {
           try {
             const timestamp = new Date().toLocaleString('cs-CZ');
             // PRO OBJEDNÁVKY

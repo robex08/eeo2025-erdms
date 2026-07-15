@@ -38,24 +38,29 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
 
   const handleNumberChange = (e) => {
     const rawValue = e.target.value;
-    // Povolit pouze číslice, mezery a případně desetinnou tečku/čárku
-    const cleanValue = rawValue.replace(/[^\d\s,.]/g, '');
+    // Povolit číslice, mezery, deseti tečku/čárku, a MINUS znaménko
+    const cleanValue = rawValue.replace(/[^\d\s,.\-]/g, '');
     
-    // Pokud je číslo prázdné, vrať jen operátor (bez čísla se filtr neaktivuje)
+    // Pokud je číslo prázdné (ale ne minus), vrať jen operátor
     if (!cleanValue || cleanValue.trim() === '') {
       onChange(operator);
     } else {
       // DŮLEŽITÉ: Odstranit mezery před odesláním do API
       const valueWithoutSpaces = cleanValue.replace(/\s/g, '');
+      // Poslat hodnotu i když je jen minus (aby zůstal v inputu)
       onChange(operator + valueWithoutSpaces);
     }
   };
 
-  // Formátování čísla s mezerami (1000 -> 1 000)
+  // Formátování čísla s mezerami (1000 -> 1 000, -1000 -> -1 000)
   const formatNumberWithSpaces = (num) => {
     if (!num) return '';
     const cleaned = num.replace(/\s/g, '');
-    return cleaned.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    // Oddělení minus znaménka od čísla
+    const isNegative = cleaned.startsWith('-');
+    const absNum = isNegative ? cleaned.slice(1) : cleaned;
+    const formatted = absNum.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    return isNegative ? '-' + formatted : formatted;
   };
 
   return (
@@ -69,7 +74,6 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
         <option value="<">&lt;</option>
         <option value=">">&gt;</option>
       </OperatorSelect>
-      <Separator>|</Separator>
       <NumberInput
         type="text"
         placeholder={placeholder}
@@ -88,54 +92,56 @@ const OperatorInput = ({ value = '', onChange, placeholder = '0', icon, clearBut
 
 const Wrapper = styled.div`
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 0;
-  border: 1px solid ${props => props.$active ? '#f59e0b' : '#d1d5db'};
-  border-radius: 4px;
-  background: ${props => props.$active ? '#fffbeb' : 'white'};
-  transition: all 0.2s ease;
+  border: 1px solid ${props => props.$active ? '#f59e0b' : '#cbd5e1'};
+  border-radius: 6px;
+  background: ${props => props.$active ? '#fffbeb' : '#ffffff'};
+  transition: border-color 0.15s ease;
   position: relative;
-  overflow: visible;
+  overflow: hidden;
   width: 100%;
-
-  ${props => props.$active && `
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
-  `}
+  height: 100%;
+  box-sizing: border-box;
 
   &:focus-within {
-    border-color: #3b82f6;
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+    border-color: #2563eb;
   }
 `;
 
 const OperatorSelect = styled.select`
   border: none;
   background: transparent;
-  padding: 0.35rem 0.3rem;
+  padding: 0 4px 0 6px;
+  margin: 0;
   font-size: 0.75rem;
   font-weight: 600;
   color: #1e293b;
   cursor: pointer;
   outline: none;
   border-right: 1px solid #e2e8f0;
-  min-width: 38px;
+  min-width: 26px;
   text-align: center;
+  box-sizing: border-box;
+  line-height: 1;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  height: 100%;
+  font-family: inherit;
 
   &:hover {
     background: #f1f5f9;
   }
 
   option {
-    font-size: 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
   }
 `;
 
 const Separator = styled.span`
-  color: #cbd5e1;
-  font-weight: 300;
-  padding: 0 0.25rem;
-  user-select: none;
-  font-size: 0.875rem;
+  display: none;
 `;
 
 const IconWrapper = styled.div`
@@ -147,23 +153,24 @@ const IconWrapper = styled.div`
 
 const ClearButton = styled.button`
   position: absolute;
-  right: 0.5rem;
+  right: 6px;
   top: 50%;
   transform: translateY(-50%);
   background: transparent;
   border: none;
   color: #9ca3af;
   cursor: pointer;
-  padding: 0.15rem;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.2s ease;
+  transition: color 0.15s ease;
   z-index: 1;
   width: 16px;
   height: 16px;
-  font-size: 14px;
+  font-size: 11px;
   line-height: 1;
+  border-radius: 3px;
 
   &:hover {
     color: #6b7280;
@@ -173,20 +180,22 @@ const ClearButton = styled.button`
 const NumberInput = styled.input`
   flex: 1;
   border: none;
-  padding: 0.35rem 0.3rem;
-  padding-right: 2rem; /* Vždy místo pro clear button */
+  padding: 0 24px 0 8px;
+  margin: 0;
   font-size: 0.75rem;
   color: #1e293b;
   outline: none;
   text-align: right;
   background: transparent;
-  min-width: 35px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
+  min-width: 40px;
+  box-sizing: border-box;
+  line-height: 1;
+  height: 100%;
+  font-family: inherit;
 
   &::placeholder {
     color: #94a3b8;
+    font-weight: 400;
   }
 `;
 

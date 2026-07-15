@@ -852,9 +852,15 @@ const InvoiceAttachmentsCompact = ({
         prevFakturaIdRef.current = currentId;
         return;
       }
-      // Najdi všechny přílohy se statusem 'pending_upload' nebo 'pending'
+      // Najdi všechny lokální přílohy, které po získání reálného ID můžeme bezpečně dohrát.
+      // Sem patří i předchozí chyby při temp create flow, pokud pořád držíme File objekt.
       const pendingAttachments = attachments.filter(att => 
-        (att.status === 'pending' || att.status === 'pending_upload') && att.file
+        (
+          att.status === 'pending' ||
+          att.status === 'pending_upload' ||
+          att.status === 'pending_classification' ||
+          att.status === 'error'
+        ) && att.file
       );
 
       if (pendingAttachments.length === 0) {
