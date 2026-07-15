@@ -920,7 +920,7 @@ const TooltipTable = styled.table`
   td {
     padding: 0.25rem 0;
     
-    &:first-child {
+    &:first-of-type {
       color: rgba(255,255,255,0.7);
       padding-right: 1rem;
     }

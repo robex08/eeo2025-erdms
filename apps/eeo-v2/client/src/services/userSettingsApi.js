@@ -26,7 +26,7 @@ export const DEFAULT_USER_SETTINGS = {
   verze: '1.0',
   chovani_aplikace: {
     zapamatovat_filtry: true,
-    vychozi_sekce_po_prihlaseni: 'orders',
+    vychozi_sekce_po_prihlaseni: 'dashboard',
     vychozi_filtry_stavu_objednavek: [],
     auto_sbalit_zamcene_sekce: true
   },
@@ -206,7 +206,7 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
           theme: 'light',
           language: 'cs',
           notifications: { email: true, inapp: true },
-          vychozi_sekce_po_prihlaseni: 'orders'
+          vychozi_sekce_po_prihlaseni: 'dashboard'
         };
       }
       
@@ -256,7 +256,7 @@ export const fetchUserSettings = async ({ token, username, userId }) => {
       theme: 'light',
       language: 'cs',
       notifications: { email: true, inapp: true },
-      vychozi_sekce_po_prihlaseni: 'orders'
+      vychozi_sekce_po_prihlaseni: 'dashboard'
     };
     
   } catch (error) {
@@ -319,7 +319,7 @@ export const transformBackendToFrontend = (backendData) => {
   return {
     // Chování aplikace
     rememberFilters: backendData.chovani_aplikace?.zapamatovat_filtry ?? true,
-    defaultMenuTab: backendData.chovani_aplikace?.vychozi_sekce_po_prihlaseni ?? 'orders',
+    defaultMenuTab: backendData.chovani_aplikace?.vychozi_sekce_po_prihlaseni ?? 'dashboard',
     defaultOrderStatus: backendData.chovani_aplikace?.vychozi_filtry_stavu_objednavek ?? [],
     autoCollapseLockedSections: backendData.chovani_aplikace?.auto_sbalit_zamcene_sekce ?? true,
     
@@ -359,7 +359,7 @@ export const transformFrontendToBackend = (userSettings) => {
     verze: '1.0',
     chovani_aplikace: {
       zapamatovat_filtry: userSettings.rememberFilters ?? true,
-      vychozi_sekce_po_prihlaseni: userSettings.defaultMenuTab ?? 'orders',
+      vychozi_sekce_po_prihlaseni: userSettings.defaultMenuTab ?? 'dashboard',
       vychozi_filtry_stavu_objednavek: userSettings.defaultOrderStatus ?? [],
       auto_sbalit_zamcene_sekce: userSettings.autoCollapseLockedSections ?? true
     },

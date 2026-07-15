@@ -189,6 +189,139 @@ function canMarkPaymentAnnualFees($user) {
     return hasAnyAnnualFeesPermission($user, ['ANNUAL_FEES_VIEW', 'ANNUAL_FEES_EDIT']);
 }
 
+/**
+ * Zda je položka považována za zaplacenou.
+ */
+function isAnnualFeeItemPaidState($item) {
+    $stav = strtoupper(trim((string)($item['stav'] ?? '')));
+    return $stav === 'ZAPLACENO' || !empty($item['datum_zaplaceno']) || !empty($item['datum_zaplaceni']);
+}
+
+/**
+ * Normalizace datum stringu na YYYY-MM-DD nebo NULL.
+ */
+function normalizeAnnualFeeDate($value) {
+    $date = trim((string)$value);
+    if ($date === '') {
+        return null;
+    }
+
+    return substr($date, 0, 10);
+}
+
+/**
+ * Validace kontinuity plateb: po první nezaplacené položce nesmí následovat zaplacená.
+ * Pořadí je určeno datem splatnosti, pak poradi, pak ID.
+ */
+function validateAnnualFeePaymentSequence($pdo, $rocni_poplatek_id, $item_id, $pendingChanges = []) {
+    $table = defined('TBL_ROCNI_POPLATKY_POLOZKY') ? TBL_ROCNI_POPLATKY_POLOZKY : '25a_rocni_poplatky_polozky';
+
+    $stmt = $pdo->prepare("SELECT id, poradi, nazev_polozky, datum_splatnosti, datum_zaplaceno, datum_zaplaceni, stav FROM `{$table}` WHERE rocni_poplatek_id = :fee_id AND aktivni = 1");
+    $stmt->execute(['fee_id' => (int)$rocni_poplatek_id]);
+    $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (!$items) {
+        return null;
+    }
+
+    $targetId = (int)$item_id;
+    foreach ($items as &$row) {
+        if ((int)$row['id'] !== $targetId) {
+            continue;
+        }
+
+        foreach (['stav', 'datum_splatnosti', 'datum_zaplaceno', 'datum_zaplaceni'] as $field) {
+            if (array_key_exists($field, $pendingChanges)) {
+                $row[$field] = $pendingChanges[$field];
+            }
+        }
+        break;
+    }
+    unset($row);
+
+    usort($items, function($a, $b) {
+        $dateA = normalizeAnnualFeeDate($a['datum_splatnosti'] ?? null);
+        $dateB = normalizeAnnualFeeDate($b['datum_splatnosti'] ?? null);
+
+        if ($dateA === null && $dateB !== null) return 1;
+        if ($dateA !== null && $dateB === null) return -1;
+        if ($dateA !== null && $dateB !== null) {
+            $cmp = strcmp($dateA, $dateB);
+            if ($cmp !== 0) return $cmp;
+        }
+
+        $poradiCmp = ((int)($a['poradi'] ?? 0)) <=> ((int)($b['poradi'] ?? 0));
+        if ($poradiCmp !== 0) return $poradiCmp;
+
+        return ((int)($a['id'] ?? 0)) <=> ((int)($b['id'] ?? 0));
+    });
+
+    $targetIndex = null;
+    foreach ($items as $index => $row) {
+        if ((int)$row['id'] === $targetId) {
+            $targetIndex = $index;
+            break;
+        }
+    }
+
+    if ($targetIndex === null) {
+        return null;
+    }
+
+    $firstUnpaidIndex = null;
+    $firstUnpaidItem = null;
+    $firstPaidAfterGapIndex = null;
+    $firstPaidAfterGapItem = null;
+
+    foreach ($items as $index => $row) {
+        $isPaid = isAnnualFeeItemPaidState($row);
+        if (!$isPaid && $firstUnpaidIndex === null) {
+            $firstUnpaidIndex = $index;
+            $firstUnpaidItem = $row;
+            continue;
+        }
+
+        if ($isPaid && $firstUnpaidIndex !== null) {
+            $firstPaidAfterGapIndex = $index;
+            $firstPaidAfterGapItem = $row;
+            break;
+        }
+    }
+
+    if ($firstPaidAfterGapIndex === null) {
+        return null;
+    }
+
+    $targetItem = $items[$targetIndex];
+    $targetIsPaid = isAnnualFeeItemPaidState($targetItem);
+    $blockingDueDate = normalizeAnnualFeeDate($firstUnpaidItem['datum_splatnosti'] ?? null);
+    $paidAfterGapDueDate = normalizeAnnualFeeDate($firstPaidAfterGapItem['datum_splatnosti'] ?? null);
+
+    if ($targetIsPaid && $targetIndex >= $firstPaidAfterGapIndex) {
+        return [
+            'status' => 'error',
+            'message' => sprintf(
+                'Nelze označit položku jako zaplacenou, dokud není uhrazena starší položka "%s" se splatností %s.',
+                $firstUnpaidItem['nazev_polozky'] ?: ('#' . $firstUnpaidItem['id']),
+                $blockingDueDate ?: 'neuvedeno'
+            ),
+            'code' => 409
+        ];
+    }
+
+    return [
+        'status' => 'error',
+        'message' => sprintf(
+            'Změna by porušila kontinuitu plateb. Po nezaplacené položce "%s" se splatností %s by následovala již zaplacená položka "%s" se splatností %s.',
+            $firstUnpaidItem['nazev_polozky'] ?: ('#' . $firstUnpaidItem['id']),
+            $blockingDueDate ?: 'neuvedeno',
+            $firstPaidAfterGapItem['nazev_polozky'] ?: ('#' . $firstPaidAfterGapItem['id']),
+            $paidAfterGapDueDate ?: 'neuvedeno'
+        ),
+        'code' => 409
+    ];
+}
+
 // ============================================================================
 // 📋 LIST - Seznam ročních poplatků s filtry
 // ============================================================================
@@ -894,6 +1027,22 @@ function handleAnnualFeesUpdateItem($pdo, $data, $user) {
         if (!$oldItem) {
             $pdo->rollBack();
             return ['status' => 'error', 'message' => 'Položka nenalezena'];
+        }
+
+        $shouldValidatePaymentSequence = false;
+        foreach (['stav', 'datum_splatnosti', 'datum_zaplaceno', 'datum_zaplaceni'] as $sequenceField) {
+            if (array_key_exists($sequenceField, $data)) {
+                $shouldValidatePaymentSequence = true;
+                break;
+            }
+        }
+
+        if ($shouldValidatePaymentSequence) {
+            $sequenceValidation = validateAnnualFeePaymentSequence($pdo, $oldItem['rocni_poplatek_id'], $id, $data);
+            if ($sequenceValidation) {
+                $pdo->rollBack();
+                return $sequenceValidation;
+            }
         }
         
         $oldFakturaId = $oldItem['faktura_id'];

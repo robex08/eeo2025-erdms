@@ -436,7 +436,14 @@ function queryAnnualFeesDetail($pdo, $id) {
         LEFT JOIN `25_uzivatele` u_vytvoril ON p.vytvoril_uzivatel_id = u_vytvoril.id
         LEFT JOIN `25_uzivatele` u_aktualizoval ON p.aktualizoval_uzivatel_id = u_aktualizoval.id
         WHERE p.rocni_poplatek_id = :id AND p.aktivni = 1
-        ORDER BY p.poradi ASC
+        ORDER BY
+            CASE
+                WHEN p.datum_splatnosti IS NULL OR p.datum_splatnosti = '' THEN 1
+                ELSE 0
+            END ASC,
+            p.datum_splatnosti ASC,
+            p.poradi ASC,
+            p.id ASC
     ";
     $stmtPolozky = $pdo->prepare($sqlPolozky);
     $stmtPolozky->execute([':id' => $id]);
