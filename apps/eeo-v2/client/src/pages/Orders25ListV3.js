@@ -1298,15 +1298,28 @@ function Orders25ListV3() {
     return filters;
   }, [columnFilters, dashboardFilters, globalFilter]);
 
-  // 🎯 Effect pro vyčištění dashboard filtru z location.state
-  // POZNÁMKA: Filtr je nastaven přímo v useOrdersV3State (initialDashboardFilter v initial state),
-  // takže ho NEMUSÍME volat znovu přes handleDashboardFilterChange (ta má toggle logiku a přepnula by ho zpět!).
-  // Tento efekt pouze čistí location.state, aby se filtr neaplikoval znovu při refreshi.
+  // 🎯 Effect pro zpracování dashboard prokliku (dashboardFilter + clearFilters)
+  // POZNÁMKA: dashboardFilter se nastavuje už v useOrdersV3State přes initialDashboardFilter,
+  // zde řešíme hlavně čistění perzistentního state (fulltext a location.state).
   useEffect(() => {
     const dashboardFilter = location.state?.dashboardFilter;
-    if (!dashboardFilter) return;
+    const shouldClearFilters = location.state?.clearFilters === true;
 
-    // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
+    if (!dashboardFilter && !shouldClearFilters) return;
+
+    // Pokud přišel požadavek na čistý start z dashboardu,
+    // smažeme fulltext (u status filtru je column/dashboard stav řešen už při initu).
+    if (shouldClearFilters) {
+      setGlobalFilter('');
+
+      // Pro dlaždici "Celkem" nepřichází dashboardFilter,
+      // proto explicitně vyčistíme i sloupcové/dashboard filtry.
+      if (!dashboardFilter) {
+        originalClearFilters();
+      }
+    }
+
+    // Vyčistit state, aby se proklik neaplikoval opakovaně při refreshi
     const { dashboardFilter: _df, clearFilters: _cf, ...rest } = location.state || {};
     const newState = Object.keys(rest).length > 0 ? rest : null;
     navigate(`${location.pathname}${location.search || ''}`, { replace: true, state: newState });

@@ -5541,6 +5541,7 @@ const Invoices25List = () => {
                 onClick={() => handleDashboardCardClick('my_invoices')}
                 $isActive={activeFilterStatus === 'my_invoices'}
                 $color="#06b6d4"
+                title="Zaevidoval jsem, bylo předáno na mě, nebo jsem potvrdil věcnou správnost"
               >
                 <StatHeader>
                   <StatLabel>Moje faktury</StatLabel>
@@ -5549,7 +5550,7 @@ const Invoices25List = () => {
                   </StatIcon>
                 </StatHeader>
                 <StatValue>{stats.myInvoices}</StatValue>
-                <StatLabel>Předané na mně</StatLabel>
+                <StatLabel>Zaevidoval / Předáno / Potvrdil</StatLabel>
               </DashboardCard>
             )}
 
@@ -5559,6 +5560,7 @@ const Invoices25List = () => {
                 onClick={() => handleDashboardCardClick('my_unchecked_invoices')}
                 $isActive={activeFilterStatus === 'my_unchecked_invoices'}
                 $color="#f59e0b"
+                title="Předané na mě a bez potvrzení věcné správnosti"
               >
                 <StatHeader>
                   <StatLabel>Mé nezkontrolované</StatLabel>
@@ -5567,7 +5569,7 @@ const Invoices25List = () => {
                   </StatIcon>
                 </StatHeader>
                 <StatValue>{stats.myUncheckedInvoices}</StatValue>
-                <StatLabel>Předané na mě / Věcná</StatLabel>
+                <StatLabel>Předané na mě, bez věcné</StatLabel>
               </DashboardCard>
             )}
             </DashboardGrid>

@@ -45,27 +45,19 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('ORDER_READ_OWN') || hasPermission('ORDER_VIEW_OWN') || hasPermission('ORDER_EDIT_OWN') || hasPermission('ORDER_DELETE_OWN')
   );
   
-  // ✅ Kontrola module visibility - při vypnutí vidí modul admin/BETA_TESTER
-  if (hasOrderPermission && (moduleSettings.module_orders_visible || isAdmin || hasBetaTesterPermission)) {
-    sections.push({ value: 'orders25-list', label: 'Objednávky - přehled' });
+  // ✅ Kontrola module visibility - pokud je modul globálně vypnutý, v profilu se nenabízí
+  if (hasOrderPermission && moduleSettings.module_orders_visible) {
+    sections.push({ value: 'orders25-list', label: 'Objednávky V2' });
   }
   
-  // 🚀 OBJEDNÁVKY V3 - logika:
-  // 1. Pokud je modul GLOBÁLNĚ POVOLENÝ → dostupné VŠEM s ORDER permissí
-  // 2. Pokud je modul ZAKÁZANÝ → dostupné POUZE pro admin/BETA_TESTER
-  const isV3GloballyEnabled = moduleSettings.module_orders_v3_visible;
-  
-  if (isV3GloballyEnabled && hasOrderPermission) {
-    // Modul je globálně povolený → dostupný všem s ORDER permissí
-    sections.push({ value: 'orders25-list-v3', label: 'Objednávky V3 (BETA)' });
-  } else if (!isV3GloballyEnabled && hasOrderPermission && (isAdmin || hasBetaTesterPermission)) {
-    // Modul je zakázaný → dostupný pouze admin/BETA_TESTER
-    sections.push({ value: 'orders25-list-v3', label: 'Objednávky V3 (BETA)' });
+  // 🚀 OBJEDNÁVKY V3 - v profilu nabízet pouze pokud je modul globálně povolený
+  if (moduleSettings.module_orders_v3_visible && hasOrderPermission) {
+    sections.push({ value: 'orders25-list-v3', label: 'Objednávky (V3)' });
   }
 
   // Objednávky <2026 - respektuje globální viditelnost modulu
   if (hasPermission && (hasPermission('ORDER_MANAGE') || hasPermission('ORDER_OLD')) &&
-      (moduleSettings.module_orders_old_visible || isAdmin || hasBetaTesterPermission)) {
+      moduleSettings.module_orders_old_visible) {
     sections.push({ value: 'orders-old', label: 'Objednávky (<2026)' });
   }
   
@@ -78,13 +70,13 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('ADMIN')
   );
   if ((hasAnnualFeesPermission || isAdmin || hasBetaTesterPermission) &&
-      (moduleSettings.module_annual_fees_visible || isAdmin || hasBetaTesterPermission)) {
+      moduleSettings.module_annual_fees_visible) {
     sections.push({ value: 'annual-fees', label: 'Roční poplatky' });
   }
   
   // FAKTURY - stejné podmínky jako route guard (modul visible nebo admin/beta)
-  if (moduleSettings.module_invoices_visible || isAdmin || hasBetaTesterPermission) {
-    sections.push({ value: 'invoices25-list', label: 'Faktury - přehled' });
+  if (moduleSettings.module_invoices_visible) {
+    sections.push({ value: 'invoices25-list', label: 'Faktury' });
   }
   
   // ADRESÁŘ - stejné podmínky jako route guard
@@ -98,9 +90,9 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   }
 
   // EEO vs VEMA - stejné podmínky jako route guard
-  if ((moduleSettings.module_contacts_visible || isAdmin || hasBetaTesterPermission) &&
+  if (moduleSettings.module_contacts_visible &&
       (isAdmin || (hasPermission && hasPermission('VEMA_VIEW')))) {
-    sections.push({ value: 'vema-denik', label: 'EEO vs VEMA' });
+    sections.push({ value: 'vema-denik', label: 'EEO vs VEMA (BETA)' });
   }
   
   // ČÍSELNÍKY - stejné podmínky jako route guard v App.js
@@ -125,10 +117,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     sections.push({ value: 'debug', label: 'Debug panel' });
   }
   
-  // DODAVATELÉ - alias na adresář
-  if (canAccessAddressBook) {
-    sections.push({ value: 'suppliers', label: 'Dodavatelé' });
-  }
+  // DODAVATELÉ alias se v profilu nenabízí - v menu je pouze Adresář
   
   // NOTIFIKACE - všichni přihlášení (není podmínka v Layout)
   sections.push({ value: 'notifications', label: 'Notifikace' });
@@ -137,15 +126,15 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   const hasBetaAccess = isAdmin || hasBetaTesterPermission;
   
   // PŘEHLED MAJETKU - admin nebo uživatel s ASSET oprávněním
-  if ((moduleSettings.module_assets_visible || hasBetaAccess) &&
+  if (moduleSettings.module_assets_visible &&
       (isAdmin || (hasPermission && (
         hasPermission('ASSET_VIEW') || hasPermission('ASSET_MANAGE') || hasPermission('ASSET_EXPORT')
   )))) {
-    sections.push({ value: 'majetek-overview', label: 'Přehled majetku' });
+    sections.push({ value: 'majetek-overview', label: 'Majetek' });
   }
   
   // STATISTIKA A REPORTY - stejné podmínky jako route guard
-  if ((moduleSettings.module_stats_reports_visible || hasBetaAccess) &&
+  if (moduleSettings.module_stats_reports_visible &&
       (isAdmin || (hasPermission && (
     hasPermission('FIN_CONTROL_VIEW') || hasPermission('FIN_CONTROL_EDIT') || hasPermission('FIN_CONTROL_MANAGE') ||
     hasPermission('EDUCATION_VIEW') || hasPermission('EDUCATION_EDIT') || hasPermission('EDUCATION_MANAGE') ||
@@ -175,7 +164,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
     hasPermission('CONTRACT_VIEW_ALL') || hasPermission('CONTRACT_VIEW_OWN')
   ));
   
-  if ((moduleSettings.module_cerpani_visible || hasBetaAccess) && canAccessCerpani) {
+  if (moduleSettings.module_cerpani_visible && canAccessCerpani) {
     sections.push({ value: 'cerpani', label: 'Čerpání' });
   }
   
@@ -219,7 +208,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   }
 
   // Kontakty - respektuje globální viditelnost modulu kontaktů
-  if ((moduleSettings.module_contacts_visible || hasBetaAccess) &&
+  if (moduleSettings.module_contacts_visible &&
       (isAdmin || (hasPermission && hasPermission('PHONEBOOK_VIEW')))) {
     sections.push({ value: 'contacts', label: 'Kontakty' });
   }
