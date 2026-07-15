@@ -130,32 +130,142 @@ function NavigateToLoginWithQuery() {
   return <Navigate to={`/login${location.search}`} replace />;
 }
 
+function extractPreferredSectionFromUserSettings(userSettings) {
+  if (!userSettings || typeof userSettings !== 'object') {
+    return null;
+  }
+
+  const rawCandidates = [
+    userSettings.vychozi_sekce_po_prihlaseni,
+    userSettings.chovani_aplikace?.vychozi_sekce_po_prihlaseni,
+    userSettings.defaultMenuTab
+  ];
+
+  for (const candidate of rawCandidates) {
+    const section = (typeof candidate === 'object' && candidate?.value)
+      ? candidate.value
+      : candidate;
+
+    if (typeof section === 'string' && section.trim()) {
+      return section.trim();
+    }
+  }
+
+  return null;
+}
+
 function NavigateAfterLogin() {
   const location = useLocation();
-  const targetPath = useMemo(() => {
-    try {
-      const stored = sessionStorage.getItem('post_login_redirect');
-      if (!stored) return null;
-      if (!stored.startsWith('/') || stored.startsWith('//') || stored.startsWith('/login')) {
-        return null;
+  const navigate = useNavigate();
+  const { user, userDetail, hasPermission, token, username } = useContext(AuthContext);
+  const [resolved, setResolved] = React.useState(false);
+  
+  React.useEffect(() => {
+    let isCancelled = false;
+    
+    const resolveRedirect = async () => {
+      // 1. Vyčisti případný post_login_redirect.
+      //    Požadované chování: PRIORITA je profilová výchozí sekce -> lastRoute -> dashboard.
+      try {
+        const stored = sessionStorage.getItem('post_login_redirect');
+        if (stored) {
+          sessionStorage.removeItem('post_login_redirect');
+        }
+      } catch (error) {
+        console.warn('⚠️ Chyba při čtení post-login redirect:', error);
       }
-      return stored;
-    } catch (error) {
-      console.warn('⚠️ Chyba při čtení post-login redirect:', error);
-      return null;
-    }
-  }, [location.pathname]);
+      
+      // 2. PRIORITA 1: userSettings.vychozi_sekce_po_prihlaseni
+      const user_id = user?.id;
+      try {
+        if (user_id) {
+          const { loadSettingsFromLocalStorage, fetchUserSettings } = require('./services/userSettingsApi');
+          let userSettings = loadSettingsFromLocalStorage(user_id);
+          if (!userSettings && token && username) {
+            userSettings = await fetchUserSettings({ token, username, userId: user_id });
+          }
+          
+          const preferredSection = extractPreferredSectionFromUserSettings(userSettings);
+          if (preferredSection) {
+            const sectionMap = {
+              'address-book': '/address-book',
+              'contacts': '/contacts',
+              'vema-denik': '/vema-denik',
+              'dictionaries': '/dictionaries',
+              'suppliers': '/address-book',
+              'notifications': '/notifications',
+              'orders': '/orders25-list',
+              'orders-old': '/orders',
+              'reports': '/reports',
+              'statistics': '/statistics',
+              'stats-reports': '/stats-reports',
+              'cerpani': '/cerpani',
+              'material-overview': '/majetek-overview',
+              'majetek-overview': '/majetek-overview',
+              'app-settings': '/app-settings',
+              'organization-hierarchy': '/organization-hierarchy',
+              'planning': '/planning',
+              'cash-book': '/cash-book',
+              'profile': '/profile',
+              'orders25-list': '/orders25-list',
+              'orders25-list-v3': '/orders25-list-v3',
+              'annual-fees': '/annual-fees',
+              'invoices25-list': '/invoices25-list',
+              'users': '/users',
+              'help': '/help',
+              'dashboard': '/dashboard'
+            };
+            
+            const targetSection = preferredSection;
+            const targetRoute = sectionMap[targetSection];
+            const sectionForAvailability = targetSection === 'orders' ? 'orders25-list' : targetSection;
 
-  useEffect(() => {
-    if (!targetPath) return;
-    try {
-      sessionStorage.removeItem('post_login_redirect');
-    } catch (error) {
-      console.warn('⚠️ Chyba při mazání post-login redirect:', error);
-    }
-  }, [targetPath]);
+            const { isSectionAvailable } = require('./utils/availableSections');
+            const isAvailable = targetSection === 'dashboard'
+              ? true
+              : isSectionAvailable(sectionForAvailability, hasPermission, userDetail);
 
-  return <Navigate to={targetPath || '/'} replace />;
+            if (targetRoute && isAvailable) {
+              if (isCancelled) return;
+              navigate(targetRoute, { replace: true });
+              setResolved(true);
+              return;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ Chyba při načítání user settings:', error);
+      }
+
+      // 3. PRIORITA 2: lastRoute z localStorage
+      const lastRoute = user_id ? localStorage.getItem(`app_lastRoute_user_${user_id}`) : null;
+      const invalidRoutes = ['/orders-list-new', '/login', '/logout', '/', ''];
+      if (lastRoute && !invalidRoutes.includes(lastRoute) && lastRoute.startsWith('/') && !/[<>{}]/.test(lastRoute)) {
+        if (isCancelled) return;
+        navigate(lastRoute, { replace: true });
+        setResolved(true);
+        return;
+      }
+
+      // 4. FALLBACK: dashboard
+      if (isCancelled) return;
+      navigate('/dashboard', { replace: true });
+      setResolved(true);
+    };
+    
+    resolveRedirect();
+    
+    return () => {
+      isCancelled = true;
+    };
+  }, [navigate, user, userDetail, hasPermission, token, username, location.pathname]);
+
+  // Zobraz nic během rozhodování
+  if (!resolved) {
+    return <div style={{ display: 'none' }} />;
+  }
+  
+  return null;
 }
 
 // 🛠️ Maintenance mode wrapper - zobrazí MaintenancePage PŘED layoutem
@@ -331,7 +441,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, token, username, hasPermis
     }
     
     // ⏳ KRITICKÉ: Počkat na načtení moduleSettings PŘED navigací
-    if (isLoggedIn && location.pathname === '/' && moduleSettingsLoaded) {
+    if (isLoggedIn && location.pathname === '/' && moduleSettingsLoaded && userDetail) {
       let isCancelled = false;
 
       const runRedirectResolution = async () => {
@@ -367,7 +477,9 @@ function RestoreLastRoute({ isLoggedIn, userId, user, token, username, hasPermis
           }
           
           // PRIORITA 1: userSettings.vychozi_sekce_po_prihlaseni (pro všechny uživatele)
-          if (userSettings?.vychozi_sekce_po_prihlaseni) {
+          const vychoziSekce = extractPreferredSectionFromUserSettings(userSettings);
+          
+          if (vychoziSekce) {
             // ✅ SPRÁVNÉ MAPOVÁNÍ: Podle availableSections.js
             const sectionMap = {
               'address-book': '/address-book',
@@ -399,7 +511,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, token, username, hasPermis
               'dashboard': '/dashboard' // Nový dashboard
             };
             
-            const targetSectionRaw = userSettings.vychozi_sekce_po_prihlaseni;
+            const targetSectionRaw = vychoziSekce;
             const targetSection = (typeof targetSectionRaw === 'object' && targetSectionRaw?.value)
               ? targetSectionRaw.value
               : targetSectionRaw;
@@ -407,8 +519,11 @@ function RestoreLastRoute({ isLoggedIn, userId, user, token, username, hasPermis
             const sectionForAvailability = targetSection === 'orders' ? 'orders25-list' : targetSection;
 
             const { isSectionAvailable } = require('./utils/availableSections');
+            const isAvailable = targetSection === 'dashboard'
+              ? true
+              : isSectionAvailable(sectionForAvailability, hasPermission, userDetail);
 
-            if (targetRoute && isSectionAvailable(sectionForAvailability, hasPermission, userDetail)) {
+            if (targetRoute && isAvailable) {
               // ✅ User settings sekce JE vyplněná, mapovatelná a dostupná → použij ji (NEJVYŠŠÍ PRIORITA)
               if (isCancelled) return;
               navigate(targetRoute, { replace: true });
@@ -491,7 +606,7 @@ function RestoreLastRoute({ isLoggedIn, userId, user, token, username, hasPermis
       };
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoggedIn, navigate, location.pathname, moduleSettingsLoaded, location.search, token, username, userId, user]);
+  }, [isLoggedIn, navigate, location.pathname, moduleSettingsLoaded, location.search, token, username, userId, user, userDetail, hasPermission]);
 
   return null;
 }

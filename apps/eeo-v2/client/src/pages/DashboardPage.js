@@ -402,14 +402,14 @@ const renderStatsContent = (type, data, store) => {
     { key: 'odeslana', label: 'Odeslané', value: data.odeslana || 0, color: '#0284c7', bgColor: '#e0f2fe', icon: 'fa-solid fa-paper-plane' },
     { key: 'potvrzena', label: 'Potvrzené', value: data.potvrzena || 0, color: '#7c3aed', bgColor: '#ede9fe', icon: 'fa-solid fa-check' },
     { key: 'fakturace', label: 'Fakturace', value: data.fakturace || 0, color: '#06b6d4', bgColor: '#cffafe', icon: 'fa-solid fa-money-bill-wave' },
-    { key: 'vecna_spravnost', label: 'Věcná spr.', value: data.vecna_spravnost || 0, color: '#be185d', bgColor: '#fce7f3', icon: 'fa-solid fa-user-shield' },
+    { key: 'vecna_spravnost', label: 'Věcná správnost', value: data.vecna_spravnost || 0, color: '#be185d', bgColor: '#fce7f3', icon: 'fa-solid fa-user-shield' },
     { key: 'zkontrolovana', label: 'Zkontrolováno', value: data.zkontrolovana || 0, color: '#16a34a', bgColor: '#dcfce7', icon: 'fa-solid fa-check-double' },
     { key: 'k_uverejneni_do_registru', label: 'Ke zveřejnění', value: data.k_uverejneni_do_registru || 0, color: '#ea580c', bgColor: '#fff7ed', icon: 'fa-solid fa-globe' },
     { key: 'uverejnena', label: 'Zveřejněné', value: data.uverejnena || 0, color: '#059669', bgColor: '#ecfdf5', icon: 'fa-solid fa-check-circle' },
     { key: 'dokoncena', label: 'Dokončené', value: data.dokoncena || 0, color: '#059669', bgColor: '#d1fae5', icon: 'fa-solid fa-flag-checkered' }
   ] : [
     { key: 'total', label: 'Celkem', value: data.total || 0, color: '#1d4ed8', bgColor: '#dbeafe', icon: 'fa-solid fa-file-invoice' },
-    { key: 'vecna_spravnost', label: 'Věcná spr.', value: data.vecna_spravnost || 0, color: '#7c3aed', bgColor: '#ede9fe', icon: 'fa-solid fa-user-shield' },
+    { key: 'vecna_spravnost', label: 'Věcná správnost', value: data.vecna_spravnost || 0, color: '#7c3aed', bgColor: '#ede9fe', icon: 'fa-solid fa-user-shield' },
     { key: 'zaplaceno', label: 'Zaplaceno', value: data.zaplaceno || 0, color: '#059669', bgColor: '#dcfce7', icon: 'fa-solid fa-check-circle' },
     { key: 'nezaplaceno', label: 'Nezaplaceno', value: data.nezaplaceno || 0, color: '#b45309', bgColor: '#fef3c7', icon: 'fa-solid fa-hourglass-half' },
     { key: 've_splatnosti', label: 'Ve splatnosti', value: data.ve_splatnosti || 0, color: '#0891b2', bgColor: '#e0f2fe', icon: 'fa-solid fa-clock' },
@@ -421,7 +421,7 @@ const renderStatsContent = (type, data, store) => {
     { key: 'zkontrolovano', label: 'Kontrola', value: data.zkontrolovano || 0, color: '#0891b2', bgColor: '#e0f2fe', icon: 'fa-solid fa-check' },
     { key: 's_poznamkou', label: 'S poznámkou', value: data.s_poznamkou || 0, color: '#ea580c', bgColor: '#fff7ed', icon: 'fa-solid fa-comment' },
     { key: 'moje_faktury', label: 'Moje faktury', value: data.moje_faktury || 0, color: '#6366f1', bgColor: '#eef2ff', icon: 'fa-solid fa-user' },
-    { key: 'moje_nezkontrolovane', label: 'Mé nezkontrolované', value: data.moje_nezkontrolovane || 0, color: '#f59e0b', bgColor: '#fef3c7', icon: 'fa-solid fa-exclamation-triangle' }
+    { key: 'moje_nezkontrolovane', label: 'Bez věcné (na mě)', value: data.moje_nezkontrolovane || 0, color: '#f59e0b', bgColor: '#fef3c7', icon: 'fa-solid fa-exclamation-triangle' }
   ];
 
   const now = new Date();
@@ -1301,17 +1301,22 @@ const ScrollableContent = styled.div`
 
 const StatRow = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 0.75rem;
 `;
 
 const StatBox = styled.div`
   text-align: center;
-  padding: 0.75rem 0.65rem;
+  padding: 0.8rem 0.7rem;
   border-radius: 10px;
   background: ${p => p.$bg || '#f8f9fa'};
   cursor: ${p => p.$clickable ? 'pointer' : 'default'};
   transition: all 0.2s;
+  min-height: 96px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   ${p => p.$clickable && `&:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }`}
 `;
 
@@ -1323,11 +1328,20 @@ const StatValue = styled.div`
 `;
 
 const StatLabel = styled.div`
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   color: ${theme.colors.gray500};
-  margin-top: 0.2rem;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  margin-top: 0.24rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  min-height: 2.3em;
+  width: 100%;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 `;
 
 const ListItem = styled.div`
@@ -6002,9 +6016,9 @@ function OrderStatsWidget({ stats, navigate }) {
     { key: 'odeslana', label: 'Odeslané', value: stats.odeslana, color: '#0284c7', bg: '#e0f2fe', filter: 'odeslana' },
     { key: 'potvrzena', label: 'Potvrzené', value: stats.potvrzena, color: '#7c3aed', bg: '#ede9fe', filter: 'potvrzena' },
     { key: 'fakturace', label: 'Fakturace', value: stats.fakturace, color: '#06b6d4', bg: '#cffafe', filter: 'fakturace' },
-    { key: 'vecna_spravnost', label: 'Věcná spr.', value: stats.vecna_spravnost, color: '#be185d', bg: '#fce7f3', filter: 'vecna_spravnost' },
+    { key: 'vecna_spravnost', label: 'Věcná správnost', value: stats.vecna_spravnost, color: '#be185d', bg: '#fce7f3', filter: 'vecna_spravnost' },
     { key: 'zkontrolovana', label: 'Zkontrolováno', value: stats.zkontrolovana, color: '#16a34a', bg: '#dcfce7', filter: 'zkontrolovana' },
-    { key: 'k_uverejneni_do_registru', label: 'Ke zveřejnění', value: stats.k_uverejneni_do_registru, color: '#ea580c', bg: '#fff7ed', filter: 'k_uverejneni_do_registru' },
+    { key: 'k_uverejneni_do_registru', label: 'Ke zveřejnění', value: stats.k_uverejneni_do_registru, color: '#ea580c', bg: '#fff7ed', filter: 'k_uverejneni' },
     { key: 'uverejnena', label: 'Zveřejněné', value: stats.uverejnena, color: '#059669', bg: '#ecfdf5', filter: 'uverejnena' },
     { key: 'dokoncena', label: 'Dokončené', value: stats.dokoncena, color: '#059669', bg: '#d1fae5', filter: 'dokoncena' }
   ];
@@ -6013,7 +6027,17 @@ function OrderStatsWidget({ stats, navigate }) {
     <WidgetBody $noScroll>
       <StatRow>
         {items.map(it => (
-          <StatBox key={it.key} $bg={it.bg} $clickable onClick={() => navigate('/orders25-list-v3', it.filter ? { state: { dashboardFilter: it.filter } } : undefined)}>
+          <StatBox
+            key={it.key}
+            $bg={it.bg}
+            $clickable
+            onClick={() => navigate('/orders25-list-v3', {
+              state: {
+                clearFilters: true,
+                ...(it.filter ? { dashboardFilter: it.filter } : {})
+              }
+            })}
+          >
             <StatValue $color={it.color}>{it.value || 0}</StatValue>
             <StatLabel>{it.label}</StatLabel>
           </StatBox>
@@ -6110,7 +6134,7 @@ function MyOrdersWidget({ myOrdersData, navigate }) {
         </>
       )}
       <ViewAllLink>
-        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'moje_objednavky' } })}>
+        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'moje_objednavky', clearFilters: true } })}>
           Zobrazit vše <FontAwesomeIcon icon={faArrowRight} />
         </button>
       </ViewAllLink>
@@ -6156,7 +6180,7 @@ function OrderListWidget({ orders, title, navigate, filterPreset }) {
         );
       })}
       <ViewAllLink>
-        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: filterPreset || null } })}>
+        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: filterPreset || null, clearFilters: true } })}>
           Zobrazit vše <FontAwesomeIcon icon={faArrowRight} />
         </button>
       </ViewAllLink>
@@ -6203,7 +6227,7 @@ function InvoiceListWidget({ invoices, navigate, filterPreset }) {
         );
       })}
       <ViewAllLink>
-        <button onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: filterPreset || null } })}>
+        <button onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: filterPreset || null, clearFilters: true } })}>
           Zobrazit vše <FontAwesomeIcon icon={faArrowRight} />
         </button>
       </ViewAllLink>
@@ -6284,7 +6308,7 @@ function AlertsWidget({ alerts, navigate }) {
             if (!a.link) return;
             const filterMap = {
               'Objednávky v prodlení':    { link: '/orders25-list-v3',  state: { dashboardFilter: 'fakturace_prodleni',       clearFilters: true } },
-              'Ke zveřejnění – prodlení': { link: '/orders25-list-v3',  state: { dashboardFilter: 'k_uverejneni_do_registru', clearFilters: true } },
+              'Ke zveřejnění – prodlení': { link: '/orders25-list-v3',  state: { dashboardFilter: 'k_uverejneni', clearFilters: true } },
               'Nepotvrzené faktury':      { link: '/invoices25-list',   state: { dashboardFilter: 'unpaid',                   clearFilters: true } },
               'Faktury po splatnosti':    { link: '/invoices25-list',   state: { dashboardFilter: 'overdue',                  clearFilters: true } },
             };
@@ -7315,7 +7339,7 @@ function RegistryWidget({ ordersForRegistry, navigate }) {
         );
       })}
       <ViewAllLink>
-        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'k_uverejneni_do_registru' } })}>
+        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'k_uverejneni', clearFilters: true } })}>
           Přejít na objednávky <FontAwesomeIcon icon={faArrowRight} />
         </button>
       </ViewAllLink>
@@ -7361,7 +7385,7 @@ function OrdersPublishedWidget({ publishedData, navigate }) {
         );
       })}
       <ViewAllLink>
-        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'uverejnena' } })}>
+        <button onClick={() => navigate('/orders25-list-v3', { state: { dashboardFilter: 'uverejnena', clearFilters: true } })}>
           Zobrazit vše <FontAwesomeIcon icon={faArrowRight} />
         </button>
       </ViewAllLink>
@@ -7924,19 +7948,19 @@ function InvoiceStatsWidget({ stats, navigate }) {
 
   const items = [
     { key: 'total', label: 'Celkem', sub: `Faktury (${new Date().getFullYear()})`, value: stats.total, color: '#1d4ed8', bg: '#dbeafe', filter: null },
-    { key: 'vecna_spravnost', label: 'Věcná spr.', sub: 'Ve věcné kontrole', value: stats.vecna_spravnost, color: '#7c3aed', bg: '#ede9fe', filter: 'vecna_spravnost' },
+    { key: 'vecna_spravnost', label: 'Věcná správnost', sub: 'Ve věcné kontrole', value: stats.vecna_spravnost, color: '#7c3aed', bg: '#ede9fe', filter: 'vecna_spravnost' },
     { key: 'zaplaceno', label: 'Zaplaceno', sub: 'Uhrazené faktury', value: stats.zaplaceno, color: '#059669', bg: '#dcfce7', filter: 'paid' },
     { key: 'nezaplaceno', label: 'Nezaplaceno', sub: 'Čekající na platbu', value: stats.nezaplaceno, color: '#b45309', bg: '#fef3c7', filter: 'unpaid' },
     { key: 've_splatnosti', label: 'Ve splatnosti', sub: 'Nezaplacené ve lhůtě', value: stats.ve_splatnosti, color: '#0891b2', bg: '#e0f2fe', filter: 'within_due' },
     { key: 'po_splatnosti', label: 'Po splatnosti', sub: 'Překročená splatnost', value: stats.po_splatnosti, color: '#dc2626', bg: '#fee2e2', filter: 'overdue' },
-    { key: 'storno', label: 'Storno', sub: 'Stornované faktury', value: stats.storno, color: '#64748b', bg: '#f1f5f9', filter: null },
+    { key: 'storno', label: 'Storno', sub: 'Stornované faktury', value: stats.storno, color: '#64748b', bg: '#f1f5f9', filter: 'storno' },
     { key: 'bez_prirazeni', label: 'Bez přiřazení', sub: 'Nepřiřazené faktury', value: stats.bez_prirazeni, color: '#94a3b8', bg: '#f8fafc', filter: 'without_order' },
-    { key: 's_objednavkou', label: 'Přiřazené OBJ', sub: 'S objednávkou', value: stats.s_objednavkou, color: '#1d4ed8', bg: '#dbeafe', filter: null },
-    { key: 'se_smlouvou', label: 'Přiřazené SML', sub: 'Se smlouvou', value: stats.se_smlouvou, color: '#059669', bg: '#ecfdf5', filter: null },
-    { key: 'zkontrolovano', label: 'Kontrola', sub: 'Zkontrolováno', value: stats.zkontrolovano, color: '#0891b2', bg: '#e0f2fe', filter: null },
+    { key: 's_objednavkou', label: 'S objednávkou', sub: 'Přiřazené k objednávce', value: stats.s_objednavkou, color: '#1d4ed8', bg: '#dbeafe', filter: 'with_order' },
+    { key: 'se_smlouvou', label: 'Se smlouvou', sub: 'Přiřazené ke smlouvě', value: stats.se_smlouvou, color: '#059669', bg: '#ecfdf5', filter: 'with_contract' },
+    { key: 'zkontrolovano', label: 'Kontrola', sub: 'Zkontrolováno', value: stats.zkontrolovano, color: '#0891b2', bg: '#e0f2fe', filter: 'kontrolovano' },
     { key: 's_poznamkou', label: 'S poznámkou', sub: 'Faktury s poznámkou', value: stats.s_poznamkou, color: '#ea580c', bg: '#fff7ed', filter: 'with_note' },
-    { key: 'moje_faktury', label: 'Moje faktury k potvrzení věcné', sub: 'Předané na mně', value: stats.moje_faktury, color: '#6366f1', bg: '#eef2ff', filter: 'my_unchecked_invoices' },
-    { key: 'moje_nezkontrolovane', label: 'Mé nezkontrolované', sub: 'Předané na mě / Věcná', value: stats.moje_nezkontrolovane, color: '#f59e0b', bg: '#fef3c7', filter: 'my_unchecked_invoices' }
+    { key: 'moje_faktury', label: 'Moje faktury', sub: 'Zaevidoval / Předáno / Potvrdil', value: stats.moje_faktury, color: '#6366f1', bg: '#eef2ff', filter: 'my_invoices' },
+    { key: 'moje_nezkontrolovane', label: 'Bez věcné (na mě)', sub: 'Předané na mě, bez věcné', value: stats.moje_nezkontrolovane, color: '#f59e0b', bg: '#fef3c7', filter: 'my_unchecked_invoices' }
   ];
 
   return (
@@ -7947,7 +7971,12 @@ function InvoiceStatsWidget({ stats, navigate }) {
             key={it.key}
             $bg={it.bg}
             $clickable
-            onClick={() => navigate('/invoices25-list', it.filter ? { state: { dashboardFilter: it.filter } } : undefined)}
+            onClick={() => navigate('/invoices25-list', {
+              state: {
+                clearFilters: true,
+                ...(it.filter ? { dashboardFilter: it.filter } : {})
+              }
+            })}
             title={it.sub}
           >
             <StatValue $color={it.color}>{it.value || 0}</StatValue>
@@ -10113,7 +10142,7 @@ export default function DashboardPage() {
                     preferredPosition="bottom"
                   >
                     <QuickTile
-                      onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_unchecked_invoices' } })}
+                      onClick={() => navigate('/invoices25-list', { state: { dashboardFilter: 'my_unchecked_invoices', clearFilters: true } })}
                       style={{
                         background: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)',
                         borderColor: 'rgba(255,255,255,0.5)',

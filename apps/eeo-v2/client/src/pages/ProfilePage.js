@@ -2018,12 +2018,16 @@ const mergeSettingsForReducer = (defaultSettings, loadedSettings) => {
   }
   
   // Validace sekce (přesunuto do komponentní funkce - potřebuje hasPermission, userDetail)
-  let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'dashboard';
+  // Prázdná hodnota znamená: "není nastaveno" (použije se lastRoute, fallback dashboard)
+  let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni;
   if (typeof targetSection === 'object' && targetSection.value) {
     targetSection = targetSection.value;
   }
   if (targetSection === 'orders') {
     targetSection = 'orders25-list';
+  }
+  if (targetSection === null || typeof targetSection === 'undefined') {
+    targetSection = 'dashboard';
   }
   merged.vychozi_sekce_po_prihlaseni = targetSection;
   
@@ -2211,7 +2215,10 @@ const ProfilePage = () => {
 
   // 🎨 Dynamické menu options podle oprávnění uživatele
   const MENU_TAB_OPTIONS = useMemo(() => {
-    return getAvailableSections(hasPermission, userDetail);
+    return [
+      { value: '', label: 'Žádná (použít poslední navštívenou stránku)' },
+      ...getAvailableSections(hasPermission, userDetail)
+    ];
   }, [hasPermission, userDetail]);
 
   // 🔒 Admin role check (pro notifikační matici, chat ikonu, apod.)
@@ -2417,18 +2424,26 @@ const ProfilePage = () => {
     }
     
     // Validace a úprava vychozi_sekce_po_prihlaseni
-    let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni || 'dashboard';
+    // Prázdná hodnota = záměrně bez výchozí sekce (použije se lastRoute)
+    let targetSection = loadedSettings.vychozi_sekce_po_prihlaseni;
     if (typeof targetSection === 'object' && targetSection.value) {
       targetSection = targetSection.value;
     }
+    if (targetSection === '' || targetSection === null) {
+      merged.vychozi_sekce_po_prihlaseni = '';
+    } else {
     if (targetSection === 'orders') {
       targetSection = 'orders25-list';
+    }
+    if (typeof targetSection === 'undefined') {
+      targetSection = 'dashboard';
     }
     if (!isSectionAvailable(targetSection, hasPermission, userDetail)) {
       console.warn('⚠️ Uživatel nemá oprávnění k sekci:', targetSection, '→ Použije se první dostupná sekce');
       targetSection = getFirstAvailableSection(hasPermission, userDetail);
     }
     merged.vychozi_sekce_po_prihlaseni = targetSection;
+    }
     
     // Extrahuj values z vychozi_filtry_stavu_objednavek
     if (loadedSettings.vychozi_filtry_stavu_objednavek && Array.isArray(loadedSettings.vychozi_filtry_stavu_objednavek)) {
@@ -4387,7 +4402,7 @@ const ProfilePage = () => {
                       </SettingLabel>
                       <CustomSelect
                         icon={<Layout size={16} />}
-                        value={userSettings.vychozi_sekce_po_prihlaseni || 'dashboard'}
+                        value={userSettings.vychozi_sekce_po_prihlaseni ?? 'dashboard'}
                         onChange={(e) => dispatch({ type: SETTINGS_ACTIONS.UPDATE_FIELD, payload: { field: 'vychozi_sekce_po_prihlaseni', value: e.target.value } })}
                         options={MENU_TAB_OPTIONS}
                         placeholder="Vyberte sekci..."
