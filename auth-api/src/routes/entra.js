@@ -1,11 +1,82 @@
 const express = require('express');
 const router = express.Router();
 const entraService = require('../services/entraService');
+const db = require('../db/connection');
 const { authenticateSession } = require('../middleware/sessionMiddleware');
 const { readLimiter } = require('../middleware/rateLimitMiddleware');
 
 // SECURITY: Aplikuj rate limiting na všechny Entra API endpointy
 router.use(readLimiter);
+
+const composeDisplayNameWithTitle = (baseName, titleBefore, titleAfter) => {
+  const cleanBaseName = String(baseName || '').trim();
+  const cleanTitleBefore = String(titleBefore || '').trim();
+  const cleanTitleAfter = String(titleAfter || '').trim();
+
+  if (!cleanTitleBefore && !cleanTitleAfter) {
+    return cleanBaseName;
+  }
+
+  return `${cleanTitleBefore} ${cleanBaseName} ${cleanTitleAfter}`.replace(/\s+/g, ' ').trim();
+};
+
+const enrichUsersWithDbTitles = async (users) => {
+  if (!Array.isArray(users) || users.length === 0) {
+    return users;
+  }
+
+  const usernames = Array.from(new Set(
+    users
+      .map((u) => (u?.userPrincipalName || '').split('@')[0].trim().toLowerCase())
+      .filter(Boolean)
+  ));
+
+  if (usernames.length === 0) {
+    return users;
+  }
+
+  const placeholders = usernames.map(() => '?').join(', ');
+  const [rows] = await db.query(
+    `SELECT username, titul_pred, titul_za
+     FROM erdms_users
+     WHERE aktivni = 1 AND LOWER(username) IN (${placeholders})`,
+    usernames
+  );
+
+  const titlesByUsername = new Map();
+  for (const row of rows || []) {
+    const key = String(row.username || '').trim().toLowerCase();
+    if (!key) continue;
+    titlesByUsername.set(key, {
+      titul_pred: row.titul_pred || '',
+      titul_za: row.titul_za || ''
+    });
+  }
+
+  return users.map((user) => {
+    const username = String(user?.userPrincipalName || '').split('@')[0].trim().toLowerCase();
+    const titleData = titlesByUsername.get(username);
+
+    if (!titleData) {
+      return user;
+    }
+
+    const withTitle = composeDisplayNameWithTitle(
+      user.displayName || `${user.givenName || ''} ${user.surname || ''}`.trim(),
+      titleData.titul_pred,
+      titleData.titul_za
+    );
+
+    if (!withTitle) {
+      return user;
+    }
+
+    return {
+      ...user,
+      displayNameWithTitle: withTitle
+    };
+  });
+};
 
 /**
  * GET /api/entra/user/:userId
@@ -121,6 +192,39 @@ router.get('/user/:userId/profile', authenticateSession, async (req, res) => {
 });
 
 /**
+ * GET /api/entra/user/:userId/debug-raw
+ * Diagnostický endpoint: vrátí širší raw data uživatele přímo z Graph API.
+ */
+router.get('/user/:userId/debug-raw', authenticateSession, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const guidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!guidRegex.test(userId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid userId format'
+      });
+    }
+
+    const rawUser = await entraService.getUserDebugRawById(userId);
+    res.json({
+      success: true,
+      data: {
+        user: rawUser,
+        fields: Object.keys(rawUser || {}).sort()
+      }
+    });
+  } catch (err) {
+    console.error('🔴 GET /api/entra/user/:userId/debug-raw ERROR:', err.message);
+    res.status(err.statusCode || 500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+/**
  * GET /api/entra/group/:groupId
  * Získat detaily skupiny podle GUID
  */
@@ -194,13 +298,14 @@ router.get('/users', authenticateSession, async (req, res) => {
     }
     
     const result = await entraService.getUsers(limit);
+    const usersWithTitles = await enrichUsersWithDbTitles(result.users);
     const responseData = { 
       success: true, 
-      data: result.users, 
-      count: result.users.length,
+      data: usersWithTitles,
+      count: usersWithTitles.length,
       totalCount: result.totalCount 
     };
-    console.log(`📤 Odesílám odpověď: ${result.users.length} users, totalCount: ${result.totalCount}`);
+    console.log(`📤 Odesílám odpověď: ${usersWithTitles.length} users, totalCount: ${result.totalCount}`);
     res.json(responseData);
   } catch (err) {
     console.error('🔴 GET /api/entra/users ERROR:', err.message);

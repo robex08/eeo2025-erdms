@@ -3,6 +3,14 @@
  */
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000';
+const DASHBOARD_LOGIN_PATH = '/dashboard/login';
+
+const isValidUserPayload = (data) => {
+  if (!data || typeof data !== 'object') return false;
+
+  // Minimální identifikátory uživatele, které musí backend vrátit.
+  return Boolean(data.id || data.username || data.upn || data.email);
+};
 
 class AuthService {
   /**
@@ -39,46 +47,30 @@ class AuthService {
       const response = await fetch(`${API_URL}/auth/logout`, {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          origin: window.location.origin
+        })
       });
 
       if (response.ok) {
         const data = await response.json();
-        
-        // Microsoft Entra vyžaduje POST request pro logout
-        // Vytvoříme hidden form a submitneme ho
+
+        // Microsoft logout endpoint očekává redirect na URL.
         if (data.logoutUrl) {
-          // Extrahuj endpoint a parametry
-          const url = new URL(data.logoutUrl);
-          const postLogoutRedirect = url.searchParams.get('post_logout_redirect_uri');
-          
-          // Vytvoř hidden form
-          const form = document.createElement('form');
-          form.method = 'POST';
-          form.action = data.logoutUrl.split('?')[0]; // URL bez parametrů
-          form.style.display = 'none';
-          
-          // Přidej parametr jako hidden input
-          if (postLogoutRedirect) {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'post_logout_redirect_uri';
-            input.value = postLogoutRedirect;
-            form.appendChild(input);
-          }
-          
-          // Přidej do DOM a submitni
-          document.body.appendChild(form);
-          form.submit();
+          window.location.assign(data.logoutUrl);
         } else {
-          window.location.href = '/';
+          window.location.assign(DASHBOARD_LOGIN_PATH);
         }
       } else {
-        // Fallback - redirect na homepage
-        window.location.href = '/';
+        // Fallback - redirect na login i při chybové odpovědi API.
+        window.location.assign(DASHBOARD_LOGIN_PATH);
       }
     } catch (error) {
       console.error('Logout error:', error);
-      window.location.href = '/';
+      window.location.assign(DASHBOARD_LOGIN_PATH);
     }
   }
 
@@ -101,6 +93,13 @@ class AuthService {
       }
 
       const data = await response.json();
+
+      // Ochrana proti nekonzistentní odpovědi backendu (např. prázdný objekt).
+      if (!isValidUserPayload(data)) {
+        console.warn('Received invalid /auth/me payload:', data);
+        return null;
+      }
+
       return data;
     } catch (error) {
       console.error('🔴 Get user error:', error);

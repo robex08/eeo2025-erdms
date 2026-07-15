@@ -5,6 +5,7 @@ import './Dashboard.css';
 
 // Verze aplikace z environment
 const APP_VERSION = import.meta.env.VITE_APP_VERSION || '1.0';
+const GRAPH_SAMPLE_SEDLACEK_USER_ID = '43535a70-5dc2-49be-8de3-6071531588a7';
 
 const OUTLOOK_EXPORT_HEADERS = [
   'Titul',
@@ -138,10 +139,57 @@ function Dashboard() {
   const [graphTestData, setGraphTestData] = useState(null);
   const [graphTestError, setGraphTestError] = useState('');
   const [graphTestLastRun, setGraphTestLastRun] = useState(null);
+  const [sessionExpiredRedirecting, setSessionExpiredRedirecting] = useState(false);
+
+  const getPersonDisplayName = (person, fallback = 'Neznámý uživatel') => {
+    if (!person || typeof person !== 'object') return fallback;
+
+    const displayName = (person.displayName || person.name || person.entraData?.displayName || '').trim();
+    const firstName = (person.jmeno || person.givenName || '').trim();
+    const lastName = (person.prijmeni || person.surname || '').trim();
+    const fullName = `${firstName} ${lastName}`.trim();
+
+    return displayName || fullName || person.username || person.upn || person.email || fallback;
+  };
+
+  const getPersonInitials = (person) => {
+    if (!person || typeof person !== 'object') return '?';
+
+    const firstName = (person.jmeno || person.givenName || '').trim();
+    const lastName = (person.prijmeni || person.surname || '').trim();
+
+    if (firstName || lastName) {
+      return `${firstName[0] || ''}${lastName[0] || ''}`.toUpperCase() || '?';
+    }
+
+    const displayName = getPersonDisplayName(person, '');
+    if (!displayName) return '?';
+
+    const parts = displayName
+      .split(/\s+/)
+      .map((part) => part.replace(/[^A-Za-zÀ-ž0-9]/g, ''))
+      .filter(Boolean);
+
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  };
+
+  const handleSessionExpired = (context = 'unknown') => {
+    if (sessionExpiredRedirecting) return;
+
+    console.warn(`Session expired detected in ${context}, redirecting to login.`);
+    setSessionExpiredRedirecting(true);
+    setUser(null);
+    setEmployees([]);
+    setCalendarEvents([]);
+    window.location.assign('/dashboard/login?error=session_expired');
+  };
 
   const usernameLower = (user?.username || '').toLowerCase();
   const upnLower = (user?.upn || '').toLowerCase();
-  const userFullName = user ? `${user.jmeno || ''} ${user.prijmeni || ''}`.trim() : '';
+  const userDisplayName = getPersonDisplayName(user);
   const userRole = user?.entraData?.jobTitle || user?.jobTitle || '';
   const userDepartment = user?.entraData?.department || user?.department || '';
   const userManager = user?.entraData?.manager?.displayName || '';
@@ -184,6 +232,11 @@ function Dashboard() {
     try {
       const response = await fetch(url, { credentials: 'include' });
       const durationMs = Math.round(performance.now() - startedAt);
+
+      if (response.status === 401) {
+        handleSessionExpired(`safeFetchGraph:${url}`);
+      }
+
       const payload = await response.json().catch(() => ({}));
       return {
         ok: response.ok,
@@ -226,6 +279,7 @@ function Dashboard() {
         selfGroups,
         selfManager,
         selfDirectReports,
+        sedlacekRaw,
         calendarEvents,
         calendarDebug,
         searchByEmail,
@@ -238,6 +292,7 @@ function Dashboard() {
         safeFetchGraph(`/api/entra/user/${ownUserId}/groups`),
         safeFetchGraph(`/api/entra/user/${ownUserId}/manager`),
         safeFetchGraph(`/api/entra/user/${ownUserId}/direct-reports`),
+        safeFetchGraph(`/api/entra/user/${GRAPH_SAMPLE_SEDLACEK_USER_ID}/debug-raw`),
         safeFetchGraph('/api/entra/me/calendar/events?days=14'),
         safeFetchGraph('/api/entra/me/calendar/debug'),
         ownEmail ? safeFetchGraph(`/api/entra/search/user?email=${encodeURIComponent(ownEmail)}`) : Promise.resolve(null),
@@ -269,6 +324,10 @@ function Dashboard() {
         selfGroups: !!selfGroups?.ok && !!selfGroups?.payload?.success,
         selfManager: !!selfManager?.ok && !!selfManager?.payload?.success,
         selfDirectReports: !!selfDirectReports?.ok && !!selfDirectReports?.payload?.success,
+        sedlacekRaw:
+          !!sedlacekRaw?.ok &&
+          !!sedlacekRaw?.payload?.success &&
+          !!sedlacekRaw?.payload?.data?.user,
         calendarEvents: !!calendarEvents?.ok && !!calendarEvents?.payload?.success,
         calendarDebug: !!calendarDebug?.ok && !!calendarDebug?.payload?.success,
         searchByEmail: searchByEmail ? !!searchByEmail?.ok && !!searchByEmail?.payload?.success : true,
@@ -283,6 +342,7 @@ function Dashboard() {
         selfGroups,
         selfManager,
         selfDirectReports,
+        sedlacekRaw,
         calendarEvents,
         calendarDebug,
         searchByEmail,
@@ -305,6 +365,10 @@ function Dashboard() {
         calendarEventsCount: Array.isArray(calendarEvents?.payload?.data) ? calendarEvents.payload.data.length : 0,
         usersSampleCount: usersSample?.payload?.data?.count || usersSample?.payload?.count || 0,
         managerName: selfManager?.payload?.data?.displayName || null,
+        sedlacekDisplayName: sedlacekRaw?.payload?.data?.user?.displayName || null,
+        sedlacekFieldCount: Array.isArray(sedlacekRaw?.payload?.data?.fields)
+          ? sedlacekRaw.payload.data.fields.length
+          : 0,
         recentMessagesCount: messageItems.length,
         unreadMessagesCount: unreadMessages.length,
         recentDocumentsCount: documentItems.length,
@@ -369,6 +433,8 @@ function Dashboard() {
         if (freshUser) {
           setUser(freshUser);
           setLastSessionCheck(Date.now());
+        } else {
+          handleSessionExpired('keepSessionAlive');
         }
       } catch (error) {
         console.warn('Session keep-alive failed:', error);
@@ -405,6 +471,10 @@ function Dashboard() {
     try {
       setLoading(true);
       const userData = await authService.getCurrentUser();
+      if (!userData) {
+        handleSessionExpired('loadUser');
+        return;
+      }
       setUser(userData);
     } catch (error) {
       console.error('Failed to load user:', error);
@@ -426,6 +496,11 @@ function Dashboard() {
           'Accept': 'application/json'
         }
       });
+
+      if (response.status === 401) {
+        handleSessionExpired('loadEmployees');
+        return;
+      }
       
       console.log('📡 Response status:', response.status);
       
@@ -468,6 +543,11 @@ function Dashboard() {
           const response = await fetch(`/api/entra/user/${emp.id}/groups`, {
             credentials: 'include'
           });
+
+          if (response.status === 401) {
+            handleSessionExpired('loadAllEmployeeGroups');
+            return;
+          }
           
           if (response.ok) {
             const data = await response.json();
@@ -755,6 +835,11 @@ function Dashboard() {
       const response = await fetch(`/api/entra/user/${employee.id}/profile`, {
         credentials: 'include'
       });
+
+      if (response.status === 401) {
+        handleSessionExpired('toggleEmployeeDetail');
+        return;
+      }
 
       if (response.ok) {
         const data = await response.json();
@@ -1100,6 +1185,11 @@ function Dashboard() {
       const response = await fetch('/api/entra/me/calendar/events?days=7', {
         credentials: 'include'
       });
+
+      if (response.status === 401) {
+        handleSessionExpired('loadCalendarEvents');
+        return;
+      }
       
       if (response.ok) {
         const data = await response.json();
@@ -1454,7 +1544,7 @@ function Dashboard() {
                     <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
                   </svg>
                 </span>
-                <span className="user-name-text">{userFullName || 'Neznámý uživatel'}</span>
+                <span className="user-name-text">{userDisplayName}</span>
               </span>
 
               <div className="user-profile-tooltip" role="tooltip">
@@ -1997,7 +2087,7 @@ function Dashboard() {
             <div className="profile-grid">
               <div className="profile-item">
                 <span className="label">Jméno:</span>
-                <span className="value">{user.jmeno} {user.prijmeni}</span>
+                <span className="value">{userDisplayName}</span>
               </div>
               <div className="profile-item">
                 <span className="label">Email:</span>
@@ -2139,10 +2229,10 @@ function Dashboard() {
                               {hierarchy.reditelstvi.employees.map(emp => (
                                 <div key={emp.id} className="org-employee-mini">
                                   <div className="org-employee-avatar">
-                                    {emp.givenName?.[0]}{emp.surname?.[0]}
+                                    {getPersonInitials(emp)}
                                   </div>
                                   <div className="org-employee-info">
-                                    <div className="org-employee-name">{emp.displayName}</div>
+                                    <div className="org-employee-name">{getPersonDisplayName(emp)}</div>
                                     {emp.jobTitle && (
                                       <div className="org-employee-title">{emp.jobTitle}</div>
                                     )}
@@ -2220,11 +2310,11 @@ function Dashboard() {
                                               <div key={managerKey} className="org-manager-section">
                                                 <div className="org-manager-card">
                                                   <div className="org-employee-avatar org-manager-avatar">
-                                                    {manager.givenName?.[0]}{manager.surname?.[0]}
+                                                    {getPersonInitials(manager)}
                                                   </div>
                                                   <div className="org-employee-info">
                                                     <div className="org-employee-name org-manager-name">
-                                                      👑 {manager.displayName}
+                                                      👑 {getPersonDisplayName(manager)}
                                                     </div>
                                                     {manager.jobTitle && (
                                                       <div className="org-employee-title org-manager-title">
@@ -2243,10 +2333,10 @@ function Dashboard() {
                                                 {manager.subordinates?.map(sub => (
                                                   <div key={sub.id} className="org-employee-mini org-subordinate">
                                                     <div className="org-employee-avatar">
-                                                      {sub.givenName?.[0]}{sub.surname?.[0]}
+                                                      {getPersonInitials(sub)}
                                                     </div>
                                                     <div className="org-employee-info">
-                                                      <div className="org-employee-name">↳ {sub.displayName}</div>
+                                                      <div className="org-employee-name">↳ {getPersonDisplayName(sub)}</div>
                                                       {sub.jobTitle && (
                                                         <div className="org-employee-title">{sub.jobTitle}</div>
                                                       )}
@@ -2260,10 +2350,10 @@ function Dashboard() {
                                             {unit.employees.map(emp => (
                                               <div key={emp.id} className="org-employee-mini">
                                                 <div className="org-employee-avatar">
-                                                  {emp.givenName?.[0]}{emp.surname?.[0]}
+                                                  {getPersonInitials(emp)}
                                                 </div>
                                                 <div className="org-employee-info">
-                                                  <div className="org-employee-name">{emp.displayName}</div>
+                                                  <div className="org-employee-name">{getPersonDisplayName(emp)}</div>
                                                   {emp.jobTitle && (
                                                     <div className="org-employee-title">{emp.jobTitle}</div>
                                                   )}
@@ -2285,10 +2375,10 @@ function Dashboard() {
                                       {deputy.employees.map(emp => (
                                         <div key={emp.id} className="org-employee-mini">
                                           <div className="org-employee-avatar">
-                                            {emp.givenName?.[0]}{emp.surname?.[0]}
+                                            {getPersonInitials(emp)}
                                           </div>
                                           <div className="org-employee-info">
-                                            <div className="org-employee-name">{emp.displayName}</div>
+                                            <div className="org-employee-name">{getPersonDisplayName(emp)}</div>
                                             {emp.jobTitle && (
                                               <div className="org-employee-title">{emp.jobTitle}</div>
                                             )}
@@ -2513,6 +2603,7 @@ function Dashboard() {
               {getFilteredEmployees().map((emp) => {
                 const isExpanded = expandedEmployee === emp.id;
                 const details = employeeDetails[emp.id];
+                const employeeDisplayName = getPersonDisplayName(emp);
 
                 return (
                   <div
@@ -2524,11 +2615,11 @@ function Dashboard() {
                     </div>
                     <div className="employee-header" onClick={() => toggleEmployeeDetail(emp)}>
                       <div className="employee-avatar">
-                        {emp.givenName?.[0]}{emp.surname?.[0]}
+                        {getPersonInitials(emp)}
                       </div>
                       <div className="employee-info">
                         <div className="employee-name">
-                          {emp.displayName}
+                          {employeeDisplayName}
                         </div>
                         {emp.jobTitle && (
                           <div className="employee-title">
@@ -2763,6 +2854,46 @@ function Dashboard() {
                     <div className="graph-summary-label">Dnešní schůzky</div>
                     <div className="graph-summary-value">{graphTestData.summary.todayMeetingsCount || 0}</div>
                   </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Sedláček displayName</div>
+                    <div className="graph-summary-value graph-summary-text">{graphTestData.summary.sedlacekDisplayName || 'N/A'}</div>
+                  </div>
+                  <div className="graph-summary-card">
+                    <div className="graph-summary-label">Sedláček počet polí</div>
+                    <div className="graph-summary-value">{graphTestData.summary.sedlacekFieldCount || 0}</div>
+                  </div>
+                </div>
+
+                <div className="mini-preview-section">
+                  <h3>🧬 Entra Raw Debug - vzorek Sedláček</h3>
+                  <p className="mini-preview-subtitle">
+                    Kompletní diagnostický výpis z Graph API pro vzorového zaměstnance (ID: {GRAPH_SAMPLE_SEDLACEK_USER_ID}).
+                  </p>
+
+                  <div className="graph-endpoints-list">
+                    <div className={`graph-endpoint-item ${graphTestData.results.sedlacekRaw?.ok ? 'ok' : 'error'}`}>
+                      <div className="graph-endpoint-name">sedlacekRaw</div>
+                      <div className="graph-endpoint-meta">
+                        <span className="graph-endpoint-status">
+                          {graphTestData.results.sedlacekRaw?.ok ? 'OK' : 'ERROR'} ({graphTestData.results.sedlacekRaw?.status || 0})
+                        </span>
+                        <span className="graph-endpoint-time">{graphTestData.results.sedlacekRaw?.durationMs || 0} ms</span>
+                      </div>
+                      {graphTestData.results.sedlacekRaw?.error && (
+                        <div className="graph-endpoint-error">{graphTestData.results.sedlacekRaw.error}</div>
+                      )}
+                    </div>
+                  </div>
+
+                  <details className="graph-raw-data" open>
+                    <summary>Pole vrácená Entra ID (keys)</summary>
+                    <pre>{JSON.stringify(graphTestData.results.sedlacekRaw?.payload?.data?.fields || [], null, 2)}</pre>
+                  </details>
+
+                  <details className="graph-raw-data" open>
+                    <summary>Raw Entra payload - Sedláček</summary>
+                    <pre>{JSON.stringify(graphTestData.results.sedlacekRaw?.payload?.data?.user || null, null, 2)}</pre>
+                  </details>
                 </div>
 
                 <div className="mini-preview-section">

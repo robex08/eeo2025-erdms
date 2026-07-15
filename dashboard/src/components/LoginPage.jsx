@@ -21,6 +21,9 @@ function LoginPage() {
         case 'auth_failed':
           setError('Přihlášení se nezdařilo. Zkuste to prosím znovu.');
           break;
+        case 'session_expired':
+          setError('Relace vypršela. Přihlaste se prosím znovu.');
+          break;
         default:
           setError('Došlo k chybě při přihlašování.');
       }

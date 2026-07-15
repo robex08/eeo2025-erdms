@@ -70,6 +70,63 @@ class EntraService {
   }
 
   /**
+   * Diagnostický výpis uživatele z Graph API.
+   * Vrací širší množinu polí pro ladění mapování (např. tituly, on-prem atributy).
+   */
+  async getUserDebugRawById(userId) {
+    await this.ensureInitialized();
+    try {
+      return await this.client
+        .api(`/users/${userId}`)
+        .select([
+          'id',
+          'displayName',
+          'givenName',
+          'surname',
+          'userPrincipalName',
+          'mail',
+          'mailNickname',
+          'jobTitle',
+          'department',
+          'officeLocation',
+          'mobilePhone',
+          'businessPhones',
+          'companyName',
+          'employeeId',
+          'employeeType',
+          'accountEnabled',
+          'createdDateTime',
+          'employeeHireDate',
+          'employeeLeaveDateTime',
+          'streetAddress',
+          'city',
+          'state',
+          'postalCode',
+          'country',
+          'usageLocation',
+          'preferredLanguage',
+          'proxyAddresses',
+          'otherMails',
+          'identities',
+          'onPremisesSamAccountName',
+          'onPremisesUserPrincipalName',
+          'onPremisesDomainName',
+          'onPremisesImmutableId',
+          'onPremisesSecurityIdentifier',
+          'onPremisesSyncEnabled',
+          'onPremisesLastSyncDateTime',
+          'onPremisesDistinguishedName',
+          'onPremisesProvisioningErrors',
+          'onPremisesExtensionAttributes'
+        ].join(','))
+        .get();
+    } catch (err) {
+      console.error('🔴 getUserDebugRawById ERROR:', err.message);
+      throw err;
+    }
+  }
+
+  /**
    * Získat skupiny uživatele (včetně GUID)
    * @param {string} userId - Entra ID (GUID) uživatele
    * @returns {Array} Seznam skupin s GUID, názvem, typem
