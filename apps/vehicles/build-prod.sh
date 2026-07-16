@@ -18,10 +18,15 @@ sed -i 's|"build": "react-scripts build"|"build": "BUILD_PATH=build-prod react-s
 
 echo "✅ Homepage změněno na /vehicles"
 echo "✅ Build cíl: build-prod/"
+echo "✅ Produkční konfigurace: databaze=vehicle-zzs, API=/api.vehicles/vehicle/api.php"
 echo "📦 Spouštím build..."
 
 # Build s .env.production
-REACT_APP_ENV=production BUILD_PATH=build-prod npm run build
+REACT_APP_ENV=production \
+REACT_APP_DB_LABEL=vehicle-zzs \
+REACT_APP_APIURL_POST=/api.vehicles/vehicle/api.php \
+REACT_APP_APIURL_GET=/api.vehicles/vehicle/api.php \
+BUILD_PATH=build-prod npm run build
 
 # Vrátit původní package.json
 mv package.json.tmp package.json

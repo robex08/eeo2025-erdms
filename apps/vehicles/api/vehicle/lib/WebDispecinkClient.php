@@ -38,21 +38,71 @@ class WebDispecinkClient
      */
     public function getCarsList(): array
     {
-        $response = $this->client->_getCarsList($this->kodf, $this->username, $this->password);
+        $groupMap = [];
+        foreach ($this->getCarsGroups() as $group) {
+            $groupMap[(int) ($group['groupid'] ?? 0)] = (string) ($group['groupname'] ?? '');
+        }
+
+        // Všechna vozidla z WD API (activeOnly=0)
+        $allCars = $this->getCarsList2(0);
+
         $cars = [];
 
-        if (isset($response->item) && is_array($response->item)) {
-            foreach ($response->item as $car) {
-                if ($car->disabled == 0) {
-                    $cars[] = [
-                        'carid' => $car->carid,
-                        'identifier' => $car->identifikator,
-                    ];
-                }
-            }
+        foreach ($allCars as $car) {
+            $carId = (int) ($car['carid'] ?? 0);
+            $online = (int) ($car['online'] ?? 1);
+            $disabled = (int) ($car['disabled'] ?? 0);
+            $wdCargroupId = (int) ($car['cargroupid'] ?? 0);
+            $wdGroupName = $groupMap[$wdCargroupId] ?? '';
+
+            // Pravidlo: disabled vozy jsou neaktivní, ostatní aktivní.
+            // Vyřazené vozy (chybějící v API) se označují v handleru po syncu.
+            $statusVozidla = $disabled === 1 ? 'neaktivni' : 'aktivni';
+
+            $cars[] = [
+                'carid' => $carId,
+                'identifier' => $car['identifikator'] ?? '',
+                'status_vozidla' => $statusVozidla,
+                'online' => $online,
+                'disabled' => $disabled,
+                'wd_cargroupid' => $wdCargroupId,
+                'wd_groupname' => $wdGroupName,
+            ];
         }
 
         return $cars;
+    }
+
+    /**
+     * Interní helper pro _getCarsList2 s activeOnly parametrem.
+     */
+    private function getCarsList2(int $activeOnly = 0): array
+    {
+        $response = $this->client->_getCarsList2(
+            $this->kodf,
+            $this->username,
+            $this->password,
+            $activeOnly
+        );
+
+        if (!isset($response->item)) {
+            return [];
+        }
+
+        $items = is_array($response->item) ? $response->item : [$response->item];
+        $rows = [];
+
+        foreach ($items as $item) {
+            $rows[] = [
+                'carid' => (int) ($item->carid ?? 0),
+                'identifikator' => (string) ($item->identifikator ?? ''),
+                'online' => (int) ($item->online ?? -1),
+                'disabled' => (int) ($item->disabled ?? -1),
+                'cargroupid' => (int) ($item->cargroupid ?? 0),
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -63,8 +113,10 @@ class WebDispecinkClient
         $response = $this->client->_getCargroups($this->kodf, $this->username, $this->password);
         $groups = [];
 
-        if (isset($response->item) && is_array($response->item)) {
-            foreach ($response->item as $group) {
+        if (isset($response->item)) {
+            $items = is_array($response->item) ? $response->item : [$response->item];
+
+            foreach ($items as $group) {
                 $groups[] = [
                     'groupid' => $group->CargroupId,
                     'groupname' => $group->GroupName,

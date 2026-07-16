@@ -12,7 +12,7 @@ const WARN_DATA_AGE_MONTHS = 3;
 /** Interval pro sync z WebDispečinku (měsíce zpět) */
 const SYNC_INTERVAL_MONTHS = 3;
 
-export default function Fleet250kStatsBlock({ data, positions, onChartFilter, chartCarids, onClearChartFilter }) {
+export default function Fleet250kStatsBlock({ data, positions, statusFilter, onStatusFilterChange, onChartFilter, chartCarids, onClearChartFilter }) {
   const [visible, setVisible] = useState(() => {
     const stored = localStorage.getItem('fleet250kStatsVisible');
     return stored === null ? false : stored === 'true';
@@ -224,6 +224,29 @@ export default function Fleet250kStatsBlock({ data, positions, onChartFilter, ch
       <div className="fleet250k-header" style={{display:'flex', alignItems:'center', justifyContent:'space-between'}}>
         <div style={{fontWeight:'bold', fontSize:'1.08rem', color:'#1976d2', letterSpacing:'0.01em'}}>
           Statistika vozidel do 250 000 km
+          <span style={{fontWeight:'normal', color:'#7f1d1d', fontSize:'0.93em', marginLeft:10, background:'#fee2e2', border:'1px solid #b91c1c', borderRadius:999, padding:'0.08rem 0.5rem', display:'inline-flex', alignItems:'center', gap:6}}>
+            <span>Status:</span>
+            <select
+              value={statusFilter || 'aktivni'}
+              onChange={e => onStatusFilterChange && onStatusFilterChange(e.target.value)}
+              style={{
+                border:'none',
+                background:'transparent',
+                color:'#7f1d1d',
+                fontSize:'0.92em',
+                fontWeight:500,
+                padding:'0.08rem 0.35rem',
+                outline:'none',
+                cursor:'pointer'
+              }}
+              title="Filtr statusu vozidel"
+            >
+              <option value="all">Všechna vozidla</option>
+              <option value="aktivni">Jen aktivní</option>
+              <option value="vyrazene">Jen vyřazené</option>
+              <option value="neaktivni">Jen neaktivní</option>
+            </select>
+          </span>
         </div>
         <button className="fleet250k-toggle" onClick={() => setVisible(v => !v)} style={{border:'none', background:'transparent', cursor:'pointer', fontSize:'1.5rem', color:'#1976d2', padding:4, marginLeft:8, transition:'transform 0.2s'}}>
           {visible ? <FiChevronUp /> : <FiChevronDown />}

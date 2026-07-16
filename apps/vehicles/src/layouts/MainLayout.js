@@ -6,6 +6,9 @@ import '../styles/layouts/MainLayout.css';
 
 const MainLayout = ({ children, username, onLogout }) => {
   const [isMobile, setIsMobile] = useState(window.innerWidth <= 600);
+  const appVersionLabel = process.env.REACT_APP_VERSION_LABEL || 'Verze 0.5 BETA';
+  const appDbLabel = process.env.REACT_APP_DB_LABEL || 'vehicle-zzs-dev';
+  const isDevDb = appDbLabel.toLowerCase().includes('-dev');
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth <= 600);
@@ -27,7 +30,15 @@ const MainLayout = ({ children, username, onLogout }) => {
             <div style={{display:'flex',width:'100%',justifyContent:'space-between',alignItems:'center'}}>
               <div className="app-title" style={{display:'flex',alignItems:'center',gap:'0.6em'}}>
                 <img src={`${process.env.PUBLIC_URL}/logo_zzs_main.png`} alt="ZZS SK Logo" style={{height:'42px',width:'auto'}} />
-                <span>Vozidla ZZS SK, p.o.</span>
+                <div className="app-title-text">
+                  <span className="app-title-main">Vozidla ZZS SK, p.o.</span>
+                  <small className="app-meta">
+                    <span className="app-meta-version">{appVersionLabel}</span>
+                    <span className="app-meta-separator" aria-hidden="true">|</span>
+                    <span className="app-meta-label">databaze:</span>
+                    <span className={`app-meta-db${isDevDb ? ' app-meta-db-dev' : ''}`}>{appDbLabel}</span>
+                  </small>
+                </div>
               </div>
               <div style={{display:'flex',alignItems:'center',gap:'0.2em'}}>
                 {!isDashboard && (
@@ -51,7 +62,15 @@ const MainLayout = ({ children, username, onLogout }) => {
           <div style={{display:'flex',alignItems:'center',width:'100%'}}>
             <div className="app-title" style={{flex: '1 1 auto',display:'flex',alignItems:'center',gap:'0.8em'}}>
               <img src={`${process.env.PUBLIC_URL}/logo_zzs_main.png`} alt="ZZS SK Logo" style={{height:'50px',width:'auto'}} />
-              <span>Vozidla ZZS SK, p.o.</span>
+              <div className="app-title-text">
+                <span className="app-title-main">Vozidla ZZS SK, p.o.</span>
+                <small className="app-meta">
+                  <span className="app-meta-version">{appVersionLabel}</span>
+                  <span className="app-meta-separator" aria-hidden="true">|</span>
+                  <span className="app-meta-label">databaze:</span>
+                  <span className={`app-meta-db${isDevDb ? ' app-meta-db-dev' : ''}`}>{appDbLabel}</span>
+                </small>
+              </div>
             </div>
             <div style={{display:'flex',alignItems:'center',gap:'1em'}}>
               <div className="user-name" style={{textAlign:'right',minWidth:'7em'}}>{username}</div>
