@@ -1,5 +1,18 @@
 # 🚗 Vehicles Application - Production Deployment Guide
 
+## 🛑 Production Freeze During Refactor
+
+Aktualni stav projektu: probiha kompletni refaktor aplikace Vehicles na DEV (`/var/www/erdms-dev/apps/vehicles`) s workflow pres `npm`.
+
+Do odvolani plati tato pravidla:
+
+- NENASAZOVAT do produkce (`/var/www/erdms-platform/apps/vehicles`) bez explicitniho, predchoziho souhlasu zadavatele.
+- Produkcni verze ma zustat stabilni, dokud nebude refaktor dokonceny a kompletne otestovany na DEV.
+- Kazdy navrh produkcniho deploye musi byt predem potvrzeny samostatnym schvalenim.
+- Produkcni deploy se spousti pouze pres `./deploy-prod.sh` s potvrzovacim tokenem.
+
+Toto pravidlo ma prioritu nad beznymi deploy kroky nize.
+
 ## 📍 Struktura aplikace
 
 ### DEV prostředí
@@ -40,15 +53,15 @@ cd /var/www/erdms-dev/apps/vehicles
 ```bash
 cd /var/www/erdms-dev/apps/vehicles
 
-# 1. Deploy FE (React build) do root
-rsync -av --exclude='node_modules' build/ /var/www/erdms-platform/apps/vehicles/
-
-# 2. Deploy API do subdirectory api/
-rsync -av api/ /var/www/erdms-platform/apps/vehicles/api/
-
-# 3. Nastavit oprávnění
-chown -R www-data:www-data /var/www/erdms-platform/apps/vehicles/
+# Bez explicitniho schvaleni deploy skonci s chybou (exit 42)
+PROD_DEPLOY_APPROVAL=I_HAVE_EXPLICIT_USER_APPROVAL ./deploy-prod.sh
 ```
+
+`deploy-prod.sh` automaticky:
+1. Vytvori zalohu aktualniho produkcniho frontendu
+2. Nasadi `build-prod/` do `/var/www/erdms-platform/apps/vehicles/`
+3. Zachova slozku `api/` beze zmen
+4. Provede rychly smoke test URL `/vehicles`
 
 ---
 
@@ -109,7 +122,7 @@ nano .env.production
 **3. Rebuild PROD:**
 ```bash
 ./build-prod.sh
-rsync -av build/ /var/www/erdms-platform/apps/vehicles/
+PROD_DEPLOY_APPROVAL=I_HAVE_EXPLICIT_USER_APPROVAL ./deploy-prod.sh
 ```
 
 ---
@@ -156,7 +169,7 @@ nano /var/www/erdms-dev/apps/vehicles/build-prod.sh
 **3. Rebuild & redeploy:**
 ```bash
 ./build-prod.sh
-rsync -av build/ /var/www/erdms-platform/apps/vehicles/
+PROD_DEPLOY_APPROVAL=I_HAVE_EXPLICIT_USER_APPROVAL ./deploy-prod.sh
 ```
 
 ---

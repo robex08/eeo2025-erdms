@@ -10,6 +10,7 @@ function getKmCategory(km) {
   if (km >= 500000) return '\u2265500 000';
   if (km >= 400000) return '400 000+';
   if (km >= 300000) return '300 000+';
+  if (km >= 250000) return '250 000+';
   if (km >= 200000) return '200 000+';
   if (km >= 100000) return '100 000+';
   if (km >= 0) return '0+';
@@ -18,13 +19,14 @@ function getKmCategory(km) {
 
 export default function VehicleCharts({ data, positions, filteredCount, onKmSliceClick, activeKmFilter, onTypeSliceClick, activeTypeFilter, onStationSliceClick, activeStationFilter, under100kCount }) {
   // --- Graf 1: Počet aut podle najetých km (pouze filtrovaná data) ---
-  const kmCounts = { '0+': 0, '100 000+': 0, '200 000+': 0, '300 000+': 0, '400 000+': 0, '\u2265500 000': 0 };
+  const kmCounts = { '0+': 0, '100 000+': 0, '200 000+': 0, '250 000+': 0, '300 000+': 0, '400 000+': 0, '\u2265500 000': 0 };
   data.forEach(v => {
     const lastKm = v.pos_km ? Number(v.pos_km) : null;
     if (lastKm !== null) {
       if (lastKm >= 0 && lastKm < 100000) kmCounts['0+']++;
       else if (lastKm >= 100000 && lastKm < 200000) kmCounts['100 000+']++;
-      else if (lastKm >= 200000 && lastKm < 300000) kmCounts['200 000+']++;
+      else if (lastKm >= 200000 && lastKm < 250000) kmCounts['200 000+']++;
+      else if (lastKm >= 250000 && lastKm < 300000) kmCounts['250 000+']++;
       else if (lastKm >= 300000 && lastKm < 400000) kmCounts['300 000+']++;
       else if (lastKm >= 400000 && lastKm < 500000) kmCounts['400 000+']++;
       else if (lastKm >= 500000) kmCounts['\u2265500 000']++;
@@ -172,6 +174,7 @@ export default function VehicleCharts({ data, positions, filteredCount, onKmSlic
       display: 'flex',
       flexWrap: 'wrap',
       gap: '2.5rem',
+      paddingTop: '0.8rem',
       marginBottom: '2.5rem',
       alignItems: 'stretch',
       width: '100%',

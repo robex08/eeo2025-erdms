@@ -96,6 +96,21 @@ const Vehicles = () => {
 	const [stationFilter, setStationFilter] = useState(null);
 	// Filtr podle dotace (A)
 	const [filterDotaceA, setFilterDotaceA] = useState(false);
+	// Filtr podle statusu vozidla
+	const getStatusFilter = () => {
+		const v = localStorage.getItem('statusFilter');
+		if (v === 'all' || v === 'aktivni' || v === 'vyrazene' || v === 'neaktivni') {
+			return v;
+		}
+		// Výchozí stav bez uloženého filtru = jen aktivní.
+		return 'aktivni';
+	};
+	const [statusFilter, setStatusFilter] = useState(getStatusFilter);
+	const handleStatusFilterChange = (value) => {
+		setStatusFilter(value);
+		localStorage.setItem('statusFilter', value);
+		setPage(1);
+	};
 	// Detekce mobilního zařízení (na výšku, max-width 600px)
 	const [isMobilePortrait, setIsMobilePortrait] = useState(() => {
 		if (typeof window !== 'undefined') {
@@ -216,7 +231,8 @@ const Vehicles = () => {
 				else if (kmFilter === '≥500 000') kmMatchFilter = lastKmNum >= 500000;
 				else if (kmFilter === '400 000+') kmMatchFilter = lastKmNum >= 400000 && lastKmNum < 500000;
 				else if (kmFilter === '300 000+') kmMatchFilter = lastKmNum >= 300000 && lastKmNum < 400000;
-				else if (kmFilter === '200 000+') kmMatchFilter = lastKmNum >= 200000 && lastKmNum < 300000;
+				else if (kmFilter === '250 000+') kmMatchFilter = lastKmNum >= 250000 && lastKmNum < 300000;
+				else if (kmFilter === '200 000+') kmMatchFilter = lastKmNum >= 200000 && lastKmNum < 250000;
 				else if (kmFilter === '100 000+') kmMatchFilter = lastKmNum >= 100000 && lastKmNum < 200000;
 			}
 			// Filtr stanoviště
@@ -225,6 +241,9 @@ const Vehicles = () => {
 			const groupMatch = selectedGroups.length === 0 || selectedGroups.includes(v.w_groupname || 'Neznámé');
 			// Filtr typ vozidla (výseč grafu nebo multiselect)
 			const typeMatch = (typeFilter ? (v.zzs_typ || 'Neznámý') === typeFilter : (selectedTypes.length === 0 || selectedTypes.includes(v.zzs_typ || 'Neznámý')));
+			// Filtr statusu
+			const statusValue = String(v.status_vozidla || 'aktivni').toLowerCase();
+			const statusMatch = statusFilter === 'all' ? true : statusValue === statusFilter;
 			// Fulltext nad hlavními daty, km, a podřádkem
 			const searchLower = removeDiacritics(search.toLowerCase());
 			const mainMatch = Object.values(v).some(val => removeDiacritics(String(val).toLowerCase()).includes(searchLower));
@@ -235,6 +254,7 @@ const Vehicles = () => {
 				stationMatch &&
 				groupMatch &&
 				typeMatch &&
+				statusMatch &&
 				// If filterDotaceA is enabled, only include vehicles whose dotace is 'A'
 				(!filterDotaceA || String(v.dotace || '').toUpperCase() === 'A') &&
 				kmMatchFilter
@@ -498,6 +518,8 @@ const Vehicles = () => {
 				setChartsVisible={setChartsVisible}
 				filtered={filtered}
 				positions={positions}
+				statusFilter={statusFilter}
+				onStatusFilterChange={handleStatusFilterChange}
 				rowHighlightEnabled={rowHighlightEnabled}
 				setRowHighlightEnabled={setRowHighlightEnabled}
 				kmFilter={kmFilter}
@@ -509,6 +531,8 @@ const Vehicles = () => {
 			/>				<StationsMapBlock vehicles={filtered} />									<Fleet250kStatsBlock
 										data={filtered}
 										positions={positions}
+										statusFilter={statusFilter}
+										onStatusFilterChange={handleStatusFilterChange}
 										onChartFilter={handleChartCaridFilter}
 										chartCarids={statChartCarids}
 										onClearChartFilter={handleClearChartCaridFilter}
@@ -580,6 +604,19 @@ const Vehicles = () => {
 												&#10005;
 											</button>
 										)}
+									</div>
+									{/* Status filtr */}
+									<div style={{minWidth:180, flex:'0 0 auto'}}>
+										<select
+											value={statusFilter}
+											onChange={e => handleStatusFilterChange(e.target.value)}
+											style={{minWidth:180, padding:'0.3rem 0.7rem', borderRadius:6, border:'1px solid #bbb', background:'#fff', fontSize:'1rem', cursor:'pointer'}}
+										>
+											<option value="all">Vše</option>
+											<option value="aktivni">Jen aktivní</option>
+											<option value="vyrazene">Jen vyřazené</option>
+											<option value="neaktivni">Jen neaktivní</option>
+										</select>
 									</div>
 									{/* Typ vozidla dropdown */}
 									<div style={{position:'relative', minWidth:180, flex:'0 0 auto'}}>
@@ -808,8 +845,8 @@ const Vehicles = () => {
 			<div className="vehicles-header" style={{display:'flex', alignItems:'center', gap:'1.2rem', justifyContent:'space-between'}}>
 				<h2 style={{marginRight:'2.5rem'}}>Seznam vozidel</h2>
 				<div style={{marginLeft:'auto', display:'flex', alignItems:'center', gap:'0.7rem'}}>
-					{data.length > 0 && (() => {
-						const maxDt = data.reduce((max, v) => {
+					{filtered.length > 0 && (() => {
+						const maxDt = filtered.reduce((max, v) => {
 							const dt = v.dt_aktualizace || '';
 							return dt > max ? dt : max;
 						}, '');

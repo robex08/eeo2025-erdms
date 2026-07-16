@@ -17,6 +17,34 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
       return { field, dir: 'asc' };
     });
   };
+
+  const getStatusMeta = (status) => {
+    if (status === 'vyrazene') {
+      return {
+        short: 'V',
+        label: 'Vyřazené',
+        title: 'V - Vyřazeno',
+        style: { background: '#fee2e2', color: '#991b1b' }
+      };
+    }
+
+    if (status === 'neaktivni') {
+      return {
+        short: 'N',
+        label: 'Neaktivní',
+        title: 'N - Neaktivní',
+        style: { background: '#fef3c7', color: '#92400e' }
+      };
+    }
+
+    return {
+      short: 'A',
+      label: 'Aktivní',
+      title: 'A - Aktivní',
+      style: { background: '#dcfce7', color: '#166534' }
+    };
+  };
+
   return (
     <div style={{width:'100%', overflowX:'auto'}}>
       <table className="vehicles-table" style={{minWidth:'100%'}}>
@@ -43,6 +71,13 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
             <th onClick={() => handleSort('Zasmluvneno')} style={{textAlign:'center', cursor:'pointer'}}>Zasmluvněno{sortArrow('Zasmluvneno')}</th>
             <th onClick={() => handleSort('w_datod')} style={{textAlign:'center', cursor:'pointer'}}>Zařazeno{sortArrow('w_datod')}</th>
             <th onClick={() => handleSort('dotace')} style={{textAlign:'center', cursor:'pointer'}}>Dotace{sortArrow('dotace')}</th>
+            <th
+              onClick={() => handleSort('status_vozidla')}
+              style={{textAlign:'center', cursor:'pointer'}}
+              title="A - Aktivní, N - Neaktivní, V - Vyřazeno"
+            >
+              Status{sortArrow('status_vozidla')}
+            </th>
             <th onClick={() => handleSort('dt_aktualizace')} style={{textAlign:'center', cursor:'pointer'}}>Aktualizace{sortArrow('dt_aktualizace')}</th>
               <th style={{width:'2em', textAlign:'center'}} title="Akce">
                 <span role="img" aria-label="Akce" style={{fontSize:'1.2em'}}>⚡</span>
@@ -51,7 +86,7 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
         </thead>
       <tbody>
         {paged.length === 0 ? (
-          <tr><td colSpan={15} style={{textAlign:'center'}}>Žádná data</td></tr>
+          <tr><td colSpan={16} style={{textAlign:'center'}}>Žádná data</td></tr>
         ) : (
           paged.map(v => {
             const lastKm = v.pos_km ? Number(v.pos_km) : null;
@@ -101,6 +136,28 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
                   <td style={{textAlign:'center'}}>{v.Datum_od ? v.Datum_od : ''}</td>
                   <td style={{textAlign:'center'}}>{formatCzDate(v.w_datod, false)}</td>
                   <td style={{textAlign:'center'}}>{v.dotace ? highlightMatch(String(v.dotace).toUpperCase(), search) : <span style={{color:'#888'}}></span>}</td>
+                  <td style={{textAlign:'center'}}>
+                    {(() => {
+                      const status = getStatusMeta(v.status_vozidla);
+                      return (
+                        <span
+                          title={status.title}
+                          aria-label={status.label}
+                          style={{
+                            display:'inline-block',
+                            minWidth:28,
+                            padding:'0.12rem 0.5rem',
+                            borderRadius:999,
+                            fontWeight:700,
+                            textAlign:'center',
+                            ...status.style
+                          }}
+                        >
+                          {status.short}
+                        </span>
+                      );
+                    })()}
+                  </td>
                   <td style={{textAlign:'center'}}>{formatCzDate(v.dt_aktualizace, true)}</td>
                     <td style={{width:'2em', textAlign:'center'}}>
                       <button
@@ -115,7 +172,7 @@ const VehicleTable = ({ paged, expanded, positions, rowHighlightEnabled, vehicle
                 </tr>
                 {expanded[v.w_carid] && (
                   <tr style={{ cursor: 'default' }}>
-                    <td colSpan={15} style={{background:'#f7f7f7', padding:'0.5rem 0.5rem'}}>
+                    <td colSpan={16} style={{background:'#f7f7f7', padding:'0.5rem 0.5rem'}}>
                       {positions[v.w_carid] === null ? (
                         <span>Načítám detail...</span>
                       ) : positions[v.w_carid] && positions[v.w_carid].length > 0 ? (() => {

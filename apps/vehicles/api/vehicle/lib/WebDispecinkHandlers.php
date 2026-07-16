@@ -16,16 +16,45 @@ class WebDispecinkHandlers
             $wdClient = new WebDispecinkClient();
             $cars = $wdClient->getCarsList();
 
+            if (empty($cars)) {
+                throw new RuntimeException('WebDispečink nevrátil žádná vozidla. Sync byl z bezpečnostních důvodů zastaven.');
+            }
+
             $db = Database::getConnection();
             $stmt = $db->prepare(Queries::UPSERT_LIST_CAR);
+            $now = date('Y-m-d H:i:s');
 
             $count = 0;
+            $returnedCarIds = [];
             foreach ($cars as $car) {
+                $carId = (int) ($car['carid'] ?? 0);
+                if ($carId <= 0) {
+                    continue;
+                }
+
                 $stmt->execute([
-                    ':carid' => $car['carid'],
+                    ':carid' => $carId,
                     ':spz' => $car['identifier'],
+                    ':status_vozidla' => $car['status_vozidla'] ?? 'aktivni',
+                    ':last_update' => $now,
+                    ':wd_cargroupid' => $car['wd_cargroupid'] ?? null,
+                    ':wd_groupname' => $car['wd_groupname'] ?? null,
                 ]);
+
+                $returnedCarIds[] = $carId;
                 $count++;
+            }
+
+            // Vozidla, která API nevrátilo, označit jako vyřazená.
+            if (!empty($returnedCarIds)) {
+                $returnedCarIds = array_values(array_unique($returnedCarIds));
+                $placeholders = implode(',', array_fill(0, count($returnedCarIds), '?'));
+                $retireStmt = $db->prepare(
+                    "UPDATE list_cars
+                     SET status_vozidla = 'vyrazene', last_update = ?
+                     WHERE w_carid NOT IN ($placeholders)"
+                );
+                $retireStmt->execute(array_merge([$now], $returnedCarIds));
             }
 
             Response::success($cars, "Synchronizováno $count vozidel");

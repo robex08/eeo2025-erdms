@@ -15,6 +15,10 @@ class Queries
             cars_group.w_groupname, 
             list_cars.w_spz, 
             list_cars.zzs_typ, 
+            list_cars.status_vozidla,
+            list_cars.last_update,
+            list_cars.wd_cargroupid,
+            list_cars.wd_groupname,
             cars_detail.*, 
             cars_smlouva.Datum_od, 
             cars_smlouva.Datum_do, 
@@ -160,9 +164,14 @@ class Queries
      * Upsert list_cars
      */
     const UPSERT_LIST_CAR = "
-        INSERT INTO list_cars (w_carid, w_spz) 
-        VALUES (:carid, :spz)
-        ON DUPLICATE KEY UPDATE w_spz = VALUES(w_spz)
+        INSERT INTO list_cars (w_carid, w_spz, status_vozidla, last_update, wd_cargroupid, wd_groupname) 
+        VALUES (:carid, :spz, :status_vozidla, :last_update, :wd_cargroupid, :wd_groupname)
+        ON DUPLICATE KEY UPDATE
+            w_spz = VALUES(w_spz),
+            status_vozidla = VALUES(status_vozidla),
+            last_update = VALUES(last_update),
+            wd_cargroupid = VALUES(wd_cargroupid),
+            wd_groupname = VALUES(wd_groupname)
     ";
 
     /**

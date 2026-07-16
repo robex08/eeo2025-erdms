@@ -7,6 +7,8 @@ export default function VehicleChartsPanel({
   setChartsVisible,
   filtered,
   positions,
+  statusFilter,
+  onStatusFilterChange,
   rowHighlightEnabled,
   setRowHighlightEnabled,
   kmFilter,
@@ -23,6 +25,29 @@ export default function VehicleChartsPanel({
           Přehled vozového parku
           <span style={{fontWeight:'normal', color:'#555', fontSize:'0.98em', marginLeft:10}}>
             ({filtered.length} zobrazeno)
+          </span>
+          <span style={{fontWeight:'normal', color:'#7f1d1d', fontSize:'0.93em', marginLeft:10, background:'#fee2e2', border:'1px solid #b91c1c', borderRadius:999, padding:'0.08rem 0.5rem', display:'inline-flex', alignItems:'center', gap:6}}>
+            <span>Status:</span>
+            <select
+              value={statusFilter || 'aktivni'}
+              onChange={e => onStatusFilterChange && onStatusFilterChange(e.target.value)}
+              style={{
+                border:'none',
+                background:'transparent',
+                color:'#7f1d1d',
+                fontSize:'0.92em',
+                fontWeight:500,
+                padding:'0.08rem 0.35rem',
+                outline:'none',
+                cursor:'pointer'
+              }}
+              title="Filtr statusu vozidel"
+            >
+              <option value="all">Všechna vozidla</option>
+              <option value="aktivni">Jen aktivní</option>
+              <option value="vyrazene">Jen vyřazené</option>
+              <option value="neaktivni">Jen neaktivní</option>
+            </select>
           </span>
         </div>
         <button
