@@ -1,6 +1,9 @@
 # Vehicles API v2 - .htaccess
 RewriteEngine On
 
+# Ponechat v2.0 requesty bez přepisu na legacy api.php
+RewriteRule ^v2\.0(/.*)?$ - [L]
+
 # Nerozepisovat existující soubory a složky
 RewriteCond %{REQUEST_FILENAME} -f
 RewriteRule ^ - [L]
