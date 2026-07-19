@@ -10,6 +10,26 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
 module.exports = function(app) {
+  // Proxy pro přímou DEV cestu /dev/api.eeo/ používanou v .env.development
+  app.use(
+    '/dev/api.eeo',
+    createProxyMiddleware({
+      target: 'http://localhost',
+      changeOrigin: false,
+      headers: {
+        'Host': 'erdms.zachranka.cz'
+      },
+      secure: false,
+      logLevel: 'debug',
+      onProxyReq: (proxyReq, req, res) => {
+        console.log(`[PROXY] ${req.method} ${req.path} -> http://localhost${req.path}`);
+      },
+      onError: (err, req, res) => {
+        console.error(`[PROXY ERROR] ${req.method} ${req.path}:`, err.message);
+      }
+    })
+  );
+
   // Proxy pro /api.eeo/ (EEO V2 API) -> DEV server /dev/api.eeo/
   app.use(
     '/api.eeo',
