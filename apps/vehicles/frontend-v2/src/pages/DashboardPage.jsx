@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createPortal } from 'react-dom';
 import { fetchDashboardMetrics, fetchFleetForecast, refreshFleetForecast, triggerQuickSync } from '../services/apiClient';
 import AppIcon from '../components/ui/AppIcon';
+import SyncGate from '../components/vehicles/SyncGate';
 
 const DASHBOARD_SETTINGS_KEY = 'vehicles_v2_dashboard_settings';
 
@@ -533,52 +533,37 @@ function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentS
   );
 }
 
-function DashboardSyncGate({ syncSeconds }) {
-  if (typeof document === 'undefined') {
-    return null;
-  }
-
-  return createPortal(
-    <div className="dashboard-sync-gate" role="status" aria-live="polite" aria-busy="true">
-      <div className="dashboard-sync-gate-card">
-        <div className="dashboard-sync-gate-head">
-          <span className="dashboard-sync-spinner" aria-hidden="true" />
-          <div>
-            <p className="dashboard-sync-gate-eyebrow">Rychlá synchronizace</p>
-            <h3>Načítám aktuální vozidla</h3>
-          </div>
-        </div>
-
-        <p className="dashboard-sync-gate-text">
-          Probíhá rychlá aktualizace seznamu vozidel. Statistiky 3/5 měsíců se nyní nepřepočítávají.
-        </p>
-
-        <div className="dashboard-sync-gate-meta">
-          <span className="dashboard-sync-runtime-label">Doba běhu</span>
-          <strong className="dashboard-sync-runtime-value">{syncSeconds} s</strong>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
-
 function FleetForecastCard({ data, months, selectedTypes, typeOptions, onMonthsChange, onTypeToggle, onTypeClear, loading, refreshing, onRefresh, onSegmentSelect }) {
   const stageRef = useRef(null);
   const typeFilterRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
   const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
   const chart = Array.isArray(data?.chart) ? data.chart : [];
   const labels = chart.map((item) => item.label);
   const maxTotal = chart.reduce((acc, item) => Math.max(acc, Number(item?.total || 0)), 0);
   const summary = data?.summary || { within10Years: 0, withData: 0 };
   const updatedAt = data?.updatedAt || null;
+  const updatedAtLabel = formatDateTimeCs(updatedAt);
   const updatedAgeDays = Number.isFinite(Number(data?.updatedAgeDays)) ? Number(data?.updatedAgeDays) : null;
   const isStale = Boolean(data?.isDataOlderThanMonth);
   const usedFallback = Boolean(data?.usedFallback);
   const fallbackMessage = String(data?.fallbackMessage || '').trim();
   const hasAnyData = summary.withData > 0 && chart.length > 0;
   const showLoadingGate = loading || refreshing;
+
+  useEffect(() => {
+    if (!showLoadingGate) {
+      setLoadingSeconds(0);
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setLoadingSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [showLoadingGate]);
 
   useEffect(() => {
     if (!isTypeFilterOpen) {
@@ -752,7 +737,7 @@ function FleetForecastCard({ data, months, selectedTypes, typeOptions, onMonthsC
       <p className="muted dashboard-forecast-subtitle">
         Počet vozidel pod 250 000 km a do 10 let jejich dosažení: <strong>{summary.within10Years} ks</strong>
       </p>
-      {updatedAt ? <p className="muted dashboard-forecast-updated">Aktualizováno: {updatedAt}</p> : null}
+      {updatedAt ? <p className="muted dashboard-forecast-updated">Aktualizováno: {updatedAtLabel}</p> : null}
       {isStale && updatedAgeDays !== null ? (
         <p className="dashboard-forecast-warning">Data jsou {updatedAgeDays} dní stará. Pro přesnost je potřeba provést aktualizaci.</p>
       ) : null}
@@ -848,8 +833,17 @@ function FleetForecastCard({ data, months, selectedTypes, typeOptions, onMonthsC
 
         {showLoadingGate ? (
           <div className="dashboard-forecast-loading-gate" role="status" aria-live="polite">
-            <span className="dashboard-forecast-loading-spinner" aria-hidden="true" />
-            <span>{refreshing ? 'Probíhá načítání dat…' : 'Načítám predikci nájezdů…'}</span>
+            <SyncGate
+              inline
+              compact
+              showRuntime
+              syncSeconds={loadingSeconds}
+              eyebrow="Aktualizace dat"
+              title={refreshing ? 'Průběžně načítám aktuální data' : 'Načítám predikci nájezdů'}
+              description={refreshing
+                ? 'Prosím vyčkejte. Po dokončení se statistiky automaticky obnoví.'
+                : 'Prosím vyčkejte. Připravuji aktuální predikci nájezdů.'}
+            />
           </div>
         ) : null}
 
@@ -1226,7 +1220,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {dashboardSyncing ? <DashboardSyncGate syncSeconds={dashboardSyncSeconds} /> : null}
+      {dashboardSyncing ? (
+        <SyncGate
+          syncSeconds={dashboardSyncSeconds}
+          eyebrow="Aktualizace dat"
+          title="Průběžně načítám aktuální data"
+          description="Prosím vyčkejte. Po dokončení se seznam vozidel automaticky obnoví."
+        />
+      ) : null}
 
       {dashboardSyncMessage ? <div className="status-box">{dashboardSyncMessage}</div> : null}
 

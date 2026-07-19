@@ -15,7 +15,7 @@ export default function VehicleBasicInfoCard({ item }) {
         <p><strong>SPZ:</strong> {item.spz || '-'}</p>
         <p><strong>Status:</strong> {item.status || '-'}</p>
         <p><strong>Typ:</strong> {item.zzs_typ || '-'}</p>
-        <p><strong>Popis:</strong> {item.w_popis || '-'}</p>
+        <p><strong>Volací znak:</strong> {item.w_popis || '-'}</p>
         <p><strong>Výrobce:</strong> {manufacturer}</p>
         <p><strong>Model:</strong> {model}</p>
         <p><strong>Palivo:</strong> {fuelType}</p>

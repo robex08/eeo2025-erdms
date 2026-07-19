@@ -12,6 +12,7 @@ export default function VehicleDetailPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     zzs_typ: '',
+    w_popis: '',
     service_notes: '',
     technical_notes: '',
     insurance_policy: '',
@@ -31,6 +32,7 @@ export default function VehicleDetailPage() {
         if (detail) {
           setForm({
             zzs_typ: detail.zzs_typ || '',
+            w_popis: detail.w_popis || '',
             service_notes: detail.service_notes || '',
             technical_notes: detail.technical_notes || '',
             insurance_policy: detail.insurance_policy || '',

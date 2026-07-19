@@ -154,12 +154,12 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
         <thead>
           <tr>
             <SortableHeader field="spz" label="SPZ" />
+            <SortableHeader field="w_popis" label="Volací znak" />
             <SortableHeader field="zzs_typ" label="Typ" />
-            <SortableHeader field="w_popis" label="Popis" />
             <SortableHeader field="w_tovarni_znacka" label="Výrobce" />
             <SortableHeader field="w_model_vozu" label="Model" />
             <SortableHeader field="w_typ_phm" label="Palivo" />
-            <SortableHeader field="w_stanoviste" label="Stanoviště" />
+            <SortableHeader field="w_stanoviste" label="Město" />
             <SortableHeader field="w_groupname" label="Skupina" />
             <SortableHeader field="datum_zarazeni" label="Datum zařazení" className="table-col-date" />
             <SortableHeader field="najeto_km" label="Najeté km" className="table-col-km" />
@@ -172,9 +172,10 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
         <tbody>
           {items.map((item) => {
             const vehicleType = normalizeCellValue(item.zzs_typ);
-            const popis = normalizeCellValue(item.w_popis);
+            const callSign = normalizeCellValue(item.w_popis);
             const location = normalizeCellValue(item.w_groupname);
             const station = normalizeCellValue(item.w_stanoviste);
+            const locationStateRaw = String(item.location_state || '').toLowerCase();
             const manufacturer = normalizeCellValue(item.w_tovarni_znacka);
             const model = normalizeCellValue(item.w_model_vozu);
             const fuelType = normalizeCellValue(item.w_typ_phm);
@@ -183,12 +184,20 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
             const mileageBand = getMileageBand(item.najeto_km);
             const statusMeta = getStatusMeta(item.status);
             const dotaceMeta = getDotaceMeta(item.dotace);
+            let rowClassName = '';
+            if (locationStateRaw === 'v_akci') {
+              rowClassName = 'table-row-v-akci';
+            } else if (locationStateRaw === 'doma') {
+              rowClassName = 'table-row-doma';
+            } else if (locationStateRaw === 'v_servisu') {
+              rowClassName = 'table-row-v-servisu';
+            }
 
             return (
-              <tr key={item.id || item.spz}>
+              <tr key={item.id || item.spz} className={rowClassName}>
               <td>{item.spz}</td>
+              <td>{callSign}</td>
               <td>{vehicleType}</td>
-              <td>{popis}</td>
               <td>{manufacturer}</td>
               <td>{model}</td>
               <td>{fuelType}</td>

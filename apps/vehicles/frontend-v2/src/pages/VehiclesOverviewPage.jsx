@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { fetchVehicles, triggerSync } from '../services/apiClient';
+import { fetchVehicles, triggerQuickSync } from '../services/apiClient';
 import OverviewActionButtons from '../components/vehicles/OverviewActionButtons';
 import SyncGate from '../components/vehicles/SyncGate';
 import VehiclesTable from '../components/vehicles/VehiclesTable';
 import AppIcon from '../components/ui/AppIcon';
+import useDebouncedValue from '../hooks/useDebouncedValue';
 
+const VEHICLES_OVERVIEW_FILTERS_LS_KEY = 'vehicles_v2_overview_filters';
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
 const SORT_FIELDS = [
   'spz',
@@ -29,6 +31,13 @@ const STATUS_OPTIONS = [
   { value: 'vyrazene', label: 'Jen vyřazené' },
   { value: 'neaktivni', label: 'Jen neaktivní' },
 ];
+
+const LOCATION_STATE_OPTIONS = [
+  { value: 'doma', label: 'Doma' },
+  { value: 'v_akci', label: 'V akci' },
+  { value: 'v_servisu', label: 'V servisu' },
+];
+const LOCATION_FILTER_FETCH_PAGE_SIZE = 200;
 
 function parseCsvValues(value) {
   return Array.from(
@@ -92,6 +101,7 @@ export default function VehiclesOverviewPage() {
   const [syncMessage, setSyncMessage] = useState('');
   const [filterOptions, setFilterOptions] = useState({
     types: [],
+    callSigns: [],
     groups: [],
     stations: [],
     models: [],
@@ -104,11 +114,62 @@ export default function VehiclesOverviewPage() {
   const [openFilterKey, setOpenFilterKey] = useState(null);
   const filterRowRef = useRef(null);
   const loadRequestRef = useRef(0);
+  const skipNextDebouncedQuerySyncRef = useRef(false);
+  const restoredFromLsRef = useRef(false);
+
+  useEffect(() => {
+    if (restoredFromLsRef.current) {
+      return;
+    }
+    restoredFromLsRef.current = true;
+
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    if (searchParams.toString() !== '') {
+      return;
+    }
+
+    const saved = localStorage.getItem(VEHICLES_OVERVIEW_FILTERS_LS_KEY);
+    if (!saved) {
+      return;
+    }
+
+    const next = new URLSearchParams(saved);
+    if (next.toString() === '') {
+      return;
+    }
+
+    setSearchParams(next);
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const serialized = searchParams.toString();
+    if (serialized === '') {
+      localStorage.removeItem(VEHICLES_OVERVIEW_FILTERS_LS_KEY);
+      return;
+    }
+
+    localStorage.setItem(VEHICLES_OVERVIEW_FILTERS_LS_KEY, serialized);
+  }, [searchParams]);
 
   const query = searchParams.get('q') || '';
+  const [queryInput, setQueryInput] = useState(query);
+  const debouncedQueryInput = useDebouncedValue(queryInput, 750);
   const statusRaw = String(searchParams.get('status') || 'all').toLowerCase();
   const status = STATUS_OPTIONS.some((item) => item.value === statusRaw) ? statusRaw : 'all';
   const selectedTypes = useMemo(() => parseCsvValues(searchParams.get('types')), [searchParams]);
+  const selectedCallSigns = useMemo(() => parseCsvValues(searchParams.get('callSigns')), [searchParams]);
+  const selectedLocationStates = useMemo(() => {
+    const raw = parseCsvValues(searchParams.get('locationStates'));
+    const allowed = new Set(LOCATION_STATE_OPTIONS.map((item) => item.value));
+    return raw.filter((value) => allowed.has(value));
+  }, [searchParams]);
   const selectedGroups = useMemo(() => parseCsvValues(searchParams.get('groups')), [searchParams]);
   const selectedStations = useMemo(() => parseCsvValues(searchParams.get('stations')), [searchParams]);
   const selectedModels = useMemo(() => parseCsvValues(searchParams.get('models')), [searchParams]);
@@ -155,6 +216,7 @@ export default function VehiclesOverviewPage() {
     perPage,
     chartCarids: chartCarIds.length > 0 ? chartCarIds.join(',') : undefined,
     types: selectedTypes.length > 0 ? selectedTypes.join(',') : undefined,
+    callSigns: selectedCallSigns.length > 0 ? selectedCallSigns.join(',') : undefined,
     groups: selectedGroups.length > 0 ? selectedGroups.join(',') : undefined,
     stations: selectedStations.length > 0 ? selectedStations.join(',') : undefined,
     models: selectedModels.length > 0 ? selectedModels.join(',') : undefined,
@@ -170,6 +232,7 @@ export default function VehiclesOverviewPage() {
     query,
     selectedFuels,
     selectedGroups,
+    selectedCallSigns,
     selectedManufacturers,
     selectedMileageBands,
     selectedModels,
@@ -187,6 +250,68 @@ export default function VehiclesOverviewPage() {
 
     setLoading(true);
     try {
+      const isLocationFilterActive = selectedLocationStates.length > 0;
+
+      if (isLocationFilterActive) {
+        const selectedLocationSet = new Set(selectedLocationStates);
+        const baseParams = {
+          ...buildVehiclesParams(true),
+          page: 1,
+          perPage: LOCATION_FILTER_FETCH_PAGE_SIZE,
+        };
+
+        const firstResponse = await fetchVehicles(baseParams);
+        if (loadRequestRef.current !== requestId) {
+          return;
+        }
+
+        const firstItems = Array.isArray(firstResponse?.data?.items) ? firstResponse.data.items : [];
+        const totalFromServer = Number(firstResponse?.data?.total || firstItems.length || 0);
+        const totalPagesFromServer = Math.max(1, Math.ceil(totalFromServer / LOCATION_FILTER_FETCH_PAGE_SIZE));
+
+        let allItems = firstItems;
+        if (totalPagesFromServer > 1) {
+          const pageRequests = [];
+          for (let nextPage = 2; nextPage <= totalPagesFromServer; nextPage += 1) {
+            pageRequests.push(fetchVehicles({
+              ...baseParams,
+              includeFilterOptions: '0',
+              page: nextPage,
+            }));
+          }
+
+          const restResponses = await Promise.all(pageRequests);
+          const restItems = restResponses.flatMap((response) => {
+            const items = response?.data?.items;
+            return Array.isArray(items) ? items : [];
+          });
+          allItems = [...firstItems, ...restItems];
+        }
+
+        const filteredItems = allItems.filter((item) => selectedLocationSet.has(String(item?.location_state || '').toLowerCase()));
+        const totalFiltered = filteredItems.length;
+        const safePage = Math.max(1, page);
+        const offset = (safePage - 1) * perPage;
+        const pagedItems = filteredItems.slice(offset, offset + perPage);
+
+        setRows(pagedItems);
+        setTotal(totalFiltered);
+        setTotalAll(Number(firstResponse?.data?.totalAll || firstResponse?.data?.total || totalFiltered));
+        setUpdatedAt(firstResponse?.data?.updatedAt || null);
+        setFilterOptions(firstResponse?.data?.filterOptions || {
+          types: [],
+          callSigns: [],
+          groups: [],
+          stations: [],
+          models: [],
+          manufacturers: [],
+          fuels: [],
+          years: [],
+          mileageBands: [],
+        });
+        return;
+      }
+
       const fastResponse = await fetchVehicles(buildVehiclesParams(false));
       if (loadRequestRef.current !== requestId) {
         return;
@@ -205,6 +330,7 @@ export default function VehiclesOverviewPage() {
 
           setFilterOptions(optionsResponse?.data?.filterOptions || {
             types: [],
+            callSigns: [],
             groups: [],
             stations: [],
             models: [],
@@ -224,6 +350,9 @@ export default function VehiclesOverviewPage() {
     }
   }, [
     buildVehiclesParams,
+    page,
+    perPage,
+    selectedLocationStates,
   ]);
 
   useEffect(() => {
@@ -242,7 +371,7 @@ export default function VehiclesOverviewPage() {
     return () => window.clearInterval(timer);
   }, [syncing]);
 
-  function updateSearchParams(nextState) {
+  const updateSearchParams = useCallback((nextState) => {
     const next = new URLSearchParams(searchParams);
 
     Object.entries(nextState).forEach(([key, value]) => {
@@ -254,7 +383,24 @@ export default function VehiclesOverviewPage() {
     });
 
     setSearchParams(next);
-  }
+  }, [searchParams, setSearchParams]);
+
+  useEffect(() => {
+    setQueryInput(query);
+  }, [query]);
+
+  useEffect(() => {
+    if (skipNextDebouncedQuerySyncRef.current) {
+      skipNextDebouncedQuerySyncRef.current = false;
+      return;
+    }
+
+    if (debouncedQueryInput === query) {
+      return;
+    }
+
+    updateSearchParams({ q: debouncedQueryInput, page: 1 });
+  }, [debouncedQueryInput, query, updateSearchParams]);
 
   async function handleSync() {
     setSyncMessage('');
@@ -262,10 +408,15 @@ export default function VehiclesOverviewPage() {
     setSyncSeconds(0);
 
     try {
-      const response = await triggerSync();
+      const response = await triggerQuickSync();
       setSyncMessage(response?.data?.message || 'Aktualizace byla spuštěna.');
       await loadData();
     } catch (err) {
+      if (err?.code === 'ECONNABORTED' || String(err?.message || '').toLowerCase().includes('timeout')) {
+        setSyncMessage('Rychlá synchronizace běží déle než obvykle. Zkuste prosím akci za chvíli znovu.');
+        return;
+      }
+
       const apiMessage = err?.response?.data?.error?.message;
       setSyncMessage(apiMessage || 'Aktualizace dat se nepodařila.');
     } finally {
@@ -330,6 +481,8 @@ export default function VehiclesOverviewPage() {
   }
 
   function clearAllFilters() {
+    skipNextDebouncedQuerySyncRef.current = true;
+    setQueryInput('');
     updateSearchParams({
       q: '',
       status: 'all',
@@ -340,6 +493,8 @@ export default function VehiclesOverviewPage() {
       manufacturers: null,
       fuels: null,
       chartCarids: null,
+      callSigns: null,
+      locationStates: null,
       years: null,
       mileageBands: null,
       mileageBand: null,
@@ -361,6 +516,8 @@ export default function VehiclesOverviewPage() {
     query !== ''
     || status !== 'all'
     || selectedTypes.length > 0
+    || selectedCallSigns.length > 0
+    || selectedLocationStates.length > 0
     || selectedGroups.length > 0
     || selectedStations.length > 0
     || selectedModels.length > 0
@@ -372,8 +529,28 @@ export default function VehiclesOverviewPage() {
     || String(searchParams.get('mileageBand') || '').trim() !== '';
 
   function clearChartFilter() {
+    skipNextDebouncedQuerySyncRef.current = true;
+    setQueryInput('');
     updateSearchParams({ chartCarids: null, page: 1, q: '' });
   }
+
+  const locationStateCounts = useMemo(() => {
+    return rows.reduce((acc, item) => {
+      const key = String(item?.location_state || '').toLowerCase();
+      if (key === 'doma') {
+        acc.doma += 1;
+      } else if (key === 'v_akci') {
+        acc.v_akci += 1;
+      } else if (key === 'v_servisu') {
+        acc.v_servisu += 1;
+      }
+      return acc;
+    }, {
+      doma: 0,
+      v_akci: 0,
+      v_servisu: 0,
+    });
+  }, [rows]);
 
   return (
     <section>
@@ -387,6 +564,22 @@ export default function VehiclesOverviewPage() {
         </div>
 
         <div className="overview-header-actions">
+          <div className="overview-location-legend" aria-label="Legenda polohy vozidel">
+            <span className="overview-location-legend-title">Legenda:</span>
+            <span className="overview-location-legend-item">
+              <span className="overview-location-legend-strip overview-location-legend-strip-doma" aria-hidden="true" />
+              <span>Doma ({locationStateCounts.doma})</span>
+            </span>
+            <span className="overview-location-legend-item">
+              <span className="overview-location-legend-strip overview-location-legend-strip-v-akci" aria-hidden="true" />
+              <span>V akci ({locationStateCounts.v_akci})</span>
+            </span>
+            <span className="overview-location-legend-item">
+              <span className="overview-location-legend-strip overview-location-legend-strip-v-servisu" aria-hidden="true" />
+              <span>V servisu ({locationStateCounts.v_servisu})</span>
+            </span>
+          </div>
+
           <span className="overview-last-update-pill" title={`Poslední aktualizace: ${formatDateTimeCs(updatedAt)}`}>
             Poslední aktualizace: <strong>{formatDateTimeCs(updatedAt)}</strong>
           </span>
@@ -406,15 +599,19 @@ export default function VehiclesOverviewPage() {
         <div className="overview-search-wrap">
           <input
             className="search-input"
-            placeholder="Hledat podle SPZ, výrobce nebo modelu"
-            value={query}
-            onChange={(event) => updateSearchParams({ q: event.target.value, page: 1 })}
+            placeholder="Hledat podle SPZ, volacího znaku, výrobce nebo modelu"
+            value={queryInput}
+            onChange={(event) => setQueryInput(event.target.value)}
           />
-          {query ? (
+          {queryInput ? (
             <button
               className="overview-search-clear-icon"
               type="button"
-              onClick={() => updateSearchParams({ q: '', page: 1 })}
+              onClick={() => {
+                skipNextDebouncedQuerySyncRef.current = true;
+                setQueryInput('');
+                updateSearchParams({ q: '', page: 1 });
+              }}
               aria-label="Vymazat fulltext"
               title="Vymazat"
             >
@@ -444,6 +641,31 @@ export default function VehiclesOverviewPage() {
 
         <details
           className="overview-multifilter"
+          open={openFilterKey === 'locationStates'}
+          onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'locationStates' : null)}
+        >
+          <summary>
+            Poloha: {selectedLabel(
+              selectedLocationStates.map((value) => LOCATION_STATE_OPTIONS.find((option) => option.value === value)?.label || value),
+              'vše'
+            )}
+          </summary>
+          <div className="overview-multifilter-menu">
+            {LOCATION_STATE_OPTIONS.map((option) => (
+              <label key={`location-state-${option.value}`} className="overview-multifilter-option">
+                <input
+                  type="checkbox"
+                  checked={selectedLocationStates.includes(option.value)}
+                  onChange={() => toggleMultiFilter('locationStates', selectedLocationStates, option.value)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+
+        <details
+          className="overview-multifilter"
           open={openFilterKey === 'types'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'types' : null)}
         >
@@ -452,6 +674,22 @@ export default function VehiclesOverviewPage() {
             {(filterOptions.types || []).map((value) => (
               <label key={`type-${value}`} className="overview-multifilter-option">
                 <input type="checkbox" checked={selectedTypes.includes(value)} onChange={() => toggleMultiFilter('types', selectedTypes, value)} />
+                <span>{value}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+
+        <details
+          className="overview-multifilter"
+          open={openFilterKey === 'callSigns'}
+          onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'callSigns' : null)}
+        >
+          <summary>Volací znak: {selectedLabel(selectedCallSigns, 'vše')}</summary>
+          <div className="overview-multifilter-menu">
+            {(filterOptions.callSigns || []).map((value) => (
+              <label key={`call-sign-${value}`} className="overview-multifilter-option">
+                <input type="checkbox" checked={selectedCallSigns.includes(value)} onChange={() => toggleMultiFilter('callSigns', selectedCallSigns, value)} />
                 <span>{value}</span>
               </label>
             ))}
@@ -515,7 +753,7 @@ export default function VehiclesOverviewPage() {
           open={openFilterKey === 'stations'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'stations' : null)}
         >
-          <summary>Stanoviště: {selectedLabel(selectedStations, 'vše')}</summary>
+          <summary>Město: {selectedLabel(selectedStations, 'vše')}</summary>
           <div className="overview-multifilter-menu">
             {(filterOptions.stations || []).map((value) => (
               <label key={`station-${value}`} className="overview-multifilter-option">
@@ -595,6 +833,12 @@ export default function VehiclesOverviewPage() {
       {selectedTypes.length > 0 ? (
         <div className="status-box">
           Aktivní filtr typu: {selectedTypes.join(', ')}.
+        </div>
+      ) : null}
+
+      {selectedLocationStates.length > 0 ? (
+        <div className="status-box">
+          Aktivní filtr polohy: {selectedLocationStates.map((value) => LOCATION_STATE_OPTIONS.find((option) => option.value === value)?.label || value).join(', ')}.
         </div>
       ) : null}
 

@@ -1,4 +1,4 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -8,7 +8,13 @@ import { fetchHealth } from '../services/apiClient';
 const navItems = [
   { to: '/', label: 'Nástěnka', icon: 'dashboard' },
   { to: '/vehicles', label: 'Přehled vozidel', icon: 'vehicles' },
-  { to: '/map', label: 'Mapa vozidel', icon: 'map' },
+  { to: '/stations', label: 'Seznam stanovišť', icon: 'map' },
+  { to: '/map', label: 'Vozidla na mapě', icon: 'map' },
+];
+
+const stationSubmenuItems = [
+  { hash: '#stations-main', label: 'Seznam stanovišť' },
+  { hash: '#stations-webdispecink', label: 'Seznam adres z Webdispečinku' },
 ];
 
 export default function AppShell() {
@@ -16,6 +22,7 @@ export default function AppShell() {
   const [health, setHealth] = useState(null);
   const { user, signOut } = useAuth();
   const { isDark, toggleTheme } = useTheme();
+  const location = useLocation();
   const navigate = useNavigate();
   const appName = 'Auta ZZS';
 
@@ -25,18 +32,20 @@ export default function AppShell() {
       .catch(() => {
         setHealth({
           status: 'degraded',
-          data: { appVersion: '0.75', database: 'vehicles-zzs-dev' },
+          data: { appVersion: '0.90', database: 'vehicles-zzs-dev' },
         });
       });
   }, []);
 
   const apiStatus = health?.status || 'nacitam';
-  const appVersion = health?.data?.appVersion || '0.75';
+  const appVersion = health?.data?.appVersion || '0.90';
   const environment = health?.data?.environment || 'development';
 
   function formatAppVersion(version, env) {
+    const cleanVersion = String(version || '').trim().replace(/^v\s*/i, '') || '0.90';
+    const displayVersion = `v${cleanVersion}`;
     const normalizedEnv = String(env || '').toLowerCase();
-    return normalizedEnv === 'production' ? version : `${version} DEV`;
+    return normalizedEnv === 'production' ? displayVersion : `${displayVersion} DEV`;
   }
 
   function formatServiceStatus(status) {
@@ -55,6 +64,39 @@ export default function AppShell() {
 
   const displayVersion = formatAppVersion(appVersion, environment);
   const serviceStatus = formatServiceStatus(apiStatus);
+
+  function scrollToStationAnchor(hash) {
+    const targetId = String(hash || '').replace(/^#/, '');
+    if (!targetId) {
+      return;
+    }
+
+    const target = document.getElementById(targetId);
+    if (!target) {
+      return;
+    }
+
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function handleStationSubmenuClick(hash) {
+    setMobileOpen(false);
+
+    const searchPart = location.search || '';
+
+    if (location.pathname !== '/stations') {
+      navigate(`/stations${searchPart}${hash}`);
+      return;
+    }
+
+    if (location.hash !== hash) {
+      navigate(`/stations${searchPart}${hash}`, { replace: true });
+    }
+
+    // Scroll immediately for same-hash repeated clicks and as fallback when hash does not change.
+    scrollToStationAnchor(hash);
+    window.requestAnimationFrame(() => scrollToStationAnchor(hash));
+  }
 
   async function handleLogout() {
     await signOut();
@@ -88,20 +130,40 @@ export default function AppShell() {
         </div>
 
         <nav className="nav-list">
-          {navItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === '/'}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              onClick={() => setMobileOpen(false)}
-            >
-              <span className="nav-item-content">
-                <AppIcon name={item.icon} size={18} weight="duotone" />
-                <span>{item.label}</span>
-              </span>
-            </NavLink>
-          ))}
+          {navItems.map((item) => {
+            const showStationSubmenu = item.to === '/stations' && location.pathname === '/stations';
+
+            return (
+              <div key={item.to} className="nav-item-group">
+                <NavLink
+                  to={item.to}
+                  end={item.to === '/'}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <span className="nav-item-content">
+                    <AppIcon name={item.icon} size={18} weight="duotone" />
+                    <span>{item.label}</span>
+                  </span>
+                </NavLink>
+
+                {showStationSubmenu ? (
+                  <div className="nav-submenu" aria-label="Podmenu stanovišť">
+                    {stationSubmenuItems.map((subItem) => (
+                      <button
+                        key={subItem.hash}
+                        type="button"
+                        className={`nav-subitem${location.hash === subItem.hash ? ' active' : ''}`}
+                        onClick={() => handleStationSubmenuClick(subItem.hash)}
+                      >
+                        {subItem.label}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="sidebar-meta">

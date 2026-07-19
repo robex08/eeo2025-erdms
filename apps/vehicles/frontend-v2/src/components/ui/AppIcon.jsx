@@ -1,6 +1,7 @@
 import {
   Ambulance,
   ArrowsClockwise,
+  Crosshair,
   Car,
   ClockCounterClockwise,
   Database,
@@ -30,6 +31,7 @@ const ICONS = {
   themeDark: Moon,
   db: Database,
   resetFilters: FunnelX,
+  resetMapView: Crosshair,
   sync: ArrowsClockwise,
   car: Car,
   detail: Eye,

@@ -91,9 +91,45 @@ try {
         exit;
     }
 
+    if ($method === 'GET' && $path === '/stations/addresses') {
+        $authService->requireAuthenticated($request);
+        $vehicleController->stationAddresses();
+        exit;
+    }
+
+    if ($method === 'GET' && $path === '/stations/webdispecink-locations') {
+        $authService->requireAuthenticated($request);
+        $vehicleController->webdispecinkLocations();
+        exit;
+    }
+
+    if ($method === 'GET' && $path === '/stations/map-vs') {
+        $authService->requireAuthenticated($request);
+        $vehicleController->stationVsMap();
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/stations/addresses/from-webdispecink') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $vehicleController->upsertStationAddressFromWebdispecink($request);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/stations/addresses/update') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $vehicleController->updateStationAddress($request);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/stations/addresses/delete') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $vehicleController->deleteStationAddress($request);
+        exit;
+    }
+
     if ($method === 'GET' && $path === '/dashboard/metrics') {
         $authService->requireAuthenticated($request);
-        $vehicleController->dashboardMetrics();
+        $vehicleController->dashboardMetrics($request);
         exit;
     }
 
@@ -124,6 +160,12 @@ try {
     if ($method === 'POST' && $path === '/sync/vehicles') {
         $authService->requireRole($request, ['superadmin', 'administrator']);
         $syncController->triggerVehiclesSync();
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/sync/vehicles/quick') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $syncController->triggerVehiclesQuickSync();
         exit;
     }
 
