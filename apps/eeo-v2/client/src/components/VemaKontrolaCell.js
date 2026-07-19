@@ -382,7 +382,7 @@ export default function VemaKontrolaCell({
     setLoading(true);
     setError(null);
     try {
-      const response = await getVemaKontrola(typZaznamu, vemaId, token, username);
+      const response = await getVemaKontrola(typZaznamu, vemaId, vemaIdSecondary, token, username);
       
       // Backend vrací {case, udalosti} strukturu jako u FK
       const data = response?.case || response;
@@ -408,7 +408,7 @@ export default function VemaKontrolaCell({
     } finally {
       setLoading(false);
     }
-  }, [typZaznamu, vemaId, token, username]);
+  }, [typZaznamu, vemaId, vemaIdSecondary, token, username]);
 
   // Načíst při prvním zobrazení
   useEffect(() => {

@@ -436,20 +436,6 @@ const Title = styled.h1`
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 `;
 
-const BetaTag = styled.span`
-  display: inline-flex;
-  align-items: center;
-  padding: 0.2rem 0.5rem;
-  font-size: 0.65rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  background: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.95);
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-`;
-
 const Subtitle = styled.div`
   font-size: 0.9rem;
   color: rgba(255, 255, 255, 0.85);
@@ -10513,7 +10499,6 @@ export default function StatsReportsPage() {
         <Header>
           <HeaderTitle>
             <Title>
-              <BetaTag>BETA</BetaTag>
               Statistika a reporty
               <FontAwesomeIcon icon={faChartPie} style={{ marginLeft: '0.5rem', opacity: 0.85 }} />
             </Title>
