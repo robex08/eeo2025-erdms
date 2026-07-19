@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import AppIcon from '../components/ui/AppIcon';
 import {
+  createStationAddress,
   deleteStationAddress,
   fetchStationAddresses,
   fetchWebdispecinkLocations,
@@ -574,6 +575,20 @@ export default function StationAddressesPage() {
     });
   }
 
+  function openCreateModal() {
+    setEditError('');
+    setEditingId(-1);
+    setEditForm({
+      organizace: 'ZZS SK',
+      nazev_stanoviste: '',
+      mesto: '',
+      typ: 'VS',
+      ulice: '',
+      psc: '',
+      w_ln_match: '',
+    });
+  }
+
   function closeEditModal() {
     if (editSaving) {
       return;
@@ -601,7 +616,6 @@ export default function StationAddressesPage() {
 
     try {
       const payload = {
-        id: editingId,
         organizace: editForm.organizace,
         nazev_stanoviste: editForm.nazev_stanoviste,
         mesto: editForm.mesto,
@@ -610,9 +624,13 @@ export default function StationAddressesPage() {
         psc: editForm.psc,
         w_ln_match: editForm.w_ln_match,
       };
-      const response = await updateStationAddress(payload);
+      const response = editingId === -1
+        ? await createStationAddress(payload)
+        : await updateStationAddress({ ...payload, id: editingId });
 
-      setSyncMessage(response?.data?.message || 'Město bylo úspěšně upraveno.');
+      setSyncMessage(response?.data?.message || (editingId === -1
+        ? 'Stanoviště bylo úspěšně vytvořeno.'
+        : 'Stanoviště bylo úspěšně upraveno.'));
       setEditingId(0);
       await loadData();
     } catch (err) {
@@ -704,6 +722,15 @@ export default function StationAddressesPage() {
               aria-label="Rychlá aktualizace z Webdispečinku"
             >
               <AppIcon name="db" size={20} weight="regular" />
+            </button>
+            <button
+              className="icon-action-btn icon-action-btn-primary"
+              type="button"
+              onClick={openCreateModal}
+              title="Přidat nové stanoviště"
+              aria-label="Přidat nové stanoviště"
+            >
+              <span aria-hidden="true">+</span>
             </button>
             <button
               className="icon-action-btn icon-action-btn-primary"
@@ -831,19 +858,22 @@ export default function StationAddressesPage() {
       </div>
 
       {editingId ? (
-        <div className="station-edit-modal-backdrop" role="presentation" onClick={closeEditModal}>
-          <div className="station-edit-modal" role="dialog" aria-modal="true" aria-label="Upravit stanoviště" onClick={(event) => event.stopPropagation()}>
+        <div className="station-edit-modal-backdrop" role="presentation">
+          <div className="station-edit-modal" role="dialog" aria-modal="true" aria-label={editingId === -1 ? 'Nové stanoviště' : 'Upravit stanoviště'}>
             <div className="station-edit-modal-head">
               <h3 className="title-with-icon">
                 <AppIcon name="edit" size={18} weight="duotone" />
-                <span>Upravit stanoviště</span>
+                <span>{editingId === -1 ? 'Nové stanoviště' : 'Upravit stanoviště'}</span>
               </h3>
               <button className="table-icon-btn" type="button" onClick={closeEditModal} aria-label="Zavřít okno">
                 <span aria-hidden="true">x</span>
               </button>
             </div>
 
-            <p className="muted">Změny se uloží do hlavního seznamu výjezdových stanovišť / servisů.</p>
+            <p className="muted">{editingId === -1
+              ? 'Ručně přidané stanoviště se uloží do hlavního seznamu i bez vazby na Webdispečink.'
+              : 'Změny se uloží do hlavního seznamu výjezdových stanovišť / servisů.'}
+            </p>
 
             <div className="station-edit-form-grid">
               <label>
@@ -913,10 +943,11 @@ export default function StationAddressesPage() {
               <label className="station-edit-grid-full">
                 Webdispečink lokace
                 <input
-                  className="search-input station-edit-readonly-input"
+                  className={`search-input${editingId === -1 ? '' : ' station-edit-readonly-input'}`}
                   value={editForm.w_ln_match}
                   placeholder="CZ Město, Ulice"
-                  readOnly
+                  readOnly={editingId !== -1}
+                  onChange={(event) => updateEditField('w_ln_match', event.target.value)}
                   disabled={editSaving}
                 />
               </label>
@@ -929,7 +960,7 @@ export default function StationAddressesPage() {
                 Zrušit
               </button>
               <button className="table-pager-btn station-edit-save-btn" type="button" onClick={() => void handleEditSave()} disabled={editSaving}>
-                {editSaving ? 'Ukládám...' : 'Uložit změny'}
+                {editSaving ? 'Ukládám...' : editingId === -1 ? 'Vytvořit stanoviště' : 'Uložit změny'}
               </button>
             </div>
           </div>

@@ -1,6 +1,6 @@
 import { Link, useParams } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { fetchVehicleDetail, saveVehicleDetail } from '../services/apiClient';
+import { fetchStationAddresses, fetchVehicleDetail, saveVehicleDetail } from '../services/apiClient';
 import VehicleBasicInfoCard from '../components/vehicles/detail/VehicleBasicInfoCard';
 import VehicleTechnicalFormCard from '../components/vehicles/detail/VehicleTechnicalFormCard';
 
@@ -10,6 +10,7 @@ export default function VehicleDetailPage() {
   const [error, setError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [serviceStations, setServiceStations] = useState([]);
   const [form, setForm] = useState({
     zzs_typ: '',
     w_popis: '',
@@ -52,6 +53,26 @@ export default function VehicleDetailPage() {
       active = false;
     };
   }, [vehicleId]);
+
+  useEffect(() => {
+    let active = true;
+
+    fetchStationAddresses()
+      .then((response) => {
+        if (!active) return;
+        const stations = Array.isArray(response?.data?.items) ? response.data.items : [];
+        const services = stations.filter((item) => String(item?.typ || '').toLowerCase() === 'servis');
+        setServiceStations(services);
+      })
+      .catch(() => {
+        if (!active) return;
+        setServiceStations([]);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   function handleChange(event) {
     const { name, value } = event.target;
@@ -110,7 +131,7 @@ export default function VehicleDetailPage() {
       <div className="section-head">
         <div>
           <h2>Detail vozidla {item.spz}</h2>
-          <p className="muted">Připraveno pro budoucí rozšíření karty vozidla.</p>
+          <p className="muted">Editační karta je rozdělena do sekcí Základní parametry, Technika, Servisy a Přílohy.</p>
         </div>
         <Link className="btn btn-ghost" to="/vehicles">
           Zpět na přehled
@@ -120,6 +141,8 @@ export default function VehicleDetailPage() {
       <div className="cards-grid detail-grid">
         <VehicleBasicInfoCard item={item} />
         <VehicleTechnicalFormCard
+          item={item}
+          serviceStations={serviceStations}
           form={form}
           onChange={handleChange}
           onSubmit={handleSave}

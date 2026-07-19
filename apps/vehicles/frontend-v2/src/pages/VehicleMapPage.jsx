@@ -335,6 +335,18 @@ function formatMoney(value) {
   return `${num.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} Kč`;
 }
 
+function normalizeStationTyp(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'servis') {
+    return 'Servis';
+  }
+  if (normalized === 'mimo') {
+    return 'Mimo';
+  }
+
+  return 'VS';
+}
+
 function formatVehicleAge(datumZarazeni) {
   const raw = String(datumZarazeni || '').trim();
   if (!raw) {
@@ -432,6 +444,7 @@ function buildServiceHistoryBlock(status, orders = [], errorMessage = '') {
 }
 
 function buildVehiclePopupContent(vehicle, stationAddress, historyStatus = 'loading', historyOrders = [], historyError = '') {
+  const appBase = String(import.meta.env.BASE_URL || '/').replace(/\/$/, '');
   const rawSpz = String(vehicle?.spz || '').trim();
   const rawCallSign = String(vehicle?.w_popis || '').trim();
   const callSign = escapeHtml(rawCallSign || rawSpz || '-');
@@ -455,7 +468,7 @@ function buildVehiclePopupContent(vehicle, stationAddress, historyStatus = 'load
   const googleMapsUrl = hasGps ? `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}` : '#';
   const wazeUrl = hasGps ? `https://waze.com/ul?ll=${lat},${lng}&navigate=yes` : '#';
   const detailLink = Number(vehicle?.id || 0) > 0
-    ? `<a class="mapa-popup-link" href="/vehicles/${Number(vehicle.id)}">Otevřít detail vozidla</a>`
+    ? `<a class="mapa-popup-link" href="${appBase}/vehicles/${Number(vehicle.id)}">Otevřít detail vozidla</a>`
     : '';
 
   return `
@@ -2242,6 +2255,12 @@ export default function VehicleMapPage() {
                 const stationAddress = buildStationAddressText(station);
                 const stationLabel = String(station.nazev_stanoviste || station.mesto || station.stanoviste || 'Bez názvu');
                 const isActive = Number(station.id || 0) === selectedStationId;
+                const stationType = normalizeStationTyp(station.typ);
+                const stationTypeClass = stationType === 'VS'
+                  ? 'is-vs'
+                  : stationType === 'Servis'
+                    ? 'is-servis'
+                    : 'is-mimo';
 
                 return (
                   <button
@@ -2252,6 +2271,7 @@ export default function VehicleMapPage() {
                   >
                     <div className="mapa-v2-station-title-row">
                       <strong>{stationLabel}</strong>
+                      <span className={`mapa-v2-station-type-badge ${stationTypeClass}`}>{stationType}</span>
                     </div>
                     <div className="mapa-v2-station-address">{stationAddress || '-'}</div>
                   </button>

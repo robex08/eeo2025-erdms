@@ -159,7 +159,7 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
             <SortableHeader field="w_tovarni_znacka" label="Výrobce" />
             <SortableHeader field="w_model_vozu" label="Model" />
             <SortableHeader field="w_typ_phm" label="Palivo" />
-            <SortableHeader field="w_stanoviste" label="Město" />
+            <SortableHeader field="w_stanoviste" label="Místo" />
             <SortableHeader field="w_groupname" label="Skupina" />
             <SortableHeader field="datum_zarazeni" label="Datum zařazení" className="table-col-date" />
             <SortableHeader field="najeto_km" label="Najeté km" className="table-col-km" />

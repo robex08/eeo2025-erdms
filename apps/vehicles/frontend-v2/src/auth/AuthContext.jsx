@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { fetchMe, loginEntra, loginLocal, logout } from '../services/apiClient';
+import { changePassword, fetchMe, loginEntra, loginLocal, logout } from '../services/apiClient';
 
 const AuthContext = createContext(null);
 
@@ -40,6 +40,11 @@ export function AuthProvider({ children }) {
       },
       async loginWithEntra() {
         const data = await loginEntra();
+        setUser(data?.data?.user || null);
+        return data;
+      },
+      async changeLocalPassword(newPassword) {
+        const data = await changePassword({ new_password: newPassword });
         setUser(data?.data?.user || null);
         return data;
       },

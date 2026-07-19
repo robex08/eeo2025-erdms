@@ -8,7 +8,7 @@ final class VehicleController
     {
     }
 
-    public function list(Request $request): void
+    public function list(Request $request, array $actor): void
     {
         $query = trim((string) ($request->query['q'] ?? ''));
         $sortBy = trim((string) ($request->query['sortBy'] ?? 'spz'));
@@ -53,7 +53,27 @@ final class VehicleController
 
         $mileageBands = array_values(array_unique(array_map(static fn(string $value): string => strtoupper(trim($value)), $mileageBands)));
 
-        $result = $this->vehicles->listVehicles($query, $sortBy, $sortDir, $page, $perPage, $chartCarIds, $statusFilter, $types, $callSigns, $groups, $stations, $models, $manufacturers, $fuels, $years, $mileageBands, $includeFilterOptions);
+        $result = $this->vehicles->listVehicles(
+            $query,
+            $sortBy,
+            $sortDir,
+            $page,
+            $perPage,
+            $chartCarIds,
+            $statusFilter,
+            $types,
+            $callSigns,
+            $groups,
+            $stations,
+            $models,
+            $manufacturers,
+            $fuels,
+            $years,
+            $mileageBands,
+            $includeFilterOptions,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        );
 
         Response::success($result);
     }
@@ -131,6 +151,19 @@ final class VehicleController
         }
     }
 
+    public function createStationAddress(Request $request): void
+    {
+        try {
+            $item = $this->vehicles->createStationAddress($request->body);
+            Response::success([
+                'message' => 'Stanoviště bylo úspěšně vytvořeno.',
+                'item' => $item,
+            ], 201);
+        } catch (RuntimeException $e) {
+            Response::error($e->getMessage(), 422);
+        }
+    }
+
     public function deleteStationAddress(Request $request): void
     {
         $id = (int) ($request->body['id'] ?? 0);
@@ -150,7 +183,7 @@ final class VehicleController
         }
     }
 
-    public function detail(Request $request): void
+    public function detail(Request $request, array $actor): void
     {
         $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
         if ($vehicleId <= 0) {
@@ -158,7 +191,11 @@ final class VehicleController
             return;
         }
 
-        $detail = $this->vehicles->getVehicleDetail($vehicleId);
+        $detail = $this->vehicles->getVehicleDetail(
+            $vehicleId,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        );
         if ($detail === null) {
             Response::error('Vozidlo nebylo nalezeno', 404);
             return;
@@ -169,7 +206,7 @@ final class VehicleController
         ]);
     }
 
-    public function saveDetail(Request $request): void
+    public function saveDetail(Request $request, array $actor): void
     {
         $vehicleId = (int) ($request->body['vehicleId'] ?? 0);
         if ($vehicleId <= 0) {
@@ -177,14 +214,22 @@ final class VehicleController
             return;
         }
 
-        $existing = $this->vehicles->getVehicleDetail($vehicleId);
+        $existing = $this->vehicles->getVehicleDetail(
+            $vehicleId,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        );
         if ($existing === null) {
             Response::error('Vozidlo nebylo nalezeno', 404);
             return;
         }
 
         $this->vehicles->saveVehicleDetail($vehicleId, $request->body);
-        $updated = $this->vehicles->getVehicleDetail($vehicleId);
+        $updated = $this->vehicles->getVehicleDetail(
+            $vehicleId,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        );
 
         Response::success([
             'message' => 'Detail vozidla byl ulozen',
@@ -192,23 +237,36 @@ final class VehicleController
         ]);
     }
 
-    public function dashboardMetrics(Request $request): void
+    public function dashboardMetrics(Request $request, array $actor): void
     {
         $status = trim((string) ($request->query['status'] ?? 'all'));
-        Response::success($this->vehicles->getDashboardMetrics($status));
+        Response::success($this->vehicles->getDashboardMetrics(
+            $status,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        ));
     }
 
-    public function dashboardFleetForecast(Request $request): void
+    public function dashboardFleetForecast(Request $request, array $actor): void
     {
         $months = (int) ($request->query['months'] ?? 3);
         $status = trim((string) ($request->query['status'] ?? 'aktivni'));
 
-        Response::success($this->vehicles->getFleetMileageForecast($months, $status));
+        Response::success($this->vehicles->getFleetMileageForecast(
+            $months,
+            $status,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        ));
     }
 
-    public function refreshDashboardFleetForecast(Request $request): void
+    public function refreshDashboardFleetForecast(Request $request, array $actor): void
     {
         $months = (int) ($request->body['months'] ?? 3);
-        Response::success($this->vehicles->refreshFleetMileageForecastData($months));
+        Response::success($this->vehicles->refreshFleetMileageForecastData(
+            $months,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        ));
     }
 }

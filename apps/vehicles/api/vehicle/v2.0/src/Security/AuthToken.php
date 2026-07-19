@@ -6,12 +6,13 @@ final class AuthToken
 {
     private const COOKIE = 'vehicles_v2_token';
 
-    public static function issue(int $userId, string $username, string $role): string
+    public static function issue(int $userId, string $username, string $role, string $authSource = 'local'): string
     {
         $payload = [
             'uid' => $userId,
             'usr' => $username,
             'role' => strtolower($role),
+            'src' => strtolower(trim($authSource)) !== '' ? strtolower(trim($authSource)) : 'local',
             'iat' => time(),
         ];
 
@@ -41,8 +42,8 @@ final class AuthToken
     {
         setcookie(self::COOKIE, $token, [
             'expires' => time() + 60 * 60 * 12,
-            'path' => '/dev/api.vehicles/vehicle/v2.0',
-            'secure' => false,
+            'path' => self::cookiePath(),
+            'secure' => self::cookieSecure(),
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -52,8 +53,8 @@ final class AuthToken
     {
         setcookie(self::COOKIE, '', [
             'expires' => time() - 3600,
-            'path' => '/dev/api.vehicles/vehicle/v2.0',
-            'secure' => false,
+            'path' => self::cookiePath(),
+            'secure' => self::cookieSecure(),
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -62,5 +63,15 @@ final class AuthToken
     public static function extract(Request $request): ?string
     {
         return $request->cookies[self::COOKIE] ?? null;
+    }
+
+    private static function cookiePath(): string
+    {
+        return Env::get('VEHICLES_V2_COOKIE_PATH', Env::get('VEHICLES_V2_API_BASE_PATH', '/dev/api.vehicles/vehicle/v2.0'));
+    }
+
+    private static function cookieSecure(): bool
+    {
+        return Env::get('VEHICLES_V2_COOKIE_SECURE', '0') === '1';
     }
 }

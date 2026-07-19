@@ -39,7 +39,11 @@ final class AuthController
 
     public function entraLoginUrl(Request $request): void
     {
-        $defaultRedirect = Env::get('VEHICLES_V2_ENTRA_REDIRECT_URL', 'https://erdms.zachranka.cz/dev/vehicles-v2');
+        $defaultRedirect = Env::get('VEHICLES_V2_ENTRA_REDIRECT_URL');
+        if ($defaultRedirect === '') {
+            $defaultRedirect = $this->resolveDefaultRedirectUrl($request);
+        }
+
         $redirectUrl = trim((string) ($request->query['redirect'] ?? ''));
 
         if ($redirectUrl === '') {
@@ -61,9 +65,35 @@ final class AuthController
         }
     }
 
+    public function changePassword(Request $request): void
+    {
+        try {
+            $newPassword = (string) ($request->body['new_password'] ?? '');
+            if ($newPassword === '') {
+                Response::error('Nové heslo je povinné.', 422);
+                return;
+            }
+
+            $data = $this->auth->changeLocalPassword($request, $newPassword);
+            Response::success($data, 200);
+        } catch (RuntimeException $e) {
+            Response::error($e->getMessage(), 422);
+        }
+    }
+
     public function logout(): void
     {
         AuthToken::clearCookie();
         Response::success(['message' => 'Odhlaseni probehlo uspesne'], 200);
+    }
+
+    private function resolveDefaultRedirectUrl(Request $request): string
+    {
+        $forwardedProto = strtolower(trim((string) ($request->headers['X-Forwarded-Proto'] ?? $request->headers['x-forwarded-proto'] ?? 'https')));
+        $scheme = $forwardedProto === 'http' ? 'http' : 'https';
+        $host = trim((string) ($_SERVER['HTTP_HOST'] ?? 'erdms.zachranka.cz'));
+        $basePath = trim(Env::get('VEHICLES_V2_FRONTEND_BASE_PATH', '/dev/vehicles-v2'));
+
+        return $scheme . '://' . $host . '/' . ltrim($basePath, '/');
     }
 }

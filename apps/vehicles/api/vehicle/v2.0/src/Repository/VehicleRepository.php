@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 final class VehicleRepository
 {
+    private const TBL_ASSIGNMENTS = 'vehicles_user_vehicle_assignments';
     private const TBL_WD_GENERAL = 'vehicles_wd_cars_general_v2';
     private const TBL_WD_POSITIONS = 'vehicles_wd_positions_v2';
     private const TBL_WD_KM_STATS = 'vehicles_wd_km_stats_v2';
@@ -39,9 +40,13 @@ final class VehicleRepository
         array $fuels = [],
         array $years = [],
         array $mileageBands = [],
-        bool $includeFilterOptions = true
+        bool $includeFilterOptions = true,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
     ): array
     {
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+
         $hasPositionsKm = $this->tableExists(self::TBL_WD_POSITIONS)
             && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
             && $this->columnExists(self::TBL_WD_POSITIONS, 'w_km');
@@ -84,8 +89,12 @@ final class VehicleRepository
         $perPage = max(1, min(200, $perPage));
         $offset = ($page - 1) * $perPage;
 
-        $fromSql = ' FROM vehicles_cars_list_v2 v
-            LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
+        $fromSql = $restrictByAssignments
+            ? ' FROM ' . self::TBL_ASSIGNMENTS . ' uva
+                INNER JOIN vehicles_cars_list_v2 v ON v.id = uva.vehicle_id AND uva.user_id = :access_user_id
+                LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id'
+            : ' FROM vehicles_cars_list_v2 v
+                LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
         if ($hasPositionsKm || $hasPositionsLn || $hasPositionsCoords) {
             $lastPosColumns = ['cp.w_carid'];
             if ($hasPositionsKm) {
@@ -240,6 +249,9 @@ final class VehicleRepository
 
         $baseWhereClauses = [];
         $baseParams = [];
+        if ($restrictByAssignments) {
+            $baseParams['access_user_id'] = $actorUserId;
+        }
         if ($query !== '') {
             $normalizedQuery = $this->normalizeSearchTerm($query);
             if ($normalizedQuery !== '') {
@@ -406,8 +418,15 @@ final class VehicleRepository
 
         $totalAll = $totalFiltered;
         if ($query !== '' || $chartCarIds !== [] || $statusFilter !== 'all' || $types !== [] || $callSigns !== [] || $groups !== [] || $stations !== [] || $models !== [] || $manufacturers !== [] || $fuels !== [] || $years !== [] || $mileageBands !== []) {
-            $totalAllStmt = $this->pdo->query('SELECT COUNT(*) FROM vehicles_cars_list_v2');
-            $totalAll = (int) $totalAllStmt->fetchColumn();
+            if ($restrictByAssignments) {
+                $totalAllStmt = $this->pdo->prepare('SELECT COUNT(*)' . $fromSql);
+                $totalAllStmt->bindValue(':access_user_id', $actorUserId, PDO::PARAM_INT);
+                $totalAllStmt->execute();
+                $totalAll = (int) $totalAllStmt->fetchColumn();
+            } else {
+                $totalAllStmt = $this->pdo->query('SELECT COUNT(*) FROM vehicles_cars_list_v2');
+                $totalAll = (int) $totalAllStmt->fetchColumn();
+            }
         }
 
         $sql = 'SELECT v.id,
@@ -447,6 +466,11 @@ final class VehicleRepository
                 continue;
             }
 
+            if ($paramName === 'access_user_id') {
+                $stmt->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
+                continue;
+            }
+
             $stmt->bindValue(':' . $paramName, (string) $paramValue, PDO::PARAM_STR);
         }
         $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
@@ -479,6 +503,11 @@ final class VehicleRepository
 
                     if (str_starts_with($paramName, 'chart_carid_')) {
                         $statement->bindValue(':' . $paramName, (int) $paramValue, PDO::PARAM_INT);
+                        continue;
+                    }
+
+                    if ($paramName === 'access_user_id') {
+                        $statement->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
                         continue;
                     }
 
@@ -1415,6 +1444,121 @@ final class VehicleRepository
         return $row;
     }
 
+    public function createStationAddress(array $payload): array
+    {
+        if (!$this->tableExists(self::TBL_STATION_ADDRESSES)) {
+            throw new RuntimeException('Tabulka měst není dostupná.');
+        }
+
+        $organizace = trim((string) ($payload['organizace'] ?? 'ZZS SK'));
+        $mesto = trim((string) ($payload['mesto'] ?? ($payload['stanoviste'] ?? '')));
+        $nazevStanoviste = trim((string) ($payload['nazev_stanoviste'] ?? ''));
+        $ulice = trim((string) ($payload['ulice'] ?? ''));
+        $psc = trim((string) ($payload['psc'] ?? ''));
+        $typ = $this->normalizeStationTyp((string) ($payload['typ'] ?? 'VS'));
+        $wLnMatch = trim((string) ($payload['w_ln_match'] ?? ''));
+
+        if ($organizace === '') {
+            throw new RuntimeException('Organizace je povinná.');
+        }
+        if ($mesto === '') {
+            throw new RuntimeException('Místo je povinné.');
+        }
+
+        $organizace = mb_substr($organizace, 0, 120);
+        $mesto = mb_substr($mesto, 0, 180);
+        if ($nazevStanoviste === '') {
+            $nazevStanoviste = $mesto;
+        }
+        $nazevStanoviste = mb_substr($nazevStanoviste, 0, 180);
+        $ulice = mb_substr($ulice, 0, 255);
+        $psc = mb_substr($psc, 0, 10);
+
+        if ($wLnMatch === '') {
+            $wLnMatch = $ulice !== ''
+                ? ('CZ ' . $mesto . ', ' . $ulice)
+                : ('CZ ' . $mesto);
+        }
+
+        $wLnMatchNorm = $this->normalizePositionLn($wLnMatch);
+        if ($wLnMatchNorm === '') {
+            $wLnMatchNorm = $this->normalizeLocationToken(trim($mesto . ' ' . $ulice));
+        }
+
+        $hasMesto = $this->columnExists(self::TBL_STATION_ADDRESSES, 'mesto');
+        $hasTyp = $this->columnExists(self::TBL_STATION_ADDRESSES, 'typ');
+        $hasNazevStanoviste = $this->columnExists(self::TBL_STATION_ADDRESSES, 'nazev_stanoviste');
+        $hasWlnMatch = $this->columnExists(self::TBL_STATION_ADDRESSES, 'w_ln_match');
+        $hasWlnMatchNorm = $this->columnExists(self::TBL_STATION_ADDRESSES, 'w_ln_match_norm');
+
+        $columns = ['organizace', ($hasMesto ? 'mesto' : 'stanoviste'), 'ulice', 'psc'];
+        $values = [':organizace', ':mesto', ':ulice', ':psc'];
+        $params = [
+            'organizace' => $organizace,
+            'mesto' => $mesto,
+            'ulice' => $ulice,
+            'psc' => $psc,
+        ];
+
+        if ($hasNazevStanoviste) {
+            $columns[] = 'nazev_stanoviste';
+            $values[] = ':nazev_stanoviste';
+            $params['nazev_stanoviste'] = $nazevStanoviste;
+        }
+        if ($hasTyp) {
+            $columns[] = 'typ';
+            $values[] = ':typ';
+            $params['typ'] = $typ;
+        }
+        if ($hasWlnMatch) {
+            $columns[] = 'w_ln_match';
+            $values[] = ':w_ln_match';
+            $params['w_ln_match'] = $wLnMatch;
+        }
+        if ($hasWlnMatchNorm) {
+            $columns[] = 'w_ln_match_norm';
+            $values[] = ':w_ln_match_norm';
+            $params['w_ln_match_norm'] = $wLnMatchNorm;
+        }
+
+        $insertStmt = $this->pdo->prepare(
+            'INSERT INTO ' . self::TBL_STATION_ADDRESSES
+            . ' (' . implode(', ', $columns) . ')'
+            . ' VALUES (' . implode(', ', $values) . ')'
+        );
+        $insertStmt->execute($params);
+
+        $newId = (int) $this->pdo->lastInsertId();
+        if ($newId <= 0) {
+            throw new RuntimeException('Nové stanoviště se nepodařilo vytvořit.');
+        }
+
+        $select = 'id, organizace, ' . ($hasMesto ? 'mesto' : 'stanoviste AS mesto') . ', ulice, psc';
+        if ($hasNazevStanoviste) {
+            $select .= ', nazev_stanoviste';
+        }
+        if ($hasTyp) {
+            $select .= ', typ';
+        }
+        if ($hasWlnMatch) {
+            $select .= ', w_ln_match';
+        }
+        if ($hasWlnMatchNorm) {
+            $select .= ', w_ln_match_norm';
+        }
+
+        $rowStmt = $this->pdo->prepare(
+            'SELECT ' . $select . ' FROM ' . self::TBL_STATION_ADDRESSES . ' WHERE id = :id LIMIT 1'
+        );
+        $rowStmt->execute(['id' => $newId]);
+        $row = $rowStmt->fetch();
+        if (!is_array($row)) {
+            throw new RuntimeException('Vytvořené stanoviště se nepodařilo načíst.');
+        }
+
+        return $row;
+    }
+
     public function deleteStationAddressById(int $id): array
     {
         if (!$this->tableExists(self::TBL_STATION_ADDRESSES)) {
@@ -1987,8 +2131,10 @@ final class VehicleRepository
         return $count;
     }
 
-    public function getFleetMileageForecast(int $months, string $statusFilter = 'aktivni'): array
+    public function getFleetMileageForecast(int $months, string $statusFilter = 'aktivni', int $actorUserId = 0, bool $actorHasAllVehicles = true): array
     {
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+
         if (
             !$this->tableExists(self::TBL_WD_KM_STATS)
             || !$this->tableExists(self::TBL_WD_POSITIONS)
@@ -2035,6 +2181,12 @@ final class VehicleRepository
             $params['status_filter'] = $statusFilter;
         }
 
+        $accessJoin = '';
+        if ($restrictByAssignments) {
+            $accessJoin = ' INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id AND uva.user_id = :access_user_id';
+            $params['access_user_id'] = $actorUserId;
+        }
+
         $sql = 'SELECT
                     v.legacy_carid AS carid,
                     v.spz,
@@ -2057,6 +2209,7 @@ final class VehicleRepository
                         ELSE NULL
                     END AS months_to_250k
                 FROM vehicles_cars_list_v2 v
+                ' . $accessJoin . '
                 LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id
                 INNER JOIN (
                     SELECT m.w_carid, m.km, m.pocet_mesicu, m.dt_aktualizace, m.w_datod, m.w_datdo, m.stavTach
@@ -2236,19 +2389,24 @@ final class VehicleRepository
         ];
     }
 
-    public function getDashboardMetrics(string $statusFilter = 'all'): array
+    public function getDashboardMetrics(string $statusFilter = 'all', int $actorUserId = 0, bool $actorHasAllVehicles = true): array
     {
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
         $allowedStatuses = ['all', 'aktivni', 'vyrazene', 'neaktivni'];
         $statusFilter = strtolower(trim($statusFilter));
         if (!in_array($statusFilter, $allowedStatuses, true)) {
             $statusFilter = 'all';
         }
 
-        $plainWhere = '';
         $aliasWhere = '';
         $params = [];
+        $accessJoin = '';
+        if ($restrictByAssignments) {
+            $accessJoin = ' INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id AND uva.user_id = :access_user_id';
+            $params['access_user_id'] = $actorUserId;
+        }
+
         if ($statusFilter !== 'all') {
-            $plainWhere = ' WHERE status = :status_filter';
             $aliasWhere = ' WHERE v.status = :status_filter';
             $params['status_filter'] = $statusFilter;
         }
@@ -2256,17 +2414,22 @@ final class VehicleRepository
         $summaryStmt = $this->pdo->prepare(
             'SELECT
                 COUNT(*) AS total,
-                SUM(CASE WHEN LOWER(TRIM(status)) = "aktivni" THEN 1 ELSE 0 END) AS active,
-                SUM(CASE WHEN LOWER(TRIM(status)) = "vyrazene" THEN 1 ELSE 0 END) AS retired,
-                SUM(CASE WHEN LOWER(TRIM(status)) = "neaktivni" THEN 1 ELSE 0 END) AS inactive,
-                SUM(CASE WHEN LOWER(TRIM(status)) NOT IN ("aktivni", "vyrazene", "neaktivni") OR TRIM(status) = "" THEN 1 ELSE 0 END) AS unknown
-             FROM vehicles_cars_list_v2' . $plainWhere
+                SUM(CASE WHEN LOWER(TRIM(v.status)) = "aktivni" THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN LOWER(TRIM(v.status)) = "vyrazene" THEN 1 ELSE 0 END) AS retired,
+                SUM(CASE WHEN LOWER(TRIM(v.status)) = "neaktivni" THEN 1 ELSE 0 END) AS inactive,
+                SUM(CASE WHEN LOWER(TRIM(v.status)) NOT IN ("aktivni", "vyrazene", "neaktivni") OR TRIM(v.status) = "" THEN 1 ELSE 0 END) AS unknown
+             FROM vehicles_cars_list_v2 v
+             ' . $accessJoin . '
+             ' . $aliasWhere
         );
         $summaryStmt->execute($params);
         $summary = $summaryStmt->fetch() ?: [];
 
         $updatedStmt = $this->pdo->prepare(
-            'SELECT MAX(last_update) AS updated_at FROM vehicles_cars_list_v2' . $plainWhere
+            'SELECT MAX(v.last_update) AS updated_at
+             FROM vehicles_cars_list_v2 v
+             ' . $accessJoin . '
+             ' . $aliasWhere
         );
         $updatedStmt->execute($params);
         $updatedAt = $updatedStmt->fetchColumn();
@@ -2274,15 +2437,16 @@ final class VehicleRepository
         $fuelStmt = $this->pdo->prepare(
             'SELECT
                 CASE
-                    WHEN LOWER(TRIM(COALESCE(w_typ_phm, ""))) IN ("nafta", "nm", "d") THEN "Nafta"
-                    WHEN LOWER(TRIM(COALESCE(w_typ_phm, ""))) IN ("benzin", "benzin natural", "b") THEN "Benzín"
-                    WHEN LOWER(TRIM(COALESCE(w_typ_phm, ""))) IN ("cng", "lpg", "hybrid") THEN "Alternativní"
-                    WHEN LOWER(TRIM(COALESCE(w_typ_phm, ""))) IN ("ev", "elektro") THEN "Elektro"
+                    WHEN LOWER(TRIM(COALESCE(v.w_typ_phm, ""))) IN ("nafta", "nm", "d") THEN "Nafta"
+                    WHEN LOWER(TRIM(COALESCE(v.w_typ_phm, ""))) IN ("benzin", "benzin natural", "b") THEN "Benzín"
+                    WHEN LOWER(TRIM(COALESCE(v.w_typ_phm, ""))) IN ("cng", "lpg", "hybrid") THEN "Alternativní"
+                    WHEN LOWER(TRIM(COALESCE(v.w_typ_phm, ""))) IN ("ev", "elektro") THEN "Elektro"
                     ELSE "Neznámé"
                 END AS label,
                 COUNT(*) AS value
-             FROM vehicles_cars_list_v2
-             ' . $plainWhere . '
+             FROM vehicles_cars_list_v2 v
+             ' . $accessJoin . '
+             ' . $aliasWhere . '
              GROUP BY label
              ORDER BY value DESC, label ASC'
         );
@@ -2303,7 +2467,7 @@ final class VehicleRepository
         $typeDistribution = $typeStmt->fetchAll() ?: [];
 
         $groupDistribution = [];
-        if ($statusFilter === 'all' && $this->tableExists('vehicles_cars_groups_v2')) {
+        if (!$restrictByAssignments && $statusFilter === 'all' && $this->tableExists('vehicles_cars_groups_v2')) {
             $groupStmt = $this->pdo->query(
                 'SELECT
                     COALESCE(NULLIF(TRIM(groupname), ""), "Nezname") AS label,
@@ -2395,6 +2559,36 @@ final class VehicleRepository
             'stationDistribution' => $this->normalizeBuckets($groupDistribution),
             'mileageDistribution' => $this->normalizeBuckets($mileageDistribution),
         ];
+    }
+
+    public function getAccessibleLegacyCarIds(int $actorUserId, bool $actorHasAllVehicles): array
+    {
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+
+        if ($restrictByAssignments) {
+            $stmt = $this->pdo->prepare(
+                'SELECT v.legacy_carid
+                 FROM vehicles_cars_list_v2 v
+                 INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id
+                 WHERE uva.user_id = :access_user_id
+                   AND v.legacy_carid IS NOT NULL
+                   AND v.legacy_carid > 0'
+            );
+            $stmt->execute(['access_user_id' => $actorUserId]);
+            $rows = $stmt->fetchAll() ?: [];
+
+            return array_values(array_map(static fn(array $row): int => (int) ($row['legacy_carid'] ?? 0), $rows));
+        }
+
+        $stmt = $this->pdo->query(
+            'SELECT legacy_carid
+             FROM vehicles_cars_list_v2
+             WHERE legacy_carid IS NOT NULL
+               AND legacy_carid > 0'
+        );
+        $rows = $stmt->fetchAll() ?: [];
+
+        return array_values(array_map(static fn(array $row): int => (int) ($row['legacy_carid'] ?? 0), $rows));
     }
 
     private function normalizeBuckets(array $rows): array
@@ -2509,10 +2703,11 @@ final class VehicleRepository
         return $exists;
     }
 
-    public function getVehicleDetailById(int $vehicleId): ?array
+    public function getVehicleDetailById(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
     {
-        $stmt = $this->pdo->prepare(
-            'SELECT
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+
+        $sql = 'SELECT
                 v.id,
                 v.spz,
                 v.status,
@@ -2533,12 +2728,25 @@ final class VehicleRepository
                 d.emission_valid_to,
                 d.updated_at AS detail_updated_at
              FROM vehicles_cars_list_v2 v
-             LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id
-             WHERE v.id = :vehicle_id
-             LIMIT 1'
+             LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
+
+        if ($restrictByAssignments) {
+            $sql .= ' INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id AND uva.user_id = :access_user_id';
+        }
+
+        $sql .= ' WHERE v.id = :vehicle_id
+             LIMIT 1';
+
+        $stmt = $this->pdo->prepare(
+            $sql
         );
 
-        $stmt->execute(['vehicle_id' => $vehicleId]);
+        $params = ['vehicle_id' => $vehicleId];
+        if ($restrictByAssignments) {
+            $params['access_user_id'] = $actorUserId;
+        }
+
+        $stmt->execute($params);
         $row = $stmt->fetch();
 
         return $row ?: null;

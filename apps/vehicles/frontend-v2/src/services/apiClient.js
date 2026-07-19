@@ -47,6 +47,11 @@ export async function loginEntra() {
   return response.data;
 }
 
+export async function changePassword(payload) {
+  const response = await apiClient.post('/auth/change-password', payload);
+  return response.data;
+}
+
 export async function fetchMe() {
   const response = await apiClient.get('/auth/me');
   return response.data;
@@ -59,6 +64,38 @@ export async function logout() {
 
 export async function fetchVehicles(params = {}) {
   const response = await apiClient.get('/vehicles', { params });
+  return response.data;
+}
+
+export async function fetchUsers() {
+  const response = await apiClient.get('/users');
+  return response.data;
+}
+
+export async function fetchUsersVehiclesCatalog() {
+  const response = await apiClient.get('/users/vehicles-catalog');
+  return response.data;
+}
+
+export async function fetchUserVehicleAssignments(userId) {
+  const response = await apiClient.get('/users/vehicle-assignments', {
+    params: { userId },
+  });
+  return response.data;
+}
+
+export async function createUser(payload) {
+  const response = await apiClient.post('/users/create', payload);
+  return response.data;
+}
+
+export async function updateUser(payload) {
+  const response = await apiClient.post('/users/update', payload);
+  return response.data;
+}
+
+export async function deleteUser(payload) {
+  const response = await apiClient.post('/users/delete', payload);
   return response.data;
 }
 
@@ -103,6 +140,11 @@ export async function upsertStationAddressFromWebdispecink(payload) {
 
 export async function updateStationAddress(payload) {
   const response = await apiClient.post('/stations/addresses/update', payload);
+  return response.data;
+}
+
+export async function createStationAddress(payload) {
+  const response = await apiClient.post('/stations/addresses/create', payload);
   return response.data;
 }
 

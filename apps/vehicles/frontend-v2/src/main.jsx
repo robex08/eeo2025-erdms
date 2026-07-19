@@ -7,9 +7,11 @@ import { ThemeProvider } from './theme/ThemeContext'
 import './styles/theme.css'
 import './styles/layout.css'
 
+const routerBase = String(import.meta.env.BASE_URL || '/').replace(/\/$/, '') || '/'
+
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <ThemeProvider>
         <AuthProvider>
           <AppRoutes />

@@ -13,7 +13,18 @@ final class EntraBridgeService
 
     public function buildLoginUrl(string $redirectUrl): string
     {
-        return $this->centralAuthBase . '/auth/login?redirect=' . rawurlencode($redirectUrl);
+        $centralLoginUrl = $this->centralAuthBase . '/auth/login?redirect=' . rawurlencode($redirectUrl);
+
+        try {
+            $resolvedUrl = $this->fetchCentralLoginRedirect($centralLoginUrl);
+            if ($resolvedUrl !== '') {
+                return $resolvedUrl;
+            }
+        } catch (Throwable) {
+            // Fallback to the central auth endpoint when direct resolution is unavailable.
+        }
+
+        return $centralLoginUrl;
     }
 
     public function fetchAuthenticatedIdentity(Request $request): array
@@ -32,16 +43,37 @@ final class EntraBridgeService
             $authUser = $payload['auth_user'];
         } elseif (isset($payload['data']['user']) && is_array($payload['data']['user'])) {
             $authUser = $payload['data']['user'];
+        } elseif ($this->looksLikeUserPayload($payload)) {
+            $authUser = $payload;
         }
 
-        if ($authUser === []) {
+        $entraData = isset($payload['entraData']) && is_array($payload['entraData'])
+            ? $payload['entraData']
+            : (isset($authUser['entraData']) && is_array($authUser['entraData']) ? $authUser['entraData'] : []);
+
+        if ($authUser === [] && $entraData === []) {
             throw new RuntimeException('Centrální autentizace nevrátila data uživatele');
         }
 
         $entraId = $this->pick($authUser, ['entra_id', 'entraId', 'object_id', 'oid', 'id']);
+        if ($entraId === '') {
+            $entraId = $this->pick($entraData, ['id', 'entra_id', 'oid', 'object_id']);
+        }
+
         $username = $this->pick($authUser, ['username', 'user_name', 'login', 'account']);
+        if ($username === '') {
+            $username = $this->pick($entraData, ['onPremisesSamAccountName', 'mailNickname']);
+        }
+
         $email = $this->pick($authUser, ['email', 'upn', 'userPrincipalName']);
-        $displayName = $this->pick($authUser, ['display_name', 'name', 'full_name']);
+        if ($email === '') {
+            $email = $this->pick($entraData, ['mail', 'userPrincipalName']);
+        }
+
+        $displayName = $this->pick($authUser, ['display_name', 'displayName', 'name', 'full_name', 'jmeno_prijmeni']);
+        if ($displayName === '') {
+            $displayName = $this->pick($entraData, ['displayName', 'givenName']);
+        }
 
         if ($username === '' && $email !== '') {
             $username = strtolower((string) strstr($email, '@', true));
@@ -111,6 +143,69 @@ final class EntraBridgeService
         return $decoded;
     }
 
+    private function fetchCentralLoginRedirect(string $url): string
+    {
+        if (function_exists('curl_init')) {
+            $headers = [];
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 15,
+                CURLOPT_FOLLOWLOCATION => false,
+                CURLOPT_HTTPHEADER => [
+                    'Accept: application/json',
+                ],
+                CURLOPT_HEADERFUNCTION => static function ($curl, string $headerLine) use (&$headers): int {
+                    $length = strlen($headerLine);
+                    $parts = explode(':', $headerLine, 2);
+                    if (count($parts) === 2) {
+                        $headers[strtolower(trim($parts[0]))] = trim($parts[1]);
+                    }
+
+                    return $length;
+                },
+            ]);
+
+            $response = curl_exec($ch);
+            $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if (($httpCode === 301 || $httpCode === 302 || $httpCode === 303 || $httpCode === 307 || $httpCode === 308)
+                && isset($headers['location'])
+                && trim($headers['location']) !== '') {
+                return trim($headers['location']);
+            }
+
+            if (is_string($response)) {
+                $decoded = json_decode($response, true);
+                if (is_array($decoded) && isset($decoded['authUrl']) && is_string($decoded['authUrl'])) {
+                    return trim($decoded['authUrl']);
+                }
+            }
+
+            return '';
+        }
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 15,
+                'ignore_errors' => true,
+                'header' => "Accept: application/json\r\n",
+            ],
+        ]);
+
+        $response = @file_get_contents($url, false, $context);
+        if (is_string($response)) {
+            $decoded = json_decode($response, true);
+            if (is_array($decoded) && isset($decoded['authUrl']) && is_string($decoded['authUrl'])) {
+                return trim($decoded['authUrl']);
+            }
+        }
+
+        return '';
+    }
+
     private function pick(array $source, array $keys): string
     {
         foreach ($keys as $key) {
@@ -121,5 +216,14 @@ final class EntraBridgeService
         }
 
         return '';
+    }
+
+    private function looksLikeUserPayload(array $payload): bool
+    {
+        return isset($payload['username'])
+            || isset($payload['entra_id'])
+            || isset($payload['email'])
+            || isset($payload['upn'])
+            || isset($payload['entraData']);
     }
 }

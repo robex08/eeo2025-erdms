@@ -753,7 +753,7 @@ export default function VehiclesOverviewPage() {
           open={openFilterKey === 'stations'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'stations' : null)}
         >
-          <summary>Město: {selectedLabel(selectedStations, 'vše')}</summary>
+          <summary>Místo: {selectedLabel(selectedStations, 'vše')}</summary>
           <div className="overview-multifilter-menu">
             {(filterOptions.stations || []).map((value) => (
               <label key={`station-${value}`} className="overview-multifilter-option">
