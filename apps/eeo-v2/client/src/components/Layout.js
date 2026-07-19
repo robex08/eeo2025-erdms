@@ -4665,7 +4665,7 @@ const Layout = ({ children }) => {
                         to="/vema-denik" 
                         onClick={() => setAnalyticsMenuOpen(false)}
                       >
-                        <FontAwesomeIcon icon={faFileContract} fixedWidth style={{color: '#8b5cf6'}} /> EEO vs VEMA <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                        <FontAwesomeIcon icon={faFileContract} fixedWidth style={{color: '#8b5cf6'}} /> EEO vs Vema <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                   </MenuDropdownContent>,

@@ -94,8 +94,8 @@ function handle_vema_firmy_list($input, $config, $queries) {
         $where = array();
         $params = array();
 
-        // Poznámka: tabulka 25v_firmyupl nemá sloupec stav_zaznamu (na rozdíl od faktur/smluv)
-        // Pokud potřebujeme filtrovat smazané záznamy, použijeme sloupec 'stav' z Excelu
+        // Výchozí chování: vracet pouze aktivní záznamy.
+        $where[] = "stav_zaznamu = 'aktivni'";
 
         if ($search !== '') {
             // Fulltext search přes klíčové sloupce firem
@@ -118,7 +118,8 @@ function handle_vema_firmy_list($input, $config, $queries) {
         }
 
         if ($stav !== '') {
-            $where[] = "stav = ?";
+            // Parametr stav mapujeme na interní stav lifecycle (stav_zaznamu).
+            $where[] = "stav_zaznamu = ?";
             $params[] = $stav;
         }
 
@@ -334,8 +335,12 @@ function handle_vema_faktury_list($input, $config, $queries) {
                     firmy.ico as firma_ico,
                     smlouvy.ecsml as smlouva_ecsml
                 FROM `" . TBL_VEMA_FPAZAHL . "` f
-                LEFT JOIN `" . TBL_VEMA_FIRMYUPL . "` firmy ON f.firma = firmy.firma
-                LEFT JOIN `" . TBL_VEMA_SMLA . "` smlouvy ON f.csml = smlouvy.csml
+                    LEFT JOIN `" . TBL_VEMA_FIRMYUPL . "` firmy
+                         ON f.firma = firmy.firma
+                        AND firmy.stav_zaznamu = 'aktivni'
+                    LEFT JOIN `" . TBL_VEMA_SMLA . "` smlouvy
+                         ON f.csml = smlouvy.csml
+                        AND smlouvy.stav_zaznamu = 'aktivni'
                 " . $where_sql . "
                 ORDER BY f.datpri DESC, f.cfak DESC
                 LIMIT $limit OFFSET $offset";
@@ -553,7 +558,9 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
                     s.dt_importu, s.dt_posledni_aktualizace,
                     firmy.nazev as firma_nazev
                 FROM `" . TBL_VEMA_SMLA . "` s
-                LEFT JOIN `" . TBL_VEMA_FIRMYUPL . "` firmy ON s.firma = firmy.firma
+                    LEFT JOIN `" . TBL_VEMA_FIRMYUPL . "` firmy
+                         ON s.firma = firmy.firma
+                        AND firmy.stav_zaznamu = 'aktivni'
                 " . $where_sql . "
                 ORDER BY s.datuzavr DESC, s.csml DESC
                 LIMIT $limit OFFSET $offset";
@@ -946,14 +953,14 @@ function handle_vema_import_upload($input, $config, $queries) {
                 telefon, mobil, fax, email, web, datschr, dnazev,
                 dul, pln, odb, dod, druhorg, ins, stara, prfyz,
                 dgdpr, pozn, souhlas, zakaz, redgdpr, txtgdpr, dic, hod,
-                stav, import_batch_id, dt_importu, vytvoril_uzivatel_id, dt_vytvoreni
+                stav, stav_zaznamu, import_batch_id, dt_importu, vytvoril_uzivatel_id, dt_vytvoreni
             ) VALUES (
                 ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?,
                 ?, ?, ?, ?, ?, ?, ?, ?,
-                'aktivni', ?, ?, ?, NOW()
+                'aktivni', 'aktivni', ?, ?, ?, NOW()
             ) ON DUPLICATE KEY UPDATE
                 nazev=VALUES(nazev), ico=VALUES(ico), icodl=VALUES(icodl),
                 rocis=VALUES(rocis), regcisph=VALUES(regcisph), zaplf=VALUES(zaplf),
@@ -969,6 +976,7 @@ function handle_vema_import_upload($input, $config, $queries) {
                 souhlas=VALUES(souhlas), zakaz=VALUES(zakaz), redgdpr=VALUES(redgdpr),
                 txtgdpr=VALUES(txtgdpr), dic=VALUES(dic), hod=VALUES(hod),
                 stav='aktivni',
+                stav_zaznamu='aktivni',
                 import_batch_id=VALUES(import_batch_id),
                 dt_posledni_aktualizace=NOW(),
                 aktualizoval_uzivatel_id=VALUES(vytvoril_uzivatel_id)";
@@ -1442,7 +1450,8 @@ function handle_vema_import_upload($input, $config, $queries) {
         // Označit firmy které nejsou v aktuálním batch_id jako 'smazano'
         $stmt_firmy_del = $db->prepare("
             UPDATE `" . TBL_VEMA_FIRMYUPL . "` 
-            SET stav_zaznamu = 'smazano',
+            SET stav = 'smazano',
+                stav_zaznamu = 'smazano',
                 dt_posledni_aktualizace = NOW()
             WHERE import_batch_id != ? 
               AND stav_zaznamu = 'aktivni'
