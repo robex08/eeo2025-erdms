@@ -44,6 +44,19 @@ function vema_status_to_db($status) {
     return VEMA_STATUS_API_TO_DB[$normalized] ?? 'nezkontrolovano';
 }
 
+/**
+ * Normalizace sekundárního VEMA ID pro stabilní identitu metadat.
+ * - faktura: povinné (firma)
+ * - firma/smlouva: ukládáme prázdný řetězec
+ */
+function vema_normalize_secondary_id($typ_zaznamu, $vema_id_secondary) {
+    if ($typ_zaznamu === 'faktura') {
+        $secondary = trim((string)$vema_id_secondary);
+        return $secondary !== '' ? $secondary : null;
+    }
+    return '';
+}
+
 // ====================================================
 // POMOCNÉ FUNKCE PRO HISTORII
 // ====================================================
@@ -91,7 +104,7 @@ function vema_add_udalost($db, $kontrola_metadata_id, $typ, $text_zprava, $stav_
 
 /**
  * GET - Načíst kontrolu pro konkrétní VEMA záznam
- * POST: {token, username, typ_zaznamu, vema_id}
+ * POST: {token, username, typ_zaznamu, vema_id, vema_id_secondary?}
  */
 function handle_vema_kontrola_get($input, $config) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -104,6 +117,7 @@ function handle_vema_kontrola_get($input, $config) {
     $username = $input['username'] ?? '';
     $typ_zaznamu = $input['typ_zaznamu'] ?? ''; // faktura|firma|smlouva
     $vema_id = $input['vema_id'] ?? '';
+    $vema_id_secondary = $input['vema_id_secondary'] ?? '';
 
     if (!$token || !$username) {
         http_response_code(400);
@@ -114,6 +128,13 @@ function handle_vema_kontrola_get($input, $config) {
     if (!$typ_zaznamu || !$vema_id) {
         http_response_code(400);
         echo json_encode(['status' => 'error', 'message' => 'Chybí typ_zaznamu nebo vema_id']);
+        return;
+    }
+
+    $normalized_secondary = vema_normalize_secondary_id($typ_zaznamu, $vema_id_secondary);
+    if ($typ_zaznamu === 'faktura' && $normalized_secondary === null) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Pro typ faktura je povinné vema_id_secondary (firma)']);
         return;
     }
 
@@ -142,12 +163,12 @@ function handle_vema_kontrola_get($input, $config) {
             FROM `25v_kontrola_metadata` k
             LEFT JOIN `25_uzivatele` u1 ON k.kontroloval_uzivatel_id = u1.id
             LEFT JOIN `25_uzivatele` u2 ON k.vytvoril_uzivatel_id = u2.id
-            WHERE k.typ_zaznamu = ? AND k.vema_id = ?
+            WHERE k.typ_zaznamu = ? AND k.vema_id = ? AND k.vema_id_secondary = ?
             LIMIT 1
         ";
 
         $stmt = $db->prepare($query);
-        $stmt->execute([$typ_zaznamu, $vema_id]);
+        $stmt->execute([$typ_zaznamu, $vema_id, $normalized_secondary]);
         $kontrola = $stmt->fetch(PDO::FETCH_ASSOC);
 
         // Dekóduj JSON metadata
@@ -194,7 +215,7 @@ function handle_vema_kontrola_get($input, $config) {
 
 /**
  * SAVE - Uložit nebo aktualizovat kontrolu
- * POST: {token, username, typ_zaznamu, vema_id, kontrola_status, poznamka, priorita, metadata}
+ * POST: {token, username, typ_zaznamu, vema_id, vema_id_secondary?, kontrola_status, poznamka, priorita, metadata}
  */
 function handle_vema_kontrola_save($input, $config) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -233,6 +254,13 @@ function handle_vema_kontrola_save($input, $config) {
         return;
     }
 
+    $normalized_secondary = vema_normalize_secondary_id($typ_zaznamu, $vema_id_secondary);
+    if ($typ_zaznamu === 'faktura' && $normalized_secondary === null) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Pro typ faktura je povinné vema_id_secondary (firma)']);
+        return;
+    }
+
     $token_data = verify_token($token);
     if (!$token_data || $token_data['username'] !== $username) {
         http_response_code(401);
@@ -259,8 +287,8 @@ function handle_vema_kontrola_save($input, $config) {
         }
 
         // Kontrola existence záznamu + načtení starých hodnot
-        $check = $db->prepare("SELECT * FROM `25v_kontrola_metadata` WHERE typ_zaznamu = ? AND vema_id = ?");
-        $check->execute([$typ_zaznamu, $vema_id]);
+        $check = $db->prepare("SELECT * FROM `25v_kontrola_metadata` WHERE typ_zaznamu = ? AND vema_id = ? AND vema_id_secondary = ?");
+        $check->execute([$typ_zaznamu, $vema_id, $normalized_secondary]);
         $existing = $check->fetch(PDO::FETCH_ASSOC);
         $existing_status_api = vema_normalize_status_for_api(
             is_array($existing) ? ($existing['kontrola_status'] ?? null) : null
@@ -287,7 +315,7 @@ function handle_vema_kontrola_save($input, $config) {
                 $poznamka,
                 $priorita,
                 $metadata_json,
-                $vema_id_secondary,
+                $normalized_secondary,
                 $user_id,
                 $now,
                 $user_id,
@@ -353,7 +381,7 @@ function handle_vema_kontrola_save($input, $config) {
             $stmt->execute([
                 $typ_zaznamu,
                 $vema_id,
-                $vema_id_secondary,
+                $normalized_secondary,
                 $kontrola_status_db,
                 $poznamka,
                 $priorita,
