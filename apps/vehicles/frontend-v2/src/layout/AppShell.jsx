@@ -5,7 +5,9 @@ import { useTheme } from '../theme/ThemeContext';
 import AppIcon from '../components/ui/AppIcon';
 import { fetchHealth } from '../services/apiClient';
 
-const navItems = [
+const assetBase = import.meta.env.BASE_URL || '/';
+
+const baseNavItems = [
   { to: '/', label: 'Nástěnka', icon: 'dashboard' },
   { to: '/vehicles', label: 'Přehled vozidel', icon: 'vehicles' },
   { to: '/stations', label: 'Seznam stanovišť', icon: 'map' },
@@ -64,6 +66,11 @@ export default function AppShell() {
 
   const displayVersion = formatAppVersion(appVersion, environment);
   const serviceStatus = formatServiceStatus(apiStatus);
+  const currentRole = String(user?.role || '').toLowerCase();
+  const canManageUsers = currentRole === 'superadmin' || currentRole === 'administrator';
+  const navItems = canManageUsers
+    ? [...baseNavItems, { to: '/users', label: 'Správa uživatelů', icon: 'users' }]
+    : baseNavItems;
 
   function scrollToStationAnchor(hash) {
     const targetId = String(hash || '').replace(/^#/, '');
@@ -177,7 +184,7 @@ export default function AppShell() {
       <div className="main-column">
         <header className="topbar">
           <div className="topbar-brand" aria-label="ZZS identita">
-            <img className="topbar-logo" src="/logo_zzs_main.png" alt="ZZS SK Logo" />
+            <img className="topbar-logo" src={`${assetBase}logo_zzs_main.png`} alt="ZZS SK Logo" />
             <div className="topbar-brand-text">
               <strong>Zdravotnická záchranná služba Středočeského kraje, p.o.</strong>
               <span>správa vozového parku</span>

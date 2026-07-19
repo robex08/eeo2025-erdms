@@ -26,9 +26,11 @@ require_once __DIR__ . '/src/Repository/SyncJobRepository.php';
 require_once __DIR__ . '/src/Service/EntraBridgeService.php';
 require_once __DIR__ . '/src/Service/WebDispecinkClientV2.php';
 require_once __DIR__ . '/src/Service/AuthService.php';
+require_once __DIR__ . '/src/Service/UserService.php';
 require_once __DIR__ . '/src/Service/VehicleService.php';
 require_once __DIR__ . '/src/Controller/AuthController.php';
 require_once __DIR__ . '/src/Controller/HealthController.php';
+require_once __DIR__ . '/src/Controller/UserController.php';
 require_once __DIR__ . '/src/Controller/VehicleController.php';
 require_once __DIR__ . '/src/Controller/SyncController.php';
 
@@ -45,10 +47,12 @@ try {
     $webDispecinkClient = new WebDispecinkClientV2();
 
     $authService = new AuthService($userRepository, $entraBridgeService);
+    $userService = new UserService($userRepository);
     $vehicleService = new VehicleService($vehicleRepository, $syncJobRepository, $webDispecinkClient);
 
     $authController = new AuthController($authService);
     $healthController = new HealthController();
+    $userController = new UserController($userService);
     $vehicleController = new VehicleController($vehicleService);
     $syncController = new SyncController($vehicleService, $authService);
 
@@ -75,6 +79,11 @@ try {
         exit;
     }
 
+    if ($method === 'POST' && $path === '/auth/change-password') {
+        $authController->changePassword($request);
+        exit;
+    }
+
     if ($method === 'POST' && $path === '/auth/logout') {
         $authController->logout();
         exit;
@@ -86,8 +95,44 @@ try {
     }
 
     if ($method === 'GET' && $path === '/vehicles') {
-        $authService->requireAuthenticated($request);
-        $vehicleController->list($request);
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->list($request, $actor);
+        exit;
+    }
+
+    if ($method === 'GET' && $path === '/users') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $userController->list();
+        exit;
+    }
+
+    if ($method === 'GET' && $path === '/users/vehicles-catalog') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $userController->vehiclesCatalog();
+        exit;
+    }
+
+    if ($method === 'GET' && $path === '/users/vehicle-assignments') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $userController->assignments($request);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/users/create') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $userController->create($request);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/users/update') {
+        $actor = $authService->requireRole($request, ['superadmin', 'administrator']);
+        $userController->update($request, (int) ($actor['id'] ?? 0));
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/users/delete') {
+        $actor = $authService->requireRole($request, ['superadmin', 'administrator']);
+        $userController->delete($request, (int) ($actor['id'] ?? 0));
         exit;
     }
 
@@ -121,6 +166,12 @@ try {
         exit;
     }
 
+    if ($method === 'POST' && $path === '/stations/addresses/create') {
+        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $vehicleController->createStationAddress($request);
+        exit;
+    }
+
     if ($method === 'POST' && $path === '/stations/addresses/delete') {
         $authService->requireRole($request, ['superadmin', 'administrator']);
         $vehicleController->deleteStationAddress($request);
@@ -128,32 +179,32 @@ try {
     }
 
     if ($method === 'GET' && $path === '/dashboard/metrics') {
-        $authService->requireAuthenticated($request);
-        $vehicleController->dashboardMetrics($request);
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->dashboardMetrics($request, $actor);
         exit;
     }
 
     if ($method === 'GET' && $path === '/dashboard/fleet-forecast') {
-        $authService->requireAuthenticated($request);
-        $vehicleController->dashboardFleetForecast($request);
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->dashboardFleetForecast($request, $actor);
         exit;
     }
 
     if ($method === 'POST' && $path === '/dashboard/fleet-forecast/refresh') {
-        $authService->requireAuthenticated($request);
-        $vehicleController->refreshDashboardFleetForecast($request);
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->refreshDashboardFleetForecast($request, $actor);
         exit;
     }
 
     if ($method === 'GET' && $path === '/vehicles/detail') {
-        $authService->requireAuthenticated($request);
-        $vehicleController->detail($request);
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->detail($request, $actor);
         exit;
     }
 
     if ($method === 'POST' && $path === '/vehicles/detail') {
-        $authService->requireRole($request, ['superadmin', 'administrator']);
-        $vehicleController->saveDetail($request);
+        $actor = $authService->requireRole($request, ['superadmin', 'administrator']);
+        $vehicleController->saveDetail($request, $actor);
         exit;
     }
 

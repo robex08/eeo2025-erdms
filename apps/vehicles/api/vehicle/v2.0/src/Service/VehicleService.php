@@ -28,10 +28,32 @@ final class VehicleService
         array $fuels = [],
         array $years = [],
         array $mileageBands = [],
-        bool $includeFilterOptions = true
+        bool $includeFilterOptions = true,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
     ): array
     {
-        return $this->vehicles->listVehicles($query, $sortBy, $sortDir, $page, $perPage, $chartCarIds, $statusFilter, $types, $callSigns, $groups, $stations, $models, $manufacturers, $fuels, $years, $mileageBands, $includeFilterOptions);
+        return $this->vehicles->listVehicles(
+            $query,
+            $sortBy,
+            $sortDir,
+            $page,
+            $perPage,
+            $chartCarIds,
+            $statusFilter,
+            $types,
+            $callSigns,
+            $groups,
+            $stations,
+            $models,
+            $manufacturers,
+            $fuels,
+            $years,
+            $mileageBands,
+            $includeFilterOptions,
+            $actorUserId,
+            $actorHasAllVehicles
+        );
     }
 
     public function listStationAddresses(): array
@@ -57,6 +79,11 @@ final class VehicleService
     public function updateStationAddressById(int $id, array $payload): array
     {
         return $this->vehicles->updateStationAddressById($id, $payload);
+    }
+
+    public function createStationAddress(array $payload): array
+    {
+        return $this->vehicles->createStationAddress($payload);
     }
 
     public function deleteStationAddressById(int $id): array
@@ -161,21 +188,21 @@ final class VehicleService
         return $this->syncJobs->findById($jobId);
     }
 
-    public function getVehicleDetail(int $vehicleId): ?array
+    public function getVehicleDetail(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
     {
-        return $this->vehicles->getVehicleDetailById($vehicleId);
+        return $this->vehicles->getVehicleDetailById($vehicleId, $actorUserId, $actorHasAllVehicles);
     }
 
-    public function getDashboardMetrics(string $status = 'all'): array
+    public function getDashboardMetrics(string $status = 'all', int $actorUserId = 0, bool $actorHasAllVehicles = true): array
     {
-        return $this->vehicles->getDashboardMetrics($status);
+        return $this->vehicles->getDashboardMetrics($status, $actorUserId, $actorHasAllVehicles);
     }
 
-    public function getFleetMileageForecast(int $months, string $status): array
+    public function getFleetMileageForecast(int $months, string $status, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
     {
         $defaultMonths = (int) Env::get('VEHICLES_V2_FLEET_FORECAST_MONTHS_DEFAULT', '3');
         $normalizedMonths = $months > 0 ? $months : $defaultMonths;
-        $primary = $this->vehicles->getFleetMileageForecast($normalizedMonths, $status);
+        $primary = $this->vehicles->getFleetMileageForecast($normalizedMonths, $status, $actorUserId, $actorHasAllVehicles);
         $withData = (int) (($primary['summary']['withData'] ?? 0));
 
         if ($withData > 0 || $normalizedMonths === $defaultMonths) {
@@ -185,7 +212,7 @@ final class VehicleService
             return $primary;
         }
 
-        $fallback = $this->vehicles->getFleetMileageForecast($defaultMonths, $status);
+        $fallback = $this->vehicles->getFleetMileageForecast($defaultMonths, $status, $actorUserId, $actorHasAllVehicles);
         $fallback['requestedMonths'] = $normalizedMonths;
         $fallback['usedMonths'] = (int) ($fallback['months'] ?? $defaultMonths);
         $fallback['usedFallback'] = true;
@@ -198,21 +225,19 @@ final class VehicleService
         return $fallback;
     }
 
-    public function refreshFleetMileageForecastData(int $months): array
+    public function refreshFleetMileageForecastData(int $months, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
     {
         $defaultMonths = (int) Env::get('VEHICLES_V2_FLEET_FORECAST_MONTHS_DEFAULT', '3');
         $months = $months > 0 ? $months : $defaultMonths;
         $months = max(1, min(24, $months));
 
-        $cars = $this->webDispecink->getCarsList();
-        if ($cars === []) {
-            throw new RuntimeException('WebDispecink nevratil zadna vozidla.');
-        }
-
-        $carIds = array_values(array_unique(array_map(static fn(array $car): int => (int) ($car['carid'] ?? 0), $cars)));
-        $carIds = array_values(array_filter($carIds, static fn(int $id): bool => $id > 0));
+        $carIds = $this->vehicles->getAccessibleLegacyCarIds($actorUserId, $actorHasAllVehicles);
         if ($carIds === []) {
-            throw new RuntimeException('Nepodarilo se ziskat ID vozidel pro obnovu predikce.');
+            return [
+                'message' => 'Pro tohoto uživatele nejsou dostupná žádná přiřazená vozidla k obnově predikce.',
+                'months' => $months,
+                'savedRows' => 0,
+            ];
         }
 
         $kmRows = $this->webDispecink->getCarsKmStatsByIds($carIds, $months);

@@ -31,7 +31,13 @@ final class Request
             return '/';
         }
 
+        $basePath = trim(Env::get('VEHICLES_V2_API_BASE_PATH', '/dev/api.vehicles/vehicle/v2.0'));
+        if ($basePath !== '') {
+            $path = preg_replace('#^' . preg_quote('/' . ltrim($basePath, '/'), '#') . '#', '', $path);
+        }
+
         $path = preg_replace('#^/dev/api\.vehicles/vehicle/v2\.0#', '', $path);
+        $path = preg_replace('#^/api\.vehicles-v2/vehicle/v2\.0#', '', $path);
         $path = '/' . ltrim((string) $path, '/');
 
         return rtrim($path, '/') === '' ? '/' : rtrim($path, '/');

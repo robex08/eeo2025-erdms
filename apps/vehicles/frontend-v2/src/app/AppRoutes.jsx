@@ -6,6 +6,7 @@ import StationAddressesPage from '../pages/StationAddressesPage';
 import LoginPage from '../pages/LoginPage';
 import VehicleDetailPage from '../pages/VehicleDetailPage';
 import VehiclesOverviewPage from '../pages/VehiclesOverviewPage';
+import UsersManagementPage from '../pages/UsersManagementPage';
 import ProtectedRoute from '../auth/ProtectedRoute';
 
 export default function AppRoutes() {
@@ -23,6 +24,14 @@ export default function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="vehicles" element={<VehiclesOverviewPage />} />
         <Route path="stations" element={<StationAddressesPage />} />
+        <Route
+          path="users"
+          element={(
+            <ProtectedRoute allowedRoles={['superadmin', 'administrator']}>
+              <UsersManagementPage />
+            </ProtectedRoute>
+          )}
+        />
         <Route path="vehicles/:vehicleId" element={<VehicleDetailPage />} />
         <Route path="map" element={<VehicleMapPage />} />
       </Route>

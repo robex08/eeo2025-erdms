@@ -18,12 +18,18 @@ import {
   ArrowUp,
   ArrowDown,
   Warning,
+  UsersThree,
+  CheckCircle,
+  Lock,
+  LockOpen,
+  Trash,
 } from '@phosphor-icons/react';
 
 const ICONS = {
   dashboard: House,
   vehicles: Ambulance,
   map: MapTrifold,
+  users: UsersThree,
   legacy: ClockCounterClockwise,
   menu: List,
   logout: SignOut,
@@ -40,6 +46,10 @@ const ICONS = {
   sortAsc: ArrowUp,
   sortDesc: ArrowDown,
   warning: Warning,
+  approve: CheckCircle,
+  lock: Lock,
+  unlock: LockOpen,
+  delete: Trash,
 };
 
 export default function AppIcon({ name, size = 18, weight = 'regular', className = '', ...rest }) {
