@@ -70,7 +70,7 @@ export default function LoginPage() {
             Jednotný vstup do nové verze aplikace. Rozhraní je připravené pro postupné rozšíření agendy vozidel.
           </p>
           <ul className="login-bullets">
-            <li><AppIcon name="sync" size={16} weight="duotone" />Synchronizace z WebDispečinku</li>
+            <li><AppIcon name="sync" size={16} weight="duotone" />Průběžná aktualizace dat</li>
             <li><AppIcon name="vehicles" size={16} weight="duotone" />Detailní karta vozidla</li>
             <li><AppIcon name="warning" size={16} weight="duotone" />Hybridní autentizace Entra ID + lokální administrace</li>
           </ul>

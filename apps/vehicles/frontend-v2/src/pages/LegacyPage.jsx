@@ -1,13 +1,12 @@
 export default function LegacyPage() {
   return (
     <section>
-      <h2>Legacy přehled vozidel</h2>
+      <h2>Původní přehled vozidel</h2>
       <p className="muted">
-        Tato stránka je záměrně ponechána pro testování a porovnání. Zůstává deprecated, dokud frontend v2 a API v2
-        neprojdou validací na DEV.
+        Tato stránka je ponechána pouze pro interní porovnání. Pro běžnou práci používejte hlavní přehled vozidel.
       </p>
       <a className="btn btn-ghost" href="/vehicles" target="_blank" rel="noreferrer">
-        Otevřít legacy aplikaci
+        Otevřít hlavní přehled
       </a>
     </section>
   );

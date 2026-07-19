@@ -45,6 +45,9 @@ export function AuthProvider({ children }) {
       },
       async signOut() {
         await logout();
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('vehicles_v2_dashboard_settings');
+        }
         setUser(null);
       },
     }),

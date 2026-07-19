@@ -5,8 +5,8 @@ export default function SyncGate({ syncSeconds }) {
         <div className="sync-gate-top">
           <span className="sync-spinner" aria-hidden="true" />
           <div>
-            <p className="sync-gate-eyebrow">Synchronizace databaze</p>
-            <h3>Prubezne nacitam data z WebDispecinku</h3>
+            <p className="sync-gate-eyebrow">Aktualizace dat</p>
+            <h3>Prubezne nacitam aktualni data</h3>
           </div>
         </div>
 

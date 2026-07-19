@@ -62,8 +62,13 @@ export async function triggerSync() {
   return response.data;
 }
 
-export async function fetchDashboardMetrics() {
-  const response = await apiClient.get('/dashboard/metrics');
+export async function triggerQuickSync() {
+  const response = await apiClient.post('/sync/vehicles/quick');
+  return response.data;
+}
+
+export async function fetchDashboardMetrics(params = {}) {
+  const response = await apiClient.get('/dashboard/metrics', { params });
   return response.data;
 }
 
