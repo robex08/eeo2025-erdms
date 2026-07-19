@@ -1,9 +1,14 @@
-import { useEffect, useState } from 'react';
-import { fetchDashboardMetrics, fetchFleetForecast, refreshFleetForecast } from '../services/apiClient';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { createPortal } from 'react-dom';
+import { fetchDashboardMetrics, fetchFleetForecast, refreshFleetForecast, triggerQuickSync } from '../services/apiClient';
 import AppIcon from '../components/ui/AppIcon';
+
+const DASHBOARD_SETTINGS_KEY = 'vehicles_v2_dashboard_settings';
 
 const PIE_COLORS = ['#d9dce3', '#ede8d2', '#f0deab', '#f7c94a', '#f59e0b', '#ea580c', '#c2410c', '#9a3412'];
 const FORECAST_MONTH_COLORS = ['#1976d2', '#388e3c', '#fbc02d', '#d84315', '#8e24aa', '#00838f', '#43a047', '#ff9800', '#e53935', '#00897b', '#6d4c41', '#7e57c2'];
+const MONTH_NAMES = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen', 'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'];
 
 function toChartRows(items = []) {
   const rows = Array.isArray(items) ? items : [];
@@ -31,17 +36,287 @@ function formatMileageLabel(label) {
   return mileageLabels[normalized] || normalized;
 }
 
-function ChartCard({ title, subtitle, rows }) {
+function formatDateTimeCs(value) {
+  if (!value) {
+    return 'Neznámé';
+  }
+
+  const normalized = String(value).replace(' ', 'T');
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString('cs-CZ', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+function normalizeForecastType(rawType) {
+  const value = String(rawType || '').trim();
+  if (
+    value === ''
+    || value === '--'
+    || value.toLowerCase() === 'null'
+    || value.toLowerCase() === '-- prazdne'
+    || value.toLowerCase() === '-- prázdné'
+    || value.toLowerCase() === 'prazdne'
+    || value.toLowerCase() === 'prázdné'
+  ) {
+    return 'Nezadáno';
+  }
+
+  return value;
+}
+
+function extractForecastTypeOptions(forecastData) {
+  const chart = Array.isArray(forecastData?.chart) ? forecastData.chart : [];
+  const labels = new Set();
+
+  chart.forEach((column) => {
+    const segments = Array.isArray(column?.segments) ? column.segments : [];
+    segments.forEach((segment) => {
+      const cars = Array.isArray(segment?.cars) ? segment.cars : [];
+      cars.forEach((car) => {
+        labels.add(normalizeForecastType(car?.typ));
+      });
+    });
+  });
+
+  const sortedLabels = Array.from(labels).sort((a, b) => {
+    if (a === 'Nezadáno' && b !== 'Nezadáno') {
+      return -1;
+    }
+    if (a !== 'Nezadáno' && b === 'Nezadáno') {
+      return 1;
+    }
+    return a.localeCompare(b, 'cs');
+  });
+
+  return sortedLabels;
+}
+
+function filterForecastByTypes(forecastData, selectedTypes) {
+  if (!forecastData || !Array.isArray(selectedTypes) || selectedTypes.length === 0) {
+    return forecastData;
+  }
+
+  const chart = Array.isArray(forecastData?.chart) ? forecastData.chart : [];
+  const uniqueCars = new Set();
+  const selectedSet = new Set(selectedTypes);
+
+  const filteredChart = chart.map((column) => {
+    const segments = Array.isArray(column?.segments) ? column.segments : [];
+    const filteredSegments = segments.map((segment) => {
+      const cars = Array.isArray(segment?.cars) ? segment.cars : [];
+      const filteredCars = cars.filter((car) => selectedSet.has(normalizeForecastType(car?.typ)));
+      filteredCars.forEach((car) => {
+        const carId = Number(car?.carid || 0);
+        if (Number.isFinite(carId) && carId > 0) {
+          uniqueCars.add(`id:${carId}`);
+        } else {
+          uniqueCars.add(`spz:${String(car?.spz || '').trim()}`);
+        }
+      });
+
+      return {
+        ...segment,
+        count: filteredCars.length,
+        cars: filteredCars,
+      };
+    });
+
+    const total = filteredSegments.reduce((sum, segment) => sum + Number(segment?.count || 0), 0);
+
+    return {
+      ...column,
+      total,
+      segments: filteredSegments,
+    };
+  });
+
+  const totalVehicles = uniqueCars.size;
+
+  return {
+    ...forecastData,
+    chart: filteredChart,
+    summary: {
+      ...(forecastData.summary || {}),
+      within10Years: totalVehicles,
+      withData: totalVehicles,
+    },
+  };
+}
+
+function selectedLabel(values, fallback) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return fallback;
+  }
+
+  if (values.length === 1) {
+    return values[0];
+  }
+
+  return `${values.length} vybráno`;
+}
+
+function countForecastRowsUnique(forecastData, selectedTypes = [], predicate = null) {
+  const rows = Array.isArray(forecastData?.results) ? forecastData.results : [];
+  if (rows.length === 0) {
+    return 0;
+  }
+
+  const typeSet = selectedTypes.length > 0 ? new Set(selectedTypes) : null;
+  const unique = new Set();
+
+  rows.forEach((row) => {
+    const typeLabel = normalizeForecastType(row?.typ);
+    if (typeSet && !typeSet.has(typeLabel)) {
+      return;
+    }
+
+    const estimate = String(row?.odhadDatum || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(estimate)) {
+      return;
+    }
+
+    const [yearRaw, monthRaw] = estimate.split('-');
+    const targetYear = Number(yearRaw);
+    const targetMonth = Number(monthRaw);
+    if (!Number.isFinite(targetYear) || !Number.isFinite(targetMonth)) {
+      return;
+    }
+
+    if (typeof predicate === 'function' && !predicate({ row, targetYear, targetMonth })) {
+      return;
+    }
+
+    const carId = Number(row?.carid || 0);
+    if (Number.isFinite(carId) && carId > 0) {
+      unique.add(`id:${carId}`);
+      return;
+    }
+
+    const spz = String(row?.spz || '').trim();
+    if (spz !== '') {
+      unique.add(`spz:${spz}`);
+    }
+  });
+
+  return unique.size;
+}
+
+function countDueTo250kWithinMonths(forecastData, selectedTypes = [], maxMonthsAhead = 2) {
+  const now = new Date();
+  const nowYear = now.getFullYear();
+  const nowMonth = now.getMonth() + 1;
+
+  return countForecastRowsUnique(
+    forecastData,
+    selectedTypes,
+    ({ targetYear, targetMonth }) => {
+      const monthsDiff = (targetYear - nowYear) * 12 + (targetMonth - nowMonth);
+      return monthsDiff >= 0 && monthsDiff <= maxMonthsAhead;
+    }
+  );
+}
+
+function countDueTo250kThisYear(forecastData, selectedTypes = []) {
+  const nowYear = new Date().getFullYear();
+
+  return countForecastRowsUnique(
+    forecastData,
+    selectedTypes,
+    ({ targetYear }) => targetYear === nowYear
+  );
+}
+
+function normalizeOverviewLabel(value) {
+  const normalized = String(value || '').trim();
+  const normalizedLower = normalized.toLowerCase();
+  if (normalized === '' || normalizedLower === 'nezname' || normalizedLower === 'neznámé') {
+    return 'Nezadáno';
+  }
+  return normalized;
+}
+
+function ChartCard({ title, subtitle, rows, onRowSelect }) {
+  const cardRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+
+  function handleRowEnter(event, row) {
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
+
+    const x = Math.max(12, Math.min(event.clientX - rect.left + 16, rect.width - 260));
+    const y = Math.max(10, event.clientY - rect.top - 18);
+
+    setTooltip({
+      x,
+      y,
+      label: row.label,
+      value: row.value,
+    });
+  }
+
+  function handleRowMove(event) {
+    if (!tooltip || !cardRef.current) {
+      return;
+    }
+
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = Math.max(12, Math.min(event.clientX - rect.left + 16, rect.width - 260));
+    const y = Math.max(10, event.clientY - rect.top - 18);
+
+    setTooltip((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        x,
+        y,
+      };
+    });
+  }
+
+  function handleRowLeave() {
+    setTooltip(null);
+  }
+
+  const isInteractive = typeof onRowSelect === 'function';
+
   return (
-    <article className="info-card dashboard-chart-card">
+    <article className="info-card dashboard-chart-card" ref={cardRef} onMouseLeave={handleRowLeave}>
       <h3>{title}</h3>
       <p className="muted">{subtitle}</p>
 
       <div className="dashboard-chart-list">
         {rows.length > 0 ? (
           rows.map((row) => (
-            <div className="dashboard-chart-row" key={row.label}>
-              <div className="dashboard-chart-label" title={row.label}>
+            <div
+              className={`dashboard-chart-row${isInteractive ? ' dashboard-chart-row-clickable' : ''}`}
+              key={row.label}
+              onMouseEnter={(event) => handleRowEnter(event, row)}
+              onMouseMove={handleRowMove}
+              onClick={isInteractive ? () => onRowSelect(row) : undefined}
+              onKeyDown={isInteractive ? (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  onRowSelect(row);
+                }
+              } : undefined}
+              role={isInteractive ? 'button' : undefined}
+              tabIndex={isInteractive ? 0 : undefined}
+            >
+              <div className="dashboard-chart-label">
                 {row.label}
               </div>
               <div className="dashboard-chart-track" role="img" aria-label={`${row.label}: ${row.value}`}>
@@ -54,11 +329,24 @@ function ChartCard({ title, subtitle, rows }) {
           <p className="muted">Data zatím nejsou k dispozici.</p>
         )}
       </div>
+
+      {tooltip ? (
+        <div className="dashboard-smart-tooltip" style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }} role="status" aria-live="polite">
+          <div className="dashboard-smart-tooltip-head">
+            <span className="dashboard-smart-tooltip-dot" aria-hidden="true" />
+            <strong>{tooltip.label}</strong>
+          </div>
+          <div className="dashboard-smart-tooltip-value">{tooltip.value} vozidel</div>
+          <div className="dashboard-smart-tooltip-meta">Kategorie v aktuálním přehledu</div>
+        </div>
+      ) : null}
     </article>
   );
 }
 
-function PieChartCard({ title, subtitle, rows }) {
+function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentSelect }) {
+  const cardRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
   const positiveRows = rows.filter((row) => row.value > 0);
   const total = positiveRows.reduce((sum, row) => sum + row.value, 0);
 
@@ -113,11 +401,60 @@ function PieChartCard({ title, subtitle, rows }) {
       path: describeDonutSlice(50, 50, 46, 21, startAngle, endAngle),
       labelX: labelPoint.x,
       labelY: labelPoint.y,
+      percentage: total > 0 ? Math.round((segment.value / total) * 1000) / 10 : 0,
     };
   });
 
+  function handleSegmentEnter(event, segment) {
+    const rect = cardRef.current?.getBoundingClientRect();
+    if (!rect) {
+      return;
+    }
+
+    const x = Math.max(12, Math.min(event.clientX - rect.left + 16, rect.width - 280));
+    const y = Math.max(10, event.clientY - rect.top - 18);
+
+    setTooltip({
+      x,
+      y,
+      color: segment.color,
+      label: segment.displayLabel,
+      shortLabel: segment.label,
+      value: segment.value,
+      percentage: segment.percentage,
+    });
+  }
+
+  function handleSegmentMove(event) {
+    if (!tooltip || !cardRef.current) {
+      return;
+    }
+
+    const rect = cardRef.current.getBoundingClientRect();
+    const x = Math.max(12, Math.min(event.clientX - rect.left + 16, rect.width - 280));
+    const y = Math.max(10, event.clientY - rect.top - 18);
+
+    setTooltip((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        x,
+        y,
+      };
+    });
+  }
+
+  function handleSegmentLeave() {
+    setTooltip(null);
+  }
+
+  const isInteractive = typeof onSegmentSelect === 'function';
+
   return (
-    <article className="info-card dashboard-chart-card">
+    <article className="info-card dashboard-chart-card" ref={cardRef} onMouseLeave={handleSegmentLeave}>
       <h3>{title}</h3>
       <p className="muted">{subtitle}</p>
 
@@ -127,9 +464,17 @@ function PieChartCard({ title, subtitle, rows }) {
             {svgSlices.length > 0 ? (
               svgSlices.map((segment) => (
                 <g key={segment.label}>
-                  <path className="dashboard-pie-slice" d={segment.path} fill={segment.color} stroke="var(--surface)" strokeWidth="1.2">
-                    <title>{`${segment.displayLabel}: ${segment.value} vozidel`}</title>
-                  </path>
+                  <path
+                    className="dashboard-pie-slice"
+                    d={segment.path}
+                    fill={segment.color}
+                    stroke="var(--surface)"
+                    strokeWidth="1.2"
+                    onMouseEnter={(event) => handleSegmentEnter(event, segment)}
+                    onMouseMove={handleSegmentMove}
+                    onClick={isInteractive ? () => onSegmentSelect(segment) : undefined}
+                    style={isInteractive ? { cursor: 'pointer' } : undefined}
+                  />
                   <text className="dashboard-pie-slice-label" x={segment.labelX} y={segment.labelY} textAnchor="middle" dominantBaseline="middle">
                     {segment.value}
                   </text>
@@ -146,12 +491,20 @@ function PieChartCard({ title, subtitle, rows }) {
         <div className="dashboard-pie-legend">
           {segments.length > 0 ? (
             segments.map((segment) => (
-              <div className="dashboard-pie-legend-row" key={segment.label} title={`${segment.displayLabel}: ${segment.value} vozidel`}>
+              <div
+                className={`dashboard-pie-legend-row${compactLegend ? ' dashboard-pie-legend-row-compact' : ''}`}
+                key={segment.label}
+              >
                 <span className="dashboard-pie-dot" style={{ background: segment.color }} aria-hidden="true" />
-                <span className="dashboard-pie-label" title={`${segment.displayLabel}: ${segment.value} vozidel`}>
-                  <span className="dashboard-pie-label-short">{segment.label}</span>
-                  <span className="dashboard-pie-label-full">{segment.displayLabel}</span>
+                <span className="dashboard-pie-label">
+                  <span className="dashboard-pie-label-short">{compactLegend ? `${segment.label} (${segment.value})` : segment.label}</span>
+                  {!compactLegend ? <span className="dashboard-pie-label-full">{segment.displayLabel}</span> : null}
                 </span>
+                {!compactLegend ? (
+                  <span className="dashboard-pie-legend-count" aria-label={`Počet vozidel: ${segment.value}`}>
+                    {segment.value}
+                  </span>
+                ) : null}
               </div>
             ))
           ) : (
@@ -159,11 +512,62 @@ function PieChartCard({ title, subtitle, rows }) {
           )}
         </div>
       </div>
+
+      {tooltip ? (
+        <div
+          className="dashboard-smart-tooltip"
+          style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px`, borderColor: tooltip.color }}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="dashboard-smart-tooltip-head">
+            <span className="dashboard-smart-tooltip-dot" style={{ background: tooltip.color }} aria-hidden="true" />
+            <strong>{tooltip.label}</strong>
+            <span>{tooltip.shortLabel}</span>
+          </div>
+          <div className="dashboard-smart-tooltip-value">{tooltip.value} vozidel</div>
+          <div className="dashboard-smart-tooltip-meta">Podíl: {tooltip.percentage} %</div>
+        </div>
+      ) : null}
     </article>
   );
 }
 
-function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatusChange, loading, refreshing, onRefresh }) {
+function DashboardSyncGate({ syncSeconds }) {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div className="dashboard-sync-gate" role="status" aria-live="polite" aria-busy="true">
+      <div className="dashboard-sync-gate-card">
+        <div className="dashboard-sync-gate-head">
+          <span className="dashboard-sync-spinner" aria-hidden="true" />
+          <div>
+            <p className="dashboard-sync-gate-eyebrow">Rychlá synchronizace</p>
+            <h3>Načítám aktuální vozidla</h3>
+          </div>
+        </div>
+
+        <p className="dashboard-sync-gate-text">
+          Probíhá rychlá aktualizace seznamu vozidel. Statistiky 3/5 měsíců se nyní nepřepočítávají.
+        </p>
+
+        <div className="dashboard-sync-gate-meta">
+          <span className="dashboard-sync-runtime-label">Doba běhu</span>
+          <strong className="dashboard-sync-runtime-value">{syncSeconds} s</strong>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
+function FleetForecastCard({ data, months, selectedTypes, typeOptions, onMonthsChange, onTypeToggle, onTypeClear, loading, refreshing, onRefresh, onSegmentSelect }) {
+  const stageRef = useRef(null);
+  const typeFilterRef = useRef(null);
+  const [tooltip, setTooltip] = useState(null);
+  const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
   const chart = Array.isArray(data?.chart) ? data.chart : [];
   const labels = chart.map((item) => item.label);
   const maxTotal = chart.reduce((acc, item) => Math.max(acc, Number(item?.total || 0)), 0);
@@ -171,13 +575,100 @@ function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatu
   const updatedAt = data?.updatedAt || null;
   const updatedAgeDays = Number.isFinite(Number(data?.updatedAgeDays)) ? Number(data?.updatedAgeDays) : null;
   const isStale = Boolean(data?.isDataOlderThanMonth);
+  const usedFallback = Boolean(data?.usedFallback);
+  const fallbackMessage = String(data?.fallbackMessage || '').trim();
   const hasAnyData = summary.withData > 0 && chart.length > 0;
   const showLoadingGate = loading || refreshing;
 
-  function getSegmentCount(item, monthIndex) {
+  useEffect(() => {
+    if (!isTypeFilterOpen) {
+      return undefined;
+    }
+
+    function handleOutsidePointerDown(event) {
+      if (!typeFilterRef.current) {
+        return;
+      }
+
+      if (!typeFilterRef.current.contains(event.target)) {
+        setIsTypeFilterOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsidePointerDown);
+    document.addEventListener('touchstart', handleOutsidePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePointerDown);
+      document.removeEventListener('touchstart', handleOutsidePointerDown);
+    };
+  }, [isTypeFilterOpen]);
+
+  function getSegment(item, monthIndex) {
     const segments = Array.isArray(item?.segments) ? item.segments : [];
-    const found = segments.find((segment) => Number(segment?.monthIndex) === monthIndex);
-    return Number(found?.count || 0);
+    return segments.find((segment) => Number(segment?.monthIndex) === monthIndex) || null;
+  }
+
+  function formatKm(value) {
+    const km = Number(value);
+    if (!Number.isFinite(km) || km < 0) {
+      return '--- km';
+    }
+    return `${Math.round(km).toLocaleString('cs-CZ')} km`;
+  }
+
+  function formatAvgKmPerMonth(value) {
+    const avg = Number(value);
+    if (!Number.isFinite(avg) || avg <= 0) {
+      return 'Ø --- km/měs.';
+    }
+    return `Ø ${Math.round(avg).toLocaleString('cs-CZ')} km/měs.`;
+  }
+
+  function getSegmentCount(item, monthIndex) {
+    const segment = getSegment(item, monthIndex);
+    return Number(segment?.count || 0);
+  }
+
+  function handleSegmentEnter(event, payload) {
+    const stageRect = stageRef.current?.getBoundingClientRect();
+    if (!stageRect) {
+      return;
+    }
+
+    const x = Math.max(12, Math.min(event.clientX - stageRect.left + 16, stageRect.width - 320));
+    const y = Math.max(10, event.clientY - stageRect.top - 24);
+
+    setTooltip({
+      ...payload,
+      x,
+      y,
+    });
+  }
+
+  function handleSegmentMove(event) {
+    if (!tooltip || !stageRef.current) {
+      return;
+    }
+
+    const stageRect = stageRef.current.getBoundingClientRect();
+    const x = Math.max(12, Math.min(event.clientX - stageRect.left + 16, stageRect.width - 320));
+    const y = Math.max(10, event.clientY - stageRect.top - 24);
+
+    setTooltip((prev) => {
+      if (!prev) {
+        return prev;
+      }
+      return {
+        ...prev,
+        x,
+        y,
+      };
+    });
+  }
+
+  function handleSegmentLeave() {
+    setTooltip(null);
   }
 
   function buildSegmentHeights(total, counts) {
@@ -207,6 +698,37 @@ function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatu
       <div className="dashboard-forecast-head">
         <h3>Statistika vozidel do 250 000 km</h3>
         <div className="dashboard-forecast-controls">
+          <details
+            className="overview-multifilter dashboard-forecast-type-filter"
+            ref={typeFilterRef}
+            open={isTypeFilterOpen}
+            onToggle={(event) => setIsTypeFilterOpen(event.currentTarget.open)}
+          >
+            <summary>Typ: {selectedLabel(selectedTypes, 'vše')}</summary>
+            <div className="overview-multifilter-menu">
+              <label className="overview-multifilter-option">
+                <input
+                  type="checkbox"
+                  checked={selectedTypes.length === 0}
+                  onChange={onTypeClear}
+                  disabled={loading || refreshing}
+                />
+                <span>Všechny typy</span>
+              </label>
+
+              {typeOptions.map((value) => (
+                <label key={`forecast-type-${value}`} className="overview-multifilter-option">
+                  <input
+                    type="checkbox"
+                    checked={selectedTypes.includes(value)}
+                    onChange={() => onTypeToggle(value)}
+                    disabled={loading || refreshing}
+                  />
+                  <span>{value}</span>
+                </label>
+              ))}
+            </div>
+          </details>
           <label>
             Průměr:
             <select value={months} onChange={(event) => onMonthsChange(Number(event.target.value))} disabled={loading}>
@@ -214,22 +736,13 @@ function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatu
               <option value={5}>5 měsíců</option>
             </select>
           </label>
-          <label>
-            Stav:
-            <select value={statusFilter} onChange={(event) => onStatusChange(event.target.value)} disabled={loading}>
-              <option value="aktivni">Jen aktivní</option>
-              <option value="all">Všechna vozidla</option>
-              <option value="vyrazene">Jen vyřazená</option>
-              <option value="neaktivni">Jen neaktivní</option>
-            </select>
-          </label>
           <button
             type="button"
             className="icon-action-btn icon-action-btn-primary dashboard-forecast-refresh-btn"
             onClick={onRefresh}
             disabled={loading || refreshing}
-            title={refreshing ? 'Aktualizace dat z WebDispečinku probíhá' : 'Načíst data z WebDispečinku pro zvolený průměr'}
-            aria-label={refreshing ? 'Aktualizace dat z WebDispečinku probíhá' : 'Načíst data z WebDispečinku pro zvolený průměr'}
+            title={refreshing ? 'Aktualizace dat probíhá' : 'Načíst data pro zvolený průměr'}
+            aria-label={refreshing ? 'Aktualizace dat probíhá' : 'Načíst data pro zvolený průměr'}
           >
             <AppIcon name="sync" size={18} weight="duotone" />
           </button>
@@ -243,8 +756,11 @@ function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatu
       {isStale && updatedAgeDays !== null ? (
         <p className="dashboard-forecast-warning">Data jsou {updatedAgeDays} dní stará. Pro přesnost je potřeba provést aktualizaci.</p>
       ) : null}
+      {usedFallback && fallbackMessage !== '' ? (
+        <p className="dashboard-forecast-warning">{fallbackMessage}</p>
+      ) : null}
 
-      <div className="dashboard-forecast-stage">
+      <div className="dashboard-forecast-stage" ref={stageRef} onMouseLeave={handleSegmentLeave}>
         {hasAnyData ? (
           <div className="dashboard-forecast-chart" role="img" aria-label="Predikce dosažení 250 000 km">
             <div className="dashboard-forecast-grid">
@@ -257,28 +773,60 @@ function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatu
                 return (
                   <div className="dashboard-forecast-column" key={label}>
                     <div className="dashboard-forecast-total">{total}</div>
-                    <div className="dashboard-forecast-stack" style={{ height: `${heightPercent}%` }}>
-                      {Array.from({ length: 12 }).map((_, monthIndex) => {
-                        const count = monthCounts[monthIndex];
-                        if (count <= 0) {
-                          return null;
-                        }
+                    <div className="dashboard-forecast-stack-wrap" style={{ height: '290px' }}>
+                      <div className="dashboard-forecast-stack" style={{ height: `${heightPercent}%` }}>
+                        {Array.from({ length: 12 }).map((_, monthIndex) => {
+                          const count = monthCounts[monthIndex];
+                          const segment = getSegment(chart[index], monthIndex);
+                          if (count <= 0) {
+                            return null;
+                          }
 
-                        const segmentPercent = segmentHeights[monthIndex];
-                        return (
-                          <div
-                            key={`${label}-${monthIndex}`}
-                            className="dashboard-forecast-segment"
-                            style={{
-                              flex: `${segmentPercent} 0 0`,
-                              background: FORECAST_MONTH_COLORS[monthIndex % FORECAST_MONTH_COLORS.length],
-                            }}
-                            title={`${monthIndex + 1}. měsíc: ${count} vozidel`}
-                          >
-                            {count}
-                          </div>
-                        );
-                      })}
+                          const segmentPercent = segmentHeights[monthIndex];
+                          const cars = Array.isArray(segment?.cars) ? segment.cars : [];
+                          const monthName = MONTH_NAMES[monthIndex] || `${monthIndex + 1}. měsíc`;
+                          const color = FORECAST_MONTH_COLORS[monthIndex % FORECAST_MONTH_COLORS.length];
+                          return (
+                            <div
+                              key={`${label}-${monthIndex}`}
+                              className="dashboard-forecast-segment"
+                              style={{
+                                flex: `${segmentPercent} 0 0`,
+                                background: color,
+                              }}
+                              role="button"
+                              tabIndex={0}
+                              onMouseEnter={(event) =>
+                                handleSegmentEnter(event, {
+                                  color,
+                                  halfYearLabel: label,
+                                  monthName,
+                                  count,
+                                  cars,
+                                })
+                              }
+                              onMouseMove={handleSegmentMove}
+                              onClick={() => {
+                                const carIds = cars.map((car) => Number(car?.carid || 0)).filter((id) => Number.isFinite(id) && id > 0);
+                                if (carIds.length > 0 && typeof onSegmentSelect === 'function') {
+                                  onSegmentSelect(carIds);
+                                }
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  const carIds = cars.map((car) => Number(car?.carid || 0)).filter((id) => Number.isFinite(id) && id > 0);
+                                  if (carIds.length > 0 && typeof onSegmentSelect === 'function') {
+                                    onSegmentSelect(carIds);
+                                  }
+                                }
+                              }}
+                            >
+                              {count}
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="dashboard-forecast-label">{label}</div>
                   </div>
@@ -287,13 +835,51 @@ function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatu
             </div>
           </div>
         ) : (
-          !showLoadingGate && <p className="dashboard-forecast-empty">Nejsou k dispozici žádná data. Použijte ikonu synchronizace.</p>
+          !showLoadingGate && (
+            <div className="dashboard-forecast-empty" role="status" aria-live="polite">
+              <span className="dashboard-forecast-empty-icon" aria-hidden="true">
+                <AppIcon name="vehicles" size={24} weight="duotone" />
+              </span>
+              <strong>Pro predikci zatím nejsou dostupná data</strong>
+              <span>Pro načtení použijte ikonu synchronizace vpravo nahoře.</span>
+            </div>
+          )
         )}
 
         {showLoadingGate ? (
           <div className="dashboard-forecast-loading-gate" role="status" aria-live="polite">
             <span className="dashboard-forecast-loading-spinner" aria-hidden="true" />
-            <span>{refreshing ? 'Probíhá načítání dat z WebDispečinku…' : 'Načítám predikci nájezdů…'}</span>
+            <span>{refreshing ? 'Probíhá načítání dat…' : 'Načítám predikci nájezdů…'}</span>
+          </div>
+        ) : null}
+
+        {tooltip ? (
+          <div
+            className="dashboard-forecast-tooltip"
+            style={{
+              left: `${tooltip.x}px`,
+              top: `${tooltip.y}px`,
+              borderColor: tooltip.color,
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            <div className="dashboard-forecast-tooltip-head">
+              <span className="dashboard-forecast-tooltip-dot" style={{ background: tooltip.color }} aria-hidden="true" />
+              <strong>{tooltip.monthName}</strong>
+              <span>{tooltip.halfYearLabel}</span>
+            </div>
+            <div className="dashboard-forecast-tooltip-count">{tooltip.count} vozidel</div>
+            <div className="dashboard-forecast-tooltip-list">
+              {tooltip.cars.slice(0, 8).map((car) => (
+                <div key={`${car.spz}-${car.carid}`} className="dashboard-forecast-tooltip-row">
+                  <span className="dashboard-forecast-tooltip-spz">{car.spz || '---'}</span>
+                  <span className="dashboard-forecast-tooltip-type">{car.typ || 'Bez typu'} • {formatKm(car.stavKm)} • {formatAvgKmPerMonth(car.prumerZaMesic)}</span>
+                  <span className="dashboard-forecast-tooltip-meta">{Number(car.mesicuDo250k || 0)} m</span>
+                </div>
+              ))}
+              {tooltip.cars.length > 8 ? <div className="dashboard-forecast-tooltip-more">+{tooltip.cars.length - 8} dalších</div> : null}
+            </div>
           </div>
         ) : null}
       </div>
@@ -302,15 +888,131 @@ function FleetForecastCard({ data, months, statusFilter, onMonthsChange, onStatu
 }
 
 export default function DashboardPage() {
+  const navigate = useNavigate();
   const [metrics, setMetrics] = useState(null);
-  const [forecast, setForecast] = useState(null);
-  const [forecastMonths, setForecastMonths] = useState(3);
-  const [forecastStatus, setForecastStatus] = useState('aktivni');
+  const [forecastRaw, setForecastRaw] = useState(null);
+  const [forecastMonths, setForecastMonths] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 3;
+    }
+
+    try {
+      const raw = localStorage.getItem(DASHBOARD_SETTINGS_KEY);
+      if (!raw) {
+        return 3;
+      }
+
+      const parsed = JSON.parse(raw);
+      const months = Number(parsed?.forecastMonths);
+      return months === 5 ? 5 : 3;
+    } catch {
+      return 3;
+    }
+  });
+  const [forecastStatus, setForecastStatus] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'aktivni';
+    }
+
+    try {
+      const raw = localStorage.getItem(DASHBOARD_SETTINGS_KEY);
+      if (!raw) {
+        return 'aktivni';
+      }
+
+      const parsed = JSON.parse(raw);
+      const status = String(parsed?.forecastStatus || 'aktivni').toLowerCase();
+      return ['all', 'aktivni', 'vyrazene', 'neaktivni'].includes(status) ? status : 'aktivni';
+    } catch {
+      return 'aktivni';
+    }
+  });
+  const [forecastTypes, setForecastTypes] = useState(() => {
+    if (typeof window === 'undefined') {
+      return [];
+    }
+
+    try {
+      const raw = localStorage.getItem(DASHBOARD_SETTINGS_KEY);
+      if (!raw) {
+        return [];
+      }
+
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.forecastTypes)) {
+        return Array.from(new Set(parsed.forecastTypes.map((value) => String(value || '').trim()).filter((value) => value !== '')));
+      }
+
+      const legacyType = String(parsed?.forecastType || '').trim();
+      return legacyType ? [legacyType] : [];
+    } catch {
+      return [];
+    }
+  });
   const [forecastLoading, setForecastLoading] = useState(false);
   const [forecastRefreshing, setForecastRefreshing] = useState(false);
+  const [dashboardSyncing, setDashboardSyncing] = useState(false);
+  const [dashboardSyncSeconds, setDashboardSyncSeconds] = useState(0);
+  const [dashboardSyncMessage, setDashboardSyncMessage] = useState('');
 
   useEffect(() => {
-    fetchDashboardMetrics()
+    if (!dashboardSyncing) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setDashboardSyncSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [dashboardSyncing]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(
+      DASHBOARD_SETTINGS_KEY,
+      JSON.stringify({
+        forecastMonths,
+        forecastStatus,
+        forecastTypes,
+      })
+    );
+  }, [forecastMonths, forecastStatus, forecastTypes]);
+
+  const forecastTypeOptions = useMemo(() => extractForecastTypeOptions(forecastRaw), [forecastRaw]);
+
+  useEffect(() => {
+    setForecastTypes((prev) => prev.filter((value) => forecastTypeOptions.includes(value)));
+  }, [forecastTypeOptions]);
+
+  const forecast = useMemo(() => filterForecastByTypes(forecastRaw, forecastTypes), [forecastRaw, forecastTypes]);
+
+  function toggleForecastType(typeValue) {
+    const normalized = String(typeValue || '').trim();
+    if (!normalized) {
+      return;
+    }
+
+    setForecastTypes((prev) => {
+      const set = new Set(prev);
+      if (set.has(normalized)) {
+        set.delete(normalized);
+      } else {
+        set.add(normalized);
+      }
+      return Array.from(set);
+    });
+  }
+
+  function clearForecastTypes() {
+    setForecastTypes([]);
+  }
+
+  useEffect(() => {
+    fetchDashboardMetrics({ status: forecastStatus })
       .then((metricsResponse) => {
         setMetrics(metricsResponse?.data || null);
       })
@@ -330,16 +1032,16 @@ export default function DashboardPage() {
           mileageDistribution: [],
         });
       });
-  }, []);
+  }, [forecastStatus]);
 
   useEffect(() => {
     setForecastLoading(true);
     fetchFleetForecast({ months: forecastMonths, status: forecastStatus })
       .then((response) => {
-        setForecast(response?.data || null);
+        setForecastRaw(response?.data || null);
       })
       .catch(() => {
-        setForecast(null);
+        setForecastRaw(null);
       })
       .finally(() => {
         setForecastLoading(false);
@@ -351,12 +1053,113 @@ export default function DashboardPage() {
     try {
       await refreshFleetForecast(forecastMonths);
       const response = await fetchFleetForecast({ months: forecastMonths, status: forecastStatus });
-      setForecast(response?.data || null);
+      setForecastRaw(response?.data || null);
     } catch {
       // keep existing chart state, empty message will remain visible if no data
     } finally {
       setForecastRefreshing(false);
     }
+  }
+
+  async function handleDashboardSync() {
+    setDashboardSyncMessage('');
+    setDashboardSyncSeconds(0);
+    setDashboardSyncing(true);
+
+    try {
+      const syncResponse = await triggerQuickSync();
+      setDashboardSyncMessage(syncResponse?.data?.message || 'Aktualizace dat byla spuštěna.');
+
+      const [metricsResponse, forecastResponse] = await Promise.all([
+        fetchDashboardMetrics({ status: forecastStatus }),
+        fetchFleetForecast({ months: forecastMonths, status: forecastStatus }),
+      ]);
+
+      setMetrics(metricsResponse?.data || null);
+      setForecastRaw(forecastResponse?.data || null);
+    } catch (err) {
+      const apiMessage = err?.response?.data?.error?.message;
+      setDashboardSyncMessage(apiMessage || 'Aktualizace dat na nástěnce se nepodařila.');
+    } finally {
+      setDashboardSyncing(false);
+    }
+  }
+
+  function navigateToOverview(extraParams = {}) {
+    const params = new URLSearchParams();
+    params.set('status', forecastStatus);
+    params.set('page', '1');
+    params.set('sortBy', 'spz');
+    params.set('sortDir', 'asc');
+    params.set('perPage', '25');
+
+    Object.entries(extraParams).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && String(value).trim() !== '') {
+        params.set(key, String(value));
+      }
+    });
+
+    navigate(`/vehicles?${params.toString()}`);
+  }
+
+  function handleTypeDistributionSelect(row) {
+    const label = normalizeOverviewLabel(row?.label);
+    navigateToOverview({ types: label });
+  }
+
+  function handleGroupDistributionSelect(row) {
+    const label = normalizeOverviewLabel(row?.label);
+    navigateToOverview({ groups: label });
+  }
+
+  function handleFuelDistributionSelect(row) {
+    const rawLabel = String(row?.label || '').trim().toLowerCase();
+
+    const fuelMap = {
+      nafta: ['nafta', 'nm', 'd'],
+      benzin: ['benzin', 'benzin natural', 'b'],
+      'benzín': ['benzin', 'benzin natural', 'b'],
+      alternativni: ['cng', 'lpg', 'hybrid'],
+      'alternativní': ['cng', 'lpg', 'hybrid'],
+      elektro: ['ev', 'elektro'],
+      nezname: ['Nezadáno'],
+      'neznámé': ['Nezadáno'],
+    };
+
+    const values = fuelMap[rawLabel] || [normalizeOverviewLabel(row?.label)];
+    navigateToOverview({ fuels: values.join(',') });
+  }
+
+  function handleMileageDistributionSelect(segment) {
+    const band = String(segment?.label || '').trim().toUpperCase();
+    if (!band) {
+      return;
+    }
+
+    navigateToOverview({ mileageBands: band });
+  }
+
+  function handleForecastSegmentSelect(carIds) {
+    if (!Array.isArray(carIds) || carIds.length === 0) {
+      return;
+    }
+
+    const uniqueIds = Array.from(new Set(carIds.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
+    if (uniqueIds.length === 0) {
+      return;
+    }
+
+    const params = new URLSearchParams();
+    params.set('chartCarids', uniqueIds.join(','));
+    params.set('status', forecastStatus);
+    params.set('page', '1');
+    params.set('sortBy', 'spz');
+    params.set('sortDir', 'asc');
+    params.set('perPage', '25');
+    if (forecastTypes.length > 0) {
+      params.set('types', forecastTypes.join(','));
+    }
+    navigate(`/vehicles?${params.toString()}`);
   }
 
   const summary = metrics?.summary || {
@@ -378,11 +1181,54 @@ export default function DashboardPage() {
   const typeRows = toChartRows(metrics?.typeDistribution);
   const groupRows = toChartRows(metrics?.groupDistribution || metrics?.stationDistribution);
   const mileageRows = toChartRows(metrics?.mileageDistribution);
+  const dashboardUpdatedAtRaw = metrics?.updatedAt || forecast?.updatedAt || null;
+  const dashboardUpdatedAtLabel = formatDateTimeCs(dashboardUpdatedAtRaw);
+  const urgent250kCount = countDueTo250kWithinMonths(forecastRaw, forecastTypes, 2);
+  const urgent250kThisYearCount = countDueTo250kThisYear(forecastRaw, forecastTypes);
 
   return (
     <section>
-      <h2>Operační dashboard vozidel</h2>
-      <p className="muted">Klíčové metriky flotily a grafický přehled nad daty.</p>
+      <div className="dashboard-global-head">
+        <div>
+          <h2>Operační dashboard vozidel</h2>
+          <p className="muted">Klíčové metriky flotily a grafický přehled nad daty.</p>
+        </div>
+        <div className="dashboard-global-actions">
+          <span className={`dashboard-global-alert-pill${urgent250kCount > 0 ? ' is-alert' : ''}`}>
+            250k do 2 měsíců: <strong>{urgent250kCount}</strong>
+            {' | '}letos celkem: <strong>{urgent250kThisYearCount}</strong>
+          </span>
+
+          <span className="dashboard-global-last-update" title={`Poslední aktualizace: ${dashboardUpdatedAtLabel}`}>
+            Poslední aktualizace: <strong>{dashboardUpdatedAtLabel}</strong>
+          </span>
+
+          <label className="dashboard-global-status">
+            Stav:
+            <select value={forecastStatus} onChange={(event) => setForecastStatus(event.target.value)}>
+              <option value="aktivni">Jen aktivní</option>
+              <option value="all">Všechna vozidla</option>
+              <option value="vyrazene">Jen vyřazená</option>
+              <option value="neaktivni">Jen neaktivní</option>
+            </select>
+          </label>
+
+          <button
+            type="button"
+            className="icon-action-btn icon-action-btn-primary dashboard-global-sync-btn"
+            onClick={handleDashboardSync}
+            disabled={dashboardSyncing || forecastRefreshing || forecastLoading}
+            title={dashboardSyncing ? 'Probíhá rychlá aktualizace vozidel' : 'Rychle aktualizovat vozidla'}
+            aria-label={dashboardSyncing ? 'Probíhá rychlá aktualizace vozidel' : 'Rychle aktualizovat vozidla'}
+          >
+            <AppIcon name="sync" size={18} weight="regular" />
+          </button>
+        </div>
+      </div>
+
+      {dashboardSyncing ? <DashboardSyncGate syncSeconds={dashboardSyncSeconds} /> : null}
+
+      {dashboardSyncMessage ? <div className="status-box">{dashboardSyncMessage}</div> : null}
 
       <div className="cards-grid dashboard-stats-grid">
         {tileData.map((tile) => (
@@ -393,26 +1239,60 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="cards-grid">
-        <ChartCard title="Rozložení dle PHM" subtitle="Nafta, benzin a alternativní pohony" rows={fuelRows} />
-        <ChartCard title="Rozložení dle typu" subtitle="Kategorie ZZS typu vozidla" rows={typeRows} />
-        <ChartCard title="Rozložení dle okresních skupin" subtitle="Skupiny z tabulky cars_group ve WebDispečinku" rows={groupRows} />
-      </div>
-
-      <div className="cards-grid">
-        <PieChartCard title="Nájezdy (měsíční pásma)" subtitle="Koláčový přehled měsíčních kilometrů" rows={mileageRows} />
+      <div className="dashboard-distribution-layout">
+        <div className="dashboard-distribution-main">
+          <ChartCard
+            title="Rozložení dle PHM"
+            subtitle="Nafta, benzín a alternativní pohony"
+            rows={fuelRows}
+            onRowSelect={handleFuelDistributionSelect}
+          />
+          <div className="dashboard-pie-pair">
+            <PieChartCard
+              title="Nájezdy (měsíční pásma)"
+              subtitle="Koláčový přehled měsíčních kilometrů"
+              rows={mileageRows}
+              compactLegend
+              onSegmentSelect={handleMileageDistributionSelect}
+            />
+            <PieChartCard
+              title="Rozložení dle typu"
+              subtitle="Koláčový přehled kategorií typu vozidla"
+              rows={typeRows}
+              compactLegend
+              onSegmentSelect={handleTypeDistributionSelect}
+            />
+          </div>
+        </div>
+        <div className="dashboard-distribution-lists">
+          <ChartCard
+            title="Rozložení dle typu"
+            subtitle="Kategorie ZZS typu vozidla"
+            rows={typeRows}
+            onRowSelect={handleTypeDistributionSelect}
+          />
+          <ChartCard
+            title="Rozložení dle skupin"
+            subtitle="Přehled rozložení vozidel podle skupin"
+            rows={groupRows}
+            onRowSelect={handleGroupDistributionSelect}
+          />
+        </div>
       </div>
 
       <div className="cards-grid">
         <FleetForecastCard
           data={forecast}
           months={forecastMonths}
-          statusFilter={forecastStatus}
+          selectedTypes={forecastTypes}
+          typeOptions={forecastTypeOptions}
           onMonthsChange={setForecastMonths}
-          onStatusChange={setForecastStatus}
+          onTypeToggle={toggleForecastType}
+          onTypeClear={clearForecastTypes}
           loading={forecastLoading}
           refreshing={forecastRefreshing}
           onRefresh={handleForecastRefresh}
+          onSegmentSelect={handleForecastSegmentSelect}
         />
       </div>
     </section>

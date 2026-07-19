@@ -8,7 +8,7 @@ import { fetchHealth } from '../services/apiClient';
 const navItems = [
   { to: '/', label: 'Nástěnka', icon: 'dashboard' },
   { to: '/vehicles', label: 'Přehled vozidel', icon: 'vehicles' },
-  { to: '/legacy', label: 'Legacy přehled (deprecated)', icon: 'legacy' },
+  { to: '/map', label: 'Mapa vozidel', icon: 'map' },
 ];
 
 export default function AppShell() {
@@ -32,7 +32,6 @@ export default function AppShell() {
 
   const apiStatus = health?.status || 'nacitam';
   const appVersion = health?.data?.appVersion || '0.75';
-  const database = health?.data?.database || 'vehicles-zzs-dev';
   const environment = health?.data?.environment || 'development';
 
   function formatAppVersion(version, env) {
@@ -40,7 +39,22 @@ export default function AppShell() {
     return normalizedEnv === 'production' ? version : `${version} DEV`;
   }
 
+  function formatServiceStatus(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (normalized === 'ok') {
+      return 'V pořádku';
+    }
+    if (normalized === 'degraded') {
+      return 'Omezený provoz';
+    }
+    if (normalized === 'error' || normalized === 'failed') {
+      return 'Nedostupné';
+    }
+    return 'Načítám';
+  }
+
   const displayVersion = formatAppVersion(appVersion, environment);
+  const serviceStatus = formatServiceStatus(apiStatus);
 
   async function handleLogout() {
     await signOut();
@@ -125,7 +139,7 @@ export default function AppShell() {
 
         <footer className="footer-note">
           <span className="footer-note-line">
-            Verze aplikace: {displayVersion} | Stav API: {apiStatus} | DB: {database}
+            Verze aplikace: {displayVersion} | Stav služby: {serviceStatus}
           </span>
         </footer>
       </div>

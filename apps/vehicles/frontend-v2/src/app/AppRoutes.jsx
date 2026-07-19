@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AppShell from '../layout/AppShell';
 import DashboardPage from '../pages/DashboardPage';
-import LegacyPage from '../pages/LegacyPage';
+import VehicleMapPage from '../pages/VehicleMapPage';
 import LoginPage from '../pages/LoginPage';
 import VehicleDetailPage from '../pages/VehicleDetailPage';
 import VehiclesOverviewPage from '../pages/VehiclesOverviewPage';
@@ -22,7 +22,7 @@ export default function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="vehicles" element={<VehiclesOverviewPage />} />
         <Route path="vehicles/:vehicleId" element={<VehicleDetailPage />} />
-        <Route path="legacy" element={<LegacyPage />} />
+        <Route path="map" element={<VehicleMapPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
