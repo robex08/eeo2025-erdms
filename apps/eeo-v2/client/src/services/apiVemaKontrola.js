@@ -85,11 +85,12 @@ export const KONTROLA_PRIORITA_COLORS = {
  * Načte kontrolu pro konkrétní VEMA záznam
  * @param {string} typZaznamu - 'faktura' | 'firma' | 'smlouva'
  * @param {string} vemaId - VEMA ID (cfak/firma/csml)
+ * @param {string|null} vemaIdSecondary - Sekundární VEMA ID (u faktury firma)
  * @param {string} token
  * @param {string} username
  * @returns {Promise<object|null>} kontrola nebo null pokud neexistuje
  */
-export async function getVemaKontrola(typZaznamu, vemaId, token, username) {
+export async function getVemaKontrola(typZaznamu, vemaId, vemaIdSecondary, token, username) {
   if (!token || !username) throw new Error('Chybí autentizační údaje');
   if (!typZaznamu || !vemaId) throw new Error('Chybí typ_zaznamu nebo vema_id');
 
@@ -98,6 +99,7 @@ export async function getVemaKontrola(typZaznamu, vemaId, token, username) {
     username,
     typ_zaznamu: typZaznamu,
     vema_id: String(vemaId),
+    vema_id_secondary: vemaIdSecondary ? String(vemaIdSecondary) : null,
   });
 
   if (response.data && response.data.status === 'success') {

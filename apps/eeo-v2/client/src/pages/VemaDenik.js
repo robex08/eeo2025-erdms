@@ -95,6 +95,20 @@ const Title = styled.h1`
   gap: 0.75rem;
 `;
 
+const BetaBadge = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+`;
+
 const SubTitle = styled.p`
   color: rgba(255, 255, 255, 0.8);
   margin: 0.5rem 0 0 0;
@@ -192,6 +206,31 @@ const FAKTURY_SUB_SECTIONS = [
   { id: 'vema-bez-eeo', label: 'VEMA doklady bez EEO dokladů' },
   { id: 'eeo-bez-vema', label: 'Faktury EEO bez VEMA dokladů' }
 ];
+
+const VEMA_ACTIVE_TAB_LS_KEY = 'eeo_vs_vema_active_tab';
+const VEMA_FAKTURY_SUBTAB_LS_KEY = 'eeo_vs_vema_faktury_subtab';
+const VEMA_MAIN_TABS = ['faktury', 'smlouvy', 'firmy'];
+
+const getStoredMainTab = () => {
+  if (typeof window === 'undefined') return 'faktury';
+  try {
+    const stored = localStorage.getItem(VEMA_ACTIVE_TAB_LS_KEY);
+    return VEMA_MAIN_TABS.includes(stored) ? stored : 'faktury';
+  } catch (error) {
+    return 'faktury';
+  }
+};
+
+const getStoredFakturySubTab = () => {
+  if (typeof window === 'undefined') return 'tabulka';
+  const allowed = FAKTURY_SUB_SECTIONS.map(section => section.id);
+  try {
+    const stored = localStorage.getItem(VEMA_FAKTURY_SUBTAB_LS_KEY);
+    return allowed.includes(stored) ? stored : 'tabulka';
+  } catch (error) {
+    return 'tabulka';
+  }
+};
 
 // Search
 const SearchContainer = styled.div`
@@ -768,8 +807,8 @@ const VemaDenik = () => {
   const { token, username, userDetail } = useContext(AuthContext);
 
   // State
-  const [activeTab, setActiveTab] = useState('faktury'); // 'firmy' | 'faktury' | 'smlouvy'
-  const [fakturySubTab, setFakturySubTab] = useState('tabulka');
+  const [activeTab, setActiveTab] = useState(getStoredMainTab); // 'firmy' | 'faktury' | 'smlouvy'
+  const [fakturySubTab, setFakturySubTab] = useState(getStoredFakturySubTab);
   const [loading, setLoading] = useState(true); // Initial load = true
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
@@ -832,6 +871,24 @@ const VemaDenik = () => {
 
     return () => clearTimeout(timer);
   }, [searchInput]);
+
+  // Perzistence aktivního ouška
+  useEffect(() => {
+    try {
+      localStorage.setItem(VEMA_ACTIVE_TAB_LS_KEY, activeTab);
+    } catch (error) {
+      // localStorage může být nedostupný (privacy mode, SSR), ignorujeme
+    }
+  }, [activeTab]);
+
+  // Perzistence aktivního pod-ouška faktur
+  useEffect(() => {
+    try {
+      localStorage.setItem(VEMA_FAKTURY_SUBTAB_LS_KEY, fakturySubTab);
+    } catch (error) {
+      // localStorage může být nedostupný (privacy mode, SSR), ignorujeme
+    }
+  }, [fakturySubTab]);
 
   // Load LP seznam pro parsing financování
   useEffect(() => {
@@ -2812,7 +2869,8 @@ const VemaDenik = () => {
           <div>
             <Title>
               <FontAwesomeIcon icon={faFileContract} />
-              Deník VEMA
+              EEO vs Vema
+              <BetaBadge>BETA</BetaBadge>
             </Title>
             <SubTitle>Importovaná data z VEMA systému</SubTitle>
           </div>

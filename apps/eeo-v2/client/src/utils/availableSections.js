@@ -92,7 +92,7 @@ export const getAvailableSections = (hasPermission, userDetail) => {
   // EEO vs VEMA - stejné podmínky jako route guard
   if (moduleSettings.module_contacts_visible &&
       (isAdmin || (hasPermission && hasPermission('VEMA_VIEW')))) {
-    sections.push({ value: 'vema-denik', label: 'EEO vs VEMA (BETA)' });
+    sections.push({ value: 'vema-denik', label: 'EEO vs Vema (BETA)' });
   }
   
   // ČÍSELNÍKY - stejné podmínky jako route guard v App.js
