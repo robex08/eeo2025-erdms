@@ -129,7 +129,7 @@ final class WebDispecinkClientV2
                 'w_pt' => isset($item->pt) ? (string) $item->pt : '',
                 'w_lp' => isset($item->lp) ? (string) $item->lp : '',
                 'w_km' => isset($item->Km) ? (float) $item->Km : null,
-                'w_ln' => isset($item->LN) ? (float) $item->LN : null,
+                'w_ln' => isset($item->LN) ? (string) $item->LN : null,
                 'w_zs' => isset($item->Zs) ? (string) $item->Zs : null,
                 'w_zd' => isset($item->Zd) ? (string) $item->Zd : null,
             ];

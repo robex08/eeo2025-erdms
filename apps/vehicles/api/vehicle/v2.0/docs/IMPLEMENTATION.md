@@ -37,8 +37,12 @@
 5. Apply db/007_add_webdispecink_columns.sql
 6. Apply db/008_align_webdispecink_columns_to_w_prefix.sql
 7. Apply db/009_add_zzs_typ_to_vehicle_detail_cards.sql
-8. Seed admin users using db/002_seed_local_admins.sql
-9. Trigger POST /sync/vehicles for direct sync from WebDispecink into vehicles_cars_list_v2
+8. Apply db/016_optimize_overview_status_spz_index.sql
+9. Apply db/017_create_station_addresses_v2.sql
+10. Apply db/018_add_wln_match_to_station_addresses_v2.sql
+11. Apply db/019_add_typ_to_station_addresses_v2.sql
+12. Seed admin users using db/002_seed_local_admins.sql
+13. Trigger POST /sync/vehicles for direct sync from WebDispecink into vehicles_cars_list_v2
 
 Poznámka:
 - Pole `status` ve `vehicles_cars_list_v2` se ukládá jako raw hodnota ze sync logiky bez další byznys interpretace ve v2 UI.

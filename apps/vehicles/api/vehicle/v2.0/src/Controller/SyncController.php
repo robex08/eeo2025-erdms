@@ -24,6 +24,20 @@ final class SyncController
         }
     }
 
+    public function triggerVehiclesQuickSync(): void
+    {
+        try {
+            $result = $this->vehicles->runCarsListMigrationSync(false);
+            Response::success([
+                'message' => $result['message'],
+                'jobId' => $result['jobId'],
+                'affectedRows' => $result['affectedRows'],
+            ], 202);
+        } catch (Throwable $e) {
+            Response::error('Rychlá synchronizace selhala: ' . $e->getMessage(), 500);
+        }
+    }
+
     public function getSyncProgress(Request $request): void
     {
         $jobId = (int) ($request->query['jobId'] ?? 0);

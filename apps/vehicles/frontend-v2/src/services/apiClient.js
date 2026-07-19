@@ -8,6 +8,23 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
+const FULL_SYNC_TIMEOUT_MS = 240000;
+const QUICK_SYNC_TIMEOUT_MS = 120000;
+
+function resolveLegacyGetUrl() {
+  const explicit = String(import.meta.env.VITE_API_LEGACY_GET_URL || '').trim();
+  if (explicit !== '') {
+    return explicit;
+  }
+
+  const fromV2Base = String(baseURL || '').replace(/\/?v2\.0\/?$/, '/api.php');
+  if (fromV2Base !== String(baseURL || '')) {
+    return fromV2Base;
+  }
+
+  return null;
+}
+
 export async function fetchHealth() {
   const response = await apiClient.get('/health');
   return response.data;
@@ -45,6 +62,55 @@ export async function fetchVehicles(params = {}) {
   return response.data;
 }
 
+export async function fetchVehicleServiceHistory(spz) {
+  const cleanSpz = String(spz || '').trim();
+  if (cleanSpz === '') {
+    return { status: 'success', orders: [] };
+  }
+
+  const legacyGetUrl = resolveLegacyGetUrl();
+  if (!legacyGetUrl) {
+    throw new Error('Není nastaven endpoint pro servisní historii.');
+  }
+
+  const query = new URLSearchParams({ action: 'dbServiceHistory', spz: cleanSpz }).toString();
+  const response = await axios.get(`${legacyGetUrl}?${query}`, {
+    timeout: 30000,
+    withCredentials: true,
+  });
+  return response.data;
+}
+
+export async function fetchStationAddresses() {
+  const response = await apiClient.get('/stations/addresses');
+  return response.data;
+}
+
+export async function fetchWebdispecinkLocations() {
+  const response = await apiClient.get('/stations/webdispecink-locations');
+  return response.data;
+}
+
+export async function fetchVsStationsMap() {
+  const response = await apiClient.get('/stations/map-vs');
+  return response.data;
+}
+
+export async function upsertStationAddressFromWebdispecink(payload) {
+  const response = await apiClient.post('/stations/addresses/from-webdispecink', payload);
+  return response.data;
+}
+
+export async function updateStationAddress(payload) {
+  const response = await apiClient.post('/stations/addresses/update', payload);
+  return response.data;
+}
+
+export async function deleteStationAddress(payload) {
+  const response = await apiClient.post('/stations/addresses/delete', payload);
+  return response.data;
+}
+
 export async function fetchVehicleDetail(vehicleId) {
   const response = await apiClient.get('/vehicles/detail', {
     params: { vehicleId },
@@ -58,12 +124,12 @@ export async function saveVehicleDetail(payload) {
 }
 
 export async function triggerSync() {
-  const response = await apiClient.post('/sync/vehicles');
+  const response = await apiClient.post('/sync/vehicles', {}, { timeout: FULL_SYNC_TIMEOUT_MS });
   return response.data;
 }
 
 export async function triggerQuickSync() {
-  const response = await apiClient.post('/sync/vehicles/quick');
+  const response = await apiClient.post('/sync/vehicles/quick', {}, { timeout: QUICK_SYNC_TIMEOUT_MS });
   return response.data;
 }
 

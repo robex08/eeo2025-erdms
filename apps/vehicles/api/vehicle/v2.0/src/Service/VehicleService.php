@@ -16,13 +16,55 @@ final class VehicleService
         string $sortBy = 'spz',
         string $sortDir = 'asc',
         int $page = 1,
-        int $perPage = 50
+        int $perPage = 50,
+        array $chartCarIds = [],
+        string $statusFilter = 'all',
+        array $types = [],
+        array $callSigns = [],
+        array $groups = [],
+        array $stations = [],
+        array $models = [],
+        array $manufacturers = [],
+        array $fuels = [],
+        array $years = [],
+        array $mileageBands = [],
+        bool $includeFilterOptions = true
     ): array
     {
-        return $this->vehicles->listVehicles($query, $sortBy, $sortDir, $page, $perPage);
+        return $this->vehicles->listVehicles($query, $sortBy, $sortDir, $page, $perPage, $chartCarIds, $statusFilter, $types, $callSigns, $groups, $stations, $models, $manufacturers, $fuels, $years, $mileageBands, $includeFilterOptions);
     }
 
-    public function runCarsListMigrationSync(): array
+    public function listStationAddresses(): array
+    {
+        return $this->vehicles->listStationAddresses();
+    }
+
+    public function listWebdispecinkLocations(): array
+    {
+        return $this->vehicles->listWebdispecinkLocations();
+    }
+
+    public function listVsStationsForMap(): array
+    {
+        return $this->vehicles->listVsStationsForMap();
+    }
+
+    public function upsertStationAddressFromWebdispecink(string $wLn, string $typ, string $organizace = 'ZZS SK'): array
+    {
+        return $this->vehicles->upsertStationAddressFromWebdispecink($wLn, $typ, $organizace);
+    }
+
+    public function updateStationAddressById(int $id, array $payload): array
+    {
+        return $this->vehicles->updateStationAddressById($id, $payload);
+    }
+
+    public function deleteStationAddressById(int $id): array
+    {
+        return $this->vehicles->deleteStationAddressById($id);
+    }
+
+    public function runCarsListMigrationSync(bool $includeKmMonthly = true): array
     {
         $jobId = $this->syncJobs->createJob('webdispecink_sync', 'running', 'Synchronizace z WebDispecinku byla spustena');
 
@@ -61,7 +103,7 @@ final class VehicleService
                 error_log('Vehicles v2 positions sync: ' . $e->getMessage());
             }
 
-            $kmMonthlyEnabled = Env::get('VEHICLES_V2_SYNC_KM_MONTHLY', '1') === '1';
+            $kmMonthlyEnabled = $includeKmMonthly && Env::get('VEHICLES_V2_SYNC_KM_MONTHLY', '1') === '1';
             if ($kmMonthlyEnabled) {
                 try {
                     $kmIntervals = $this->parseKmIntervals(Env::get('VEHICLES_V2_SYNC_KM_INTERVALS', '1,3,5'));
@@ -124,17 +166,36 @@ final class VehicleService
         return $this->vehicles->getVehicleDetailById($vehicleId);
     }
 
-    public function getDashboardMetrics(): array
+    public function getDashboardMetrics(string $status = 'all'): array
     {
-        return $this->vehicles->getDashboardMetrics();
+        return $this->vehicles->getDashboardMetrics($status);
     }
 
     public function getFleetMileageForecast(int $months, string $status): array
     {
         $defaultMonths = (int) Env::get('VEHICLES_V2_FLEET_FORECAST_MONTHS_DEFAULT', '3');
         $normalizedMonths = $months > 0 ? $months : $defaultMonths;
+        $primary = $this->vehicles->getFleetMileageForecast($normalizedMonths, $status);
+        $withData = (int) (($primary['summary']['withData'] ?? 0));
 
-        return $this->vehicles->getFleetMileageForecast($normalizedMonths, $status);
+        if ($withData > 0 || $normalizedMonths === $defaultMonths) {
+            $primary['requestedMonths'] = $normalizedMonths;
+            $primary['usedMonths'] = (int) ($primary['months'] ?? $normalizedMonths);
+            $primary['usedFallback'] = false;
+            return $primary;
+        }
+
+        $fallback = $this->vehicles->getFleetMileageForecast($defaultMonths, $status);
+        $fallback['requestedMonths'] = $normalizedMonths;
+        $fallback['usedMonths'] = (int) ($fallback['months'] ?? $defaultMonths);
+        $fallback['usedFallback'] = true;
+        $fallback['fallbackMessage'] = sprintf(
+            'Pro %d měsíce nejsou dostupná data, použit je interval %d měsíce.',
+            $normalizedMonths,
+            (int) ($fallback['months'] ?? $defaultMonths)
+        );
+
+        return $fallback;
     }
 
     public function refreshFleetMileageForecastData(int $months): array
@@ -168,6 +229,7 @@ final class VehicleService
     {
         $normalized = [
             'zzs_typ' => $this->normalizeShortText((string) ($payload['zzs_typ'] ?? '')),
+            'w_popis' => $this->normalizeShortText((string) ($payload['w_popis'] ?? '')),
             'service_notes' => trim((string) ($payload['service_notes'] ?? '')),
             'equipment_json' => $this->normalizeJson((string) ($payload['equipment_json'] ?? '')),
             'technical_notes' => trim((string) ($payload['technical_notes'] ?? '')),

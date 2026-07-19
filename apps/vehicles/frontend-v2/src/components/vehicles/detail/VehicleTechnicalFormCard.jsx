@@ -12,6 +12,15 @@ export default function VehicleTechnicalFormCard({ form, onChange, onSubmit, sav
           placeholder="Např. RLP, RV, SAN"
         />
 
+        <label htmlFor="w_popis">Volací znak</label>
+        <input
+          id="w_popis"
+          name="w_popis"
+          value={form.w_popis}
+          onChange={onChange}
+          placeholder="Např. ZKL 123"
+        />
+
         <label htmlFor="insurance_policy">Pojistka</label>
         <input
           id="insurance_policy"
