@@ -1016,9 +1016,17 @@ export default function DashboardPage() {
           summary: {
             total: 0,
             active: 0,
+            dotace: 0,
             retired: 0,
             inactive: 0,
             unknown: 0,
+          },
+          locationStateSummary: {
+            doma: 0,
+            v_akci: 0,
+            v_servisu: 0,
+            nezname: 0,
+            total: 0,
           },
           fuelDistribution: [],
           typeDistribution: [],
@@ -1168,14 +1176,23 @@ export default function DashboardPage() {
   const summary = metrics?.summary || {
     total: 0,
     active: 0,
+    dotace: 0,
     retired: 0,
     inactive: 0,
     unknown: 0,
+  };
+  const locationStateSummary = metrics?.locationStateSummary || {
+    doma: 0,
+    v_akci: 0,
+    v_servisu: 0,
+    nezname: 0,
+    total: 0,
   };
 
   const tileData = [
     { label: 'Celkem vozidel', value: summary.total, tone: 'neutral' },
     { label: 'Aktivních', value: summary.active, tone: 'active' },
+    { label: 'DOTAČNÍCH', value: summary.dotace, tone: 'dotace' },
     { label: 'Vyřazených', value: summary.retired, tone: 'retired' },
     { label: 'Neaktivních', value: summary.inactive, tone: 'inactive' },
   ];
@@ -1197,6 +1214,10 @@ export default function DashboardPage() {
           <p className="muted">Klíčové metriky flotily a grafický přehled nad daty.</p>
         </div>
         <div className="dashboard-global-actions">
+          <span className="dashboard-global-service-pill">
+            V servisu: <strong>{locationStateSummary.v_servisu}</strong>
+          </span>
+
           <span className={`dashboard-global-alert-pill${urgent250kCount > 0 ? ' is-alert' : ''}`}>
             250k do 2 měsíců: <strong>{urgent250kCount}</strong>
             {' | '}letos celkem: <strong>{urgent250kThisYearCount}</strong>

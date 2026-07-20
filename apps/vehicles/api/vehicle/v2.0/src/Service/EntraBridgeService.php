@@ -65,16 +65,11 @@ final class EntraBridgeService
             $username = $this->pick($entraData, ['onPremisesSamAccountName', 'mailNickname']);
         }
 
-        // Prefer canonical mailbox address (mail), use UPN only as a fallback.
-        $email = $this->pick($authUser, ['mail', 'email']);
+        // Prefer explicit mailbox fields only. Central auth may expose UPN in `email`,
+        // which is not the same thing and must not be persisted as the user's email.
+        $email = $this->pickMailboxAddress($entraData, ['mail', 'otherMails', 'proxyAddresses']);
         if ($email === '') {
-            $email = $this->pick($entraData, ['mail']);
-        }
-        if ($email === '') {
-            $email = $this->pick($authUser, ['upn', 'userPrincipalName']);
-        }
-        if ($email === '') {
-            $email = $this->pick($entraData, ['userPrincipalName']);
+            $email = $this->pickMailboxAddress($authUser, ['mail', 'otherMails', 'proxyAddresses']);
         }
 
         $displayName = $this->pick($authUser, ['display_name', 'displayName', 'name', 'full_name', 'jmeno_prijmeni']);
@@ -223,6 +218,52 @@ final class EntraBridgeService
         }
 
         return '';
+    }
+
+    private function pickMailboxAddress(array $source, array $keys): string
+    {
+        foreach ($keys as $key) {
+            $value = $source[$key] ?? null;
+
+            if (is_string($value)) {
+                $email = $this->normalizeMailboxCandidate($value);
+                if ($email !== '') {
+                    return $email;
+                }
+            }
+
+            if (is_array($value)) {
+                foreach ($value as $item) {
+                    if (!is_string($item)) {
+                        continue;
+                    }
+
+                    $email = $this->normalizeMailboxCandidate($item);
+                    if ($email !== '') {
+                        return $email;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function normalizeMailboxCandidate(string $value): string
+    {
+        $candidate = trim($value);
+        if ($candidate === '') {
+            return '';
+        }
+
+        if (str_contains($candidate, ':')) {
+            [$prefix, $rest] = explode(':', $candidate, 2);
+            if (strcasecmp(trim($prefix), 'smtp') === 0) {
+                $candidate = trim($rest);
+            }
+        }
+
+        return filter_var($candidate, FILTER_VALIDATE_EMAIL) !== false ? $candidate : '';
     }
 
     private function looksLikeUserPayload(array $payload): bool

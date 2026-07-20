@@ -1,6 +1,8 @@
 import { Link } from 'react-router-dom';
 import AppIcon from '../ui/AppIcon';
 
+const MAP_FILTERS_STORAGE_KEY = 'vehicles_v2_map_filters';
+
 function formatDateTimeCs(value) {
   if (!value) return '-';
 
@@ -104,6 +106,28 @@ function getDotaceMeta(rawDotace) {
   return { code, label: `Dotace: ${code}`, tone: 'other' };
 }
 
+function getServiceMeta(locationStateRaw, serviceAddressRaw) {
+  const state = String(locationStateRaw || '').trim().toLowerCase();
+  const serviceAddress = String(serviceAddressRaw || '').trim();
+  const atService = state === 'v_servisu';
+
+  if (atService) {
+    return {
+      code: 'A',
+      tone: 'active',
+      label: serviceAddress
+        ? `V servisu: ${serviceAddress}`
+        : 'V servisu (adresa servisu není dostupná)',
+    };
+  }
+
+  return {
+    code: 'N',
+    tone: 'inactive',
+    label: 'Není v servisu',
+  };
+}
+
 export default function VehiclesTable({ items, sortField, sortDirection, onSortChange }) {
   function normalizeCellValue(rawValue) {
     const normalized = String(rawValue || '').trim();
@@ -148,6 +172,38 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
     );
   }
 
+  function prepareMapFiltersForVehicle(item, searchOverride = '') {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const spz = String(item?.spz || '').trim();
+    const callSign = String(item?.w_popis || '').trim();
+    const nextSearch = String(searchOverride || spz || callSign).trim();
+
+    if (!nextSearch) {
+      return;
+    }
+
+    let parsed = {};
+    try {
+      const raw = localStorage.getItem(MAP_FILTERS_STORAGE_KEY);
+      parsed = raw ? JSON.parse(raw) : {};
+    } catch {
+      parsed = {};
+    }
+
+    localStorage.setItem(
+      MAP_FILTERS_STORAGE_KEY,
+      JSON.stringify({
+        ...parsed,
+        search: nextSearch,
+        showVehicles: true,
+        statusFilter: 'all',
+      })
+    );
+  }
+
   return (
     <div className="table-wrap">
       <table>
@@ -164,6 +220,7 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
             <SortableHeader field="datum_zarazeni" label="Datum zařazení" className="table-col-date" />
             <SortableHeader field="najeto_km" label="Najeté km" className="table-col-km" />
             <SortableHeader field="last_update" label="Poslední aktualizace" className="table-col-last-update" />
+            <th className="table-col-service">Servis</th>
             <SortableHeader field="dotace" label="Dotace" className="table-col-dotace" />
             <SortableHeader field="status" label="Stav" className="table-col-status" />
             <th className="table-col-actions">Akce</th>
@@ -184,6 +241,10 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
             const mileageBand = getMileageBand(item.najeto_km);
             const statusMeta = getStatusMeta(item.status);
             const dotaceMeta = getDotaceMeta(item.dotace);
+              const serviceMeta = getServiceMeta(
+                item.location_state,
+                item.pos_ln || item.w_stanoviste
+              );
             let rowClassName = '';
             if (locationStateRaw === 'v_akci') {
               rowClassName = 'table-row-v-akci';
@@ -218,6 +279,11 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
               <td className="table-cell-last-update">
                 <span className="table-cell-last-update-inner">{formatDateTimeCs(item.last_update)}</span>
               </td>
+              <td className="table-cell-service">
+                <span className="table-status-wrap" title={serviceMeta.label} aria-label={serviceMeta.label}>
+                  <span className={`table-service-chip table-service-chip-${serviceMeta.tone}`}>{serviceMeta.code}</span>
+                </span>
+              </td>
               <td className="table-cell-dotace">
                 <span className="table-status-wrap" title={dotaceMeta.label} aria-label={dotaceMeta.label}>
                   <span className={`table-dotace-chip table-dotace-chip-${dotaceMeta.tone}`}>{dotaceMeta.code}</span>
@@ -238,6 +304,15 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
                       aria-label="Detail vozidla"
                     >
                       <AppIcon name="detail" size={14} weight="duotone" />
+                    </Link>
+                    <Link
+                      className="table-icon-btn"
+                      to="/map"
+                      onClick={() => prepareMapFiltersForVehicle(item)}
+                      title="Zobrazit vozidlo na mapě"
+                      aria-label="Zobrazit vozidlo na mapě"
+                    >
+                      <AppIcon name="mapLocate" size={14} weight="duotone" />
                     </Link>
                     <Link
                       className="table-icon-btn table-icon-btn-primary"

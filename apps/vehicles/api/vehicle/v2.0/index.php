@@ -209,19 +209,19 @@ try {
     }
 
     if ($method === 'POST' && $path === '/sync/vehicles') {
-        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $authService->requireAuthenticated($request);
         $syncController->triggerVehiclesSync();
         exit;
     }
 
     if ($method === 'POST' && $path === '/sync/vehicles/quick') {
-        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $authService->requireAuthenticated($request);
         $syncController->triggerVehiclesQuickSync();
         exit;
     }
 
     if ($method === 'GET' && $path === '/sync/progress') {
-        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $authService->requireAuthenticated($request);
         $syncController->getSyncProgress($request);
         exit;
     }
