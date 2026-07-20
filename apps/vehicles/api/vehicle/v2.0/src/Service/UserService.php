@@ -136,11 +136,16 @@ final class UserService
 
         $displayName = $this->nullableText((string) ($payload['display_name'] ?? ($existing['display_name'] ?? '')), 150);
         $email = $this->nullableText((string) ($payload['email'] ?? ($existing['email'] ?? '')), 190);
+        $phone = $this->nullableText((string) ($payload['phone'] ?? ($existing['phone'] ?? '')), 40);
         if ($email !== null && filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
             throw new RuntimeException('E-mail nemá platný formát.');
         }
 
-        $entraId = $this->nullableText((string) ($payload['entra_id'] ?? ($existing['entra_id'] ?? '')), 128);
+        // Entra ID is system-managed from first Entra login and cannot be edited in admin form.
+        $entraId = $this->nullableText((string) ($existing['entra_id'] ?? ''), 128);
+        if ($isCreate) {
+            $entraId = null;
+        }
         if ($entraId !== null && $this->users->entraIdExists($entraId, (int) ($existing['id'] ?? 0))) {
             throw new RuntimeException('Entra identifikátor už je přiřazen jinému účtu.');
         }
@@ -162,9 +167,13 @@ final class UserService
             ? (int) $this->normalizeBool($payload['must_change_password'] ?? false)
             : (int) ($existing['must_change_password'] ?? 0);
 
+        $previousApprovalStatus = strtolower(trim((string) ($existing['approval_status'] ?? 'approved')));
         $isActive = (int) $this->normalizeBool($payload['is_active'] ?? ($existing['is_active'] ?? true));
         if ($approvalStatus === 'pending') {
             $isActive = 0;
+        } elseif (!$isCreate && $previousApprovalStatus === 'pending' && $approvalStatus === 'approved') {
+            // Approving a previously pending account always unblocks it.
+            $isActive = 1;
         }
 
         $normalized = [
@@ -175,6 +184,7 @@ final class UserService
             'entra_id' => $entraId,
             'display_name' => $displayName,
             'email' => $email,
+            'phone' => $phone,
             'must_change_password' => $mustChangePassword,
             'is_active' => $isActive,
             'has_all_vehicles' => (int) $this->normalizeBool($payload['has_all_vehicles'] ?? ($existing['has_all_vehicles'] ?? true)),
@@ -201,11 +211,14 @@ final class UserService
             'entra_id' => (string) ($row['entra_id'] ?? ''),
             'display_name' => (string) ($row['display_name'] ?? ''),
             'email' => (string) ($row['email'] ?? ''),
+            'phone' => (string) ($row['phone'] ?? ''),
             'must_change_password' => (int) ($row['must_change_password'] ?? 0) === 1,
             'is_active' => (int) ($row['is_active'] ?? 0) === 1,
             'has_all_vehicles' => (int) ($row['has_all_vehicles'] ?? 1) === 1,
             'assigned_vehicle_count' => (int) ($row['assigned_vehicle_count'] ?? 0),
             'has_local_password' => trim((string) ($row['password_hash'] ?? '')) !== '',
+            'last_login_at' => (string) ($row['last_login_at'] ?? ''),
+            'last_activity_at' => (string) ($row['last_activity_at'] ?? ''),
             'created_at' => (string) ($row['created_at'] ?? ''),
             'updated_at' => (string) ($row['updated_at'] ?? ''),
         ];

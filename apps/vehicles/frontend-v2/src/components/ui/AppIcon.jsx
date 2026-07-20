@@ -23,6 +23,8 @@ import {
   Lock,
   LockOpen,
   Trash,
+  EnvelopeSimple,
+  Phone,
 } from '@phosphor-icons/react';
 
 const ICONS = {
@@ -50,6 +52,8 @@ const ICONS = {
   lock: Lock,
   unlock: LockOpen,
   delete: Trash,
+  email: EnvelopeSimple,
+  phone: Phone,
 };
 
 export default function AppIcon({ name, size = 18, weight = 'regular', className = '', ...rest }) {

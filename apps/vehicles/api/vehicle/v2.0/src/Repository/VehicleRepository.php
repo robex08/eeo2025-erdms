@@ -481,6 +481,43 @@ final class VehicleRepository
         $stationContext = $this->buildStationAddressIndex();
         $items = $this->appendLocationState($items, $stationContext);
 
+        $locationStateSummary = [
+            'doma' => 0,
+            'v_akci' => 0,
+            'v_servisu' => 0,
+            'nezname' => 0,
+            'total' => 0,
+        ];
+
+        $locationSummaryStmt = $this->pdo->prepare(
+            'SELECT d.w_stanoviste, ' . $posLnSelect . $fromSql . $whereSql
+        );
+        foreach ($params as $paramName => $paramValue) {
+            if ($paramName === 'term') {
+                $locationSummaryStmt->bindValue(':term', $paramValue, PDO::PARAM_STR);
+                continue;
+            }
+
+            if (str_starts_with($paramName, 'chart_carid_')) {
+                $locationSummaryStmt->bindValue(':' . $paramName, (int) $paramValue, PDO::PARAM_INT);
+                continue;
+            }
+
+            if ($paramName === 'access_user_id') {
+                $locationSummaryStmt->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
+                continue;
+            }
+
+            $locationSummaryStmt->bindValue(':' . $paramName, (string) $paramValue, PDO::PARAM_STR);
+        }
+        $locationSummaryStmt->execute();
+
+        $locationSummaryRows = $locationSummaryStmt->fetchAll() ?: [];
+        if ($locationSummaryRows !== []) {
+            $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext);
+            $locationStateSummary = $this->summarizeLocationStates($locationSummaryRows);
+        }
+
         $filterOptions = [
             'types' => [],
             'callSigns' => [],
@@ -674,6 +711,7 @@ final class VehicleRepository
             'items' => $items,
             'total' => $totalFiltered,
             'totalAll' => $totalAll,
+            'locationStateSummary' => $locationStateSummary,
             'updatedAt' => $updatedAt,
             'page' => $page,
             'perPage' => $perPage,
@@ -747,6 +785,29 @@ final class VehicleRepository
 
         unset($item);
         return $items;
+    }
+
+    private function summarizeLocationStates(array $items): array
+    {
+        $summary = [
+            'doma' => 0,
+            'v_akci' => 0,
+            'v_servisu' => 0,
+            'nezname' => 0,
+            'total' => 0,
+        ];
+
+        foreach ($items as $item) {
+            $state = strtolower(trim((string) ($item['location_state'] ?? '')));
+            if (array_key_exists($state, $summary)) {
+                $summary[$state] += 1;
+            } else {
+                $summary['nezname'] += 1;
+            }
+            $summary['total'] += 1;
+        }
+
+        return $summary;
     }
 
     private function buildStationAddressIndex(): array

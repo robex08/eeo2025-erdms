@@ -17,7 +17,7 @@ function resolveEntraRedirectUrl() {
 }
 
 function formatAppVersion(version, env) {
-  const cleanVersion = String(version || '').trim().replace(/^v\s*/i, '') || '0.90';
+  const cleanVersion = String(version || '').trim().replace(/^v\s*/i, '') || '0.91';
   const displayVersion = `v${cleanVersion}`;
   return String(env || '').toLowerCase() === 'production' ? displayVersion : `${displayVersion} DEV`;
 }
@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [appVersion, setAppVersion] = useState('v0.90');
+  const [appVersion, setAppVersion] = useState('v0.91');
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
@@ -54,7 +54,7 @@ export default function LoginPage() {
           return;
         }
 
-        setAppVersion('v0.90');
+        setAppVersion('v0.91');
       });
 
     return () => {

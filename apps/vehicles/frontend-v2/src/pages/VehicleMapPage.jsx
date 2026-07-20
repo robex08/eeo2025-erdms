@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import AppIcon from '../components/ui/AppIcon';
+import SyncGate from '../components/vehicles/SyncGate';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import '@phosphor-icons/web/regular';
-import { fetchStationAddresses, fetchVehicleServiceHistory, fetchVehicles, triggerQuickSync } from '../services/apiClient';
+import { fetchDashboardMetrics, fetchStationAddresses, fetchVehicleServiceHistory, fetchVehicles, triggerQuickSync } from '../services/apiClient';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 
 const MAP_CENTER = [49.95, 14.6];
@@ -77,6 +78,21 @@ function normalizeText(value) {
   } catch {
     return raw;
   }
+}
+
+function parseCsvValues(value) {
+  return Array.from(
+    new Set(
+      String(value || '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter((item) => item !== '')
+    )
+  );
+}
+
+function selectedLabel(values, fallback = 'vše') {
+  return values.length > 0 ? values.join(', ') : fallback;
 }
 
 function vehicleColorByType(zzsTyp) {
@@ -455,6 +471,9 @@ function buildVehiclePopupContent(vehicle, stationAddress, historyStatus = 'load
   const group = escapeHtml(vehicle?.w_groupname || '-');
   const locationText = formatWebdispecinkLocation(vehicle?.pos_ln);
   const location = escapeHtml(locationText);
+  const manufacturerRaw = String(vehicle?.w_tovarni_znacka || '').trim();
+  const modelRaw = String(vehicle?.w_model_vozu || '').trim();
+  const brandModel = escapeHtml([manufacturerRaw, modelRaw].filter((value) => value !== '').join(' ') || '-');
   const mileage = escapeHtml(formatKm(vehicle?.najeto_km));
   const assignmentDate = escapeHtml(formatDateTimeCs(vehicle?.datum_zarazeni, false));
   const ageInService = escapeHtml(formatVehicleAge(vehicle?.datum_zarazeni));
@@ -491,6 +510,7 @@ function buildVehiclePopupContent(vehicle, stationAddress, historyStatus = 'load
       ${locationText ? `<div class="mapa-popup-location"><i class="ph ph-map-pin-line"></i><span>${location}</span></div>` : ''}
 
       <div class="mapa-popup-grid compact">
+        <div class="mapa-popup-row kpi"><span>Značka/model:</span><strong class="muted">${brandModel}</strong></div>
         <div class="mapa-popup-row kpi"><span>Nájezd:</span><strong class="${mileageCritical ? 'alert' : 'ok'}">${mileage}</strong></div>
         <div class="mapa-popup-row kpi"><span>Zařazeno:</span><strong>${assignmentDate}</strong></div>
         <div class="mapa-popup-row kpi"><span>V provozu:</span><strong>${ageInService}</strong></div>
@@ -1031,7 +1051,9 @@ export default function VehicleMapPage() {
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [syncSeconds, setSyncSeconds] = useState(0);
   const [syncMessage, setSyncMessage] = useState('');
+  const [syncMessageVisible, setSyncMessageVisible] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState(() => {
     if (typeof window === 'undefined') {
@@ -1084,8 +1106,9 @@ export default function VehicleMapPage() {
         return parsed.showVsStations;
       }
 
-      // Backward compatibility with the previous single switch.
-      return parsed?.showStations !== false;
+      // Legacy combined switch is intentionally ignored to avoid stale production
+      // localStorage values hiding both layers unexpectedly.
+      return true;
     } catch {
       return true;
     }
@@ -1106,8 +1129,9 @@ export default function VehicleMapPage() {
         return parsed.showServiceStations;
       }
 
-      // Backward compatibility with the previous single switch.
-      return parsed?.showStations !== false;
+      // Legacy combined switch is intentionally ignored to avoid stale production
+      // localStorage values hiding both layers unexpectedly.
+      return true;
     } catch {
       return true;
     }
@@ -1130,31 +1154,37 @@ export default function VehicleMapPage() {
       return 'aktivni';
     }
   });
-  const [typeFilter, setTypeFilter] = useState(() => {
+  const [selectedTypeFilters, setSelectedTypeFilters] = useState(() => {
     if (typeof window === 'undefined') {
-      return 'all';
+      return [];
     }
 
     try {
       const raw = localStorage.getItem(MAP_FILTERS_STORAGE_KEY);
       if (!raw) {
-        return 'all';
+        return [];
       }
 
       const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed?.typeFilters)) {
+        return parseCsvValues(parsed.typeFilters.join(','));
+      }
+
       const type = String(parsed?.typeFilter || 'all').trim();
-      return type || 'all';
+      return type !== '' && type !== 'all' ? [type] : [];
     } catch {
-      return 'all';
+      return [];
     }
   });
   const [typeOptions, setTypeOptions] = useState([]);
+  const [openFilterKey, setOpenFilterKey] = useState(null);
   const [selectedStationId, setSelectedStationId] = useState(0);
   const [freeAddressPoint, setFreeAddressPoint] = useState(null);
   const [mapZoom, setMapZoom] = useState(MAP_ZOOM);
   const [updatedAt, setUpdatedAt] = useState(null);
 
   const mapContainerRef = useRef(null);
+  const mapToolbarRef = useRef(null);
   const mapRef = useRef(null);
   const stationMarkersRef = useRef({});
   const vehicleMarkersRef = useRef({});
@@ -1181,10 +1211,34 @@ export default function VehicleMapPage() {
         showVsStations,
         showServiceStations,
         statusFilter,
-        typeFilter,
+        typeFilters: selectedTypeFilters,
       })
     );
-  }, [search, showVehicles, showVsStations, showServiceStations, statusFilter, typeFilter]);
+  }, [search, showVehicles, showVsStations, showServiceStations, statusFilter, selectedTypeFilters]);
+
+  useEffect(() => {
+    if (!openFilterKey) {
+      return undefined;
+    }
+
+    function handleOutsidePointerDown(event) {
+      if (!mapToolbarRef.current) {
+        return;
+      }
+
+      if (!mapToolbarRef.current.contains(event.target)) {
+        setOpenFilterKey(null);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsidePointerDown);
+    document.addEventListener('touchstart', handleOutsidePointerDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsidePointerDown);
+      document.removeEventListener('touchstart', handleOutsidePointerDown);
+    };
+  }, [openFilterKey]);
 
   const stationMatchesQuery = (item, q) => {
     const haystack = [item.mesto, item.ulice, item.psc, item.organizace, item.nazev_stanoviste]
@@ -1251,7 +1305,7 @@ export default function VehicleMapPage() {
       const pageSize = 200;
       const baseParams = {
         status: statusFilter,
-        types: typeFilter !== 'all' ? typeFilter : undefined,
+        types: selectedTypeFilters.length > 0 ? selectedTypeFilters.join(',') : undefined,
         perPage: pageSize,
         includeFilterOptions: '1',
         sortBy: 'spz',
@@ -1347,31 +1401,73 @@ export default function VehicleMapPage() {
     return () => {
       active = false;
     };
-  }, [statusFilter, typeFilter]);
+  }, [statusFilter, selectedTypeFilters]);
 
   useEffect(() => {
-    if (typeFilter === 'all') {
+    if (!syncing) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(() => {
+      setSyncSeconds((prev) => prev + 1);
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [syncing]);
+
+  useEffect(() => {
+    if (selectedTypeFilters.length === 0) {
       return;
     }
 
-    if (typeOptions.includes(typeFilter)) {
+    if (typeOptions.length === 0) {
       return;
     }
 
-    setTypeFilter('all');
-  }, [typeFilter, typeOptions]);
+    const allowedTypes = new Set(typeOptions);
+    const nextSelectedTypes = selectedTypeFilters.filter((value) => allowedTypes.has(value));
+    if (nextSelectedTypes.length === selectedTypeFilters.length) {
+      return;
+    }
+
+    setSelectedTypeFilters(nextSelectedTypes);
+  }, [selectedTypeFilters, typeOptions]);
+
+  function toggleTypeFilter(value) {
+    setSelectedTypeFilters((prev) => {
+      if (prev.includes(value)) {
+        return prev.filter((item) => item !== value);
+      }
+
+      return [...prev, value];
+    });
+  }
 
   async function handleRefreshFromWebdispecink() {
     setSyncing(true);
+    setSyncSeconds(0);
     setSyncMessage('');
+    setSyncMessageVisible(false);
 
     try {
-      const response = await triggerQuickSync();
-      setSyncMessage(response?.data?.message || 'Aktualizace poloh z Webdispečinku proběhla.');
-      await loadData();
-    } catch (err) {
-      const apiMessage = err?.response?.data?.error?.message;
-      setSyncMessage(apiMessage || 'Aktualizace poloh se nepodařila.');
+      const syncResponse = await triggerQuickSync();
+      const [summaryResponse] = await Promise.all([
+        fetchDashboardMetrics({ status: 'all' }),
+        loadData(),
+      ]);
+
+      const summary = summaryResponse?.data?.summary || {};
+      const synchronized = Number(syncResponse?.data?.affectedRows || 0);
+      const active = Number(summary?.active || 0);
+      const retired = Number(summary?.retired || 0);
+      const inactive = Number(summary?.inactive || 0);
+      setSyncMessage(
+        `Synchronizace byla úspěšně dokončena. Synchronizováno: ${synchronized}. Aktivní: ${active}, vyřazené: ${retired}, neaktivní: ${inactive}.`
+      );
+      setSyncMessageVisible(true);
+    } catch {
+      setSyncMessage('Aktualizace poloh z Webdispečinku se nepodařila.');
+      setSyncMessageVisible(true);
     } finally {
       setSyncing(false);
     }
@@ -1381,7 +1477,7 @@ export default function VehicleMapPage() {
     suppressNextAutoFitRef.current = true;
     setSearch('');
     setStatusFilter('aktivni');
-    setTypeFilter('all');
+    setSelectedTypeFilters([]);
     setShowVehicles(true);
     setShowVsStations(true);
     setShowServiceStations(true);
@@ -2100,7 +2196,7 @@ export default function VehicleMapPage() {
   const hasActiveMapFilters =
     search.trim() !== ''
     || statusFilter !== 'aktivni'
-    || typeFilter !== 'all'
+    || selectedTypeFilters.length > 0
     || !showVehicles
     || !showVsStations
     || !showServiceStations;
@@ -2160,7 +2256,7 @@ export default function VehicleMapPage() {
       </header>
 
       <section className="mapa-v2-card" aria-label="Mapa vozidel a VS měst">
-        <div className="mapa-v2-toolbar">
+        <div className="mapa-v2-toolbar" ref={mapToolbarRef}>
           <label className="overview-search-wrap mapa-v2-search" htmlFor="map-search">
             <input
               id="map-search"
@@ -2200,20 +2296,25 @@ export default function VehicleMapPage() {
             </select>
           </label>
 
-          <label className="mapa-v2-select-wrap" htmlFor="map-type-filter">
-            <span>Typ</span>
-            <select
-              id="map-type-filter"
-              className="mapa-v2-select"
-              value={typeFilter}
-              onChange={(event) => setTypeFilter(event.target.value)}
-            >
-              <option value="all">Všechny typy</option>
+          <details
+            className="overview-multifilter"
+            open={openFilterKey === 'types'}
+            onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'types' : null)}
+          >
+            <summary>Typ vozidla: {selectedLabel(selectedTypeFilters, 'vše')}</summary>
+            <div className="overview-multifilter-menu">
               {typeOptions.map((typeValue) => (
-                <option key={typeValue} value={typeValue}>{typeValue}</option>
+                <label key={`map-type-${typeValue}`} className="overview-multifilter-option">
+                  <input
+                    type="checkbox"
+                    checked={selectedTypeFilters.includes(typeValue)}
+                    onChange={() => toggleTypeFilter(typeValue)}
+                  />
+                  <span>{typeValue}</span>
+                </label>
               ))}
-            </select>
-          </label>
+            </div>
+          </details>
 
           <label className="mapa-v2-toggle">
             <input type="checkbox" checked={showVehicles} onChange={(event) => setShowVehicles(event.target.checked)} />
@@ -2231,7 +2332,22 @@ export default function VehicleMapPage() {
           </label>
         </div>
 
-        {syncMessage ? <div className="mapa-v2-sync-message">{syncMessage}</div> : null}
+        {syncing ? <SyncGate syncSeconds={syncSeconds} /> : null}
+
+        {syncMessage && syncMessageVisible ? (
+          <div className="status-box sync-message-box" role="status" aria-live="polite">
+            <span>{syncMessage}</span>
+            <button
+              type="button"
+              className="sync-message-close"
+              onClick={() => setSyncMessageVisible(false)}
+              aria-label="Skrýt informační hlášku"
+              title="Skrýt"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
 
         <div className="mapa-v2-layout">
           <aside className="mapa-v2-sidebar" aria-label="Seznam VS měst">

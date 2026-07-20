@@ -948,6 +948,7 @@ export default function DashboardPage() {
   const [dashboardSyncing, setDashboardSyncing] = useState(false);
   const [dashboardSyncSeconds, setDashboardSyncSeconds] = useState(0);
   const [dashboardSyncMessage, setDashboardSyncMessage] = useState('');
+  const [dashboardSyncMessageVisible, setDashboardSyncMessageVisible] = useState(false);
 
   useEffect(() => {
     if (!dashboardSyncing) {
@@ -1057,23 +1058,31 @@ export default function DashboardPage() {
 
   async function handleDashboardSync() {
     setDashboardSyncMessage('');
+    setDashboardSyncMessageVisible(false);
     setDashboardSyncSeconds(0);
     setDashboardSyncing(true);
 
     try {
       const syncResponse = await triggerQuickSync();
-      setDashboardSyncMessage(syncResponse?.data?.message || 'Aktualizace dat byla spuštěna.');
-
-      const [metricsResponse, forecastResponse] = await Promise.all([
+      const [metricsResponse, forecastResponse, summaryResponse] = await Promise.all([
         fetchDashboardMetrics({ status: forecastStatus }),
         fetchFleetForecast({ months: forecastMonths, status: forecastStatus }),
+        fetchDashboardMetrics({ status: 'all' }),
       ]);
+
+      const synchronized = Number(syncResponse?.data?.affectedRows || 0);
+      const summary = summaryResponse?.data?.summary || {};
+      const active = Number(summary?.active || 0);
+      const retired = Number(summary?.retired || 0);
+      const inactive = Number(summary?.inactive || 0);
+      setDashboardSyncMessage(`Synchronizace dat byla úspěšně dokončena. Synchronizováno: ${synchronized}. Aktivní: ${active}, vyřazené: ${retired}, neaktivní: ${inactive}.`);
+      setDashboardSyncMessageVisible(true);
 
       setMetrics(metricsResponse?.data || null);
       setForecastRaw(forecastResponse?.data || null);
-    } catch (err) {
-      const apiMessage = err?.response?.data?.error?.message;
-      setDashboardSyncMessage(apiMessage || 'Aktualizace dat na nástěnce se nepodařila.');
+    } catch {
+      setDashboardSyncMessage('Synchronizace dat na nástěnce se nepodařila.');
+      setDashboardSyncMessageVisible(true);
     } finally {
       setDashboardSyncing(false);
     }
@@ -1229,7 +1238,20 @@ export default function DashboardPage() {
         />
       ) : null}
 
-      {dashboardSyncMessage ? <div className="status-box">{dashboardSyncMessage}</div> : null}
+      {dashboardSyncMessage && dashboardSyncMessageVisible ? (
+        <div className="status-box sync-message-box" role="status" aria-live="polite">
+          <span>{dashboardSyncMessage}</span>
+          <button
+            type="button"
+            className="sync-message-close"
+            onClick={() => setDashboardSyncMessageVisible(false)}
+            aria-label="Skrýt informační hlášku"
+            title="Skrýt"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       <div className="cards-grid dashboard-stats-grid">
         {tileData.map((tile) => (

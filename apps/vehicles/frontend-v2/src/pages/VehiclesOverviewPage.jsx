@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { fetchVehicles, triggerQuickSync } from '../services/apiClient';
+import { fetchDashboardMetrics, fetchVehicles, triggerQuickSync } from '../services/apiClient';
 import OverviewActionButtons from '../components/vehicles/OverviewActionButtons';
 import SyncGate from '../components/vehicles/SyncGate';
 import VehiclesTable from '../components/vehicles/VehiclesTable';
@@ -90,6 +90,50 @@ function formatDateTimeCs(value) {
   });
 }
 
+function calculateLocationStateCounts(items) {
+  return (Array.isArray(items) ? items : []).reduce((acc, item) => {
+    const key = String(item?.location_state || '').toLowerCase();
+    if (key === 'doma') {
+      acc.doma += 1;
+    } else if (key === 'v_akci') {
+      acc.v_akci += 1;
+    } else if (key === 'v_servisu') {
+      acc.v_servisu += 1;
+    } else {
+      acc.nezname += 1;
+    }
+    acc.total += 1;
+    return acc;
+  }, {
+    doma: 0,
+    v_akci: 0,
+    v_servisu: 0,
+    nezname: 0,
+    total: 0,
+  });
+}
+
+function normalizeLocationStateSummary(summary, fallbackItems = []) {
+  if (!summary || typeof summary !== 'object') {
+    return calculateLocationStateCounts(fallbackItems);
+  }
+
+  const doma = Number(summary.doma || 0);
+  const vAkci = Number(summary.v_akci || 0);
+  const vServisu = Number(summary.v_servisu || 0);
+  const nezname = Number(summary.nezname || 0);
+  const computedTotal = doma + vAkci + vServisu + nezname;
+  const total = Number(summary.total || computedTotal || 0);
+
+  return {
+    doma,
+    v_akci: vAkci,
+    v_servisu: vServisu,
+    nezname,
+    total,
+  };
+}
+
 export default function VehiclesOverviewPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
@@ -99,6 +143,7 @@ export default function VehiclesOverviewPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncSeconds, setSyncSeconds] = useState(0);
   const [syncMessage, setSyncMessage] = useState('');
+  const [syncMessageVisible, setSyncMessageVisible] = useState(false);
   const [filterOptions, setFilterOptions] = useState({
     types: [],
     callSigns: [],
@@ -111,6 +156,13 @@ export default function VehiclesOverviewPage() {
     mileageBands: [],
   });
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [locationStateCounts, setLocationStateCounts] = useState({
+    doma: 0,
+    v_akci: 0,
+    v_servisu: 0,
+    nezname: 0,
+    total: 0,
+  });
   const [openFilterKey, setOpenFilterKey] = useState(null);
   const filterRowRef = useRef(null);
   const loadRequestRef = useRef(0);
@@ -298,6 +350,7 @@ export default function VehiclesOverviewPage() {
         setTotal(totalFiltered);
         setTotalAll(Number(firstResponse?.data?.totalAll || firstResponse?.data?.total || totalFiltered));
         setUpdatedAt(firstResponse?.data?.updatedAt || null);
+        setLocationStateCounts(calculateLocationStateCounts(filteredItems));
         setFilterOptions(firstResponse?.data?.filterOptions || {
           types: [],
           callSigns: [],
@@ -321,6 +374,7 @@ export default function VehiclesOverviewPage() {
       setTotal(Number(fastResponse?.data?.total || 0));
       setTotalAll(Number(fastResponse?.data?.totalAll || fastResponse?.data?.total || 0));
       setUpdatedAt(fastResponse?.data?.updatedAt || null);
+      setLocationStateCounts(normalizeLocationStateSummary(fastResponse?.data?.locationStateSummary, fastResponse?.data?.items || []));
 
       void fetchVehicles(buildVehiclesParams(true))
         .then((optionsResponse) => {
@@ -404,21 +458,34 @@ export default function VehiclesOverviewPage() {
 
   async function handleSync() {
     setSyncMessage('');
+    setSyncMessageVisible(false);
     setSyncing(true);
     setSyncSeconds(0);
 
     try {
-      const response = await triggerQuickSync();
-      setSyncMessage(response?.data?.message || 'Aktualizace byla spuštěna.');
-      await loadData();
+      const syncResponse = await triggerQuickSync();
+      const [summaryResponse] = await Promise.all([
+        fetchDashboardMetrics({ status: 'all' }),
+        loadData(),
+      ]);
+
+      const synchronized = Number(syncResponse?.data?.affectedRows || 0);
+      const summary = summaryResponse?.data?.summary || {};
+      const active = Number(summary?.active || 0);
+      const retired = Number(summary?.retired || 0);
+      const inactive = Number(summary?.inactive || 0);
+
+      setSyncMessage(`Synchronizace byla úspěšně dokončena. Synchronizováno: ${synchronized}. Aktivní: ${active}, vyřazené: ${retired}, neaktivní: ${inactive}.`);
+      setSyncMessageVisible(true);
     } catch (err) {
       if (err?.code === 'ECONNABORTED' || String(err?.message || '').toLowerCase().includes('timeout')) {
         setSyncMessage('Rychlá synchronizace běží déle než obvykle. Zkuste prosím akci za chvíli znovu.');
+        setSyncMessageVisible(true);
         return;
       }
 
-      const apiMessage = err?.response?.data?.error?.message;
-      setSyncMessage(apiMessage || 'Aktualizace dat se nepodařila.');
+      setSyncMessage('Synchronizace dat se nepodařila.');
+      setSyncMessageVisible(true);
     } finally {
       setSyncing(false);
     }
@@ -533,24 +600,6 @@ export default function VehiclesOverviewPage() {
     setQueryInput('');
     updateSearchParams({ chartCarids: null, page: 1, q: '' });
   }
-
-  const locationStateCounts = useMemo(() => {
-    return rows.reduce((acc, item) => {
-      const key = String(item?.location_state || '').toLowerCase();
-      if (key === 'doma') {
-        acc.doma += 1;
-      } else if (key === 'v_akci') {
-        acc.v_akci += 1;
-      } else if (key === 'v_servisu') {
-        acc.v_servisu += 1;
-      }
-      return acc;
-    }, {
-      doma: 0,
-      v_akci: 0,
-      v_servisu: 0,
-    });
-  }, [rows]);
 
   return (
     <section>
@@ -842,7 +891,20 @@ export default function VehiclesOverviewPage() {
         </div>
       ) : null}
 
-      {syncMessage ? <div className="status-box">{syncMessage}</div> : null}
+      {syncMessage && syncMessageVisible ? (
+        <div className="status-box sync-message-box" role="status" aria-live="polite">
+          <span>{syncMessage}</span>
+          <button
+            type="button"
+            className="sync-message-close"
+            onClick={() => setSyncMessageVisible(false)}
+            aria-label="Skrýt informační hlášku"
+            title="Skrýt"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       {syncing ? <SyncGate syncSeconds={syncSeconds} /> : null}
 
