@@ -82,6 +82,7 @@ export default function StationAddressesPage() {
     w_ln_match: '',
   });
   const [syncMessage, setSyncMessage] = useState('');
+  const [syncMessageVisible, setSyncMessageVisible] = useState(false);
   const [error, setError] = useState('');
   const skipNextDebouncedQuerySyncRef = useRef(false);
   const skipNextDebouncedWdQuerySyncRef = useRef(false);
@@ -474,14 +475,23 @@ export default function StationAddressesPage() {
   async function handleSync(fullSync) {
     setSyncing(true);
     setSyncMessage('');
+    setSyncMessageVisible(false);
 
     try {
-      const response = fullSync ? await triggerSync() : await triggerQuickSync();
-      setSyncMessage(response?.data?.message || 'Aktualizace byla spuštěna.');
+      if (fullSync) {
+        const syncResponse = await triggerSync();
+        const synchronized = Number(syncResponse?.data?.affectedRows || 0);
+        setSyncMessage(`Plná synchronizace byla úspěšně dokončena. Synchronizováno: ${synchronized}.`);
+      } else {
+        const syncResponse = await triggerQuickSync();
+        const synchronized = Number(syncResponse?.data?.affectedRows || 0);
+        setSyncMessage(`Rychlá synchronizace byla úspěšně dokončena. Synchronizováno: ${synchronized}.`);
+      }
+      setSyncMessageVisible(true);
       await loadData();
-    } catch (err) {
-      const apiMessage = err?.response?.data?.error?.message;
-      setSyncMessage(apiMessage || 'Aktualizace Webdispečinku se nepodařila.');
+    } catch {
+      setSyncMessage('Aktualizace dat z Webdispečinku se nepodařila.');
+      setSyncMessageVisible(true);
     } finally {
       setSyncing(false);
     }
@@ -795,7 +805,20 @@ export default function StationAddressesPage() {
       </div>
 
       {error ? <div className="status-box">{error}</div> : null}
-      {syncMessage ? <div className="status-box">{syncMessage}</div> : null}
+      {syncMessage && syncMessageVisible ? (
+        <div className="status-box sync-message-box" role="status" aria-live="polite">
+          <span>{syncMessage}</span>
+          <button
+            type="button"
+            className="sync-message-close"
+            onClick={() => setSyncMessageVisible(false)}
+            aria-label="Skrýt informační hlášku"
+            title="Skrýt"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
 
       <div className="table-wrap">
         <table>

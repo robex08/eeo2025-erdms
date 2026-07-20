@@ -17,6 +17,16 @@ function resolveLegacyGetUrl() {
     return explicit;
   }
 
+  // Production-safe fallback for map popup service history endpoint.
+  if (String(baseURL || '').includes('/api.vehicles-v2/')) {
+    return '/api.vehicles/vehicle/api.php';
+  }
+
+  // Dev-safe fallback when frontend runs under /dev/* paths.
+  if (String(baseURL || '').includes('/dev/api.vehicles/')) {
+    return '/dev/api.vehicles/vehicle/api.php';
+  }
+
   const fromV2Base = String(baseURL || '').replace(/\/?v2\.0\/?$/, '/api.php');
   if (fromV2Base !== String(baseURL || '')) {
     return fromV2Base;

@@ -15,7 +15,7 @@ final class UserRepository
     public function findByUsername(string $username): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, is_active, must_change_password, has_all_vehicles, created_at, updated_at
+            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, has_all_vehicles, created_at, updated_at
              FROM vehicles_users
              WHERE username = :username
              LIMIT 1'
@@ -29,7 +29,7 @@ final class UserRepository
     public function findById(int $userId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, is_active, must_change_password, has_all_vehicles, created_at, updated_at
+            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, has_all_vehicles, created_at, updated_at
              FROM vehicles_users
              WHERE id = :id
              LIMIT 1'
@@ -69,7 +69,7 @@ final class UserRepository
             return null;
         }
 
-        $sql = 'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, is_active, must_change_password, created_at, updated_at
+        $sql = 'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, created_at, updated_at
                 FROM vehicles_users
                 WHERE (' . implode(' OR ', $conditions) . ')
                 LIMIT 1';
@@ -94,6 +94,10 @@ final class UserRepository
                 entra_id,
                 display_name,
                 email,
+                phone,
+                last_login_at,
+                last_activity_at,
+                activity_meta_json,
                 must_change_password,
                 has_all_vehicles,
                 is_active,
@@ -165,6 +169,7 @@ final class UserRepository
                 entra_id,
                 display_name,
                 email,
+                phone,
                 must_change_password,
                 is_active,
                 has_all_vehicles
@@ -177,6 +182,7 @@ final class UserRepository
                 :entra_id,
                 :display_name,
                 :email,
+                :phone,
                 :must_change_password,
                 :is_active,
                 :has_all_vehicles
@@ -192,6 +198,7 @@ final class UserRepository
             'entra_id' => $payload['entra_id'],
             'display_name' => $payload['display_name'],
             'email' => $payload['email'],
+            'phone' => $payload['phone'],
             'must_change_password' => $payload['must_change_password'],
             'is_active' => $payload['is_active'],
             'has_all_vehicles' => $payload['has_all_vehicles'],
@@ -210,6 +217,7 @@ final class UserRepository
             'entra_id = :entra_id',
             'display_name = :display_name',
             'email = :email',
+            'phone = :phone',
             'must_change_password = :must_change_password',
             'is_active = :is_active',
             'has_all_vehicles = :has_all_vehicles',
@@ -224,6 +232,7 @@ final class UserRepository
             'entra_id' => $payload['entra_id'],
             'display_name' => $payload['display_name'],
             'email' => $payload['email'],
+            'phone' => $payload['phone'],
             'must_change_password' => $payload['must_change_password'],
             'is_active' => $payload['is_active'],
             'has_all_vehicles' => $payload['has_all_vehicles'],
@@ -258,6 +267,58 @@ final class UserRepository
         $stmt->execute([
             'id' => $userId,
             'password_hash' => $passwordHash,
+        ]);
+    }
+
+    public function touchUserActivity(int $userId, bool $isLogin, ?string $ip = null, ?string $userAgent = null): void
+    {
+        $existingMetaRaw = null;
+        $metaStmt = $this->pdo->prepare(
+            'SELECT activity_meta_json
+             FROM vehicles_users
+             WHERE id = :id
+             LIMIT 1'
+        );
+        $metaStmt->execute(['id' => $userId]);
+        $metaRow = $metaStmt->fetch();
+        if (is_array($metaRow)) {
+            $existingMetaRaw = $metaRow['activity_meta_json'] ?? null;
+        }
+
+        $meta = [];
+        if (is_string($existingMetaRaw) && trim($existingMetaRaw) !== '') {
+            $decoded = json_decode($existingMetaRaw, true);
+            if (is_array($decoded)) {
+                $meta = $decoded;
+            }
+        }
+
+        $meta['last_activity_at'] = date('Y-m-d H:i:s');
+        if ($ip !== null && trim($ip) !== '') {
+            $meta['last_ip'] = mb_substr(trim($ip), 0, 64);
+        }
+        if ($userAgent !== null && trim($userAgent) !== '') {
+            $meta['last_user_agent'] = mb_substr(trim($userAgent), 0, 255);
+        }
+        if ($isLogin) {
+            $meta['last_login_at'] = date('Y-m-d H:i:s');
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE vehicles_users
+             SET
+               last_activity_at = NOW(),
+               last_login_at = CASE WHEN :is_login = 1 THEN NOW() ELSE last_login_at END,
+               activity_meta_json = :activity_meta_json,
+               updated_at = updated_at
+             WHERE id = :id
+             LIMIT 1'
+        );
+
+        $stmt->execute([
+            'id' => $userId,
+            'is_login' => $isLogin ? 1 : 0,
+            'activity_meta_json' => json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
     }
 
@@ -390,6 +451,7 @@ final class UserRepository
                 entra_id,
                 display_name,
                 email,
+                phone,
                 must_change_password,
                 is_active
             ) VALUES (
@@ -401,6 +463,7 @@ final class UserRepository
                 :entra_id,
                 :display_name,
                 :email,
+                NULL,
                 0,
                 0
             )'
@@ -417,6 +480,44 @@ final class UserRepository
         ]);
 
         return $this->findById((int) $this->pdo->lastInsertId()) ?? [];
+    }
+
+    public function syncEntraIdentityData(int $userId, array $identity): void
+    {
+        $entraId = $this->truncate((string) ($identity['entra_id'] ?? ''), 128);
+        $displayName = $this->truncate((string) ($identity['display_name'] ?? ''), 150);
+        $email = $this->truncate((string) ($identity['email'] ?? ''), 190);
+
+        $fields = [];
+        $params = ['id' => $userId];
+
+        if ($entraId !== '') {
+            $fields[] = 'entra_id = :entra_id';
+            $params['entra_id'] = $entraId;
+        }
+
+        if ($displayName !== '') {
+            $fields[] = 'display_name = :display_name';
+            $params['display_name'] = $displayName;
+        }
+
+        if ($email !== '') {
+            $fields[] = 'email = :email';
+            $params['email'] = $email;
+        }
+
+        if ($fields === []) {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE vehicles_users
+             SET ' . implode(', ', $fields) . ', updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id
+             LIMIT 1'
+        );
+
+        $stmt->execute($params);
     }
 
     private function buildPendingUsername(array $identity): string

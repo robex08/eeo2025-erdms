@@ -65,9 +65,16 @@ final class EntraBridgeService
             $username = $this->pick($entraData, ['onPremisesSamAccountName', 'mailNickname']);
         }
 
-        $email = $this->pick($authUser, ['email', 'upn', 'userPrincipalName']);
+        // Prefer canonical mailbox address (mail), use UPN only as a fallback.
+        $email = $this->pick($authUser, ['mail', 'email']);
         if ($email === '') {
-            $email = $this->pick($entraData, ['mail', 'userPrincipalName']);
+            $email = $this->pick($entraData, ['mail']);
+        }
+        if ($email === '') {
+            $email = $this->pick($authUser, ['upn', 'userPrincipalName']);
+        }
+        if ($email === '') {
+            $email = $this->pick($entraData, ['userPrincipalName']);
         }
 
         $displayName = $this->pick($authUser, ['display_name', 'displayName', 'name', 'full_name', 'jmeno_prijmeni']);

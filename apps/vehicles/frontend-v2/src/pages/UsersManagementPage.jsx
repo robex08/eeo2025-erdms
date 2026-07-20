@@ -14,7 +14,7 @@ import useDebouncedValue from '../hooks/useDebouncedValue';
 
 const USERS_FILTERS_LS_KEY = 'vehicles_v2_users_filters';
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
-const SORT_FIELDS = ['username', 'display_name', 'role_code', 'auth_source', 'approval_status', 'is_active', 'created_at', 'updated_at'];
+const SORT_FIELDS = ['username', 'display_name', 'email', 'role_code', 'auth_source', 'approval_status', 'is_active', 'last_activity_at', 'created_at', 'updated_at'];
 const ROLE_OPTIONS = [
   { value: 'superadmin', label: 'Superadmin' },
   { value: 'administrator', label: 'Administrator' },
@@ -128,6 +128,8 @@ function createEmptyForm() {
     username: '',
     display_name: '',
     email: '',
+    phone: '',
+    updated_at: '',
     role_code: 'user',
     auth_source: 'local',
     approval_status: 'approved',
@@ -296,7 +298,7 @@ export default function UsersManagementPage() {
         row.username,
         row.display_name,
         row.email,
-        row.entra_id,
+        row.phone,
         roleLabel(row.role_code),
       ].map((value) => normalizeText(value)).join(' ');
 
@@ -387,6 +389,8 @@ export default function UsersManagementPage() {
       username: String(row.username || ''),
       display_name: String(row.display_name || ''),
       email: String(row.email || ''),
+      phone: String(row.phone || ''),
+      updated_at: String(row.updated_at || ''),
       role_code: String(row.role_code || 'user'),
       auth_source: String(row.auth_source || 'local'),
       approval_status: String(row.approval_status || 'approved'),
@@ -434,7 +438,16 @@ export default function UsersManagementPage() {
   }
 
   function updateFormField(field, value) {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      if (field === 'approval_status') {
+        const normalized = String(value || '').toLowerCase();
+        if (normalized === 'approved') {
+          return { ...prev, approval_status: value, is_active: true };
+        }
+      }
+
+      return { ...prev, [field]: value };
+    });
   }
 
   function updateAllVehiclesFlag(value) {
@@ -530,6 +543,7 @@ export default function UsersManagementPage() {
         username: form.username,
         display_name: form.display_name,
         email: form.email,
+        phone: form.phone,
         role_code: form.role_code,
         auth_source: form.auth_source,
         approval_status: form.approval_status,
@@ -715,7 +729,7 @@ export default function UsersManagementPage() {
         <div className="overview-search-wrap">
           <input
             className="search-input"
-            placeholder="Hledat podle jména, role, emailu nebo Entra ID"
+            placeholder="Hledat podle jména, role, e-mailu nebo telefonu"
             value={queryInput}
             onChange={(event) => setQueryInput(event.target.value)}
           />
@@ -787,13 +801,14 @@ export default function UsersManagementPage() {
             <tr>
               <SortableHeader field="username" label="Username" />
               <SortableHeader field="display_name" label="Jméno" />
+              <SortableHeader field="email" label="E-mail" />
+              <th>Telefon</th>
               <SortableHeader field="role_code" label="Role" />
               <SortableHeader field="auth_source" label="Typ účtu" />
               <SortableHeader field="approval_status" label="Schválení" />
               <SortableHeader field="is_active" label="Přístup" />
-              <th>Lokální heslo</th>
-              <th>Entra ID</th>
-              <SortableHeader field="updated_at" label="Poslední změna" />
+              <th className="users-col-password">Heslo</th>
+              <SortableHeader field="last_activity_at" label="Poslední aktivita" />
               <th className="table-col-actions">Akce</th>
             </tr>
           </thead>
@@ -806,6 +821,8 @@ export default function UsersManagementPage() {
                 <tr key={row.id}>
                   <td>{row.username}</td>
                   <td>{row.display_name || '-'}</td>
+                  <td>{row.email || '-'}</td>
+                  <td>{row.phone || '-'}</td>
                   <td><span className="users-role-chip">{roleLabel(row.role_code)}</span></td>
                   <td>{authSourceLabel(row.auth_source)}</td>
                   <td>
@@ -818,9 +835,8 @@ export default function UsersManagementPage() {
                       {accessLabel(row.is_active)}
                     </span>
                   </td>
-                  <td>{row.has_local_password ? 'Ano' : 'Ne'}</td>
-                  <td>{row.entra_id || '-'}</td>
-                  <td>{formatDateTimeCs(row.updated_at)}</td>
+                  <td className="users-col-password">{row.has_local_password ? 'Ano' : 'Ne'}</td>
+                  <td>{formatDateTimeCs(row.last_activity_at)}</td>
                   <td className="table-cell-actions">
                     <div className="table-action-icons">
                       <button
@@ -871,7 +887,7 @@ export default function UsersManagementPage() {
 
             {!loading && pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={10}>V tabulce zatím nejsou žádní uživatelé.</td>
+                <td colSpan={11}>V tabulce zatím nejsou žádní uživatelé.</td>
               </tr>
             ) : null}
           </tbody>
@@ -933,8 +949,13 @@ export default function UsersManagementPage() {
                 </label>
 
                 <label>
-                  Entra ID / alias
-                  <input className="search-input" value={form.entra_id} onChange={(event) => updateFormField('entra_id', event.target.value)} disabled={saving} />
+                  Telefon
+                  <input className="search-input" value={form.phone} onChange={(event) => updateFormField('phone', event.target.value)} disabled={saving} />
+                </label>
+
+                <label>
+                  Entra ID / alias (jen pro čtení)
+                  <input className="search-input" value={form.entra_id} readOnly disabled />
                 </label>
 
                 <label>
@@ -1092,6 +1113,9 @@ export default function UsersManagementPage() {
             {editError ? <div className="status-box">{editError}</div> : null}
 
             <div className="station-edit-modal-actions">
+              {editingId !== -1 ? (
+                <span className="station-edit-meta-note">Poslední změna: {formatDateTimeCs(form.updated_at)}</span>
+              ) : <span className="station-edit-meta-note" />}
               <button className="table-pager-btn" type="button" onClick={closeModal} disabled={saving}>
                 Zrušit
               </button>

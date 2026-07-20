@@ -114,11 +114,6 @@ export default function AppShell() {
     <div className="app-shell">
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         <div className="brand-block">
-          <div className="brand-heading">
-            <h1>{appName}</h1>
-            <span className="brand-version">{displayVersion}</span>
-          </div>
-
           <div className="sidebar-profile-card">
             <div className="sidebar-profile-head">
               <div className="sidebar-profile-eyebrow">Přihlášený uživatel</div>
@@ -133,6 +128,23 @@ export default function AppShell() {
               </button>
             </div>
             <div className="sidebar-profile-name">{user?.display_name || user?.username || 'Neznámý uživatel'}</div>
+            {(String(user?.email || '').trim() !== '' || String(user?.phone || '').trim() !== '') ? (
+              <div className="sidebar-profile-contacts" aria-label="Kontaktní údaje uživatele">
+                {String(user?.email || '').trim() !== '' ? (
+                  <div className="sidebar-profile-contact-item" title={String(user?.email || '')}>
+                    <AppIcon name="email" size={13} weight="duotone" />
+                    <span>{user.email}</span>
+                  </div>
+                ) : null}
+
+                {String(user?.phone || '').trim() !== '' ? (
+                  <div className="sidebar-profile-contact-item" title={String(user?.phone || '')}>
+                    <AppIcon name="phone" size={13} weight="duotone" />
+                    <span>{user.phone}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -174,6 +186,11 @@ export default function AppShell() {
         </nav>
 
         <div className="sidebar-meta">
+          <div className="sidebar-app-info" aria-label="Informace o aplikaci">
+            <strong className="sidebar-app-title">{appName}</strong>
+            <span className="sidebar-app-version">{displayVersion}</span>
+          </div>
+
           <button className="btn btn-ghost btn-sidebar-logout" type="button" onClick={handleLogout}>
             <AppIcon name="logout" size={16} weight="duotone" />
             Odhlásit

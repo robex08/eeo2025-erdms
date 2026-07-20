@@ -8,34 +8,37 @@ import VehicleDetailPage from '../pages/VehicleDetailPage';
 import VehiclesOverviewPage from '../pages/VehiclesOverviewPage';
 import UsersManagementPage from '../pages/UsersManagementPage';
 import ProtectedRoute from '../auth/ProtectedRoute';
+import { AuthProvider } from '../auth/AuthContext';
 
 export default function AppRoutes() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <AppShell />
-          </ProtectedRoute>
-        }
-      >
-        <Route index element={<DashboardPage />} />
-        <Route path="vehicles" element={<VehiclesOverviewPage />} />
-        <Route path="stations" element={<StationAddressesPage />} />
+    <AuthProvider>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
         <Route
-          path="users"
-          element={(
-            <ProtectedRoute allowedRoles={['superadmin', 'administrator']}>
-              <UsersManagementPage />
+          path="/"
+          element={
+            <ProtectedRoute>
+              <AppShell />
             </ProtectedRoute>
-          )}
-        />
-        <Route path="vehicles/:vehicleId" element={<VehicleDetailPage />} />
-        <Route path="map" element={<VehicleMapPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+          }
+        >
+          <Route index element={<DashboardPage />} />
+          <Route path="vehicles" element={<VehiclesOverviewPage />} />
+          <Route path="stations" element={<StationAddressesPage />} />
+          <Route
+            path="users"
+            element={(
+              <ProtectedRoute allowedRoles={['superadmin', 'administrator']}>
+                <UsersManagementPage />
+              </ProtectedRoute>
+            )}
+          />
+          <Route path="vehicles/:vehicleId" element={<VehicleDetailPage />} />
+          <Route path="map" element={<VehicleMapPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AuthProvider>
   );
 }
