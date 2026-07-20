@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import AppIcon from '../components/ui/AppIcon';
 import SyncGate from '../components/vehicles/SyncGate';
 import L from 'leaflet';
@@ -669,6 +670,38 @@ function normalizeStationLookupKey(value) {
     .trim();
 }
 
+function buildStationLookupVariants(value) {
+  const raw = String(value || '').trim();
+  if (raw === '') {
+    return [];
+  }
+
+  const keys = new Set();
+  const queue = [raw, ...buildCityVariants(raw)];
+
+  queue.forEach((item) => {
+    const key = normalizeStationLookupKey(item);
+    if (key) {
+      keys.add(key);
+    }
+  });
+
+  const expandedKeys = new Set(keys);
+  keys.forEach((key) => {
+    const expanded = key
+      .replace(/\bn\b/g, ' nad ')
+      .replace(/\bp\b/g, ' pod ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (expanded) {
+      expandedKeys.add(expanded);
+    }
+  });
+
+  return Array.from(expandedKeys);
+}
+
 function buildStationAddressIndex(stations) {
   const index = new Map();
 
@@ -712,31 +745,117 @@ function formatFuelTank(value) {
 }
 
 function stationVehicleMatch(vehicle, station) {
-  const stationKeys = [station?.mesto, station?.stanoviste, station?.nazev_stanoviste]
-    .map((value) => normalizeStationLookupKey(value))
-    .filter((value) => value !== '');
+  const stationType = normalizeStationTyp(station?.typ);
+
+  const stationKeys = Array.from(new Set(
+    [station?.mesto, station?.stanoviste, station?.nazev_stanoviste]
+      .flatMap((value) => buildStationLookupVariants(value))
+      .filter((value) => value !== '')
+  ));
 
   if (stationKeys.length === 0) {
     return false;
   }
 
-  const homeStationKey = normalizeStationLookupKey(vehicle?.w_stanoviste);
-  if (homeStationKey !== '' && homeStationKey !== 'nezadano') {
-    return stationKeys.includes(homeStationKey);
+  const stationKeySet = new Set(stationKeys);
+
+  const vehicleKeys = Array.from(new Set(
+    [vehicle?.w_stanoviste, vehicle?.w_groupname]
+      .flatMap((value) => buildStationLookupVariants(value))
+      .filter((value) => value !== '' && value !== 'nezadano')
+  ));
+
+  if (vehicleKeys.length === 0) {
+    return false;
   }
 
-  const fallbackGroupKey = normalizeStationLookupKey(vehicle?.w_groupname);
-  if (fallbackGroupKey !== '' && fallbackGroupKey !== 'nezadano') {
-    return stationKeys.includes(fallbackGroupKey);
+  if (stationType === 'Servis') {
+    const vehicleLocationState = normalizeText(vehicle?.location_state);
+    if (vehicleLocationState !== 'v_servisu') {
+      return false;
+    }
+
+    const stationStreet = normalizeStationLookupKey(station?.ulice);
+    const stationCity = normalizeStationLookupKey(station?.mesto);
+
+    const serviceStationKeys = Array.from(new Set(
+      [
+        station?.stanoviste,
+        station?.nazev_stanoviste,
+        station?.w_ln_match,
+        station?.ulice,
+        [station?.ulice, station?.mesto].filter(Boolean).join(' '),
+        [station?.mesto, station?.ulice].filter(Boolean).join(' '),
+      ]
+        .flatMap((value) => buildStationLookupVariants(value))
+        .filter((value) => value !== '' && value !== stationCity)
+    ));
+
+    const vehicleServiceKeys = Array.from(new Set(
+      [vehicle?.pos_ln, vehicle?.w_groupname, vehicle?.w_stanoviste]
+        .flatMap((value) => buildStationLookupVariants(value))
+        .filter((value) => value !== '' && value !== 'nezadano')
+    ));
+
+    if (vehicleServiceKeys.length === 0 || serviceStationKeys.length === 0) {
+      return false;
+    }
+
+    const hasStreetCityMatch = stationStreet !== ''
+      && stationCity !== ''
+      && vehicleServiceKeys.some((key) => key.includes(stationStreet) && key.includes(stationCity));
+
+    if (hasStreetCityMatch) {
+      return true;
+    }
+
+    if (vehicleServiceKeys.some((key) => serviceStationKeys.includes(key))) {
+      return true;
+    }
+
+    if (stationStreet === '' || stationStreet.length < 5) {
+      return false;
+    }
+
+    return serviceStationKeys.some((stationKey) => {
+      if (stationKey.length < 10) {
+        return false;
+      }
+
+      return vehicleServiceKeys.some((vehicleKey) => (
+        vehicleKey.includes(stationStreet)
+        && (vehicleKey.includes(stationKey) || stationKey.includes(vehicleKey))
+      ));
+    });
   }
 
-  return false;
+  if (vehicleKeys.some((key) => stationKeySet.has(key))) {
+    return true;
+  }
+
+  return stationKeys.some((stationKey) => {
+    if (stationKey.length < 8) {
+      return false;
+    }
+
+    return vehicleKeys.some((vehicleKey) => {
+      if (vehicleKey.length < 8) {
+        return false;
+      }
+
+      return vehicleKey.includes(stationKey) || stationKey.includes(vehicleKey);
+    });
+  });
+}
+
+function getStationAssignedVehicles(station, vehicles) {
+  return (Array.isArray(vehicles) ? vehicles : [])
+    .filter((vehicle) => stationVehicleMatch(vehicle, station))
+    .sort((left, right) => String(left?.spz || '').localeCompare(String(right?.spz || ''), 'cs', { sensitivity: 'base', numeric: true }));
 }
 
 function buildStationVehiclesContent(station, vehicles) {
-  const assignedVehicles = (Array.isArray(vehicles) ? vehicles : [])
-    .filter((vehicle) => stationVehicleMatch(vehicle, station))
-    .sort((left, right) => String(left?.spz || '').localeCompare(String(right?.spz || ''), 'cs', { sensitivity: 'base', numeric: true }));
+  const assignedVehicles = getStationAssignedVehicles(station, vehicles);
 
   if (assignedVehicles.length === 0) {
     return '<div class="mapa-popup-station-empty">Pod stanoviště se nepodařilo přiřadit žádná vozidla.</div>';
@@ -1047,6 +1166,11 @@ function buildStationsWithCoords(stations) {
 }
 
 export default function VehicleMapPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const incomingMapPreset = typeof location.state === 'object' && location.state !== null
+    ? location.state.mapPreset
+    : null;
   const [stations, setStations] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1058,6 +1182,10 @@ export default function VehicleMapPage() {
   const [search, setSearch] = useState(() => {
     if (typeof window === 'undefined') {
       return '';
+    }
+
+    if (typeof incomingMapPreset?.search === 'string' && incomingMapPreset.search.trim() !== '') {
+      return String(incomingMapPreset.search);
     }
 
     try {
@@ -1078,6 +1206,10 @@ export default function VehicleMapPage() {
       return true;
     }
 
+    if (typeof incomingMapPreset?.showVehicles === 'boolean') {
+      return incomingMapPreset.showVehicles;
+    }
+
     try {
       const raw = localStorage.getItem(MAP_FILTERS_STORAGE_KEY);
       if (!raw) {
@@ -1093,6 +1225,10 @@ export default function VehicleMapPage() {
   const [showVsStations, setShowVsStations] = useState(() => {
     if (typeof window === 'undefined') {
       return true;
+    }
+
+    if (typeof incomingMapPreset?.showVsStations === 'boolean') {
+      return incomingMapPreset.showVsStations;
     }
 
     try {
@@ -1118,6 +1254,10 @@ export default function VehicleMapPage() {
       return true;
     }
 
+    if (typeof incomingMapPreset?.showServiceStations === 'boolean') {
+      return incomingMapPreset.showServiceStations;
+    }
+
     try {
       const raw = localStorage.getItem(MAP_FILTERS_STORAGE_KEY);
       if (!raw) {
@@ -1141,6 +1281,13 @@ export default function VehicleMapPage() {
       return 'aktivni';
     }
 
+    if (typeof incomingMapPreset?.statusFilter === 'string' && incomingMapPreset.statusFilter.trim() !== '') {
+      const status = String(incomingMapPreset.statusFilter).toLowerCase();
+      if (STATUS_OPTIONS.some((item) => item.value === status)) {
+        return status;
+      }
+    }
+
     try {
       const raw = localStorage.getItem(MAP_FILTERS_STORAGE_KEY);
       if (!raw) {
@@ -1157,6 +1304,10 @@ export default function VehicleMapPage() {
   const [selectedTypeFilters, setSelectedTypeFilters] = useState(() => {
     if (typeof window === 'undefined') {
       return [];
+    }
+
+    if (Array.isArray(incomingMapPreset?.typeFilters)) {
+      return parseCsvValues(incomingMapPreset.typeFilters.join(','));
     }
 
     try {
@@ -1190,10 +1341,14 @@ export default function VehicleMapPage() {
   const vehicleMarkersRef = useRef({});
   const freeAddressMarkerRef = useRef(null);
   const serviceHistoryCacheRef = useRef(new Map());
+  const stationServiceHistoryCountCacheRef = useRef(new Map());
+  const stationTooltipRequestRef = useRef(0);
+  const stationTooltipHideTimeoutRef = useRef(null);
   const districtBoundaryLayerRef = useRef(null);
   const districtLabelLayerRef = useRef(null);
   const districtGeoJsonCacheRef = useRef(null);
   const suppressNextAutoFitRef = useRef(false);
+  const [stationHoverTooltip, setStationHoverTooltip] = useState(null);
 
   const fulltext = normalizeText(debouncedSearch);
   const stationAddressIndex = useMemo(() => buildStationAddressIndex(stations), [stations]);
@@ -1215,6 +1370,14 @@ export default function VehicleMapPage() {
       })
     );
   }, [search, showVehicles, showVsStations, showServiceStations, statusFilter, selectedTypeFilters]);
+
+  useEffect(() => {
+    return () => {
+      if (stationTooltipHideTimeoutRef.current) {
+        window.clearTimeout(stationTooltipHideTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!openFilterKey) {
@@ -1300,6 +1463,163 @@ export default function VehicleMapPage() {
 
     return vehicles.filter((vehicle) => vehicleMatchesQuery(vehicle, q));
   }, [fulltext, vehicles]);
+
+  const stationVehiclesByKey = useMemo(() => {
+    const map = new Map();
+    filteredStations.forEach((station) => {
+      const stationKey = String(station?.id || `${station?.mesto || ''}-${station?.stanoviste || ''}-${station?.ulice || ''}`);
+      map.set(stationKey, getStationAssignedVehicles(station, filteredVehiclesOnMap));
+    });
+    return map;
+  }, [filteredStations, filteredVehiclesOnMap]);
+
+  async function loadServiceHistoryCount(spzRaw) {
+    const spz = String(spzRaw || '').trim();
+    if (spz === '') {
+      return 0;
+    }
+
+    if (stationServiceHistoryCountCacheRef.current.has(spz)) {
+      return Number(stationServiceHistoryCountCacheRef.current.get(spz) || 0);
+    }
+
+    if (serviceHistoryCacheRef.current.has(spz)) {
+      const cachedOrders = serviceHistoryCacheRef.current.get(spz);
+      const cachedCount = Array.isArray(cachedOrders) ? cachedOrders.length : 0;
+      stationServiceHistoryCountCacheRef.current.set(spz, cachedCount);
+      return cachedCount;
+    }
+
+    try {
+      const response = await fetchVehicleServiceHistory(spz);
+      const ordersRaw = Array.isArray(response?.orders)
+        ? response.orders
+        : (Array.isArray(response?.data) ? response.data : []);
+      const count = ordersRaw.length;
+      serviceHistoryCacheRef.current.set(spz, ordersRaw);
+      stationServiceHistoryCountCacheRef.current.set(spz, count);
+      return count;
+    } catch {
+      stationServiceHistoryCountCacheRef.current.set(spz, 0);
+      return 0;
+    }
+  }
+
+  async function handleStationItemHover(event, station, stationVehicles) {
+    if (stationTooltipHideTimeoutRef.current) {
+      window.clearTimeout(stationTooltipHideTimeoutRef.current);
+      stationTooltipHideTimeoutRef.current = null;
+    }
+
+    const stationLabel = String(station?.nazev_stanoviste || station?.mesto || station?.stanoviste || 'Bez názvu');
+    const rect = event.currentTarget.getBoundingClientRect();
+    const stationItems = (Array.isArray(stationVehicles) ? stationVehicles : []).slice(0, 10);
+    const hiddenCount = Math.max(0, (Array.isArray(stationVehicles) ? stationVehicles.length : 0) - stationItems.length);
+    const requestId = stationTooltipRequestRef.current + 1;
+    stationTooltipRequestRef.current = requestId;
+
+    setStationHoverTooltip({
+      left: Math.min(window.innerWidth - 420, rect.right + 10),
+      top: Math.max(12, Math.min(window.innerHeight - 340, rect.top)),
+      title: stationLabel,
+      total: Array.isArray(stationVehicles) ? stationVehicles.length : 0,
+      loading: true,
+      rows: [],
+      hiddenCount,
+    });
+
+    const rows = await Promise.all(stationItems.map(async (vehicle) => {
+      const spz = String(vehicle?.spz || '').trim();
+      const serviceCount = await loadServiceHistoryCount(spz);
+      return {
+        key: String(vehicle?.id || spz || vehicle?.legacy_carid || `${vehicle?.w_popis || ''}-${vehicle?.najeto_km || ''}`),
+        vehicleId: Number(vehicle?.id || 0),
+        legacyCarId: String(vehicle?.legacy_carid || '').trim(),
+        callSign: String(vehicle?.w_popis || '-').trim() || '-',
+        spz: spz || '-',
+        km: formatKm(vehicle?.najeto_km),
+        serviceCount,
+      };
+    }));
+
+    if (stationTooltipRequestRef.current !== requestId) {
+      return;
+    }
+
+    setStationHoverTooltip((prev) => {
+      if (!prev) {
+        return null;
+      }
+
+      return {
+        ...prev,
+        loading: false,
+        rows,
+      };
+    });
+  }
+
+  function handleStationItemHoverLeave() {
+    if (stationTooltipHideTimeoutRef.current) {
+      window.clearTimeout(stationTooltipHideTimeoutRef.current);
+    }
+
+    stationTooltipHideTimeoutRef.current = window.setTimeout(() => {
+      stationTooltipRequestRef.current += 1;
+      setStationHoverTooltip(null);
+      stationTooltipHideTimeoutRef.current = null;
+    }, 260);
+  }
+
+  function handleStationTooltipHoverEnter() {
+    if (stationTooltipHideTimeoutRef.current) {
+      window.clearTimeout(stationTooltipHideTimeoutRef.current);
+      stationTooltipHideTimeoutRef.current = null;
+    }
+  }
+
+  function handleTooltipVehicleFocus(row) {
+    const rowSpz = String(row?.spz || '').trim();
+    const rowLegacyCarId = String(row?.legacyCarId || '').trim();
+    const rowVehicleId = Number(row?.vehicleId || 0);
+
+    const matchedVehicle = filteredVehiclesOnMap.find((vehicle) => {
+      const vehicleSpz = String(vehicle?.spz || '').trim();
+      const vehicleLegacyCarId = String(vehicle?.legacy_carid || '').trim();
+      const vehicleId = Number(vehicle?.id || 0);
+
+      if (rowSpz && vehicleSpz && vehicleSpz === rowSpz) {
+        return true;
+      }
+
+      if (rowLegacyCarId && vehicleLegacyCarId && vehicleLegacyCarId === rowLegacyCarId) {
+        return true;
+      }
+
+      return rowVehicleId > 0 && vehicleId > 0 && vehicleId === rowVehicleId;
+    });
+
+    if (!matchedVehicle) {
+      return;
+    }
+
+    focusVehicleOnMap(matchedVehicle);
+  }
+
+  function handleTooltipOverviewOpen(event, row) {
+    event.stopPropagation();
+
+    const rowSpz = String(row?.spz || '').trim();
+    const rowCallSign = String(row?.callSign || '').trim();
+    const nextQuery = rowSpz !== '' && rowSpz !== '-' ? rowSpz : rowCallSign;
+
+    const params = new URLSearchParams();
+    if (nextQuery !== '') {
+      params.set('q', nextQuery);
+    }
+
+    navigate(`/vehicles${params.toString() ? `?${params.toString()}` : ''}`);
+  }
 
   async function fetchAllVehiclesForMap() {
       const pageSize = 200;
@@ -1482,6 +1802,14 @@ export default function VehicleMapPage() {
     setShowVsStations(true);
     setShowServiceStations(true);
     setFreeAddressPoint(null);
+
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(MAP_FILTERS_STORAGE_KEY);
+    }
+
+    if (incomingMapPreset) {
+      navigate('/map', { replace: true });
+    }
   }
 
   useEffect(() => {
@@ -2194,7 +2522,8 @@ export default function VehicleMapPage() {
 
   const localizedCount = locatedStations.length;
   const hasActiveMapFilters =
-    search.trim() !== ''
+    Boolean(incomingMapPreset)
+    || search.trim() !== ''
     || statusFilter !== 'aktivni'
     || selectedTypeFilters.length > 0
     || !showVehicles
@@ -2371,6 +2700,9 @@ export default function VehicleMapPage() {
                 const stationAddress = buildStationAddressText(station);
                 const stationLabel = String(station.nazev_stanoviste || station.mesto || station.stanoviste || 'Bez názvu');
                 const isActive = Number(station.id || 0) === selectedStationId;
+                const stationKey = String(station.id || `${station.mesto || ''}-${station.stanoviste || ''}-${station.ulice || ''}`);
+                const stationVehicles = stationVehiclesByKey.get(stationKey) || [];
+                const stationVehiclesCount = stationVehicles.length;
                 const stationType = normalizeStationTyp(station.typ);
                 const stationTypeClass = stationType === 'VS'
                   ? 'is-vs'
@@ -2387,7 +2719,20 @@ export default function VehicleMapPage() {
                   >
                     <div className="mapa-v2-station-title-row">
                       <strong>{stationLabel}</strong>
-                      <span className={`mapa-v2-station-type-badge ${stationTypeClass}`}>{stationType}</span>
+                      <span className="mapa-v2-station-badges">
+                        <span className={`mapa-v2-station-type-badge ${stationTypeClass}`}>{stationType}</span>
+                        <span
+                          className="mapa-v2-station-count-badge"
+                          title={`Počet vozidel na stanovišti: ${stationVehiclesCount}`}
+                          onMouseEnter={(event) => {
+                            void handleStationItemHover(event, station, stationVehicles);
+                          }}
+                          onMouseLeave={handleStationItemHoverLeave}
+                        >
+                          <AppIcon name="car" size={11} weight="duotone" />
+                          <span>{stationVehiclesCount}</span>
+                        </span>
+                      </span>
                     </div>
                     <div className="mapa-v2-station-address">{stationAddress || '-'}</div>
                   </button>
@@ -2404,6 +2749,68 @@ export default function VehicleMapPage() {
             <div ref={mapContainerRef} className="mapa-v2-map" role="img" aria-label="Interaktivní mapa VS měst a vozidel" />
           </div>
         </div>
+
+        {stationHoverTooltip ? (
+          <div
+            className="mapa-v2-station-tooltip"
+            style={{ left: `${stationHoverTooltip.left}px`, top: `${stationHoverTooltip.top}px` }}
+            role="status"
+            aria-live="polite"
+            onMouseEnter={handleStationTooltipHoverEnter}
+            onMouseLeave={handleStationItemHoverLeave}
+          >
+            <div className="mapa-v2-station-tooltip-title">
+              <strong>{stationHoverTooltip.title}</strong>
+              <span>{stationHoverTooltip.total} vozidel</span>
+            </div>
+
+            {stationHoverTooltip.loading ? (
+              <p className="mapa-v2-station-tooltip-info">Načítám detail vozidel...</p>
+            ) : (
+              <div className="mapa-v2-station-tooltip-list">
+                {stationHoverTooltip.rows.map((row) => (
+                  <div
+                    key={row.key}
+                    className="mapa-v2-station-tooltip-item"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => handleTooltipVehicleFocus(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        handleTooltipVehicleFocus(row);
+                      }
+                    }}
+                  >
+                    <div className="mapa-v2-station-tooltip-item-head">
+                      <strong>{row.callSign}</strong>
+                      <span className="mapa-v2-station-tooltip-item-actions">
+                        <span>{row.spz}</span>
+                        <button
+                          type="button"
+                          className="mapa-v2-station-tooltip-overview-btn"
+                          title="Otevřít v přehledu vozidel"
+                          aria-label="Otevřít v přehledu vozidel"
+                          onClick={(event) => handleTooltipOverviewOpen(event, row)}
+                        >
+                          <AppIcon name="vehicles" size={12} weight="duotone" />
+                        </button>
+                      </span>
+                    </div>
+                    <div className="mapa-v2-station-tooltip-item-meta">
+                      <span>KM: {row.km}</span>
+                      <span>Servisní historie: {row.serviceCount}</span>
+                    </div>
+                  </div>
+                ))}
+
+                {stationHoverTooltip.hiddenCount > 0 ? (
+                  <div className="mapa-v2-station-tooltip-more">+ {stationHoverTooltip.hiddenCount} dalších vozidel</div>
+                ) : null}
+              </div>
+            )}
+          </div>
+        ) : null}
       </section>
     </section>
   );

@@ -406,7 +406,10 @@ final class VehicleRepository
 
         $whereSql = $whereClauses !== [] ? ' WHERE ' . implode(' AND ', $whereClauses) : '';
 
-        $summaryStmt = $this->pdo->prepare('SELECT COUNT(*) AS total, MAX(v.last_update) AS updated_at' . $fromSql . $whereSql);
+        $dotaceCountSql = $hasLegacyDotace
+            ? ', COUNT(DISTINCT CASE WHEN LOWER(TRIM(COALESCE(legacy_dotace.dotace, ""))) = "a" THEN v.id END) AS dotace_count'
+            : ', 0 AS dotace_count';
+        $summaryStmt = $this->pdo->prepare('SELECT COUNT(*) AS total, MAX(v.last_update) AS updated_at' . $dotaceCountSql . $fromSql . $whereSql);
         $summaryStmt->execute($params);
         $summaryRow = $summaryStmt->fetch() ?: [];
         $totalFiltered = (int) ($summaryRow['total'] ?? 0);
@@ -2459,6 +2462,10 @@ final class VehicleRepository
             $statusFilter = 'all';
         }
 
+        $hasLegacyDotace = $this->tableExists('cars_dotace')
+            && $this->columnExists('cars_dotace', 'w_spz')
+            && $this->columnExists('cars_dotace', 'dotace');
+
         $aliasWhere = '';
         $params = [];
         $accessJoin = '';
@@ -2485,6 +2492,64 @@ final class VehicleRepository
         );
         $summaryStmt->execute($params);
         $summary = $summaryStmt->fetch() ?: [];
+
+        $dotaceCount = 0;
+        if ($hasLegacyDotace) {
+            $dotaceJoin = ' LEFT JOIN cars_dotace legacy_dotace ON REPLACE(v.spz, " ", "") = REPLACE(legacy_dotace.w_spz, " ", "")';
+            $dotaceStmt = $this->pdo->prepare(
+                'SELECT COUNT(DISTINCT CASE WHEN LOWER(TRIM(COALESCE(legacy_dotace.dotace, ""))) = "a" THEN v.id END) AS dotace_count
+                 FROM vehicles_cars_list_v2 v
+                 ' . $accessJoin . '
+                 ' . $dotaceJoin . '
+                 ' . $aliasWhere
+            );
+            $dotaceStmt->execute($params);
+            $dotaceCount = (int) ($dotaceStmt->fetchColumn() ?: 0);
+        }
+
+        $locationStateSummary = [
+            'doma' => 0,
+            'v_akci' => 0,
+            'v_servisu' => 0,
+            'nezname' => 0,
+            'total' => 0,
+        ];
+
+        if ($this->tableExists(self::TBL_STATION_ADDRESSES)) {
+            $hasPositionsLn = $this->tableExists(self::TBL_WD_POSITIONS)
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_ln');
+
+            $locationSummarySql = 'SELECT d.w_stanoviste, ' . ($hasPositionsLn
+                ? 'COALESCE(last_pos.w_ln, "") AS pos_ln'
+                : '"" AS pos_ln') . '
+                 FROM vehicles_cars_list_v2 v
+                 LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
+
+            if ($hasPositionsLn) {
+                $locationSummarySql .= '
+                 LEFT JOIN (
+                    SELECT cp.w_carid, cp.w_ln
+                    FROM ' . self::TBL_WD_POSITIONS . ' cp
+                    INNER JOIN (
+                        SELECT w_carid, MAX(id) AS max_id
+                        FROM ' . self::TBL_WD_POSITIONS . '
+                        GROUP BY w_carid
+                    ) latest ON latest.w_carid = cp.w_carid AND latest.max_id = cp.id
+                 ) last_pos ON last_pos.w_carid = v.legacy_carid';
+            }
+
+            $locationSummarySql .= $accessJoin . $aliasWhere;
+
+            $locationSummaryStmt = $this->pdo->prepare($locationSummarySql);
+            $locationSummaryStmt->execute($params);
+            $locationSummaryRows = $locationSummaryStmt->fetchAll() ?: [];
+            if ($locationSummaryRows !== []) {
+                $stationContext = $this->buildStationAddressIndex();
+                $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext);
+                $locationStateSummary = $this->summarizeLocationStates($locationSummaryRows);
+            }
+        }
 
         $updatedStmt = $this->pdo->prepare(
             'SELECT MAX(v.last_update) AS updated_at
@@ -2609,10 +2674,12 @@ final class VehicleRepository
             'summary' => [
                 'total' => (int) ($summary['total'] ?? 0),
                 'active' => (int) ($summary['active'] ?? 0),
+                'dotace' => $dotaceCount,
                 'retired' => (int) ($summary['retired'] ?? 0),
                 'inactive' => (int) ($summary['inactive'] ?? 0),
                 'unknown' => (int) ($summary['unknown'] ?? 0),
             ],
+            'locationStateSummary' => $locationStateSummary,
             'updatedAt' => is_string($updatedAt) && trim($updatedAt) !== '' ? $updatedAt : null,
             'fuelDistribution' => $this->normalizeBuckets($fuelDistribution),
             'typeDistribution' => $this->normalizeBuckets($typeDistribution),
