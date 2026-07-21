@@ -1007,7 +1007,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    fetchDashboardMetrics({ status: forecastStatus })
+    fetchDashboardMetrics({ status: 'all' })
       .then((metricsResponse) => {
         setMetrics(metricsResponse?.data || null);
       })
@@ -1025,6 +1025,8 @@ export default function DashboardPage() {
             doma: 0,
             v_akci: 0,
             v_servisu: 0,
+            v_servisu_manual: 0,
+            v_servisu_auto: 0,
             nezname: 0,
             total: 0,
           },
@@ -1073,7 +1075,7 @@ export default function DashboardPage() {
     try {
       const syncResponse = await triggerQuickSync();
       const [metricsResponse, forecastResponse, summaryResponse] = await Promise.all([
-        fetchDashboardMetrics({ status: forecastStatus }),
+        fetchDashboardMetrics({ status: 'all' }),
         fetchFleetForecast({ months: forecastMonths, status: forecastStatus }),
         fetchDashboardMetrics({ status: 'all' }),
       ]);
@@ -1185,9 +1187,16 @@ export default function DashboardPage() {
     doma: 0,
     v_akci: 0,
     v_servisu: 0,
+    v_servisu_manual: 0,
+    v_servisu_auto: 0,
     nezname: 0,
     total: 0,
   };
+  const serviceManual = Number(locationStateSummary.v_servisu_manual || 0);
+  const serviceAutoRaw = Number(locationStateSummary.v_servisu_auto || 0);
+  const serviceAuto = serviceManual + serviceAutoRaw > 0
+    ? serviceAutoRaw
+    : Number(locationStateSummary.v_servisu || 0);
 
   const tileData = [
     { label: 'Celkem vozidel', value: summary.total, tone: 'neutral' },
@@ -1215,7 +1224,7 @@ export default function DashboardPage() {
         </div>
         <div className="dashboard-global-actions">
           <span className="dashboard-global-service-pill">
-            V servisu: <strong>{locationStateSummary.v_servisu}</strong>
+            V servisu - Sr (manuální zadání): <strong>{serviceManual}</strong>, Sa (automaticky): <strong>{serviceAuto}</strong>
           </span>
 
           <span className={`dashboard-global-alert-pill${urgent250kCount > 0 ? ' is-alert' : ''}`}>

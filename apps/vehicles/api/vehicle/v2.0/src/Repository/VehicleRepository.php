@@ -9,6 +9,8 @@ final class VehicleRepository
     private const TBL_WD_POSITIONS = 'vehicles_wd_positions_v2';
     private const TBL_WD_KM_STATS = 'vehicles_wd_km_stats_v2';
     private const TBL_STATION_ADDRESSES = 'vehicles_station_addresses_v2';
+    private const TBL_MANUAL_EVENTS = 'vehicles_manual_events_v2';
+    private const TBL_LOOKUPS = 'vehicles_lookups_v2';
     private array $tableExistsCache = [];
     private array $columnExistsCache = [];
     private DateTimeZone $appTimezone;
@@ -35,6 +37,7 @@ final class VehicleRepository
         array $callSigns = [],
         array $groups = [],
         array $stations = [],
+        array $locationStates = [],
         array $models = [],
         array $manufacturers = [],
         array $fuels = [],
@@ -64,7 +67,10 @@ final class VehicleRepository
         $hasLegacyDotace = $this->tableExists('cars_dotace')
             && $this->columnExists('cars_dotace', 'w_spz')
             && $this->columnExists('cars_dotace', 'dotace');
-            $hasFuelTank = $this->columnExists('vehicles_detail_cards', 'w_nadrz');
+        $hasFuelTank = $this->columnExists('vehicles_detail_cards', 'w_nadrz');
+        $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
+        $hasManualLocationUpdatedAt = $this->columnExists('vehicles_detail_cards', 'manual_location_updated_at');
+        $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
 
         $sortColumns = [
             'spz' => 'v.spz',
@@ -77,6 +83,7 @@ final class VehicleRepository
             'w_typ_phm' => 'v.w_typ_phm',
                 'datum_zarazeni' => $hasLegacyDatod ? 'legacy_detail.w_datod' : 'v.last_update',
             'najeto_km' => $hasPositionsKm ? 'last_pos.w_km' : 'v.id',
+                'location_state' => 'v.id',
             'last_update' => 'v.last_update',
             'dotace' => $hasLegacyDotace ? 'legacy_dotace.dotace' : 'v.id',
             'status' => 'v.status',
@@ -152,6 +159,15 @@ final class VehicleRepository
         $fuelTankSelect = $hasFuelTank
             ? 'd.w_nadrz'
             : 'NULL AS w_nadrz';
+        $manualLocationStateSelect = $hasManualLocationState
+            ? 'COALESCE(d.manual_location_state, "") AS manual_location_state'
+            : '"" AS manual_location_state';
+        $manualLocationUpdatedAtSelect = $hasManualLocationUpdatedAt
+            ? 'DATE_FORMAT(d.manual_location_updated_at, "%Y-%m-%d %H:%i:%s") AS manual_location_updated_at'
+            : 'NULL AS manual_location_updated_at';
+        $serviceContextJsonSelect = $hasServiceContextJson
+            ? 'd.service_context_json'
+            : 'NULL AS service_context_json';
         $typeLabelSql = 'CASE
             WHEN d.zzs_typ IS NULL THEN "Nezadáno"
             WHEN TRIM(d.zzs_typ) = "" THEN "Nezadáno"
@@ -401,6 +417,9 @@ final class VehicleRepository
             $fuelWhereClauses[] = $fuelLabelSql . ' IN (' . implode(', ', $fuelPlaceholders) . ')';
         }
 
+        $locationStates = $this->normalizeLocationStatesFilter($locationStates);
+        $hasLocationStateFilter = $locationStates !== [];
+
         $whereClauses = array_merge($baseWhereClauses, $typeWhereClauses, $callSignWhereClauses, $groupWhereClauses, $stationWhereClauses, $modelWhereClauses, $manufacturerWhereClauses, $fuelWhereClauses, $yearWhereClauses, $mileageBandWhereClauses);
         $params = array_merge($baseParams, $typeParams, $callSignParams, $groupParams, $stationParams, $modelParams, $manufacturerParams, $fuelParams, $yearParams, $mileageBandParams);
 
@@ -420,7 +439,7 @@ final class VehicleRepository
         }
 
         $totalAll = $totalFiltered;
-        if ($query !== '' || $chartCarIds !== [] || $statusFilter !== 'all' || $types !== [] || $callSigns !== [] || $groups !== [] || $stations !== [] || $models !== [] || $manufacturers !== [] || $fuels !== [] || $years !== [] || $mileageBands !== []) {
+        if ($query !== '' || $chartCarIds !== [] || $statusFilter !== 'all' || $types !== [] || $callSigns !== [] || $groups !== [] || $stations !== [] || $models !== [] || $manufacturers !== [] || $fuels !== [] || $years !== [] || $mileageBands !== [] || $hasLocationStateFilter) {
             if ($restrictByAssignments) {
                 $totalAllStmt = $this->pdo->prepare('SELECT COUNT(*)' . $fromSql);
                 $totalAllStmt->bindValue(':access_user_id', $actorUserId, PDO::PARAM_INT);
@@ -432,7 +451,7 @@ final class VehicleRepository
             }
         }
 
-        $sql = 'SELECT v.id,
+        $selectSqlBase = 'SELECT v.id,
                    v.spz,
                    v.legacy_carid,
                    v.status,
@@ -452,73 +471,97 @@ final class VehicleRepository
                                      ' . $posUpdatedSelect . ',
                    v.w_online,
                    v.w_disabled,
-                                         ' . $fuelTankSelect . ',
+                   ' . $fuelTankSelect . ',
+                   ' . $manualLocationStateSelect . ',
+                   ' . $manualLocationUpdatedAtSelect . ',
+                                     ' . $serviceContextJsonSelect . ',
                      DATE_FORMAT(v.last_update, "%Y-%m-%d %H:%i:%s") AS last_update,
                      ' . $dotaceSelect . '
-            ' . $fromSql . $whereSql . " ORDER BY {$sortColumn} {$sortDirection}, v.id ASC LIMIT :limit OFFSET :offset";
-
-        $stmt = $this->pdo->prepare($sql);
-        foreach ($params as $paramName => $paramValue) {
-            if ($paramName === 'term') {
-                $stmt->bindValue(':term', $paramValue, PDO::PARAM_STR);
-                continue;
-            }
-
-            if (str_starts_with($paramName, 'chart_carid_')) {
-                $stmt->bindValue(':' . $paramName, (int) $paramValue, PDO::PARAM_INT);
-                continue;
-            }
-
-            if ($paramName === 'access_user_id') {
-                $stmt->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
-                continue;
-            }
-
-            $stmt->bindValue(':' . $paramName, (string) $paramValue, PDO::PARAM_STR);
-        }
-        $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
-        $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-        $stmt->execute();
-
-        $items = $stmt->fetchAll() ?: [];
+            ' . $fromSql . $whereSql;
         $stationContext = $this->buildStationAddressIndex();
-        $items = $this->appendLocationState($items, $stationContext);
+        $requiresPhpLocationPipeline = $hasLocationStateFilter || $normalizedSortBy === 'location_state';
+
+        $bindListParams = function (PDOStatement $statement) use ($params): void {
+            foreach ($params as $paramName => $paramValue) {
+                if ($paramName === 'term') {
+                    $statement->bindValue(':term', $paramValue, PDO::PARAM_STR);
+                    continue;
+                }
+
+                if (str_starts_with($paramName, 'chart_carid_')) {
+                    $statement->bindValue(':' . $paramName, (int) $paramValue, PDO::PARAM_INT);
+                    continue;
+                }
+
+                if ($paramName === 'access_user_id') {
+                    $statement->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
+                    continue;
+                }
+
+                $statement->bindValue(':' . $paramName, (string) $paramValue, PDO::PARAM_STR);
+            }
+        };
 
         $locationStateSummary = [
             'doma' => 0,
             'v_akci' => 0,
             'v_servisu' => 0,
+            'v_servisu_manual' => 0,
+            'v_servisu_auto' => 0,
             'nezname' => 0,
             'total' => 0,
         ];
 
-        $locationSummaryStmt = $this->pdo->prepare(
-            'SELECT d.w_stanoviste, ' . $posLnSelect . $fromSql . $whereSql
-        );
-        foreach ($params as $paramName => $paramValue) {
-            if ($paramName === 'term') {
-                $locationSummaryStmt->bindValue(':term', $paramValue, PDO::PARAM_STR);
-                continue;
+        $items = [];
+        if ($requiresPhpLocationPipeline) {
+            $sqlOrderColumn = $normalizedSortBy === 'location_state' ? 'v.id' : $sortColumn;
+            $allRowsStmt = $this->pdo->prepare($selectSqlBase . " ORDER BY {$sqlOrderColumn} {$sortDirection}, v.id ASC");
+            $bindListParams($allRowsStmt);
+            $allRowsStmt->execute();
+
+            $allItems = $allRowsStmt->fetchAll() ?: [];
+            $allItems = $this->appendLocationState($allItems, $stationContext);
+
+            if ($hasLocationStateFilter) {
+                $locationStateIndex = array_fill_keys($locationStates, true);
+                $allItems = array_values(array_filter(
+                    $allItems,
+                    static function (array $item) use ($locationStateIndex): bool {
+                        $state = strtolower(trim((string) ($item['location_state'] ?? '')));
+                        return array_key_exists($state, $locationStateIndex);
+                    }
+                ));
             }
 
-            if (str_starts_with($paramName, 'chart_carid_')) {
-                $locationSummaryStmt->bindValue(':' . $paramName, (int) $paramValue, PDO::PARAM_INT);
-                continue;
+            if ($normalizedSortBy === 'location_state') {
+                usort($allItems, fn(array $left, array $right): int => $this->compareByLocationState($left, $right, $sortDirection));
             }
 
-            if ($paramName === 'access_user_id') {
-                $locationSummaryStmt->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
-                continue;
+            $totalFiltered = count($allItems);
+            $offset = ($page - 1) * $perPage;
+            $items = array_slice($allItems, $offset, $perPage);
+            $locationStateSummary = $this->summarizeLocationStates($allItems);
+        } else {
+            $pagedStmt = $this->pdo->prepare($selectSqlBase . " ORDER BY {$sortColumn} {$sortDirection}, v.id ASC LIMIT :limit OFFSET :offset");
+            $bindListParams($pagedStmt);
+            $pagedStmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
+            $pagedStmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+            $pagedStmt->execute();
+
+            $items = $pagedStmt->fetchAll() ?: [];
+            $items = $this->appendLocationState($items, $stationContext);
+
+            $locationSummaryStmt = $this->pdo->prepare(
+                'SELECT d.w_stanoviste, ' . $posLnSelect . ', ' . $manualLocationStateSelect . $fromSql . $whereSql
+            );
+            $bindListParams($locationSummaryStmt);
+            $locationSummaryStmt->execute();
+
+            $locationSummaryRows = $locationSummaryStmt->fetchAll() ?: [];
+            if ($locationSummaryRows !== []) {
+                $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext);
+                $locationStateSummary = $this->summarizeLocationStates($locationSummaryRows);
             }
-
-            $locationSummaryStmt->bindValue(':' . $paramName, (string) $paramValue, PDO::PARAM_STR);
-        }
-        $locationSummaryStmt->execute();
-
-        $locationSummaryRows = $locationSummaryStmt->fetchAll() ?: [];
-        if ($locationSummaryRows !== []) {
-            $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext);
-            $locationStateSummary = $this->summarizeLocationStates($locationSummaryRows);
         }
 
         $filterOptions = [
@@ -731,6 +774,19 @@ final class VehicleRepository
         $serviceCandidates = $stationContext['serviceCandidates'] ?? [];
 
         foreach ($items as &$item) {
+            $manualState = $this->normalizeManualLocationState((string) ($item['manual_location_state'] ?? ''));
+            if ($manualState !== null) {
+                $item['location_state'] = $manualState;
+                if ($manualState === 'doma') {
+                    $item['is_home_location'] = 1;
+                } elseif ($manualState === 'v_akci' || $manualState === 'v_servisu') {
+                    $item['is_home_location'] = 0;
+                } else {
+                    $item['is_home_location'] = null;
+                }
+                continue;
+            }
+
             $stationName = trim((string) ($item['w_stanoviste'] ?? ''));
             $positionRaw = trim((string) ($item['pos_ln'] ?? ''));
 
@@ -790,22 +846,100 @@ final class VehicleRepository
         return $items;
     }
 
+    private function normalizeManualLocationState(string $raw): ?string
+    {
+        $value = strtolower(trim($raw));
+        if ($value === '') {
+            return null;
+        }
+
+        return in_array($value, ['doma', 'v_akci', 'v_servisu', 'nezname'], true)
+            ? $value
+            : null;
+    }
+
+    private function normalizeLocationStatesFilter(array $states): array
+    {
+        $allowed = ['doma', 'v_akci', 'v_servisu', 'nezname'];
+        $normalized = [];
+
+        foreach ($states as $stateRaw) {
+            $state = strtolower(trim((string) $stateRaw));
+            if (in_array($state, $allowed, true)) {
+                $normalized[$state] = true;
+            }
+        }
+
+        return array_keys($normalized);
+    }
+
+    private function locationStateSortRank(array $item): int
+    {
+        $state = strtolower(trim((string) ($item['location_state'] ?? '')));
+        $manualState = $this->normalizeManualLocationState((string) ($item['manual_location_state'] ?? ''));
+
+        if ($state === 'v_servisu' && $manualState === 'v_servisu') {
+            return 0; // Sr: servis - manuální zadání
+        }
+
+        if ($state === 'v_servisu') {
+            return 1; // Sa: servis - automaticky
+        }
+
+        return 2; // N: není v servisu
+    }
+
+    private function compareByLocationState(array $left, array $right, string $sortDirection): int
+    {
+        $factor = strtolower($sortDirection) === 'desc' ? -1 : 1;
+
+        $rankDiff = $this->locationStateSortRank($left) - $this->locationStateSortRank($right);
+        if ($rankDiff !== 0) {
+            return $rankDiff * $factor;
+        }
+
+        $leftState = strtolower(trim((string) ($left['location_state'] ?? '')));
+        $rightState = strtolower(trim((string) ($right['location_state'] ?? '')));
+        if ($leftState !== $rightState) {
+            return strcmp($leftState, $rightState) * $factor;
+        }
+
+        $leftStation = strtolower(trim((string) ($left['w_stanoviste'] ?? '')));
+        $rightStation = strtolower(trim((string) ($right['w_stanoviste'] ?? '')));
+        if ($leftStation !== $rightStation) {
+            return strcmp($leftStation, $rightStation) * $factor;
+        }
+
+        return strcmp((string) ($left['spz'] ?? ''), (string) ($right['spz'] ?? '')) * $factor;
+    }
+
     private function summarizeLocationStates(array $items): array
     {
         $summary = [
             'doma' => 0,
             'v_akci' => 0,
             'v_servisu' => 0,
+            'v_servisu_manual' => 0,
+            'v_servisu_auto' => 0,
             'nezname' => 0,
             'total' => 0,
         ];
 
         foreach ($items as $item) {
             $state = strtolower(trim((string) ($item['location_state'] ?? '')));
+            $manualState = $this->normalizeManualLocationState((string) ($item['manual_location_state'] ?? ''));
             if (array_key_exists($state, $summary)) {
                 $summary[$state] += 1;
             } else {
                 $summary['nezname'] += 1;
+            }
+
+            if ($state === 'v_servisu') {
+                if ($manualState === 'v_servisu') {
+                    $summary['v_servisu_manual'] += 1;
+                } else {
+                    $summary['v_servisu_auto'] += 1;
+                }
             }
             $summary['total'] += 1;
         }
@@ -1000,6 +1134,50 @@ final class VehicleRepository
                      : ($hasMesto ? 'mesto' : 'stanoviste'))
              . ' ASC, ulice ASC, id ASC'
         );
+        $stmt->execute();
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    public function listLookupItems(array $categories = []): array
+    {
+        if (!$this->tableExists(self::TBL_LOOKUPS)) {
+            return [];
+        }
+
+        $categories = array_values(array_unique(array_filter(
+            array_map(static fn(string $value): string => strtolower(trim($value)), $categories),
+            static fn(string $value): bool => $value !== ''
+        )));
+
+        $sql = 'SELECT
+                    id,
+                    category,
+                    code,
+                    item_name,
+                    item_description,
+                    sort_order,
+                    is_active
+                FROM ' . self::TBL_LOOKUPS . '
+                WHERE is_active = 1';
+
+        $params = [];
+        if ($categories !== []) {
+            $placeholders = [];
+            foreach ($categories as $index => $category) {
+                $name = 'lookup_category_' . $index;
+                $placeholders[] = ':' . $name;
+                $params[$name] = $category;
+            }
+            $sql .= ' AND category IN (' . implode(', ', $placeholders) . ')';
+        }
+
+        $sql .= ' ORDER BY category ASC, sort_order ASC, item_name ASC';
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $name => $value) {
+            $stmt->bindValue(':' . $name, (string) $value, PDO::PARAM_STR);
+        }
         $stmt->execute();
 
         return $stmt->fetchAll() ?: [];
@@ -2511,6 +2689,8 @@ final class VehicleRepository
             'doma' => 0,
             'v_akci' => 0,
             'v_servisu' => 0,
+            'v_servisu_manual' => 0,
+            'v_servisu_auto' => 0,
             'nezname' => 0,
             'total' => 0,
         ];
@@ -2519,10 +2699,14 @@ final class VehicleRepository
             $hasPositionsLn = $this->tableExists(self::TBL_WD_POSITIONS)
                 && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
                 && $this->columnExists(self::TBL_WD_POSITIONS, 'w_ln');
+            $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
+            $manualLocationStateSelect = $hasManualLocationState
+                ? 'COALESCE(d.manual_location_state, "") AS manual_location_state'
+                : '"" AS manual_location_state';
 
             $locationSummarySql = 'SELECT d.w_stanoviste, ' . ($hasPositionsLn
                 ? 'COALESCE(last_pos.w_ln, "") AS pos_ln'
-                : '"" AS pos_ln') . '
+                : '"" AS pos_ln') . ', ' . $manualLocationStateSelect . '
                  FROM vehicles_cars_list_v2 v
                  LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
 
@@ -2585,6 +2769,7 @@ final class VehicleRepository
                 COUNT(*) AS value
              FROM vehicles_cars_list_v2 v
              LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id
+             ' . $accessJoin . '
              ' . $aliasWhere . '
              GROUP BY label
              ORDER BY value DESC, label ASC'
@@ -2610,6 +2795,7 @@ final class VehicleRepository
                     COALESCE(NULLIF(TRIM(v.w_groupname), ""), "Nezname") AS label,
                     COUNT(*) AS value
                  FROM vehicles_cars_list_v2 v
+                 ' . $accessJoin . '
                  ' . $aliasWhere . '
                  GROUP BY label
                  ORDER BY value DESC, label ASC'
@@ -2661,6 +2847,7 @@ final class VehicleRepository
                             GROUP BY w_carid
                         ) latest ON latest.w_carid = cp.w_carid AND latest.max_id = cp.id
                     ) last_pos ON last_pos.w_carid = v.legacy_carid
+                    ' . $accessJoin . '
                     ' . $aliasWhere . '
                  ) km
                  GROUP BY label
@@ -2834,6 +3021,19 @@ final class VehicleRepository
     public function getVehicleDetailById(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
     {
         $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+        $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
+        $hasManualLocationUpdatedAt = $this->columnExists('vehicles_detail_cards', 'manual_location_updated_at');
+        $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
+
+        $manualLocationStateSelect = $hasManualLocationState
+            ? 'd.manual_location_state'
+            : 'NULL AS manual_location_state';
+        $manualLocationUpdatedAtSelect = $hasManualLocationUpdatedAt
+            ? 'DATE_FORMAT(d.manual_location_updated_at, "%Y-%m-%d %H:%i:%s") AS manual_location_updated_at'
+            : 'NULL AS manual_location_updated_at';
+        $serviceContextJsonSelect = $hasServiceContextJson
+            ? 'd.service_context_json'
+            : 'NULL AS service_context_json';
 
         $sql = 'SELECT
                 v.id,
@@ -2854,6 +3054,9 @@ final class VehicleRepository
                 d.insurance_policy,
                 d.stk_valid_to,
                 d.emission_valid_to,
+                 ' . $serviceContextJsonSelect . ',
+                     ' . $manualLocationStateSelect . ',
+                     ' . $manualLocationUpdatedAtSelect . ',
                 d.updated_at AS detail_updated_at
              FROM vehicles_cars_list_v2 v
              LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
@@ -2882,24 +3085,70 @@ final class VehicleRepository
 
     public function saveVehicleDetailById(int $vehicleId, array $payload): void
     {
+        $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
+        $hasManualLocationUpdatedAt = $this->columnExists('vehicles_detail_cards', 'manual_location_updated_at');
+        $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
+
+        $insertColumns = [
+            'vehicle_id',
+            'zzs_typ',
+            'w_popis',
+            'service_notes',
+            'equipment_json',
+            'technical_notes',
+            'insurance_policy',
+            'stk_valid_to',
+            'emission_valid_to',
+        ];
+        $insertValues = [
+            ':vehicle_id',
+            ':zzs_typ',
+            ':w_popis',
+            ':service_notes',
+            ':equipment_json',
+            ':technical_notes',
+            ':insurance_policy',
+            ':stk_valid_to',
+            ':emission_valid_to',
+        ];
+        $updateAssignments = [
+            'zzs_typ = VALUES(zzs_typ)',
+            'w_popis = VALUES(w_popis)',
+            'service_notes = VALUES(service_notes)',
+            'equipment_json = VALUES(equipment_json)',
+            'technical_notes = VALUES(technical_notes)',
+            'insurance_policy = VALUES(insurance_policy)',
+            'stk_valid_to = VALUES(stk_valid_to)',
+            'emission_valid_to = VALUES(emission_valid_to)',
+        ];
+
+        if ($hasManualLocationState) {
+            $insertColumns[] = 'manual_location_state';
+            $insertValues[] = ':manual_location_state';
+            $updateAssignments[] = 'manual_location_state = VALUES(manual_location_state)';
+        }
+
+        if ($hasManualLocationUpdatedAt) {
+            $insertColumns[] = 'manual_location_updated_at';
+            $insertValues[] = ':manual_location_updated_at';
+            $updateAssignments[] = 'manual_location_updated_at = VALUES(manual_location_updated_at)';
+        }
+
+        if ($hasServiceContextJson) {
+            $insertColumns[] = 'service_context_json';
+            $insertValues[] = ':service_context_json';
+            $updateAssignments[] = 'service_context_json = VALUES(service_context_json)';
+        }
+
+        $updateAssignments[] = 'updated_at = CURRENT_TIMESTAMP';
+
         $stmt = $this->pdo->prepare(
-            'INSERT INTO vehicles_detail_cards
-                 (vehicle_id, zzs_typ, w_popis, service_notes, equipment_json, technical_notes, insurance_policy, stk_valid_to, emission_valid_to)
-             VALUES
-                 (:vehicle_id, :zzs_typ, :w_popis, :service_notes, :equipment_json, :technical_notes, :insurance_policy, :stk_valid_to, :emission_valid_to)
-             ON DUPLICATE KEY UPDATE
-                     zzs_typ = VALUES(zzs_typ),
-            w_popis = VALUES(w_popis),
-                service_notes = VALUES(service_notes),
-                equipment_json = VALUES(equipment_json),
-                technical_notes = VALUES(technical_notes),
-                insurance_policy = VALUES(insurance_policy),
-                stk_valid_to = VALUES(stk_valid_to),
-                emission_valid_to = VALUES(emission_valid_to),
-                updated_at = CURRENT_TIMESTAMP'
+            'INSERT INTO vehicles_detail_cards (' . implode(', ', $insertColumns) . ')
+             VALUES (' . implode(', ', $insertValues) . ')
+             ON DUPLICATE KEY UPDATE ' . implode(', ', $updateAssignments)
         );
 
-        $stmt->execute([
+        $params = [
             'vehicle_id' => $vehicleId,
             'zzs_typ' => $payload['zzs_typ'],
             'w_popis' => $payload['w_popis'],
@@ -2909,6 +3158,570 @@ final class VehicleRepository
             'insurance_policy' => $payload['insurance_policy'],
             'stk_valid_to' => $payload['stk_valid_to'],
             'emission_valid_to' => $payload['emission_valid_to'],
-        ]);
+        ];
+
+        if ($hasManualLocationState) {
+            $params['manual_location_state'] = $payload['manual_location_state'] ?? null;
+        }
+
+        if ($hasManualLocationUpdatedAt) {
+            $params['manual_location_updated_at'] = $payload['manual_location_updated_at'] ?? null;
+        }
+
+        if ($hasServiceContextJson) {
+            $params['service_context_json'] = $payload['service_context_json'] ?? null;
+        }
+
+        $stmt->execute($params);
+    }
+
+    public function listVehicleManualEvents(int $vehicleId, string $query = '', int $limit = 50, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        if (!$this->tableExists(self::TBL_MANUAL_EVENTS)) {
+            return [];
+        }
+
+        $vehicleId = (int) $vehicleId;
+        if ($vehicleId <= 0) {
+            return [];
+        }
+
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+        $limit = max(1, min(200, $limit));
+        $query = trim($query);
+
+        $sql = 'SELECT
+                e.id,
+                e.vehicle_id,
+                e.event_type,
+                e.event_state,
+                e.is_manual,
+                e.service_name,
+                e.service_address,
+                e.service_contact,
+                e.note,
+                e.metadata_json,
+                e.source,
+                e.created_by_user_id,
+                DATE_FORMAT(e.effective_at, "%Y-%m-%d %H:%i:%s") AS effective_at,
+                DATE_FORMAT(e.created_at, "%Y-%m-%d %H:%i:%s") AS created_at
+             FROM ' . self::TBL_MANUAL_EVENTS . ' e
+             INNER JOIN vehicles_cars_list_v2 v ON v.id = e.vehicle_id';
+
+        if ($restrictByAssignments) {
+            $sql .= ' INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id AND uva.user_id = :access_user_id';
+        }
+
+        $sql .= ' WHERE e.vehicle_id = :vehicle_id';
+
+        if ($query !== '') {
+            $sql .= ' AND (
+                e.service_name LIKE :query_like
+                OR e.service_address LIKE :query_like
+                OR e.service_contact LIKE :query_like
+                OR e.note LIKE :query_like
+                OR CAST(e.metadata_json AS CHAR) LIKE :query_like
+            )';
+        }
+
+        $sql .= ' ORDER BY COALESCE(e.effective_at, e.created_at) DESC, e.id DESC
+                  LIMIT :row_limit';
+
+        $stmt = $this->pdo->prepare($sql);
+        if ($restrictByAssignments) {
+            $stmt->bindValue(':access_user_id', $actorUserId, PDO::PARAM_INT);
+        }
+
+        $stmt->bindValue(':vehicle_id', $vehicleId, PDO::PARAM_INT);
+        if ($query !== '') {
+            $stmt->bindValue(':query_like', '%' . $query . '%', PDO::PARAM_STR);
+        }
+
+        $stmt->bindValue(':row_limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    public function bulkUpdateLocationState(
+        array $vehicleIds,
+        string $locationState,
+        ?array $serviceContext = null,
+        ?string $serviceNote = null,
+        string $operationType = 'service_start',
+        ?string $cancelReason = null,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
+    ): int
+    {
+        $resolvedManualLocationState = $locationState === 'auto' ? null : $locationState;
+
+        if (!$this->columnExists('vehicles_detail_cards', 'manual_location_state')) {
+            throw new RuntimeException('Chybí sloupec manual_location_state v vehicles_detail_cards. Aplikujte DB migraci.');
+        }
+
+        if (!$this->columnExists('vehicles_detail_cards', 'manual_location_updated_at')) {
+            throw new RuntimeException('Chybí sloupec manual_location_updated_at v vehicles_detail_cards. Aplikujte DB migraci.');
+        }
+
+        $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
+
+        $vehicleIds = array_values(array_unique(array_filter(array_map('intval', $vehicleIds), static fn(int $id): bool => $id > 0)));
+        if ($vehicleIds === []) {
+            return 0;
+        }
+
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+        $idPlaceholders = [];
+        $params = [
+            'manual_location_state' => $resolvedManualLocationState,
+            'manual_location_updated_at' => $this->nowForDb(),
+        ];
+
+        foreach ($vehicleIds as $index => $vehicleId) {
+            $name = 'vehicle_id_' . $index;
+            $idPlaceholders[] = ':' . $name;
+            $params[$name] = $vehicleId;
+        }
+
+        $selectFrom = ' FROM vehicles_cars_list_v2 v';
+        if ($restrictByAssignments) {
+            $selectFrom .= ' INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id AND uva.user_id = :access_user_id';
+            $params['access_user_id'] = $actorUserId;
+        }
+
+        $whereSql = ' WHERE v.id IN (' . implode(', ', $idPlaceholders) . ')';
+
+        $countStmt = $this->pdo->prepare('SELECT COUNT(*)' . $selectFrom . $whereSql);
+        foreach ($params as $name => $value) {
+            if ($name === 'access_user_id' || str_starts_with($name, 'vehicle_id_')) {
+                $countStmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
+            }
+        }
+        $countStmt->execute();
+        $matchedCount = (int) ($countStmt->fetchColumn() ?: 0);
+
+        if ($matchedCount === 0) {
+            return 0;
+        }
+
+        $serviceContextJson = null;
+        if ($serviceContext !== null && $serviceContext !== []) {
+            $encodedContext = json_encode($serviceContext, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (is_string($encodedContext) && $encodedContext !== 'null') {
+                $serviceContextJson = $encodedContext;
+            }
+        }
+
+        $insertColumns = ['vehicle_id', 'manual_location_state', 'manual_location_updated_at'];
+        $selectValues = ['v.id', ':manual_location_state', ':manual_location_updated_at'];
+        $updateAssignments = [
+            'manual_location_state = VALUES(manual_location_state)',
+            'manual_location_updated_at = VALUES(manual_location_updated_at)',
+        ];
+
+        if ($hasServiceContextJson) {
+            $insertColumns[] = 'service_context_json';
+
+            if ($resolvedManualLocationState === 'v_servisu') {
+                $selectValues[] = ':service_context_json';
+                $params['service_context_json'] = $serviceContextJson;
+            } else {
+                $selectValues[] = 'NULL';
+            }
+
+            $updateAssignments[] = 'service_context_json = VALUES(service_context_json)';
+        }
+
+        $updateAssignments[] = 'updated_at = CURRENT_TIMESTAMP';
+
+        $sql = 'INSERT INTO vehicles_detail_cards (' . implode(', ', $insertColumns) . ')
+                SELECT ' . implode(', ', $selectValues)
+            . $selectFrom
+            . $whereSql
+            . ' ON DUPLICATE KEY UPDATE ' . implode(', ', $updateAssignments);
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $name => $value) {
+            if ($name === 'access_user_id' || str_starts_with($name, 'vehicle_id_')) {
+                $stmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
+            } elseif ($value === null) {
+                $stmt->bindValue(':' . $name, null, PDO::PARAM_NULL);
+            } else {
+                $stmt->bindValue(':' . $name, (string) $value, PDO::PARAM_STR);
+            }
+        }
+        $stmt->execute();
+
+        if ($this->tableExists(self::TBL_MANUAL_EVENTS)) {
+            $serviceName = $this->firstNonEmptyContextValue($serviceContext, ['name', 'service_name', 'serviceName', 'nazev', 'servis_nazev'], 160);
+            $serviceAddress = $this->firstNonEmptyContextValue($serviceContext, ['address', 'service_address', 'serviceAddress', 'adresa', 'servis_adresa'], 255);
+            $serviceContact = $this->firstNonEmptyContextValue($serviceContext, ['contact', 'service_contact', 'serviceContact', 'kontakt', 'servis_kontakt'], 190);
+            $serviceNote = trim((string) ($serviceNote ?? ''));
+            $serviceNote = $serviceNote !== '' ? mb_substr($serviceNote, 0, 2000) : null;
+
+            $operationType = in_array($operationType, ['service_start', 'service_cancel'], true)
+                ? $operationType
+                : ($resolvedManualLocationState === 'v_servisu' ? 'service_start' : 'service_cancel');
+
+            $cancelReason = in_array((string) $cancelReason, ['auto_false_positive', 'service_finished'], true)
+                ? (string) $cancelReason
+                : null;
+
+            $latestServiceEventByVehicle = [];
+            if ($operationType === 'service_cancel') {
+                $latestServiceEventByVehicle = $this->getLatestServiceStartEventsByVehicle(
+                    $vehicleIds,
+                    $actorUserId,
+                    $actorHasAllVehicles
+                );
+            }
+
+            $metadataArray = is_array($serviceContext) ? $serviceContext : [];
+            $metadataArray['operation'] = $operationType;
+
+            if ($operationType === 'service_cancel') {
+                $metadataArray['cancel_reason'] = $cancelReason ?? 'service_finished';
+            }
+
+            $metadataJsonByVehicleId = [];
+            foreach ($vehicleIds as $vehicleId) {
+                $meta = $metadataArray;
+                if ($operationType === 'service_cancel' && isset($latestServiceEventByVehicle[$vehicleId])) {
+                    $meta['linked_service_event_id'] = (int) $latestServiceEventByVehicle[$vehicleId]['id'];
+                    $meta['linked_service_effective_at'] = (string) $latestServiceEventByVehicle[$vehicleId]['effective_at'];
+                    $meta['linked_service_created_at'] = (string) $latestServiceEventByVehicle[$vehicleId]['created_at'];
+                }
+
+                $encodedMeta = json_encode($meta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $metadataJsonByVehicleId[$vehicleId] = is_string($encodedMeta) && $encodedMeta !== 'null' ? $encodedMeta : null;
+            }
+
+            $eventParams = [];
+            foreach ($params as $name => $value) {
+                if ($name === 'access_user_id' || str_starts_with($name, 'vehicle_id_')) {
+                    $eventParams[$name] = $value;
+                }
+            }
+            $eventParams['event_type'] = $operationType;
+            $eventParams['event_state'] = $locationState;
+            $eventParams['is_manual'] = 1;
+            $eventParams['service_name'] = $serviceName;
+            $eventParams['service_address'] = $serviceAddress;
+            $eventParams['service_contact'] = $serviceContact;
+            $eventParams['note'] = $serviceNote;
+            $eventParams['source'] = $operationType === 'service_cancel' ? 'bulk_service_cancel' : 'bulk_location_state';
+            $eventParams['created_by_user_id'] = $actorUserId > 0 ? $actorUserId : null;
+            $eventParams['effective_at'] = $params['manual_location_updated_at'];
+
+            $eventSql = 'INSERT INTO ' . self::TBL_MANUAL_EVENTS . ' (
+                    vehicle_id,
+                    event_type,
+                    event_state,
+                    is_manual,
+                    service_name,
+                    service_address,
+                    service_contact,
+                    note,
+                    metadata_json,
+                    source,
+                    created_by_user_id,
+                    effective_at
+                )
+                SELECT
+                    v.id,
+                    :event_type,
+                    :event_state,
+                    :is_manual,
+                    :service_name,
+                    :service_address,
+                    :service_contact,
+                    :note,
+                    :metadata_json,
+                    :source,
+                    :created_by_user_id,
+                    :effective_at'
+                . $selectFrom
+                . $whereSql;
+            foreach ($vehicleIds as $vehicleId) {
+                $currentEventParams = $eventParams;
+                $currentEventParams['vehicle_id_exact'] = $vehicleId;
+                $currentEventParams['metadata_json'] = $metadataJsonByVehicleId[$vehicleId] ?? null;
+
+                $eventSqlPerVehicle = $eventSql . ' AND v.id = :vehicle_id_exact';
+                $eventStmt = $this->pdo->prepare($eventSqlPerVehicle);
+
+                foreach ($currentEventParams as $name => $value) {
+                    if ($name === 'access_user_id' || str_starts_with($name, 'vehicle_id_') || in_array($name, ['vehicle_id_exact', 'is_manual', 'created_by_user_id'], true)) {
+                        if ($value === null) {
+                            $eventStmt->bindValue(':' . $name, null, PDO::PARAM_NULL);
+                        } else {
+                            $eventStmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
+                        }
+                        continue;
+                    }
+
+                    if ($value === null) {
+                        $eventStmt->bindValue(':' . $name, null, PDO::PARAM_NULL);
+                    } else {
+                        $eventStmt->bindValue(':' . $name, (string) $value, PDO::PARAM_STR);
+                    }
+                }
+
+                $eventStmt->execute();
+            }
+        }
+
+        return $matchedCount;
+    }
+
+    public function bulkUpdateStatus(
+        array $vehicleIds,
+        string $status,
+        ?string $statusReason = null,
+        ?string $statusNote = null,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
+    ): int
+    {
+        $status = strtolower(trim($status));
+        if (!in_array($status, ['aktivni', 'neaktivni'], true)) {
+            throw new RuntimeException('Neplatný status. Povolené hodnoty: aktivni, neaktivni.');
+        }
+
+        $vehicleIds = array_values(array_unique(array_filter(array_map('intval', $vehicleIds), static fn(int $id): bool => $id > 0)));
+        if ($vehicleIds === []) {
+            return 0;
+        }
+
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+        $idPlaceholders = [];
+        $params = ['new_status' => $status];
+
+        foreach ($vehicleIds as $index => $vehicleId) {
+            $name = 'vehicle_id_' . $index;
+            $idPlaceholders[] = ':' . $name;
+            $params[$name] = $vehicleId;
+        }
+
+        $selectionSql = 'SELECT v.id
+                         FROM vehicles_cars_list_v2 v';
+        if ($restrictByAssignments) {
+            $selectionSql .= ' INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id AND uva.user_id = :access_user_id';
+            $params['access_user_id'] = $actorUserId;
+        }
+
+        $selectionSql .= ' WHERE v.id IN (' . implode(', ', $idPlaceholders) . ')
+                           AND LOWER(TRIM(v.status)) <> "vyrazene"
+                           AND LOWER(TRIM(v.status)) <> :new_status';
+
+        $selectionStmt = $this->pdo->prepare($selectionSql);
+        foreach ($params as $name => $value) {
+            if ($name === 'access_user_id' || str_starts_with($name, 'vehicle_id_')) {
+                $selectionStmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
+            } else {
+                $selectionStmt->bindValue(':' . $name, (string) $value, PDO::PARAM_STR);
+            }
+        }
+        $selectionStmt->execute();
+
+        $targetIds = array_values(array_unique(array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $selectionStmt->fetchAll() ?: [])));
+        $targetIds = array_values(array_filter($targetIds, static fn(int $id): bool => $id > 0));
+        if ($targetIds === []) {
+            return 0;
+        }
+
+        $updateParams = [
+            'new_status' => $status,
+            'updated_at' => $this->nowForDb(),
+        ];
+        $updatePlaceholders = [];
+        foreach ($targetIds as $index => $vehicleId) {
+            $name = 'target_vehicle_id_' . $index;
+            $updatePlaceholders[] = ':' . $name;
+            $updateParams[$name] = $vehicleId;
+        }
+
+        $sql = 'UPDATE vehicles_cars_list_v2 v
+                SET v.status = :new_status,
+                    v.last_update = :updated_at
+                WHERE v.id IN (' . implode(', ', $updatePlaceholders) . ')';
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($updateParams as $name => $value) {
+            if (str_starts_with($name, 'target_vehicle_id_')) {
+                $stmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
+            } else {
+                $stmt->bindValue(':' . $name, (string) $value, PDO::PARAM_STR);
+            }
+        }
+        $stmt->execute();
+
+        $changedCount = count($targetIds);
+
+        if ($changedCount > 0 && $this->tableExists(self::TBL_MANUAL_EVENTS)) {
+            $statusReason = trim((string) ($statusReason ?? ''));
+            $statusReason = $statusReason !== '' ? mb_substr($statusReason, 0, 80) : null;
+            $statusNote = trim((string) ($statusNote ?? ''));
+            $statusNote = $statusNote !== '' ? mb_substr($statusNote, 0, 2000) : null;
+
+            $eventMetadata = [
+                'operation' => $status === 'neaktivni' ? 'status_deactivate' : 'status_activate',
+                'status_reason' => $statusReason,
+            ];
+            $eventMetadataJson = json_encode($eventMetadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $eventMetadataJson = is_string($eventMetadataJson) && $eventMetadataJson !== 'null'
+                ? $eventMetadataJson
+                : null;
+
+            $eventSql = 'INSERT INTO ' . self::TBL_MANUAL_EVENTS . ' (
+                    vehicle_id,
+                    event_type,
+                    event_state,
+                    is_manual,
+                    note,
+                    metadata_json,
+                    source,
+                    created_by_user_id,
+                    effective_at
+                ) VALUES (
+                    :vehicle_id,
+                    :event_type,
+                    :event_state,
+                    :is_manual,
+                    :note,
+                    :metadata_json,
+                    :source,
+                    :created_by_user_id,
+                    :effective_at
+                )';
+
+            $eventStmt = $this->pdo->prepare($eventSql);
+            foreach ($targetIds as $vehicleId) {
+                $eventStmt->bindValue(':vehicle_id', $vehicleId, PDO::PARAM_INT);
+                $eventStmt->bindValue(':event_type', 'status_change', PDO::PARAM_STR);
+                $eventStmt->bindValue(':event_state', $status, PDO::PARAM_STR);
+                $eventStmt->bindValue(':is_manual', 1, PDO::PARAM_INT);
+
+                if ($statusNote === null) {
+                    $eventStmt->bindValue(':note', null, PDO::PARAM_NULL);
+                } else {
+                    $eventStmt->bindValue(':note', $statusNote, PDO::PARAM_STR);
+                }
+
+                if ($eventMetadataJson === null) {
+                    $eventStmt->bindValue(':metadata_json', null, PDO::PARAM_NULL);
+                } else {
+                    $eventStmt->bindValue(':metadata_json', $eventMetadataJson, PDO::PARAM_STR);
+                }
+
+                $eventStmt->bindValue(':source', 'bulk_status', PDO::PARAM_STR);
+
+                if ($actorUserId > 0) {
+                    $eventStmt->bindValue(':created_by_user_id', $actorUserId, PDO::PARAM_INT);
+                } else {
+                    $eventStmt->bindValue(':created_by_user_id', null, PDO::PARAM_NULL);
+                }
+
+                $eventStmt->bindValue(':effective_at', $updateParams['updated_at'], PDO::PARAM_STR);
+                $eventStmt->execute();
+            }
+        }
+
+        return $changedCount;
+    }
+
+    private function getLatestServiceStartEventsByVehicle(array $vehicleIds, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        if (!$this->tableExists(self::TBL_MANUAL_EVENTS)) {
+            return [];
+        }
+
+        $vehicleIds = array_values(array_unique(array_filter(array_map('intval', $vehicleIds), static fn(int $id): bool => $id > 0)));
+        if ($vehicleIds === []) {
+            return [];
+        }
+
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
+        $idPlaceholders = [];
+        $params = [];
+        foreach ($vehicleIds as $index => $vehicleId) {
+            $paramName = 'pair_vehicle_id_' . $index;
+            $idPlaceholders[] = ':' . $paramName;
+            $params[$paramName] = $vehicleId;
+        }
+
+        $sql = 'SELECT
+                    e.vehicle_id,
+                    e.id,
+                    DATE_FORMAT(e.effective_at, "%Y-%m-%d %H:%i:%s") AS effective_at,
+                    DATE_FORMAT(e.created_at, "%Y-%m-%d %H:%i:%s") AS created_at
+                FROM ' . self::TBL_MANUAL_EVENTS . ' e
+                INNER JOIN (
+                    SELECT e2.vehicle_id, MAX(e2.id) AS max_id
+                    FROM ' . self::TBL_MANUAL_EVENTS . ' e2
+                    WHERE e2.vehicle_id IN (' . implode(', ', $idPlaceholders) . ')
+                      AND (
+                        (e2.event_type = "service" AND e2.event_state = "v_servisu")
+                        OR e2.event_type = "service_start"
+                      )';
+
+        if ($restrictByAssignments) {
+            $sql .= ' AND EXISTS (
+                        SELECT 1
+                        FROM ' . self::TBL_ASSIGNMENTS . ' uva
+                        WHERE uva.vehicle_id = e2.vehicle_id
+                          AND uva.user_id = :pair_access_user_id
+                    )';
+            $params['pair_access_user_id'] = $actorUserId;
+        }
+
+        $sql .= ' GROUP BY e2.vehicle_id
+                ) latest ON latest.max_id = e.id';
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $name => $value) {
+            $stmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $rows = $stmt->fetchAll() ?: [];
+        $result = [];
+        foreach ($rows as $row) {
+            $vid = (int) ($row['vehicle_id'] ?? 0);
+            if ($vid <= 0) {
+                continue;
+            }
+
+            $result[$vid] = [
+                'id' => (int) ($row['id'] ?? 0),
+                'effective_at' => (string) ($row['effective_at'] ?? ''),
+                'created_at' => (string) ($row['created_at'] ?? ''),
+            ];
+        }
+
+        return $result;
+    }
+
+    private function firstNonEmptyContextValue(?array $context, array $keys, int $maxLength): ?string
+    {
+        if (!is_array($context) || $context === []) {
+            return null;
+        }
+
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $context)) {
+                continue;
+            }
+
+            $value = trim((string) ($context[$key] ?? ''));
+            if ($value === '') {
+                continue;
+            }
+
+            return mb_substr($value, 0, $maxLength);
+        }
+
+        return null;
     }
 }

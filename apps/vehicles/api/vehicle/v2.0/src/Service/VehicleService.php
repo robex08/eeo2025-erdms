@@ -6,6 +6,7 @@ final class VehicleService
 {
     public function __construct(
         private VehicleRepository $vehicles,
+        private UserRepository $users,
         private SyncJobRepository $syncJobs,
         private WebDispecinkClientV2 $webDispecink
     ) {
@@ -23,6 +24,7 @@ final class VehicleService
         array $callSigns = [],
         array $groups = [],
         array $stations = [],
+        array $locationStates = [],
         array $models = [],
         array $manufacturers = [],
         array $fuels = [],
@@ -45,6 +47,7 @@ final class VehicleService
             $callSigns,
             $groups,
             $stations,
+            $locationStates,
             $models,
             $manufacturers,
             $fuels,
@@ -69,6 +72,11 @@ final class VehicleService
     public function listVsStationsForMap(): array
     {
         return $this->vehicles->listVsStationsForMap();
+    }
+
+    public function listLookupItems(array $categories = []): array
+    {
+        return $this->vehicles->listLookupItems($categories);
     }
 
     public function upsertStationAddressFromWebdispecink(string $wLn, string $typ, string $organizace = 'ZZS SK'): array
@@ -147,15 +155,24 @@ final class VehicleService
             }
 
             $affected = $upserted;
+            $scopedUsersRebuilt = 0;
+            try {
+                $scopedUsersRebuilt = $this->users->rebuildUserVehicleAssignmentsForAllScopedUsers();
+            } catch (Throwable $e) {
+                $warnings[] = 'scope-prirazeni: ' . $e->getMessage();
+                error_log('Vehicles v2 scoped assignments rebuild: ' . $e->getMessage());
+            }
+
             $message = sprintf(
-                'WebDispecink sync dokoncen: %d skupin aktualizovano, %d vozidel synchronizovano, %d vozidel oznaceno jako vyrazene, %d detailu aktualizovano, %d typu doplneno, %d pozic ulozeno, %d km zaznamu aktualizovano',
+                'WebDispečink sync dokončen: %d skupin aktualizováno, %d vozidel synchronizováno, %d vozidel označeno jako vyřazené, %d detailů aktualizováno, %d typů doplněno, %d pozic uloženo, %d km záznamů aktualizováno, scope přepočítán pro %d uživatelů',
                 $groupsUpdated,
                 $upserted,
                 $retired,
                 $detailUpdated,
                 $typeUpdated,
                 $positionsSaved,
-                $kmSaved
+                $kmSaved,
+                $scopedUsersRebuilt
             );
 
             if ($warnings !== []) {
@@ -191,6 +208,16 @@ final class VehicleService
     public function getVehicleDetail(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
     {
         return $this->vehicles->getVehicleDetailById($vehicleId, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function getVehicleManualEvents(
+        int $vehicleId,
+        string $query = '',
+        int $limit = 50,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
+    ): array {
+        return $this->vehicles->listVehicleManualEvents($vehicleId, $query, $limit, $actorUserId, $actorHasAllVehicles);
     }
 
     public function getDashboardMetrics(string $status = 'all', int $actorUserId = 0, bool $actorHasAllVehicles = true): array
@@ -252,6 +279,8 @@ final class VehicleService
 
     public function saveVehicleDetail(int $vehicleId, array $payload): void
     {
+        $manualLocationState = $this->normalizeLocationState((string) ($payload['manual_location_state'] ?? ''));
+        $serviceContextJson = $this->normalizeJsonFromMixed($payload['service_context_json'] ?? null);
         $normalized = [
             'zzs_typ' => $this->normalizeShortText((string) ($payload['zzs_typ'] ?? '')),
             'w_popis' => $this->normalizeShortText((string) ($payload['w_popis'] ?? '')),
@@ -261,9 +290,155 @@ final class VehicleService
             'insurance_policy' => trim((string) ($payload['insurance_policy'] ?? '')),
             'stk_valid_to' => $this->normalizeDate((string) ($payload['stk_valid_to'] ?? '')),
             'emission_valid_to' => $this->normalizeDate((string) ($payload['emission_valid_to'] ?? '')),
+            'manual_location_state' => $manualLocationState,
+            'manual_location_updated_at' => $manualLocationState !== null ? (new DateTimeImmutable('now', new DateTimeZone('Europe/Prague')))->format('Y-m-d H:i:s') : null,
+            'service_context_json' => $serviceContextJson,
         ];
 
         $this->vehicles->saveVehicleDetailById($vehicleId, $normalized);
+    }
+
+    public function bulkUpdateLocationState(
+        array $vehicleIds,
+        string $locationState,
+        mixed $serviceContext = null,
+        ?string $serviceNote = null,
+        ?string $operationType = null,
+        ?string $cancelReason = null,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
+    ): int
+    {
+        $normalizedState = $this->normalizeBulkLocationState($locationState);
+        if ($normalizedState === null) {
+            throw new RuntimeException('Neplatný locationState. Povolené hodnoty: doma, v_akci, v_servisu, nezname, auto.');
+        }
+
+        $serviceContextJson = $this->normalizeJsonFromMixed($serviceContext);
+        $serviceContextArray = null;
+        if ($serviceContextJson !== null) {
+            $decoded = json_decode($serviceContextJson, true);
+            if (is_array($decoded)) {
+                $serviceContextArray = $decoded;
+            }
+        }
+
+        $normalizedServiceNote = trim((string) ($serviceNote ?? ''));
+        $normalizedServiceNote = $normalizedServiceNote !== '' ? mb_substr($normalizedServiceNote, 0, 2000) : null;
+
+        $normalizedOperationType = $this->normalizeServiceOperationType($operationType, $normalizedState);
+        $normalizedCancelReason = $this->normalizeServiceCancelReason($cancelReason);
+
+        if ($normalizedOperationType === 'service_cancel' && $normalizedCancelReason === null) {
+            $normalizedCancelReason = 'service_finished';
+        }
+
+        return $this->vehicles->bulkUpdateLocationState(
+            $vehicleIds,
+            $normalizedState,
+            $serviceContextArray,
+            $normalizedServiceNote,
+            $normalizedOperationType,
+            $normalizedCancelReason,
+            $actorUserId,
+            $actorHasAllVehicles
+        );
+    }
+
+    public function bulkUpdateStatus(
+        array $vehicleIds,
+        string $status,
+        ?string $statusReason = null,
+        ?string $statusNote = null,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
+    ): int
+    {
+        $normalizedStatus = $this->normalizeVehicleStatus($status);
+        if ($normalizedStatus === null) {
+            throw new RuntimeException('Neplatný status. Povolené hodnoty: aktivni, neaktivni.');
+        }
+
+        $normalizedStatusReason = $this->normalizeStatusReason($statusReason);
+        $normalizedStatusNote = trim((string) ($statusNote ?? ''));
+        $normalizedStatusNote = $normalizedStatusNote !== '' ? mb_substr($normalizedStatusNote, 0, 2000) : null;
+
+        if ($normalizedStatus === 'neaktivni' && $normalizedStatusReason === null) {
+            $normalizedStatusReason = 'jine';
+        }
+
+        return $this->vehicles->bulkUpdateStatus(
+            $vehicleIds,
+            $normalizedStatus,
+            $normalizedStatusReason,
+            $normalizedStatusNote,
+            $actorUserId,
+            $actorHasAllVehicles
+        );
+    }
+
+    private function normalizeLocationState(string $value): ?string
+    {
+        $normalized = strtolower(trim($value));
+        if ($normalized === '') {
+            return null;
+        }
+
+        return in_array($normalized, ['doma', 'v_akci', 'v_servisu', 'nezname'], true)
+            ? $normalized
+            : null;
+    }
+
+    private function normalizeBulkLocationState(string $value): ?string
+    {
+        $normalized = strtolower(trim($value));
+        if ($normalized === 'auto') {
+            return 'auto';
+        }
+
+        return $this->normalizeLocationState($value);
+    }
+
+    private function normalizeVehicleStatus(string $value): ?string
+    {
+        $normalized = strtolower(trim($value));
+        return in_array($normalized, ['aktivni', 'neaktivni'], true)
+            ? $normalized
+            : null;
+    }
+
+    private function normalizeStatusReason(?string $value): ?string
+    {
+        $normalized = strtolower(trim((string) ($value ?? '')));
+        if ($normalized === '') {
+            return null;
+        }
+
+        return in_array($normalized, ['technicka_zavada', 'planovana_odstavka', 'administrativni_blokace', 'jine'], true)
+            ? $normalized
+            : null;
+    }
+
+    private function normalizeServiceOperationType(?string $value, string $normalizedState): string
+    {
+        $normalized = strtolower(trim((string) ($value ?? '')));
+        if ($normalized === 'service_start' || $normalized === 'service_cancel') {
+            return $normalized;
+        }
+
+        return $normalizedState === 'v_servisu' ? 'service_start' : 'service_cancel';
+    }
+
+    private function normalizeServiceCancelReason(?string $value): ?string
+    {
+        $normalized = strtolower(trim((string) ($value ?? '')));
+        if ($normalized === '') {
+            return null;
+        }
+
+        return in_array($normalized, ['auto_false_positive', 'service_finished'], true)
+            ? $normalized
+            : null;
     }
 
     private function normalizeDate(string $value): ?string
@@ -289,6 +464,28 @@ final class VehicleService
         }
 
         return json_encode($decoded, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    }
+
+    private function normalizeJsonFromMixed(mixed $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value)) {
+            return $this->normalizeJson($value);
+        }
+
+        if (is_array($value) || is_object($value)) {
+            $encoded = json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            if (!is_string($encoded) || $encoded === 'null') {
+                return null;
+            }
+
+            return $encoded;
+        }
+
+        return null;
     }
 
     private function normalizeShortText(string $value): ?string

@@ -14,6 +14,12 @@ const baseNavItems = [
   { to: '/map', label: 'Vozidla na mapě', icon: 'map' },
 ];
 
+const adminNavItems = [
+  { to: '/users', label: 'Správa uživatelů', icon: 'users' },
+  { to: '/lookups', label: 'Číselníky', icon: 'db' },
+  { to: '/settings', label: 'Nastavení', icon: 'lock' },
+];
+
 const stationSubmenuItems = [
   { hash: '#stations-main', label: 'Seznam stanovišť' },
   { hash: '#stations-webdispecink', label: 'Seznam adres z Webdispečinku' },
@@ -34,17 +40,17 @@ export default function AppShell() {
       .catch(() => {
         setHealth({
           status: 'degraded',
-          data: { appVersion: '0.90', database: 'vehicles-zzs-dev' },
+          data: { appVersion: '0.95', database: 'vehicles-zzs-dev' },
         });
       });
   }, []);
 
   const apiStatus = health?.status || 'nacitam';
-  const appVersion = health?.data?.appVersion || '0.90';
+  const appVersion = health?.data?.appVersion || '0.95';
   const environment = health?.data?.environment || 'development';
 
   function formatAppVersion(version, env) {
-    const cleanVersion = String(version || '').trim().replace(/^v\s*/i, '') || '0.90';
+    const cleanVersion = String(version || '').trim().replace(/^v\s*/i, '') || '0.95';
     const displayVersion = `v${cleanVersion}`;
     const normalizedEnv = String(env || '').toLowerCase();
     return normalizedEnv === 'production' ? displayVersion : `${displayVersion} DEV`;
@@ -69,7 +75,7 @@ export default function AppShell() {
   const currentRole = String(user?.role || '').toLowerCase();
   const canManageUsers = currentRole === 'superadmin' || currentRole === 'administrator';
   const navItems = canManageUsers
-    ? [...baseNavItems, { to: '/users', label: 'Správa uživatelů', icon: 'users' }]
+    ? [...baseNavItems, ...adminNavItems]
     : baseNavItems;
 
   function scrollToStationAnchor(hash) {

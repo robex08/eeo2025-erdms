@@ -138,6 +138,11 @@ export async function fetchWebdispecinkLocations() {
   return response.data;
 }
 
+export async function fetchLookupItems(params = {}) {
+  const response = await apiClient.get('/lookups', { params });
+  return response.data;
+}
+
 export async function fetchVsStationsMap() {
   const response = await apiClient.get('/stations/map-vs');
   return response.data;
@@ -170,8 +175,25 @@ export async function fetchVehicleDetail(vehicleId) {
   return response.data;
 }
 
+export async function fetchVehicleManualEvents(vehicleId, params = {}) {
+  const response = await apiClient.get('/vehicles/events', {
+    params: { vehicleId, ...params },
+  });
+  return response.data;
+}
+
 export async function saveVehicleDetail(payload) {
   const response = await apiClient.post('/vehicles/detail', payload);
+  return response.data;
+}
+
+export async function bulkUpdateVehicleLocationState(payload) {
+  const response = await apiClient.post('/vehicles/bulk/location-state', payload);
+  return response.data;
+}
+
+export async function bulkUpdateVehicleStatus(payload) {
+  const response = await apiClient.post('/vehicles/bulk/status', payload);
   return response.data;
 }
 

@@ -3,8 +3,27 @@ import { useEffect, useState } from 'react';
 import { fetchStationAddresses, fetchVehicleDetail, saveVehicleDetail } from '../services/apiClient';
 import VehicleBasicInfoCard from '../components/vehicles/detail/VehicleBasicInfoCard';
 import VehicleTechnicalFormCard from '../components/vehicles/detail/VehicleTechnicalFormCard';
+import { useAuth } from '../auth/AuthContext';
+
+function parseServiceContext(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  if (typeof rawValue === 'object') {
+    return rawValue;
+  }
+
+  try {
+    const decoded = JSON.parse(String(rawValue));
+    return decoded && typeof decoded === 'object' ? decoded : {};
+  } catch {
+    return {};
+  }
+}
 
 export default function VehicleDetailPage() {
+  const { user } = useAuth();
   const { vehicleId } = useParams();
   const [item, setItem] = useState(null);
   const [error, setError] = useState('');
@@ -14,6 +33,9 @@ export default function VehicleDetailPage() {
   const [form, setForm] = useState({
     zzs_typ: '',
     w_popis: '',
+    service_context_name: '',
+    service_context_address: '',
+    service_context_contact: '',
     service_notes: '',
     technical_notes: '',
     insurance_policy: '',
@@ -21,6 +43,8 @@ export default function VehicleDetailPage() {
     emission_valid_to: '',
     equipment_json: '',
   });
+  const currentRole = String(user?.role || '').toLowerCase();
+  const canEditVehicleDetails = ['superadmin', 'administrator', 'fleet_manager'].includes(currentRole);
 
   useEffect(() => {
     let active = true;
@@ -31,9 +55,13 @@ export default function VehicleDetailPage() {
         const detail = response?.data?.item || null;
         setItem(detail);
         if (detail) {
+          const serviceContext = parseServiceContext(detail.service_context_json);
           setForm({
             zzs_typ: detail.zzs_typ || '',
             w_popis: detail.w_popis || '',
+            service_context_name: serviceContext.name || serviceContext.service_name || '',
+            service_context_address: serviceContext.address || serviceContext.service_address || '',
+            service_context_contact: serviceContext.contact || serviceContext.service_contact || '',
             service_notes: detail.service_notes || '',
             technical_notes: detail.technical_notes || '',
             insurance_policy: detail.insurance_policy || '',
@@ -81,14 +109,31 @@ export default function VehicleDetailPage() {
 
   async function handleSave(event) {
     event.preventDefault();
+    if (!canEditVehicleDetails) {
+      setSaveMessage('Režim pouze pro čtení: nemáte oprávnění k editaci vozidla.');
+      return;
+    }
     setError('');
     setSaveMessage('');
     setSaving(true);
 
     try {
+      const serviceContext = {
+        name: String(form.service_context_name || '').trim(),
+        address: String(form.service_context_address || '').trim(),
+        contact: String(form.service_context_contact || '').trim(),
+      };
+
+      if (!serviceContext.name && !serviceContext.address && !serviceContext.contact) {
+        delete serviceContext.name;
+        delete serviceContext.address;
+        delete serviceContext.contact;
+      }
+
       const response = await saveVehicleDetail({
         vehicleId: Number(vehicleId),
         ...form,
+        service_context_json: Object.keys(serviceContext).length > 0 ? serviceContext : null,
       });
 
       const updated = response?.data?.item || null;
@@ -148,6 +193,7 @@ export default function VehicleDetailPage() {
           onSubmit={handleSave}
           saving={saving}
           saveMessage={saveMessage}
+          readOnly={!canEditVehicleDetails}
         />
       </div>
     </section>
