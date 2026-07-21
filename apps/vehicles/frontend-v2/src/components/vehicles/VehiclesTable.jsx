@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import AppIcon from '../ui/AppIcon';
 
@@ -106,29 +107,123 @@ function getDotaceMeta(rawDotace) {
   return { code, label: `Dotace: ${code}`, tone: 'other' };
 }
 
-function getServiceMeta(locationStateRaw, serviceAddressRaw) {
-  const state = String(locationStateRaw || '').trim().toLowerCase();
+function parseServiceContext(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  if (typeof rawValue === 'object') {
+    return rawValue;
+  }
+
+  try {
+    const parsed = JSON.parse(String(rawValue));
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveEffectiveLocationState(locationStateRaw, manualLocationStateRaw) {
+  const base = String(locationStateRaw || '').trim().toLowerCase();
+  const manual = String(manualLocationStateRaw || '').trim().toLowerCase();
+
+  if (manual === 'doma' || manual === 'v_akci' || manual === 'v_servisu' || manual === 'nezname') {
+    return manual;
+  }
+
+  return base;
+}
+
+function getServiceMeta(effectiveLocationStateRaw, manualLocationStateRaw, serviceAddressRaw, serviceContextRaw) {
+  const state = String(effectiveLocationStateRaw || '').trim().toLowerCase();
+  const manualState = String(manualLocationStateRaw || '').trim().toLowerCase();
   const serviceAddress = String(serviceAddressRaw || '').trim();
   const atService = state === 'v_servisu';
+  const isManualService = manualState === 'v_servisu';
+  const serviceContext = parseServiceContext(serviceContextRaw);
+
+  const contextName = String(serviceContext.name || serviceContext.service_name || serviceContext.serviceName || '').trim();
+  const contextAddress = String(serviceContext.address || serviceContext.service_address || serviceContext.serviceAddress || '').trim();
+  const contextContact = String(serviceContext.contact || serviceContext.service_contact || serviceContext.serviceContact || '').trim();
+  const contextNote = String(serviceContext.note || serviceContext.service_note || serviceContext.serviceNote || '').trim();
+
+  const manualParts = [contextName, contextAddress, contextContact, contextNote].filter((value) => value !== '');
+  const manualInfo = manualParts.join(' | ');
 
   if (atService) {
+    if (isManualService) {
+      return {
+        code: 'Sr',
+        tone: 'active',
+        label: manualInfo !== ''
+          ? `Sr - V servisu (manuální zadání): ${manualInfo}`
+          : (serviceAddress !== '' ? `Sr - V servisu (manuální zadání): ${serviceAddress}` : 'Sr - V servisu (manuální zadání, detail není dostupný)'),
+      };
+    }
+
     return {
-      code: 'A',
+      code: 'Sa',
       tone: 'active',
       label: serviceAddress
-        ? `V servisu: ${serviceAddress}`
-        : 'V servisu (adresa servisu není dostupná)',
+        ? `Sa - V servisu (automaticky): ${serviceAddress}`
+        : 'Sa - V servisu (automaticky, adresa servisu není dostupná)',
     };
   }
 
   return {
     code: 'N',
     tone: 'inactive',
-    label: 'Není v servisu',
+    label: 'N - Není v servisu',
   };
 }
 
-export default function VehiclesTable({ items, sortField, sortDirection, onSortChange }) {
+export default function VehiclesTable({
+  items,
+  sortField,
+  sortDirection,
+  onSortChange,
+  showSelectionColumn = false,
+  selectedRowKeys = [],
+  onToggleRowSelection,
+  onTogglePageSelection,
+  onOpenVehicleDetail,
+  onMarkVehicleInService,
+  onCancelVehicleService,
+  onSetVehicleStatusActive,
+  onSetVehicleStatusInactive,
+  canEditVehicleCard = true,
+}) {
+  const pageSelectAllRef = useRef(null);
+  const selectedSet = useMemo(() => new Set(selectedRowKeys.map((key) => String(key))), [selectedRowKeys]);
+
+  const pageVehicleKeys = useMemo(() => {
+    return items
+      .map((item) => {
+        const key = item?.id;
+        if (key === null || key === undefined || key === '') {
+          return null;
+        }
+        return String(key);
+      })
+      .filter((value) => value !== null);
+  }, [items]);
+
+  const selectedOnPageCount = useMemo(() => {
+    return pageVehicleKeys.filter((key) => selectedSet.has(key)).length;
+  }, [pageVehicleKeys, selectedSet]);
+
+  const allPageSelected = pageVehicleKeys.length > 0 && selectedOnPageCount === pageVehicleKeys.length;
+  const somePageSelected = selectedOnPageCount > 0 && !allPageSelected;
+
+  useEffect(() => {
+    if (!pageSelectAllRef.current) {
+      return;
+    }
+
+    pageSelectAllRef.current.indeterminate = somePageSelected;
+  }, [somePageSelected]);
+
   function normalizeCellValue(rawValue) {
     const normalized = String(rawValue || '').trim();
     if (
@@ -206,9 +301,21 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
 
   return (
     <div className="table-wrap">
-      <table>
+      <table className={showSelectionColumn ? 'table-has-selection' : ''}>
         <thead>
           <tr>
+            {showSelectionColumn ? (
+              <th className="table-col-select" scope="col">
+                <input
+                  ref={pageSelectAllRef}
+                  type="checkbox"
+                  checked={allPageSelected}
+                  onChange={(event) => onTogglePageSelection?.(event.target.checked)}
+                  disabled={pageVehicleKeys.length === 0}
+                  aria-label="Vybrat všechna vozidla na stránce"
+                />
+              </th>
+            ) : null}
             <SortableHeader field="spz" label="SPZ" />
             <SortableHeader field="w_popis" label="Volací znak" />
             <SortableHeader field="zzs_typ" label="Typ" />
@@ -220,7 +327,7 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
             <SortableHeader field="datum_zarazeni" label="Datum zařazení" className="table-col-date" />
             <SortableHeader field="najeto_km" label="Najeté km" className="table-col-km" />
             <SortableHeader field="last_update" label="Poslední aktualizace" className="table-col-last-update" />
-            <th className="table-col-service">Servis</th>
+            <SortableHeader field="location_state" label="Servis" className="table-col-service" />
             <SortableHeader field="dotace" label="Dotace" className="table-col-dotace" />
             <SortableHeader field="status" label="Stav" className="table-col-status" />
             <th className="table-col-actions">Akce</th>
@@ -233,6 +340,9 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
             const location = normalizeCellValue(item.w_groupname);
             const station = normalizeCellValue(item.w_stanoviste);
             const locationStateRaw = String(item.location_state || '').toLowerCase();
+            const manualLocationStateRaw = String(item.manual_location_state || '').toLowerCase();
+            const effectiveLocationStateRaw = resolveEffectiveLocationState(locationStateRaw, manualLocationStateRaw);
+            const vehicleStatusRaw = String(item.status || '').trim().toLowerCase();
             const manufacturer = normalizeCellValue(item.w_tovarni_znacka);
             const model = normalizeCellValue(item.w_model_vozu);
             const fuelType = normalizeCellValue(item.w_typ_phm);
@@ -241,21 +351,43 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
             const mileageBand = getMileageBand(item.najeto_km);
             const statusMeta = getStatusMeta(item.status);
             const dotaceMeta = getDotaceMeta(item.dotace);
-              const serviceMeta = getServiceMeta(
-                item.location_state,
-                item.pos_ln || item.w_stanoviste
-              );
+            const serviceMeta = getServiceMeta(
+              effectiveLocationStateRaw,
+              manualLocationStateRaw,
+              item.pos_ln || item.w_stanoviste,
+              item.service_context_json
+            );
             let rowClassName = '';
-            if (locationStateRaw === 'v_akci') {
+            if (effectiveLocationStateRaw === 'v_akci') {
               rowClassName = 'table-row-v-akci';
-            } else if (locationStateRaw === 'doma') {
+            } else if (effectiveLocationStateRaw === 'doma') {
               rowClassName = 'table-row-doma';
-            } else if (locationStateRaw === 'v_servisu') {
+            } else if (effectiveLocationStateRaw === 'v_servisu') {
               rowClassName = 'table-row-v-servisu';
             }
 
+            const rowKey = item.id;
+            const normalizedRowKey = rowKey !== null && rowKey !== undefined && rowKey !== '' ? String(rowKey) : null;
+            const isSelected = normalizedRowKey ? selectedSet.has(normalizedRowKey) : false;
+
             return (
               <tr key={item.id || item.spz} className={rowClassName}>
+              {showSelectionColumn ? (
+                <td className="table-cell-select">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    disabled={!normalizedRowKey}
+                    onChange={(event) => {
+                      if (!normalizedRowKey) {
+                        return;
+                      }
+                      onToggleRowSelection?.(normalizedRowKey, event.target.checked);
+                    }}
+                    aria-label={`Vybrat vozidlo ${item.spz || item.w_popis || item.id || ''}`}
+                  />
+                </td>
+              ) : null}
               <td>{item.spz}</td>
               <td>{callSign}</td>
               <td>{vehicleType}</td>
@@ -297,14 +429,86 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
               <td className="table-cell-actions">
                 {item.id ? (
                   <div className="table-action-icons">
-                    <Link
-                      className="table-icon-btn"
-                      to={`/vehicles/${item.id}`}
-                      title="Detail vozidla"
-                      aria-label="Detail vozidla"
-                    >
-                      <AppIcon name="detail" size={14} weight="duotone" />
-                    </Link>
+                    {vehicleStatusRaw === 'vyrazene' && typeof onSetVehicleStatusActive === 'function' ? (
+                      <button
+                        type="button"
+                        className="table-icon-btn table-icon-btn-disabled"
+                        title="Vyřazené vozidlo nelze změnit stavem"
+                        aria-label="Vyřazené vozidlo nelze změnit stavem"
+                        disabled
+                      >
+                        <AppIcon name="lock" size={14} weight="duotone" />
+                      </button>
+                    ) : null}
+
+                    {vehicleStatusRaw === 'aktivni' && typeof onSetVehicleStatusInactive === 'function' ? (
+                      <button
+                        type="button"
+                        className="table-icon-btn table-icon-btn-danger"
+                        title="Označit vozidlo jako neaktivní"
+                        aria-label="Označit vozidlo jako neaktivní"
+                        onClick={() => onSetVehicleStatusInactive?.(item)}
+                      >
+                        <AppIcon name="lock" size={14} weight="duotone" />
+                      </button>
+                    ) : null}
+
+                    {vehicleStatusRaw === 'neaktivni' && typeof onSetVehicleStatusActive === 'function' ? (
+                      <button
+                        type="button"
+                        className="table-icon-btn table-icon-btn-success"
+                        title="Označit vozidlo jako aktivní"
+                        aria-label="Označit vozidlo jako aktivní"
+                        onClick={() => onSetVehicleStatusActive?.(item)}
+                      >
+                        <AppIcon name="unlock" size={14} weight="duotone" />
+                      </button>
+                    ) : null}
+
+                    {typeof onCancelVehicleService === 'function' && effectiveLocationStateRaw === 'v_servisu' ? (
+                      <button
+                        type="button"
+                        className="table-icon-btn table-icon-btn-success"
+                        title="Zrušit servis u vozidla"
+                        aria-label="Zrušit servis u vozidla"
+                        onClick={() => onCancelVehicleService?.(item)}
+                      >
+                        <AppIcon name="approve" size={14} weight="duotone" />
+                      </button>
+                    ) : null}
+
+                    {typeof onMarkVehicleInService === 'function' && effectiveLocationStateRaw !== 'v_servisu' ? (
+                      <button
+                        type="button"
+                        className="table-icon-btn table-icon-btn-service"
+                        title="Označit vozidlo do servisu"
+                        aria-label="Označit vozidlo do servisu"
+                        onClick={() => onMarkVehicleInService?.(item)}
+                      >
+                        <AppIcon name="service" size={14} weight="duotone" />
+                      </button>
+                    ) : null}
+
+                    {typeof onOpenVehicleDetail === 'function' ? (
+                      <button
+                        type="button"
+                        className="table-icon-btn"
+                        title="Detail vozidla"
+                        aria-label="Detail vozidla"
+                        onClick={() => onOpenVehicleDetail(item)}
+                      >
+                        <AppIcon name="detail" size={14} weight="duotone" />
+                      </button>
+                    ) : (
+                      <Link
+                        className="table-icon-btn"
+                        to={`/vehicles/${item.id}`}
+                        title="Detail vozidla"
+                        aria-label="Detail vozidla"
+                      >
+                        <AppIcon name="detail" size={14} weight="duotone" />
+                      </Link>
+                    )}
                     <Link
                       className="table-icon-btn"
                       to="/map"
@@ -314,14 +518,16 @@ export default function VehiclesTable({ items, sortField, sortDirection, onSortC
                     >
                       <AppIcon name="mapLocate" size={14} weight="duotone" />
                     </Link>
-                    <Link
-                      className="table-icon-btn table-icon-btn-primary"
-                      to={`/vehicles/${item.id}#karta`}
-                      title="Editace karty vozidla"
-                      aria-label="Editace karty vozidla"
-                    >
-                      <AppIcon name="edit" size={14} weight="duotone" />
-                    </Link>
+                    {canEditVehicleCard ? (
+                      <Link
+                        className="table-icon-btn table-icon-btn-primary"
+                        to={`/vehicles/${item.id}#karta`}
+                        title="Editace karty vozidla"
+                        aria-label="Editace karty vozidla"
+                      >
+                        <AppIcon name="edit" size={14} weight="duotone" />
+                      </Link>
+                    ) : null}
                   </div>
                 ) : (
                   '-'

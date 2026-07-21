@@ -16,7 +16,7 @@ final class AuthService
     {
         $user = $this->users->findByUsername($username);
         if ($user === null) {
-            throw new RuntimeException('Neplatne prihlasovaci udaje');
+            throw new RuntimeException('Neplatné přihlašovací údaje');
         }
 
         if (($user['approval_status'] ?? 'approved') !== 'approved') {
@@ -24,12 +24,12 @@ final class AuthService
         }
 
         if ((int) $user['is_active'] !== 1) {
-            throw new RuntimeException('Uzivatel je deaktivovan');
+            throw new RuntimeException('Uživatel je deaktivován');
         }
 
         $hash = (string) ($user['password_hash'] ?? '');
         if ($hash === '' || !password_verify($password, $hash)) {
-            throw new RuntimeException('Neplatne prihlasovaci udaje');
+            throw new RuntimeException('Neplatné přihlašovací údaje');
         }
 
         $role = strtolower((string) $user['role_code']);
@@ -78,7 +78,7 @@ final class AuthService
         }
 
         if ((int) $user['is_active'] !== 1) {
-            throw new RuntimeException('Uzivatel je deaktivovan');
+            throw new RuntimeException('Uživatel je deaktivován');
         }
 
         $this->users->syncEntraIdentityData((int) $user['id'], $identity);
@@ -161,7 +161,7 @@ final class AuthService
     {
         $current = $this->currentUser($request);
         if ($current === null) {
-            throw new RuntimeException('Neautorizovany pristup');
+            throw new RuntimeException('Neautorizovaný přístup');
         }
 
         if (($current['auth_source'] ?? '') !== 'local') {
@@ -204,7 +204,7 @@ final class AuthService
     {
         $user = $this->currentUser($request);
         if ($user === null) {
-            Response::error('Neautorizovany pristup', 401);
+            Response::error('Neautorizovaný přístup', 401);
             exit;
         }
 
@@ -215,7 +215,7 @@ final class AuthService
     {
         $user = $this->requireAuthenticated($request);
         if (!in_array($user['role'], $roles, true)) {
-            Response::error('Nedostatecna opravneni', 403);
+            Response::error('Nedostatečná oprávnění', 403);
             exit;
         }
 

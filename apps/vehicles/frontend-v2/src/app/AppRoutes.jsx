@@ -7,6 +7,8 @@ import LoginPage from '../pages/LoginPage';
 import VehicleDetailPage from '../pages/VehicleDetailPage';
 import VehiclesOverviewPage from '../pages/VehiclesOverviewPage';
 import UsersManagementPage from '../pages/UsersManagementPage';
+import LookupsPage from '../pages/LookupsPage';
+import SettingsPage from '../pages/SettingsPage';
 import ProtectedRoute from '../auth/ProtectedRoute';
 import { AuthProvider } from '../auth/AuthContext';
 
@@ -31,6 +33,22 @@ export default function AppRoutes() {
             element={(
               <ProtectedRoute allowedRoles={['superadmin', 'administrator']}>
                 <UsersManagementPage />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="lookups"
+            element={(
+              <ProtectedRoute allowedRoles={['superadmin', 'administrator']}>
+                <LookupsPage />
+              </ProtectedRoute>
+            )}
+          />
+          <Route
+            path="settings"
+            element={(
+              <ProtectedRoute allowedRoles={['superadmin', 'administrator']}>
+                <SettingsPage />
               </ProtectedRoute>
             )}
           />

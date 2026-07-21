@@ -80,10 +80,15 @@ final class UserService
             throw new RuntimeException('Uživatel nebyl nalezen.');
         }
 
+        $scope = $this->users->getUserVehicleScope($userId);
+
         return [
             'user_id' => $userId,
             'has_all_vehicles' => (int) ($existing['has_all_vehicles'] ?? 1) === 1,
-            'vehicle_ids' => $this->users->getAssignedVehicleIds($userId),
+            'vehicle_ids' => $scope['vehicle_ids'] ?? [],
+            'scope_stations' => $scope['scope_stations'] ?? [],
+            'scope_groups' => $scope['scope_groups'] ?? [],
+            'scope_types' => $scope['scope_types'] ?? [],
         ];
     }
 
@@ -109,8 +114,23 @@ final class UserService
         ];
     }
 
+    public function rebuildAssignmentsForAllScopedUsers(): int
+    {
+        return $this->users->rebuildUserVehicleAssignmentsForAllScopedUsers();
+    }
+
     private function normalizePayload(array $payload, ?array $existing, bool $isCreate): array
     {
+        $existingScope = [
+            'vehicle_ids' => [],
+            'scope_stations' => [],
+            'scope_groups' => [],
+            'scope_types' => [],
+        ];
+        if ($existing !== null && (int) ($existing['id'] ?? 0) > 0) {
+            $existingScope = $this->users->getUserVehicleScope((int) $existing['id']);
+        }
+
         $username = trim((string) ($payload['username'] ?? ($existing['username'] ?? '')));
         if ($username === '') {
             throw new RuntimeException('Uživatelské jméno je povinné.');
@@ -188,7 +208,26 @@ final class UserService
             'must_change_password' => $mustChangePassword,
             'is_active' => $isActive,
             'has_all_vehicles' => (int) $this->normalizeBool($payload['has_all_vehicles'] ?? ($existing['has_all_vehicles'] ?? true)),
-            'assigned_vehicle_ids' => $this->normalizeVehicleIds($payload['assigned_vehicle_ids'] ?? []),
+            'assigned_vehicle_ids' => $this->normalizeVehicleIds(
+                array_key_exists('assigned_vehicle_ids', $payload)
+                    ? ($payload['assigned_vehicle_ids'] ?? [])
+                    : ($existingScope['vehicle_ids'] ?? [])
+            ),
+            'scope_stations' => $this->normalizeScopeValues(
+                array_key_exists('scope_stations', $payload)
+                    ? ($payload['scope_stations'] ?? [])
+                    : ($existingScope['scope_stations'] ?? [])
+            ),
+            'scope_groups' => $this->normalizeScopeValues(
+                array_key_exists('scope_groups', $payload)
+                    ? ($payload['scope_groups'] ?? [])
+                    : ($existingScope['scope_groups'] ?? [])
+            ),
+            'scope_types' => $this->normalizeScopeValues(
+                array_key_exists('scope_types', $payload)
+                    ? ($payload['scope_types'] ?? [])
+                    : ($existingScope['scope_types'] ?? [])
+            ),
         ];
 
         if ($passwordHash !== null) {
@@ -202,6 +241,10 @@ final class UserService
 
     private function formatUser(array $row): array
     {
+        $scopeStations = $this->decodeScopeJsonArray($row['vehicle_scope_stations_json'] ?? null);
+        $scopeGroups = $this->decodeScopeJsonArray($row['vehicle_scope_groups_json'] ?? null);
+        $scopeTypes = $this->decodeScopeJsonArray($row['vehicle_scope_types_json'] ?? null);
+
         return [
             'id' => (int) ($row['id'] ?? 0),
             'username' => (string) ($row['username'] ?? ''),
@@ -215,6 +258,9 @@ final class UserService
             'must_change_password' => (int) ($row['must_change_password'] ?? 0) === 1,
             'is_active' => (int) ($row['is_active'] ?? 0) === 1,
             'has_all_vehicles' => (int) ($row['has_all_vehicles'] ?? 1) === 1,
+            'scope_station_count' => count($scopeStations),
+            'scope_group_count' => count($scopeGroups),
+            'scope_type_count' => count($scopeTypes),
             'assigned_vehicle_count' => (int) ($row['assigned_vehicle_count'] ?? 0),
             'has_local_password' => trim((string) ($row['password_hash'] ?? '')) !== '',
             'last_login_at' => (string) ($row['last_login_at'] ?? ''),
@@ -232,7 +278,16 @@ final class UserService
             return;
         }
 
-        $vehicleIds = $this->users->filterExistingVehicleIds($data['assigned_vehicle_ids'] ?? []);
+        $manualIds = $this->users->filterExistingVehicleIds($data['assigned_vehicle_ids'] ?? []);
+        $scopeIds = $this->users->getVehicleIdsByDynamicScopes(
+            $data['scope_stations'] ?? [],
+            $data['scope_groups'] ?? [],
+            $data['scope_types'] ?? []
+        );
+
+        $vehicleIds = array_values(array_unique(array_merge($manualIds, $scopeIds)));
+        sort($vehicleIds);
+
         $this->users->replaceUserVehicleAssignments($userId, $vehicleIds);
     }
 
@@ -247,6 +302,51 @@ final class UserService
         sort($normalized);
 
         return $normalized;
+    }
+
+    private function normalizeScopeValues(mixed $raw): array
+    {
+        if (!is_array($raw)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($raw as $value) {
+            $item = trim((string) $value);
+            if ($item === '') {
+                continue;
+            }
+
+            $normalized[] = mb_substr($item, 0, 120);
+        }
+
+        $normalized = array_values(array_unique($normalized));
+        sort($normalized, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $normalized;
+    }
+
+    private function decodeScopeJsonArray(mixed $raw): array
+    {
+        if (!is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $values = [];
+        foreach ($decoded as $value) {
+            $text = trim((string) $value);
+            if ($text === '') {
+                continue;
+            }
+            $values[] = $text;
+        }
+
+        return array_values(array_unique($values));
     }
 
     private function normalizeBool(mixed $value): bool

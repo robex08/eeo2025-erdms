@@ -30,6 +30,7 @@ final class VehicleController
         $callSignsRaw = trim((string) ($request->query['callSigns'] ?? ''));
         $groupsRaw = trim((string) ($request->query['groups'] ?? ''));
         $stationsRaw = trim((string) ($request->query['stations'] ?? ''));
+        $locationStatesRaw = trim((string) ($request->query['locationStates'] ?? ''));
         $modelsRaw = trim((string) ($request->query['models'] ?? ''));
         $manufacturersRaw = trim((string) ($request->query['manufacturers'] ?? ''));
         $fuelsRaw = trim((string) ($request->query['fuels'] ?? ''));
@@ -41,6 +42,7 @@ final class VehicleController
         $callSigns = $callSignsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $callSignsRaw)), static fn(string $value): bool => $value !== ''));
         $groups = $groupsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $groupsRaw)), static fn(string $value): bool => $value !== ''));
         $stations = $stationsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $stationsRaw)), static fn(string $value): bool => $value !== ''));
+        $locationStates = $locationStatesRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $locationStatesRaw)), static fn(string $value): bool => $value !== ''));
         $models = $modelsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $modelsRaw)), static fn(string $value): bool => $value !== ''));
         $manufacturers = $manufacturersRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $manufacturersRaw)), static fn(string $value): bool => $value !== ''));
         $fuels = $fuelsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $fuelsRaw)), static fn(string $value): bool => $value !== ''));
@@ -65,6 +67,7 @@ final class VehicleController
             $callSigns,
             $groups,
             $stations,
+            $locationStates,
             $models,
             $manufacturers,
             $fuels,
@@ -104,6 +107,35 @@ final class VehicleController
 
         Response::success([
             'items' => $items,
+            'count' => count($items),
+        ]);
+    }
+
+    public function lookups(Request $request): void
+    {
+        $categoriesRaw = trim((string) ($request->query['categories'] ?? ''));
+        $categories = $categoriesRaw === ''
+            ? []
+            : array_values(array_filter(array_map('trim', explode(',', $categoriesRaw)), static fn(string $value): bool => $value !== ''));
+
+        $items = $this->vehicles->listLookupItems($categories);
+        $byCategory = [];
+        foreach ($items as $item) {
+            $category = strtolower(trim((string) ($item['category'] ?? '')));
+            if ($category === '') {
+                continue;
+            }
+
+            if (!array_key_exists($category, $byCategory)) {
+                $byCategory[$category] = [];
+            }
+
+            $byCategory[$category][] = $item;
+        }
+
+        Response::success([
+            'items' => $items,
+            'byCategory' => $byCategory,
             'count' => count($items),
         ]);
     }
@@ -187,7 +219,7 @@ final class VehicleController
     {
         $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
         if ($vehicleId <= 0) {
-            Response::error('Parametr vehicleId je povinny', 422);
+            Response::error('Parametr vehicleId je povinný', 422);
             return;
         }
 
@@ -206,11 +238,36 @@ final class VehicleController
         ]);
     }
 
+    public function events(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
+        if ($vehicleId <= 0) {
+            Response::error('Parametr vehicleId je povinný', 422);
+            return;
+        }
+
+        $query = trim((string) ($request->query['q'] ?? ''));
+        $limit = (int) ($request->query['limit'] ?? 50);
+
+        $items = $this->vehicles->getVehicleManualEvents(
+            $vehicleId,
+            $query,
+            $limit,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        );
+
+        Response::success([
+            'items' => $items,
+            'count' => count($items),
+        ]);
+    }
+
     public function saveDetail(Request $request, array $actor): void
     {
         $vehicleId = (int) ($request->body['vehicleId'] ?? 0);
         if ($vehicleId <= 0) {
-            Response::error('Parametr vehicleId je povinny', 422);
+            Response::error('Parametr vehicleId je povinný', 422);
             return;
         }
 
@@ -232,9 +289,101 @@ final class VehicleController
         );
 
         Response::success([
-            'message' => 'Detail vozidla byl ulozen',
+            'message' => 'Detail vozidla byl uložen',
             'item' => $updated,
         ]);
+    }
+
+    public function bulkUpdateLocationState(Request $request, array $actor): void
+    {
+        $locationState = trim((string) ($request->body['locationState'] ?? ''));
+        $serviceContext = $request->body['serviceContext'] ?? null;
+        $serviceNote = trim((string) ($request->body['serviceNote'] ?? ''));
+        $operationType = trim((string) ($request->body['operationType'] ?? ''));
+        $cancelReason = trim((string) ($request->body['cancelReason'] ?? ''));
+        $vehicleIdsRaw = $request->body['vehicleIds'] ?? [];
+
+        $vehicleIds = [];
+        if (is_array($vehicleIdsRaw)) {
+            $vehicleIds = $vehicleIdsRaw;
+        } elseif (is_string($vehicleIdsRaw)) {
+            $vehicleIds = array_filter(array_map('trim', explode(',', $vehicleIdsRaw)), static fn(string $value): bool => $value !== '');
+        }
+
+        if ($vehicleIds === []) {
+            Response::error('Parametr vehicleIds je povinný a musí obsahovat alespoň jedno vozidlo', 422);
+            return;
+        }
+
+        if ($locationState === '') {
+            Response::error('Parametr locationState je povinný', 422);
+            return;
+        }
+
+        try {
+            $updatedCount = $this->vehicles->bulkUpdateLocationState(
+                $vehicleIds,
+                $locationState,
+                $serviceContext,
+                $serviceNote,
+                $operationType !== '' ? $operationType : null,
+                $cancelReason !== '' ? $cancelReason : null,
+                (int) ($actor['id'] ?? 0),
+                (bool) ($actor['has_all_vehicles'] ?? true)
+            );
+
+            Response::success([
+                'message' => sprintf('Hromadná změna polohy byla uložena (%d vozidel).', $updatedCount),
+                'updatedCount' => $updatedCount,
+                'locationState' => $locationState,
+            ]);
+        } catch (RuntimeException $e) {
+            Response::error($e->getMessage(), 422);
+        }
+    }
+
+    public function bulkUpdateStatus(Request $request, array $actor): void
+    {
+        $status = trim((string) ($request->body['status'] ?? ''));
+        $statusReason = trim((string) ($request->body['statusReason'] ?? ''));
+        $statusNote = trim((string) ($request->body['statusNote'] ?? ''));
+        $vehicleIdsRaw = $request->body['vehicleIds'] ?? [];
+
+        $vehicleIds = [];
+        if (is_array($vehicleIdsRaw)) {
+            $vehicleIds = $vehicleIdsRaw;
+        } elseif (is_string($vehicleIdsRaw)) {
+            $vehicleIds = array_filter(array_map('trim', explode(',', $vehicleIdsRaw)), static fn(string $value): bool => $value !== '');
+        }
+
+        if ($vehicleIds === []) {
+            Response::error('Parametr vehicleIds je povinný a musí obsahovat alespoň jedno vozidlo', 422);
+            return;
+        }
+
+        if ($status === '') {
+            Response::error('Parametr status je povinný', 422);
+            return;
+        }
+
+        try {
+            $updatedCount = $this->vehicles->bulkUpdateStatus(
+                $vehicleIds,
+                $status,
+                $statusReason !== '' ? $statusReason : null,
+                $statusNote !== '' ? $statusNote : null,
+                (int) ($actor['id'] ?? 0),
+                (bool) ($actor['has_all_vehicles'] ?? true)
+            );
+
+            Response::success([
+                'message' => sprintf('Hromadná změna stavu byla uložena (%d vozidel).', $updatedCount),
+                'updatedCount' => $updatedCount,
+                'status' => $status,
+            ]);
+        } catch (RuntimeException $e) {
+            Response::error($e->getMessage(), 422);
+        }
     }
 
     public function dashboardMetrics(Request $request, array $actor): void

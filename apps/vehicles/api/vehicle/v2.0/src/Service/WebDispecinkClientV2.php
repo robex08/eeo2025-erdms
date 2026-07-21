@@ -16,7 +16,7 @@ final class WebDispecinkClientV2
         $this->password = Env::get('WEBDISPECINK_PASSWORD');
 
         if ($this->kodf === '' || $this->username === '' || $this->password === '') {
-            throw new RuntimeException('Chybi WebDispecink pristupove udaje ve v2 .env');
+            throw new RuntimeException('Chybí přístupové údaje WebDispečinku ve v2 .env');
         }
 
         $this->client = new SoapClient(

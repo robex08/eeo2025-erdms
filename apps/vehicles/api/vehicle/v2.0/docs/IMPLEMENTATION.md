@@ -17,7 +17,9 @@
 - GET /auth/me
 - GET /vehicles
 - GET /vehicles/detail?vehicleId=123
+- GET /vehicles/events?vehicleId=123
 - POST /vehicles/detail
+- POST /vehicles/bulk/location-state
 - POST /sync/vehicles
 
 ## Auth policy
@@ -41,8 +43,11 @@
 9. Apply db/017_create_station_addresses_v2.sql
 10. Apply db/018_add_wln_match_to_station_addresses_v2.sql
 11. Apply db/019_add_typ_to_station_addresses_v2.sql
-12. Seed admin users using db/002_seed_local_admins.sql
-13. Trigger POST /sync/vehicles for direct sync from WebDispecink into vehicles_cars_list_v2
+12. Apply db/029_add_manual_location_state_to_vehicle_detail_cards.sql
+13. Apply db/030_add_service_context_json_to_vehicle_detail_cards.sql
+14. Apply db/031_create_vehicle_manual_events_v2.sql
+15. Seed admin users using db/002_seed_local_admins.sql
+16. Trigger POST /sync/vehicles for direct sync from WebDispecink into vehicles_cars_list_v2
 
 Poznámka:
 - Pole `status` ve `vehicles_cars_list_v2` se ukládá jako raw hodnota ze sync logiky bez další byznys interpretace ve v2 UI.

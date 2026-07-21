@@ -1,11 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { fetchDashboardMetrics, fetchVehicles, triggerQuickSync } from '../services/apiClient';
+import {
+  bulkUpdateVehicleLocationState,
+  bulkUpdateVehicleStatus,
+  fetchLookupItems,
+  fetchDashboardMetrics,
+  fetchVehicleDetail,
+  fetchVehicleManualEvents,
+  fetchVehicles,
+  triggerQuickSync,
+} from '../services/apiClient';
 import OverviewActionButtons from '../components/vehicles/OverviewActionButtons';
 import SyncGate from '../components/vehicles/SyncGate';
 import VehiclesTable from '../components/vehicles/VehiclesTable';
 import AppIcon from '../components/ui/AppIcon';
 import useDebouncedValue from '../hooks/useDebouncedValue';
+import { useAuth } from '../auth/AuthContext';
 
 const VEHICLES_OVERVIEW_FILTERS_LS_KEY = 'vehicles_v2_overview_filters';
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
@@ -20,6 +30,7 @@ const SORT_FIELDS = [
   'w_typ_phm',
   'datum_zarazeni',
   'najeto_km',
+  'location_state',
   'last_update',
   'dotace',
   'status',
@@ -37,7 +48,31 @@ const LOCATION_STATE_OPTIONS = [
   { value: 'v_akci', label: 'V akci' },
   { value: 'v_servisu', label: 'V servisu' },
 ];
-const LOCATION_FILTER_FETCH_PAGE_SIZE = 200;
+const INITIAL_BULK_SERVICE_FORM = {
+  serviceName: '',
+  serviceAddress: '',
+  serviceContact: '',
+  serviceNote: '',
+};
+const INITIAL_BULK_SERVICE_CANCEL_FORM = {
+  cancelReason: 'service_finished',
+  serviceNote: '',
+};
+const INITIAL_STATUS_CHANGE_FORM = {
+  statusReason: 'technicka_zavada',
+  statusNote: '',
+};
+const FALLBACK_SERVICE_CANCEL_REASON_OPTIONS = [
+  { code: 'service_finished', item_name: 'Servis byl dokončen' },
+  { code: 'auto_false_positive', item_name: 'Chybné automatické označení' },
+];
+const FALLBACK_STATUS_REASON_OPTIONS = [
+  { code: 'technicka_zavada', item_name: 'Technická závada' },
+  { code: 'planovana_odstavka', item_name: 'Plánovaná odstávka' },
+  { code: 'administrativni_blokace', item_name: 'Administrativní blokace' },
+  { code: 'k_vyrazeni', item_name: 'K vyřazení' },
+  { code: 'jine', item_name: 'Jiný důvod' },
+];
 
 function parseCsvValues(value) {
   return Array.from(
@@ -90,15 +125,153 @@ function formatDateTimeCs(value) {
   });
 }
 
+function parseServiceContext(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  if (typeof rawValue === 'object') {
+    return rawValue;
+  }
+
+  try {
+    const decoded = JSON.parse(String(rawValue));
+    return decoded && typeof decoded === 'object' ? decoded : {};
+  } catch {
+    return {};
+  }
+}
+
+function printableValue(value, fallback = 'Nezadáno') {
+  const normalized = String(value || '').trim();
+  return normalized !== '' ? normalized : fallback;
+}
+
+function normalizeText(value) {
+  return String(value || '').trim();
+}
+
+function joinNonEmpty(parts, separator = ' • ') {
+  const normalized = Array.from(new Set(parts.map((item) => normalizeText(item)).filter((item) => item !== '')));
+  return normalized.join(separator);
+}
+
+function formatVehicleStatus(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const labels = {
+    aktivni: 'Aktivní',
+    neaktivni: 'Neaktivní',
+    vyrazene: 'Vyřazené',
+  };
+
+  return labels[normalized] || printableValue(value, 'Neznámý stav');
+}
+
+function formatLocationState(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const labels = {
+    doma: 'Doma',
+    v_akci: 'V akci',
+    v_servisu: 'V servisu',
+    nezname: 'Neznámá',
+    auto: 'Automatická poloha',
+  };
+
+  return labels[normalized] || printableValue(value, 'Nezadáno');
+}
+
+function formatEventType(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const labels = {
+    service: 'Servis',
+    service_start: 'Odesláno do servisu',
+    service_cancel: 'Zrušení servisu',
+    status_change: 'Změna stavu vozidla',
+    technical_inspection: 'Technická kontrola',
+    stk: 'Technická kontrola',
+    emisni_kontrola: 'Emisní kontrola',
+  };
+
+  return labels[normalized] || printableValue(value, 'Událost');
+}
+
+function formatEventSource(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const labels = {
+    manual: 'Manuální zadání',
+    bulk_location_state: 'Hromadná změna polohy',
+    bulk_service_cancel: 'Hromadné zrušení servisu',
+    bulk_status: 'Hromadná změna stavu',
+    sync: 'Synchronizace',
+  };
+
+  return labels[normalized] || printableValue(value, 'Neznámý zdroj');
+}
+
+function formatCancelReason(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const labels = {
+    auto_false_positive: 'Chybné automatické označení',
+    service_finished: 'Servis byl dokončen',
+  };
+
+  return labels[normalized] || printableValue(value, 'Neurčeno');
+}
+
+function formatStatusReason(value) {
+  const normalized = normalizeText(value).toLowerCase();
+  const labels = {
+    technicka_zavada: 'Technická závada',
+    planovana_odstavka: 'Plánovaná odstávka',
+    administrativni_blokace: 'Administrativní blokace',
+    k_vyrazeni: 'K vyřazení',
+    jine: 'Jiný důvod',
+  };
+
+  return labels[normalized] || printableValue(value, 'Neurčeno');
+}
+
+function formatEventState(eventType, value) {
+  const eventTypeNormalized = normalizeText(eventType).toLowerCase();
+  if (eventTypeNormalized === 'status_change') {
+    return formatVehicleStatus(value);
+  }
+
+  return formatLocationState(value);
+}
+
+function parseEventMetadata(rawValue) {
+  if (!rawValue) {
+    return {};
+  }
+
+  if (typeof rawValue === 'object') {
+    return rawValue;
+  }
+
+  try {
+    const decoded = JSON.parse(String(rawValue));
+    return decoded && typeof decoded === 'object' ? decoded : {};
+  } catch {
+    return {};
+  }
+}
+
 function calculateLocationStateCounts(items) {
   return (Array.isArray(items) ? items : []).reduce((acc, item) => {
     const key = String(item?.location_state || '').toLowerCase();
+    const manualState = String(item?.manual_location_state || '').toLowerCase();
     if (key === 'doma') {
       acc.doma += 1;
     } else if (key === 'v_akci') {
       acc.v_akci += 1;
     } else if (key === 'v_servisu') {
       acc.v_servisu += 1;
+      if (manualState === 'v_servisu') {
+        acc.v_servisu_manual += 1;
+      } else {
+        acc.v_servisu_auto += 1;
+      }
     } else {
       acc.nezname += 1;
     }
@@ -108,6 +281,8 @@ function calculateLocationStateCounts(items) {
     doma: 0,
     v_akci: 0,
     v_servisu: 0,
+    v_servisu_manual: 0,
+    v_servisu_auto: 0,
     nezname: 0,
     total: 0,
   });
@@ -121,6 +296,11 @@ function normalizeLocationStateSummary(summary, fallbackItems = []) {
   const doma = Number(summary.doma || 0);
   const vAkci = Number(summary.v_akci || 0);
   const vServisu = Number(summary.v_servisu || 0);
+  const vServisuManualRaw = Number(summary.v_servisu_manual || 0);
+  const vServisuAutoRaw = Number(summary.v_servisu_auto || 0);
+  const hasSplit = Number.isFinite(vServisuManualRaw + vServisuAutoRaw) && (vServisuManualRaw + vServisuAutoRaw) > 0;
+  const vServisuManual = hasSplit ? vServisuManualRaw : 0;
+  const vServisuAuto = hasSplit ? vServisuAutoRaw : vServisu;
   const nezname = Number(summary.nezname || 0);
   const computedTotal = doma + vAkci + vServisu + nezname;
   const total = Number(summary.total || computedTotal || 0);
@@ -129,14 +309,33 @@ function normalizeLocationStateSummary(summary, fallbackItems = []) {
     doma,
     v_akci: vAkci,
     v_servisu: vServisu,
+    v_servisu_manual: vServisuManual,
+    v_servisu_auto: vServisuAuto,
     nezname,
     total,
   };
 }
 
 export default function VehiclesOverviewPage() {
+  const { user } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
+  const [bulkModeEnabled, setBulkModeEnabled] = useState(false);
+  const [selectedVehicleKeys, setSelectedVehicleKeys] = useState([]);
+  const [bulkActionSaving, setBulkActionSaving] = useState(false);
+  const [bulkServiceDialogOpen, setBulkServiceDialogOpen] = useState(false);
+  const [bulkServiceDialogMode, setBulkServiceDialogMode] = useState('start');
+  const [serviceDialogVehicleIds, setServiceDialogVehicleIds] = useState([]);
+  const [bulkServiceForm, setBulkServiceForm] = useState(INITIAL_BULK_SERVICE_FORM);
+  const [bulkServiceCancelForm, setBulkServiceCancelForm] = useState(INITIAL_BULK_SERVICE_CANCEL_FORM);
+  const [statusDialogOpen, setStatusDialogOpen] = useState(false);
+  const [statusDialogTargetStatus, setStatusDialogTargetStatus] = useState('neaktivni');
+  const [statusDialogVehicleIds, setStatusDialogVehicleIds] = useState([]);
+  const [statusChangeForm, setStatusChangeForm] = useState(INITIAL_STATUS_CHANGE_FORM);
+  const [lookupByCategory, setLookupByCategory] = useState({
+    service_cancel_reason: FALLBACK_SERVICE_CANCEL_REASON_OPTIONS,
+    vehicle_status_reason: FALLBACK_STATUS_REASON_OPTIONS,
+  });
   const [total, setTotal] = useState(0);
   const [totalAll, setTotalAll] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -156,16 +355,26 @@ export default function VehiclesOverviewPage() {
     mileageBands: [],
   });
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [detailDrawerOpen, setDetailDrawerOpen] = useState(false);
+  const [detailDrawerVehicleId, setDetailDrawerVehicleId] = useState(null);
+  const [detailDrawerSummary, setDetailDrawerSummary] = useState(null);
+  const [detailDrawerItem, setDetailDrawerItem] = useState(null);
+  const [detailDrawerEvents, setDetailDrawerEvents] = useState([]);
+  const [detailDrawerLoading, setDetailDrawerLoading] = useState(false);
+  const [detailDrawerError, setDetailDrawerError] = useState('');
   const [locationStateCounts, setLocationStateCounts] = useState({
     doma: 0,
     v_akci: 0,
     v_servisu: 0,
+    v_servisu_manual: 0,
+    v_servisu_auto: 0,
     nezname: 0,
     total: 0,
   });
   const [openFilterKey, setOpenFilterKey] = useState(null);
   const filterRowRef = useRef(null);
   const loadRequestRef = useRef(0);
+  const detailDrawerRequestRef = useRef(0);
   const skipNextDebouncedQuerySyncRef = useRef(false);
   const restoredFromLsRef = useRef(false);
 
@@ -240,6 +449,7 @@ export default function VehiclesOverviewPage() {
   const sortByRaw = searchParams.get('sortBy') || 'spz';
   const sortBy = SORT_FIELDS.includes(sortByRaw) ? sortByRaw : 'spz';
   const sortDir = searchParams.get('sortDir') === 'desc' ? 'desc' : 'asc';
+  const displayRows = rows;
   const chartCarIdsParam = searchParams.get('chartCarids') || '';
   const chartCarIds = useMemo(() => {
     if (!chartCarIdsParam) {
@@ -258,6 +468,58 @@ export default function VehiclesOverviewPage() {
   const page = parsePositiveInt(searchParams.get('page'), 1);
   const perPageRaw = parsePositiveInt(searchParams.get('perPage'), 25);
   const perPage = PAGE_SIZE_OPTIONS.includes(perPageRaw) ? perPageRaw : 25;
+  const currentRole = String(user?.role || '').toLowerCase();
+  const canEditVehicles = ['superadmin', 'administrator', 'fleet_manager'].includes(currentRole);
+
+  const serviceCancelReasonOptions = Array.isArray(lookupByCategory.service_cancel_reason) && lookupByCategory.service_cancel_reason.length > 0
+    ? lookupByCategory.service_cancel_reason
+    : FALLBACK_SERVICE_CANCEL_REASON_OPTIONS;
+  const statusReasonOptions = Array.isArray(lookupByCategory.vehicle_status_reason) && lookupByCategory.vehicle_status_reason.length > 0
+    ? lookupByCategory.vehicle_status_reason
+    : FALLBACK_STATUS_REASON_OPTIONS;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadLookupOptions() {
+      try {
+        const response = await fetchLookupItems({
+          categories: 'service_cancel_reason,vehicle_status_reason',
+        });
+
+        if (cancelled) {
+          return;
+        }
+
+        const byCategory = response?.data?.byCategory || {};
+
+        const nextServiceOptions = Array.isArray(byCategory.service_cancel_reason) && byCategory.service_cancel_reason.length > 0
+          ? byCategory.service_cancel_reason
+          : FALLBACK_SERVICE_CANCEL_REASON_OPTIONS;
+        const nextStatusOptions = Array.isArray(byCategory.vehicle_status_reason) && byCategory.vehicle_status_reason.length > 0
+          ? byCategory.vehicle_status_reason
+          : FALLBACK_STATUS_REASON_OPTIONS;
+
+        setLookupByCategory({
+          service_cancel_reason: nextServiceOptions,
+          vehicle_status_reason: nextStatusOptions,
+        });
+      } catch {
+        if (!cancelled) {
+          setLookupByCategory({
+            service_cancel_reason: FALLBACK_SERVICE_CANCEL_REASON_OPTIONS,
+            vehicle_status_reason: FALLBACK_STATUS_REASON_OPTIONS,
+          });
+        }
+      }
+    }
+
+    void loadLookupOptions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const buildVehiclesParams = useCallback((includeFilterOptions = true) => ({
     q: query,
@@ -271,6 +533,7 @@ export default function VehiclesOverviewPage() {
     callSigns: selectedCallSigns.length > 0 ? selectedCallSigns.join(',') : undefined,
     groups: selectedGroups.length > 0 ? selectedGroups.join(',') : undefined,
     stations: selectedStations.length > 0 ? selectedStations.join(',') : undefined,
+    locationStates: selectedLocationStates.length > 0 ? selectedLocationStates.join(',') : undefined,
     models: selectedModels.length > 0 ? selectedModels.join(',') : undefined,
     manufacturers: selectedManufacturers.length > 0 ? selectedManufacturers.join(',') : undefined,
     fuels: selectedFuels.length > 0 ? selectedFuels.join(',') : undefined,
@@ -285,6 +548,7 @@ export default function VehiclesOverviewPage() {
     selectedFuels,
     selectedGroups,
     selectedCallSigns,
+    selectedLocationStates,
     selectedManufacturers,
     selectedMileageBands,
     selectedModels,
@@ -302,69 +566,6 @@ export default function VehiclesOverviewPage() {
 
     setLoading(true);
     try {
-      const isLocationFilterActive = selectedLocationStates.length > 0;
-
-      if (isLocationFilterActive) {
-        const selectedLocationSet = new Set(selectedLocationStates);
-        const baseParams = {
-          ...buildVehiclesParams(true),
-          page: 1,
-          perPage: LOCATION_FILTER_FETCH_PAGE_SIZE,
-        };
-
-        const firstResponse = await fetchVehicles(baseParams);
-        if (loadRequestRef.current !== requestId) {
-          return;
-        }
-
-        const firstItems = Array.isArray(firstResponse?.data?.items) ? firstResponse.data.items : [];
-        const totalFromServer = Number(firstResponse?.data?.total || firstItems.length || 0);
-        const totalPagesFromServer = Math.max(1, Math.ceil(totalFromServer / LOCATION_FILTER_FETCH_PAGE_SIZE));
-
-        let allItems = firstItems;
-        if (totalPagesFromServer > 1) {
-          const pageRequests = [];
-          for (let nextPage = 2; nextPage <= totalPagesFromServer; nextPage += 1) {
-            pageRequests.push(fetchVehicles({
-              ...baseParams,
-              includeFilterOptions: '0',
-              page: nextPage,
-            }));
-          }
-
-          const restResponses = await Promise.all(pageRequests);
-          const restItems = restResponses.flatMap((response) => {
-            const items = response?.data?.items;
-            return Array.isArray(items) ? items : [];
-          });
-          allItems = [...firstItems, ...restItems];
-        }
-
-        const filteredItems = allItems.filter((item) => selectedLocationSet.has(String(item?.location_state || '').toLowerCase()));
-        const totalFiltered = filteredItems.length;
-        const safePage = Math.max(1, page);
-        const offset = (safePage - 1) * perPage;
-        const pagedItems = filteredItems.slice(offset, offset + perPage);
-
-        setRows(pagedItems);
-        setTotal(totalFiltered);
-        setTotalAll(Number(firstResponse?.data?.totalAll || firstResponse?.data?.total || totalFiltered));
-        setUpdatedAt(firstResponse?.data?.updatedAt || null);
-        setLocationStateCounts(calculateLocationStateCounts(filteredItems));
-        setFilterOptions(firstResponse?.data?.filterOptions || {
-          types: [],
-          callSigns: [],
-          groups: [],
-          stations: [],
-          models: [],
-          manufacturers: [],
-          fuels: [],
-          years: [],
-          mileageBands: [],
-        });
-        return;
-      }
-
       const fastResponse = await fetchVehicles(buildVehiclesParams(false));
       if (loadRequestRef.current !== requestId) {
         return;
@@ -404,9 +605,6 @@ export default function VehiclesOverviewPage() {
     }
   }, [
     buildVehiclesParams,
-    page,
-    perPage,
-    selectedLocationStates,
   ]);
 
   useEffect(() => {
@@ -595,10 +793,436 @@ export default function VehiclesOverviewPage() {
     || chartCarIds.length > 0
     || String(searchParams.get('mileageBand') || '').trim() !== '';
 
+  const serviceDialogTargetCount = serviceDialogVehicleIds.length > 0
+    ? serviceDialogVehicleIds.length
+    : selectedVehicleKeys.length;
+  const statusDialogTargetCount = statusDialogVehicleIds.length > 0
+    ? statusDialogVehicleIds.length
+    : selectedVehicleKeys.length;
+
   function clearChartFilter() {
     skipNextDebouncedQuerySyncRef.current = true;
     setQueryInput('');
     updateSearchParams({ chartCarids: null, page: 1, q: '' });
+  }
+
+  const visibleVehicleKeys = useMemo(() => {
+    return rows
+      .map((item) => {
+        const key = item?.id;
+        if (key === null || key === undefined || key === '') {
+          return null;
+        }
+        return String(key);
+      })
+      .filter((value) => value !== null);
+  }, [rows]);
+
+  const selectedVisibleCount = useMemo(() => {
+    const visibleSet = new Set(visibleVehicleKeys);
+    return selectedVehicleKeys.filter((key) => visibleSet.has(key)).length;
+  }, [selectedVehicleKeys, visibleVehicleKeys]);
+
+  function handleBulkModeToggle() {
+    setBulkModeEnabled((previous) => {
+      if (previous) {
+        setSelectedVehicleKeys([]);
+        setBulkServiceDialogOpen(false);
+        setBulkServiceDialogMode('start');
+        setServiceDialogVehicleIds([]);
+        setBulkServiceForm(INITIAL_BULK_SERVICE_FORM);
+        setBulkServiceCancelForm(INITIAL_BULK_SERVICE_CANCEL_FORM);
+        setStatusDialogOpen(false);
+        setStatusDialogTargetStatus('neaktivni');
+        setStatusDialogVehicleIds([]);
+        setStatusChangeForm(INITIAL_STATUS_CHANGE_FORM);
+      }
+      return !previous;
+    });
+  }
+
+  function handleOpenBulkStatusDialog(nextStatus, targetVehicleId = null) {
+    if (bulkActionSaving) {
+      return;
+    }
+
+    const normalizedStatus = String(nextStatus || '').trim().toLowerCase();
+    if (!['aktivni', 'neaktivni'].includes(normalizedStatus)) {
+      setSyncMessage('Neplatný cílový stav vozidla.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    const singleVehicleId = Number.parseInt(String(targetVehicleId || ''), 10);
+    if (Number.isFinite(singleVehicleId) && singleVehicleId > 0) {
+      setStatusDialogVehicleIds([singleVehicleId]);
+      setStatusDialogTargetStatus(normalizedStatus);
+      setStatusChangeForm({
+        statusReason: normalizedStatus === 'neaktivni' ? 'technicka_zavada' : '',
+        statusNote: '',
+      });
+      setStatusDialogOpen(true);
+      return;
+    }
+
+    if (selectedVehicleKeys.length === 0) {
+      setSyncMessage('Nejsou vybrána žádná vozidla pro změnu stavu.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    setStatusDialogVehicleIds([]);
+    setStatusDialogTargetStatus(normalizedStatus);
+    setStatusChangeForm({
+      statusReason: normalizedStatus === 'neaktivni' ? 'technicka_zavada' : '',
+      statusNote: '',
+    });
+    setStatusDialogOpen(true);
+  }
+
+  function handleCloseStatusDialog() {
+    if (bulkActionSaving) {
+      return;
+    }
+
+    setStatusDialogOpen(false);
+    setStatusDialogTargetStatus('neaktivni');
+    setStatusDialogVehicleIds([]);
+    setStatusChangeForm(INITIAL_STATUS_CHANGE_FORM);
+  }
+
+  function handleOpenBulkServiceDialog(targetVehicleId = null) {
+    if (bulkActionSaving) {
+      return;
+    }
+
+    const singleVehicleId = Number.parseInt(String(targetVehicleId || ''), 10);
+    if (Number.isFinite(singleVehicleId) && singleVehicleId > 0) {
+      setServiceDialogVehicleIds([singleVehicleId]);
+      setBulkServiceDialogMode('start');
+      setBulkServiceDialogOpen(true);
+      return;
+    }
+
+    if (selectedVehicleKeys.length === 0) {
+      setSyncMessage('Nejsou vybrána žádná vozidla pro hromadnou akci.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    setServiceDialogVehicleIds([]);
+    setBulkServiceDialogMode('start');
+    setBulkServiceDialogOpen(true);
+  }
+
+  function handleOpenBulkServiceCancelDialog(targetVehicleId = null) {
+    if (bulkActionSaving) {
+      return;
+    }
+
+    const singleVehicleId = Number.parseInt(String(targetVehicleId || ''), 10);
+    if (Number.isFinite(singleVehicleId) && singleVehicleId > 0) {
+      setServiceDialogVehicleIds([singleVehicleId]);
+      setBulkServiceDialogMode('cancel');
+      setBulkServiceDialogOpen(true);
+      return;
+    }
+
+    if (selectedVehicleKeys.length === 0) {
+      setSyncMessage('Nejsou vybrána žádná vozidla pro hromadnou akci.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    setServiceDialogVehicleIds([]);
+    setBulkServiceDialogMode('cancel');
+    setBulkServiceDialogOpen(true);
+  }
+
+  function handleCloseBulkServiceDialog() {
+    if (bulkActionSaving) {
+      return;
+    }
+    setBulkServiceDialogOpen(false);
+    setServiceDialogVehicleIds([]);
+  }
+
+  function closeDetailDrawer() {
+    setDetailDrawerOpen(false);
+    setDetailDrawerVehicleId(null);
+    setDetailDrawerSummary(null);
+    setDetailDrawerItem(null);
+    setDetailDrawerEvents([]);
+    setDetailDrawerError('');
+  }
+
+  async function handleOpenVehicleDetailDrawer(item) {
+    const vehicleId = Number(item?.id || 0);
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0) {
+      setSyncMessage('Vybrané vozidlo nemá validní ID pro načtení detailu.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    const requestId = detailDrawerRequestRef.current + 1;
+    detailDrawerRequestRef.current = requestId;
+
+    setDetailDrawerVehicleId(vehicleId);
+    setDetailDrawerSummary(item || null);
+    setDetailDrawerOpen(true);
+    setDetailDrawerLoading(true);
+    setDetailDrawerError('');
+
+    try {
+      const [detailResponse, eventsResponse] = await Promise.all([
+        fetchVehicleDetail(vehicleId),
+        fetchVehicleManualEvents(vehicleId, { limit: 40 }),
+      ]);
+
+      if (detailDrawerRequestRef.current !== requestId) {
+        return;
+      }
+
+      setDetailDrawerItem(detailResponse?.data?.item || null);
+      setDetailDrawerEvents(Array.isArray(eventsResponse?.data?.items) ? eventsResponse.data.items : []);
+    } catch (error) {
+      if (detailDrawerRequestRef.current !== requestId) {
+        return;
+      }
+
+      const message = String(error?.response?.data?.error || error?.message || '').trim();
+      setDetailDrawerError(message !== '' ? message : 'Detail vozidla se nepodařilo načíst.');
+    } finally {
+      if (detailDrawerRequestRef.current === requestId) {
+        setDetailDrawerLoading(false);
+      }
+    }
+  }
+
+  function handleToggleVehicleSelection(vehicleKey, checked) {
+    const normalizedKey = String(vehicleKey);
+    setSelectedVehicleKeys((previous) => {
+      const nextSet = new Set(previous);
+      if (checked) {
+        nextSet.add(normalizedKey);
+      } else {
+        nextSet.delete(normalizedKey);
+      }
+      return Array.from(nextSet);
+    });
+  }
+
+  function handleTogglePageSelection(checked) {
+    setSelectedVehicleKeys((previous) => {
+      const nextSet = new Set(previous);
+      visibleVehicleKeys.forEach((key) => {
+        if (checked) {
+          nextSet.add(key);
+        } else {
+          nextSet.delete(key);
+        }
+      });
+      return Array.from(nextSet);
+    });
+  }
+
+  async function handleBulkMarkAsInService(servicePayload = null) {
+    if (bulkActionSaving) {
+      return;
+    }
+
+    const baseVehicleKeys = serviceDialogVehicleIds.length > 0
+      ? serviceDialogVehicleIds.map((id) => String(id))
+      : selectedVehicleKeys;
+
+    const vehicleIds = baseVehicleKeys
+      .map((key) => Number.parseInt(String(key), 10))
+      .filter((id) => Number.isFinite(id) && id > 0);
+
+    if (vehicleIds.length === 0) {
+      setSyncMessage('Nejsou vybrána žádná validní vozidla pro hromadnou akci.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    setBulkActionSaving(true);
+    try {
+      const serviceName = String(servicePayload?.serviceName || '').trim();
+      const serviceAddress = String(servicePayload?.serviceAddress || '').trim();
+      const serviceContact = String(servicePayload?.serviceContact || '').trim();
+      const serviceNote = String(servicePayload?.serviceNote || '').trim();
+      const hasContext = serviceName !== '' || serviceAddress !== '' || serviceContact !== '';
+
+      const response = await bulkUpdateVehicleLocationState({
+        vehicleIds,
+        locationState: 'v_servisu',
+        serviceContext: hasContext
+          ? {
+            name: serviceName,
+            address: serviceAddress,
+            contact: serviceContact,
+          }
+          : null,
+        serviceNote: serviceNote !== '' ? serviceNote : null,
+      });
+
+      const updatedCount = Number(response?.data?.updatedCount || 0);
+      setSyncMessage(
+        serviceDialogVehicleIds.length > 0
+          ? `Akce dokončena. Vozidlo bylo označeno jako "v servisu".`
+          : `Hromadná akce dokončena. Jako "v servisu" označeno ${updatedCount} vozidel.`
+      );
+      setSyncMessageVisible(true);
+      if (serviceDialogVehicleIds.length === 0) {
+        setSelectedVehicleKeys([]);
+      }
+      setBulkServiceDialogOpen(false);
+      setBulkServiceDialogMode('start');
+      setServiceDialogVehicleIds([]);
+      setBulkServiceForm(INITIAL_BULK_SERVICE_FORM);
+      setBulkServiceCancelForm(INITIAL_BULK_SERVICE_CANCEL_FORM);
+      await loadData();
+    } catch (error) {
+      const message = String(error?.response?.data?.error || error?.message || '').trim();
+      setSyncMessage(message !== '' ? `Hromadná akce selhala: ${message}` : 'Hromadná akce selhala.');
+      setSyncMessageVisible(true);
+    } finally {
+      setBulkActionSaving(false);
+    }
+  }
+
+  async function handleBulkCancelService(cancelPayload = null) {
+    if (bulkActionSaving) {
+      return;
+    }
+
+    const baseVehicleKeys = serviceDialogVehicleIds.length > 0
+      ? serviceDialogVehicleIds.map((id) => String(id))
+      : selectedVehicleKeys;
+
+    const vehicleIds = baseVehicleKeys
+      .map((key) => Number.parseInt(String(key), 10))
+      .filter((id) => Number.isFinite(id) && id > 0);
+
+    if (vehicleIds.length === 0) {
+      setSyncMessage('Nejsou vybrána žádná validní vozidla pro hromadnou akci.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    setBulkActionSaving(true);
+    try {
+      const cancelReason = String(cancelPayload?.cancelReason || '').trim() || 'service_finished';
+      const serviceNote = String(cancelPayload?.serviceNote || '').trim();
+
+      const response = await bulkUpdateVehicleLocationState({
+        vehicleIds,
+        locationState: 'auto',
+        serviceContext: null,
+        serviceNote: serviceNote !== '' ? serviceNote : null,
+        operationType: 'service_cancel',
+        cancelReason,
+      });
+
+      const updatedCount = Number(response?.data?.updatedCount || 0);
+      setSyncMessage(
+        serviceDialogVehicleIds.length > 0
+          ? 'Akce dokončena. Servis byl u vozidla zrušen.'
+          : `Hromadná akce dokončena. Servis byl zrušen u ${updatedCount} vozidel.`
+      );
+      setSyncMessageVisible(true);
+      if (serviceDialogVehicleIds.length === 0) {
+        setSelectedVehicleKeys([]);
+      }
+      setBulkServiceDialogOpen(false);
+      setBulkServiceDialogMode('start');
+      setServiceDialogVehicleIds([]);
+      setBulkServiceForm(INITIAL_BULK_SERVICE_FORM);
+      setBulkServiceCancelForm(INITIAL_BULK_SERVICE_CANCEL_FORM);
+      await loadData();
+    } catch (error) {
+      const message = String(error?.response?.data?.error || error?.message || '').trim();
+      setSyncMessage(message !== '' ? `Hromadná akce selhala: ${message}` : 'Hromadná akce selhala.');
+      setSyncMessageVisible(true);
+    } finally {
+      setBulkActionSaving(false);
+    }
+  }
+
+  async function handleBulkSetVehicleStatus(nextStatus, targetVehicleId = null, statusPayload = null) {
+    if (bulkActionSaving) {
+      return;
+    }
+
+    const normalizedStatus = String(nextStatus || '').trim().toLowerCase();
+    if (!['aktivni', 'neaktivni'].includes(normalizedStatus)) {
+      setSyncMessage('Neplatný cílový stav vozidla.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    const normalizedStatusReason = String(statusPayload?.statusReason || '').trim().toLowerCase();
+    if (normalizedStatus === 'neaktivni' && normalizedStatusReason === '') {
+      setSyncMessage('Doplňte prosím důvod neaktivace vozidla.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    const singleVehicleId = Number.parseInt(String(targetVehicleId || ''), 10);
+    const baseVehicleKeys = statusDialogVehicleIds.length > 0
+      ? statusDialogVehicleIds.map((id) => String(id))
+      : (Number.isFinite(singleVehicleId) && singleVehicleId > 0
+        ? [String(singleVehicleId)]
+        : selectedVehicleKeys);
+
+    const vehicleIds = baseVehicleKeys
+      .map((key) => Number.parseInt(String(key), 10))
+      .filter((id) => Number.isFinite(id) && id > 0);
+
+    if (vehicleIds.length === 0) {
+      setSyncMessage('Nejsou vybrána žádná validní vozidla pro změnu stavu.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    setBulkActionSaving(true);
+    try {
+      const statusNote = String(statusPayload?.statusNote || '').trim();
+      const response = await bulkUpdateVehicleStatus({
+        vehicleIds,
+        status: normalizedStatus,
+        statusReason: normalizedStatusReason !== '' ? normalizedStatusReason : null,
+        statusNote: statusNote !== '' ? statusNote : null,
+      });
+
+      const updatedCount = Number(response?.data?.updatedCount || 0);
+      const statusLabel = normalizedStatus === 'aktivni' ? 'aktivní' : 'neaktivní';
+
+      setSyncMessage(
+        vehicleIds.length === 1
+          ? `Akce dokončena. Vozidlo je nyní ${statusLabel}.`
+          : `Hromadná akce dokončena. Na ${statusLabel} nastaveno ${updatedCount} vozidel.`
+      );
+      setSyncMessageVisible(true);
+
+      const isSingleAction = statusDialogVehicleIds.length === 1 || (Number.isFinite(singleVehicleId) && singleVehicleId > 0);
+      if (!isSingleAction) {
+        setSelectedVehicleKeys([]);
+      }
+
+      setStatusDialogOpen(false);
+      setStatusDialogTargetStatus('neaktivni');
+      setStatusDialogVehicleIds([]);
+      setStatusChangeForm(INITIAL_STATUS_CHANGE_FORM);
+
+      await loadData();
+    } catch (error) {
+      const message = String(error?.response?.data?.error || error?.message || '').trim();
+      setSyncMessage(message !== '' ? `Změna stavu selhala: ${message}` : 'Změna stavu selhala.');
+      setSyncMessageVisible(true);
+    } finally {
+      setBulkActionSaving(false);
+    }
   }
 
   return (
@@ -625,7 +1249,7 @@ export default function VehiclesOverviewPage() {
             </span>
             <span className="overview-location-legend-item">
               <span className="overview-location-legend-strip overview-location-legend-strip-v-servisu" aria-hidden="true" />
-              <span>V servisu ({locationStateCounts.v_servisu})</span>
+              <span>V servisu - Sr (manuální zadání): {locationStateCounts.v_servisu_manual}, Sa (automaticky): {locationStateCounts.v_servisu_auto}</span>
             </span>
           </div>
 
@@ -908,12 +1532,505 @@ export default function VehiclesOverviewPage() {
 
       {syncing ? <SyncGate syncSeconds={syncSeconds} /> : null}
 
+      {canEditVehicles ? (
+        <div className={`bulk-ops-panel${bulkModeEnabled ? ' is-enabled' : ''}`} aria-label="Sekce hromadných operací vozidel">
+        <div className="bulk-ops-panel-meta">
+          <span className="bulk-ops-kicker">Hromadné operace</span>
+          <p className="bulk-ops-description">Samostatný režim výběru vozidel pro následné hromadné akce.</p>
+        </div>
+
+        <div className="bulk-ops-controls">
+          <button
+            type="button"
+            className={`bulk-mode-toggle${bulkModeEnabled ? ' is-active' : ''}`}
+            onClick={handleBulkModeToggle}
+          >
+            {bulkModeEnabled ? 'Ukončit hromadný výběr' : 'Aktivovat hromadný výběr'}
+          </button>
+
+          {bulkModeEnabled ? (
+            <button
+              type="button"
+              className="bulk-selection-clear"
+              onClick={() => setSelectedVehicleKeys([])}
+              disabled={selectedVehicleKeys.length === 0}
+            >
+              Vymazat výběr
+            </button>
+          ) : null}
+        </div>
+        </div>
+      ) : null}
+
+      {canEditVehicles && bulkModeEnabled ? (
+        <div className="bulk-toolbar" role="status" aria-live="polite" aria-label="Toolbar hromadných operací">
+          <div className="bulk-toolbar-status">
+            <strong>Vybráno {selectedVehicleKeys.length}</strong>
+            <span>Na této stránce: {selectedVisibleCount}</span>
+          </div>
+
+          <div className="bulk-toolbar-actions" role="toolbar" aria-label="Akce hromadného výběru vozidel">
+            <button
+              type="button"
+              className="bulk-toolbar-btn bulk-toolbar-btn-icon-only is-success"
+              data-tooltip={bulkActionSaving ? 'Ukládám stav aktivní' : 'Označit vybraná vozidla jako aktivní'}
+              aria-label={bulkActionSaving ? 'Ukládám stav aktivní' : 'Označit vybraná vozidla jako aktivní'}
+              onClick={() => handleBulkSetVehicleStatus('aktivni')}
+              disabled={selectedVehicleKeys.length === 0 || bulkActionSaving}
+            >
+              <AppIcon name="unlock" size={18} weight="duotone" />
+            </button>
+
+            <button
+              type="button"
+              className="bulk-toolbar-btn bulk-toolbar-btn-icon-only is-danger"
+              data-tooltip={bulkActionSaving ? 'Ukládám stav neaktivní' : 'Označit vybraná vozidla jako neaktivní (s důvodem)'}
+              aria-label={bulkActionSaving ? 'Ukládám stav neaktivní' : 'Označit vybraná vozidla jako neaktivní (s důvodem)'}
+              onClick={() => handleOpenBulkStatusDialog('neaktivni')}
+              disabled={selectedVehicleKeys.length === 0 || bulkActionSaving}
+            >
+              <AppIcon name="lock" size={18} weight="duotone" />
+            </button>
+
+            <button
+              type="button"
+              className="bulk-toolbar-btn bulk-toolbar-btn-icon-only is-primary"
+              data-tooltip={bulkActionSaving ? 'Ukládám označení do servisu' : 'Označit vybraná vozidla do servisu'}
+              aria-label={bulkActionSaving ? 'Ukládám označení do servisu' : 'Označit vybraná vozidla do servisu'}
+              onClick={handleOpenBulkServiceDialog}
+              disabled={selectedVehicleKeys.length === 0 || bulkActionSaving}
+            >
+              <AppIcon name="service" size={18} weight="duotone" />
+            </button>
+
+            <button
+              type="button"
+              className="bulk-toolbar-btn bulk-toolbar-btn-icon-only"
+              data-tooltip={bulkActionSaving ? 'Ukládám zrušení servisu' : 'Zrušit servis u vybraných vozidel'}
+              aria-label={bulkActionSaving ? 'Ukládám zrušení servisu' : 'Zrušit servis u vybraných vozidel'}
+              onClick={handleOpenBulkServiceCancelDialog}
+              disabled={selectedVehicleKeys.length === 0 || bulkActionSaving}
+            >
+              <AppIcon name="approve" size={18} weight="duotone" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {bulkServiceDialogOpen ? (
+        <div className="bulk-service-dialog-backdrop" role="presentation" onClick={handleCloseBulkServiceDialog}>
+          <div
+            className="bulk-service-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Doplnění servisních metadat"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="bulk-service-dialog-head">
+              <h3>
+                {bulkServiceDialogMode === 'cancel'
+                  ? (serviceDialogTargetCount === 1 ? 'Zrušit servis u vozidla' : 'Zrušit servis u vybraných vozidel')
+                  : (serviceDialogTargetCount === 1 ? 'Označit vozidlo do servisu' : 'Označit vybraná vozidla do servisu')}
+              </h3>
+              <button
+                type="button"
+                className="station-edit-close"
+                onClick={handleCloseBulkServiceDialog}
+                aria-label="Zavřít dialog"
+                disabled={bulkActionSaving}
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="muted">
+              Vybráno vozidel: <strong>{serviceDialogTargetCount}</strong>.
+              {bulkServiceDialogMode === 'cancel'
+                ? ' Uveďte důvod zrušení. Po ukončení servisu se poloha přepne zpět na automatické vyhodnocení.'
+                : ' Volitelné informace se uloží jako metadata servisní události.'}
+            </p>
+
+            {bulkServiceDialogMode === 'cancel' ? (
+              <>
+                <label htmlFor="bulk_service_cancel_reason">Důvod zrušení servisu</label>
+                <select
+                  id="bulk_service_cancel_reason"
+                  value={bulkServiceCancelForm.cancelReason}
+                  onChange={(event) => setBulkServiceCancelForm((prev) => ({ ...prev, cancelReason: event.target.value }))}
+                  disabled={bulkActionSaving}
+                >
+                  {serviceCancelReasonOptions.map((optionItem) => {
+                    const optionCode = String(optionItem?.code || '').trim();
+                    const optionLabel = String(optionItem?.item_name || optionItem?.label || optionCode || '').trim();
+                    if (optionCode === '' || optionLabel === '') {
+                      return null;
+                    }
+
+                    return (
+                      <option key={`service-cancel-reason-${optionCode}`} value={optionCode}>
+                        {optionLabel}
+                      </option>
+                    );
+                  })}
+                </select>
+
+                <label htmlFor="bulk_service_cancel_note">Poznámka ke zrušení</label>
+                <textarea
+                  id="bulk_service_cancel_note"
+                  rows={4}
+                  value={bulkServiceCancelForm.serviceNote}
+                  onChange={(event) => setBulkServiceCancelForm((prev) => ({ ...prev, serviceNote: event.target.value }))}
+                  placeholder="Např. servis dokončen, převzato zpět na základnu"
+                  disabled={bulkActionSaving}
+                />
+              </>
+            ) : (
+              <>
+                <label htmlFor="bulk_service_name">Název servisu</label>
+                <input
+                  id="bulk_service_name"
+                  type="text"
+                  value={bulkServiceForm.serviceName}
+                  onChange={(event) => setBulkServiceForm((prev) => ({ ...prev, serviceName: event.target.value }))}
+                  placeholder="Např. AutoServis Novák"
+                  disabled={bulkActionSaving}
+                />
+
+                <label htmlFor="bulk_service_address">Adresa servisu</label>
+                <input
+                  id="bulk_service_address"
+                  type="text"
+                  value={bulkServiceForm.serviceAddress}
+                  onChange={(event) => setBulkServiceForm((prev) => ({ ...prev, serviceAddress: event.target.value }))}
+                  placeholder="Např. U Dílny 12, Kladno"
+                  disabled={bulkActionSaving}
+                />
+
+                <label htmlFor="bulk_service_contact">Kontakt servisu</label>
+                <input
+                  id="bulk_service_contact"
+                  type="text"
+                  value={bulkServiceForm.serviceContact}
+                  onChange={(event) => setBulkServiceForm((prev) => ({ ...prev, serviceContact: event.target.value }))}
+                  placeholder="Telefon nebo e-mail"
+                  disabled={bulkActionSaving}
+                />
+
+                <label htmlFor="bulk_service_note">Poznámka k opravě</label>
+                <textarea
+                  id="bulk_service_note"
+                  rows={4}
+                  value={bulkServiceForm.serviceNote}
+                  onChange={(event) => setBulkServiceForm((prev) => ({ ...prev, serviceNote: event.target.value }))}
+                  placeholder="Např. převzetí vozu, rozsah opravy, termín..."
+                  disabled={bulkActionSaving}
+                />
+              </>
+            )}
+
+            <div className="bulk-service-dialog-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleCloseBulkServiceDialog}
+                disabled={bulkActionSaving}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  if (bulkServiceDialogMode === 'cancel') {
+                    handleBulkCancelService(bulkServiceCancelForm);
+                    return;
+                  }
+                  handleBulkMarkAsInService(bulkServiceForm);
+                }}
+                disabled={bulkActionSaving}
+              >
+                {bulkActionSaving
+                  ? 'Ukládám...'
+                  : (bulkServiceDialogMode === 'cancel' ? 'Potvrdit zrušení servisu' : 'Potvrdit a označit do servisu')}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {statusDialogOpen ? (
+        <div className="bulk-service-dialog-backdrop" role="presentation" onClick={handleCloseStatusDialog}>
+          <div
+            className="bulk-service-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Doplnění důvodu změny stavu vozidla"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="bulk-service-dialog-head">
+              <h3>
+                {statusDialogTargetStatus === 'neaktivni'
+                  ? (statusDialogTargetCount === 1 ? 'Označit vozidlo jako neaktivní' : 'Označit vybraná vozidla jako neaktivní')
+                  : (statusDialogTargetCount === 1 ? 'Označit vozidlo jako aktivní' : 'Označit vybraná vozidla jako aktivní')}
+              </h3>
+              <button
+                type="button"
+                className="station-edit-close"
+                onClick={handleCloseStatusDialog}
+                aria-label="Zavřít dialog"
+                disabled={bulkActionSaving}
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="muted">
+              Vybráno vozidel: <strong>{statusDialogTargetCount}</strong>. Změna se uloží jako událost do historie vozidla.
+            </p>
+
+            {statusDialogTargetStatus === 'neaktivni' ? (
+              <>
+                <label htmlFor="bulk_status_reason">Důvod neaktivace</label>
+                <select
+                  id="bulk_status_reason"
+                  value={statusChangeForm.statusReason}
+                  onChange={(event) => setStatusChangeForm((prev) => ({ ...prev, statusReason: event.target.value }))}
+                  disabled={bulkActionSaving}
+                >
+                  {statusReasonOptions.map((optionItem) => {
+                    const optionCode = String(optionItem?.code || '').trim();
+                    const optionLabel = String(optionItem?.item_name || optionItem?.label || optionCode || '').trim();
+                    if (optionCode === '' || optionLabel === '') {
+                      return null;
+                    }
+
+                    return (
+                      <option key={`status-reason-${optionCode}`} value={optionCode}>
+                        {optionLabel}
+                      </option>
+                    );
+                  })}
+                </select>
+              </>
+            ) : null}
+
+            <label htmlFor="bulk_status_note">Poznámka</label>
+            <textarea
+              id="bulk_status_note"
+              rows={4}
+              value={statusChangeForm.statusNote}
+              onChange={(event) => setStatusChangeForm((prev) => ({ ...prev, statusNote: event.target.value }))}
+              placeholder="Např. mimo provoz do dokončení opravy"
+              disabled={bulkActionSaving}
+            />
+
+            <div className="bulk-service-dialog-actions">
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={handleCloseStatusDialog}
+                disabled={bulkActionSaving}
+              >
+                Zrušit
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => handleBulkSetVehicleStatus(statusDialogTargetStatus, null, statusChangeForm)}
+                disabled={bulkActionSaving || (statusDialogTargetStatus === 'neaktivni' && String(statusChangeForm.statusReason || '').trim() === '')}
+              >
+                {bulkActionSaving ? 'Ukládám...' : 'Potvrdit změnu stavu'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <VehiclesTable
-        items={rows}
+        items={displayRows}
         sortField={sortBy}
         sortDirection={sortDir}
         onSortChange={handleSortChange}
+        showSelectionColumn={bulkModeEnabled}
+        selectedRowKeys={selectedVehicleKeys}
+        onToggleRowSelection={handleToggleVehicleSelection}
+        onTogglePageSelection={handleTogglePageSelection}
+        onOpenVehicleDetail={handleOpenVehicleDetailDrawer}
+        onMarkVehicleInService={canEditVehicles ? ((item) => handleOpenBulkServiceDialog(item?.id)) : undefined}
+        onCancelVehicleService={canEditVehicles ? ((item) => handleOpenBulkServiceCancelDialog(item?.id)) : undefined}
+        onSetVehicleStatusActive={canEditVehicles ? ((item) => handleBulkSetVehicleStatus('aktivni', item?.id)) : undefined}
+        onSetVehicleStatusInactive={canEditVehicles ? ((item) => handleOpenBulkStatusDialog('neaktivni', item?.id)) : undefined}
+        canEditVehicleCard={canEditVehicles}
       />
+
+      {detailDrawerOpen ? (
+        <div className="vehicle-detail-drawer-backdrop" role="presentation" onClick={closeDetailDrawer}>
+          <aside
+            className="vehicle-detail-drawer"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detail vozidla"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="vehicle-detail-drawer-head vehicle-detail-drawer-hero">
+              <div className="vehicle-detail-drawer-head-main">
+                <p className="vehicle-detail-drawer-kicker">Rychlý detail vozidla</p>
+                <h3>
+                  {(() => {
+                    const manufacturer = printableValue(
+                      detailDrawerItem?.w_tovarni_znacka || detailDrawerSummary?.w_tovarni_znacka,
+                      'Nezadáno'
+                    );
+                    const model = printableValue(
+                      detailDrawerItem?.w_model_vozu || detailDrawerSummary?.w_model_vozu,
+                      'Nezadáno'
+                    );
+                    return `${manufacturer} ${model}`.trim();
+                  })()}
+                </h3>
+                <p className="vehicle-detail-drawer-subline">
+                  <AppIcon name="detail" size={14} weight="duotone" />
+                  <strong>{printableValue(detailDrawerSummary?.w_popis, 'Bez volacího znaku')}</strong>
+                  <span>•</span>
+                  <span>{printableValue(detailDrawerSummary?.spz, `ID ${detailDrawerVehicleId || '-'}`)}</span>
+                </p>
+                <p className="vehicle-detail-drawer-subline vehicle-detail-drawer-subline-secondary">
+                  <AppIcon name="mapLocate" size={14} weight="duotone" />
+                  <strong>Místo:</strong>
+                  <span>{printableValue(detailDrawerSummary?.w_stanoviste)}</span>
+                  <span>•</span>
+                  <strong>Skupina:</strong>
+                  <span>{printableValue(detailDrawerSummary?.w_groupname)}</span>
+                </p>
+              </div>
+
+              <div className="vehicle-detail-drawer-head-side">
+                <button
+                  type="button"
+                  className="station-edit-close"
+                  onClick={closeDetailDrawer}
+                  aria-label="Zavřít detail vozidla"
+                >
+                  ×
+                </button>
+
+                <span className="vehicle-detail-drawer-status-pill">{formatVehicleStatus(detailDrawerSummary?.status)}</span>
+              </div>
+            </div>
+
+            {detailDrawerLoading ? (
+              <p className="muted">Načítám detail a historii událostí...</p>
+            ) : null}
+
+            {detailDrawerError ? (
+              <div className="status-box status-box-warning">{detailDrawerError}</div>
+            ) : null}
+
+            {!detailDrawerLoading ? (
+              <div className="vehicle-detail-drawer-body">
+                <section className="vehicle-detail-drawer-block">
+                  <h4>
+                    <AppIcon name="car" size={16} weight="duotone" />
+                    <span>Základní data</span>
+                  </h4>
+                  <div className="vehicle-detail-drawer-grid">
+                    <p><strong>SPZ:</strong> {printableValue(detailDrawerSummary?.spz)}</p>
+                    <p><strong>Volací znak:</strong> {printableValue(detailDrawerSummary?.w_popis)}</p>
+                    <p><strong>Typ:</strong> {printableValue(detailDrawerSummary?.zzs_typ)}</p>
+                    <p><strong>Stav:</strong> {formatVehicleStatus(detailDrawerSummary?.status)}</p>
+                    <p><strong>Výrobce:</strong> {printableValue(detailDrawerSummary?.w_tovarni_znacka)}</p>
+                    <p><strong>Model:</strong> {printableValue(detailDrawerSummary?.w_model_vozu)}</p>
+                    <p><strong>Palivo:</strong> {printableValue(detailDrawerSummary?.w_typ_phm)}</p>
+                    <p><strong>Poslední aktualizace:</strong> {formatDateTimeCs(detailDrawerSummary?.last_update)}</p>
+                  </div>
+                </section>
+
+                <section className="vehicle-detail-drawer-block">
+                  <h4>
+                    <AppIcon name="edit" size={16} weight="duotone" />
+                    <span>Detail karty</span>
+                  </h4>
+                  {(() => {
+                    const detail = detailDrawerItem || {};
+                    const serviceContext = parseServiceContext(detail.service_context_json);
+                    return (
+                      <div className="vehicle-detail-drawer-grid">
+                        <p><strong>ZZS typ:</strong> {printableValue(detail.zzs_typ)}</p>
+                        <p><strong>Stanoviště:</strong> {printableValue(detailDrawerSummary?.w_stanoviste)}</p>
+                        <p><strong>Servis (název):</strong> {printableValue(serviceContext.name || serviceContext.service_name)}</p>
+                        <p><strong>Servis (adresa):</strong> {printableValue(serviceContext.address || serviceContext.service_address)}</p>
+                        <p><strong>Servis (kontakt):</strong> {printableValue(serviceContext.contact || serviceContext.service_contact)}</p>
+                        <p><strong>Manuální poloha:</strong> {formatLocationState(detail.manual_location_state)}</p>
+                        <p className="vehicle-detail-drawer-grid-full"><strong>Poznámka k opravě:</strong> {printableValue(detail.service_notes, 'Bez poznámky')}</p>
+                        <p><strong>Pojistka:</strong> {printableValue(detail.insurance_policy)}</p>
+                        <p><strong>STK do:</strong> {printableValue(detail.stk_valid_to)}</p>
+                      </div>
+                    );
+                  })()}
+                </section>
+
+                <section className="vehicle-detail-drawer-block">
+                  <h4>
+                    <AppIcon name="legacy" size={16} weight="duotone" />
+                    <span>Historie událostí</span>
+                  </h4>
+                  {detailDrawerEvents.length === 0 ? (
+                    <p className="muted">Zatím bez uložených událostí.</p>
+                  ) : (
+                    <div className="vehicle-detail-events-list">
+                      {detailDrawerEvents.map((eventItem) => {
+                        const eventMetadata = parseEventMetadata(eventItem.metadata_json);
+                        const operation = normalizeText(eventMetadata.operation).toLowerCase();
+                        const eventTypeNormalized = normalizeText(eventItem.event_type).toLowerCase();
+                        const isServiceCancelEvent = operation === 'service_cancel' || normalizeText(eventItem.event_type).toLowerCase() === 'service_cancel';
+                        const isStatusChangeEvent = eventTypeNormalized === 'status_change' || operation === 'status_activate' || operation === 'status_deactivate';
+                        const linkedServiceAt = normalizeText(eventMetadata.linked_service_effective_at || eventMetadata.linked_service_created_at);
+                        const linkedServiceEventId = Number.parseInt(String(eventMetadata.linked_service_event_id || ''), 10);
+
+                        return (
+                          <article key={`event-${eventItem.id}`} className="vehicle-detail-event-item">
+                            <div className="vehicle-detail-event-head">
+                              <strong>{formatEventType(eventItem.event_type)}</strong>
+                              <span>{formatDateTimeCs(eventItem.effective_at || eventItem.created_at)}</span>
+                            </div>
+                            <p className="vehicle-detail-event-meta">
+                              Stav: {formatEventState(eventItem.event_type, eventItem.event_state)} • Zdroj: {formatEventSource(eventItem.source)}
+                            </p>
+                            {isStatusChangeEvent ? (
+                              <p className="vehicle-detail-event-meta">
+                                Důvod změny stavu: {formatStatusReason(eventMetadata.status_reason)}
+                              </p>
+                            ) : null}
+                            {isServiceCancelEvent ? (
+                              <p className="vehicle-detail-event-meta">
+                                Důvod zrušení: {formatCancelReason(eventMetadata.cancel_reason)}
+                              </p>
+                            ) : null}
+                            {isServiceCancelEvent && linkedServiceAt !== '' ? (
+                              <p className="vehicle-detail-event-meta">
+                                Navázáno na odeslání do servisu: {formatDateTimeCs(linkedServiceAt)}
+                                {Number.isFinite(linkedServiceEventId) && linkedServiceEventId > 0 ? ` (událost #${linkedServiceEventId})` : ''}
+                              </p>
+                            ) : null}
+                            {(eventItem.service_name || eventItem.service_address || eventItem.service_contact) ? (
+                              <p className="vehicle-detail-event-meta">
+                                {eventItem.service_name ? `Servis: ${eventItem.service_name}` : ''}
+                                {eventItem.service_address ? ` • Adresa: ${eventItem.service_address}` : ''}
+                                {eventItem.service_contact ? ` • Kontakt: ${eventItem.service_contact}` : ''}
+                              </p>
+                            ) : null}
+                            <p>{printableValue(eventItem.note, 'Bez poznámky')}</p>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              </div>
+            ) : null}
+          </aside>
+        </div>
+      ) : null}
 
       <div className="table-footer-controls">
         <p className="muted">

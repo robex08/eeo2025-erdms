@@ -7,6 +7,7 @@ final class UserRepository
     private const TBL_USERS = 'vehicles_users';
     private const TBL_VEHICLES = 'vehicles_cars_list_v2';
     private const TBL_ASSIGNMENTS = 'vehicles_user_vehicle_assignments';
+    private const EMPTY_SCOPE_LABEL = 'Nezadano';
 
     public function __construct(private PDO $pdo)
     {
@@ -15,7 +16,7 @@ final class UserRepository
     public function findByUsername(string $username): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, has_all_vehicles, created_at, updated_at
+            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, has_all_vehicles, vehicle_manual_ids_json, vehicle_scope_stations_json, vehicle_scope_groups_json, vehicle_scope_types_json, created_at, updated_at
              FROM vehicles_users
              WHERE username = :username
              LIMIT 1'
@@ -29,7 +30,7 @@ final class UserRepository
     public function findById(int $userId): ?array
     {
         $stmt = $this->pdo->prepare(
-            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, has_all_vehicles, created_at, updated_at
+            'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, has_all_vehicles, vehicle_manual_ids_json, vehicle_scope_stations_json, vehicle_scope_groups_json, vehicle_scope_types_json, created_at, updated_at
              FROM vehicles_users
              WHERE id = :id
              LIMIT 1'
@@ -69,7 +70,7 @@ final class UserRepository
             return null;
         }
 
-        $sql = 'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, created_at, updated_at
+        $sql = 'SELECT id, username, password_hash, role_code, auth_source, approval_status, entra_id, display_name, email, phone, last_login_at, last_activity_at, activity_meta_json, is_active, must_change_password, has_all_vehicles, vehicle_manual_ids_json, vehicle_scope_stations_json, vehicle_scope_groups_json, vehicle_scope_types_json, created_at, updated_at
                 FROM vehicles_users
                 WHERE (' . implode(' OR ', $conditions) . ')
                 LIMIT 1';
@@ -100,6 +101,10 @@ final class UserRepository
                 activity_meta_json,
                 must_change_password,
                 has_all_vehicles,
+                vehicle_manual_ids_json,
+                vehicle_scope_stations_json,
+                vehicle_scope_groups_json,
+                vehicle_scope_types_json,
                 is_active,
                 created_at,
                 updated_at,
@@ -172,7 +177,11 @@ final class UserRepository
                 phone,
                 must_change_password,
                 is_active,
-                has_all_vehicles
+                has_all_vehicles,
+                vehicle_manual_ids_json,
+                vehicle_scope_stations_json,
+                vehicle_scope_groups_json,
+                vehicle_scope_types_json
             ) VALUES (
                 :username,
                 :password_hash,
@@ -185,7 +194,11 @@ final class UserRepository
                 :phone,
                 :must_change_password,
                 :is_active,
-                :has_all_vehicles
+                :has_all_vehicles,
+                :vehicle_manual_ids_json,
+                :vehicle_scope_stations_json,
+                :vehicle_scope_groups_json,
+                :vehicle_scope_types_json
             )'
         );
 
@@ -202,6 +215,10 @@ final class UserRepository
             'must_change_password' => $payload['must_change_password'],
             'is_active' => $payload['is_active'],
             'has_all_vehicles' => $payload['has_all_vehicles'],
+            'vehicle_manual_ids_json' => json_encode($payload['assigned_vehicle_ids'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'vehicle_scope_stations_json' => json_encode($payload['scope_stations'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'vehicle_scope_groups_json' => json_encode($payload['scope_groups'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'vehicle_scope_types_json' => json_encode($payload['scope_types'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
 
         return (int) $this->pdo->lastInsertId();
@@ -221,6 +238,10 @@ final class UserRepository
             'must_change_password = :must_change_password',
             'is_active = :is_active',
             'has_all_vehicles = :has_all_vehicles',
+            'vehicle_manual_ids_json = :vehicle_manual_ids_json',
+            'vehicle_scope_stations_json = :vehicle_scope_stations_json',
+            'vehicle_scope_groups_json = :vehicle_scope_groups_json',
+            'vehicle_scope_types_json = :vehicle_scope_types_json',
         ];
 
         $params = [
@@ -236,6 +257,10 @@ final class UserRepository
             'must_change_password' => $payload['must_change_password'],
             'is_active' => $payload['is_active'],
             'has_all_vehicles' => $payload['has_all_vehicles'],
+            'vehicle_manual_ids_json' => json_encode($payload['assigned_vehicle_ids'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'vehicle_scope_stations_json' => json_encode($payload['scope_stations'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'vehicle_scope_groups_json' => json_encode($payload['scope_groups'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'vehicle_scope_types_json' => json_encode($payload['scope_types'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ];
 
         if (array_key_exists('password_hash', $payload)) {
@@ -338,6 +363,7 @@ final class UserRepository
                 COALESCE(NULLIF(TRIM(v.w_tovarni_znacka), ""), "") AS w_tovarni_znacka,
                 COALESCE(NULLIF(TRIM(v.w_model_vozu), ""), "") AS w_model_vozu,
                 COALESCE(NULLIF(TRIM(v.w_groupname), ""), "") AS w_groupname,
+                     COALESCE(NULLIF(TRIM(d.zzs_typ), ""), "") AS zzs_typ,
                 COALESCE(NULLIF(TRIM(d.w_popis), ""), "") AS w_popis,
                 COALESCE(NULLIF(TRIM(d.w_stanoviste), ""), "") AS w_stanoviste
              FROM ' . self::TBL_VEHICLES . ' v
@@ -368,6 +394,151 @@ final class UserRepository
         $rows = $stmt->fetchAll() ?: [];
 
         return array_values(array_map(static fn(array $row): int => (int) ($row['vehicle_id'] ?? 0), $rows));
+    }
+
+    public function getUserVehicleScope(int $userId): array
+    {
+        $user = $this->findById($userId);
+        if ($user === null) {
+            return [
+                'vehicle_ids' => [],
+                'scope_stations' => [],
+                'scope_groups' => [],
+                'scope_types' => [],
+            ];
+        }
+
+        $manualRaw = $user['vehicle_manual_ids_json'] ?? null;
+        $manualIds = $this->decodeIntArray($manualRaw);
+        if (!is_string($manualRaw) || trim($manualRaw) === '') {
+            $manualIds = $this->getAssignedVehicleIds($userId);
+        }
+
+        return [
+            'vehicle_ids' => $manualIds,
+            'scope_stations' => $this->decodeStringArray($user['vehicle_scope_stations_json'] ?? null),
+            'scope_groups' => $this->decodeStringArray($user['vehicle_scope_groups_json'] ?? null),
+            'scope_types' => $this->decodeStringArray($user['vehicle_scope_types_json'] ?? null),
+        ];
+    }
+
+    public function getVehicleIdsByDynamicScopes(array $stations, array $groups, array $types): array
+    {
+        $stationSet = [];
+        foreach ($stations as $value) {
+            $stationSet[$this->normalizeScopeValue((string) $value)] = true;
+        }
+
+        $groupSet = [];
+        foreach ($groups as $value) {
+            $groupSet[$this->normalizeScopeValue((string) $value)] = true;
+        }
+
+        $typeSet = [];
+        foreach ($types as $value) {
+            $typeSet[$this->normalizeScopeValue((string) $value)] = true;
+        }
+
+        if ($stationSet === [] && $groupSet === [] && $typeSet === []) {
+            return [];
+        }
+
+        $stmt = $this->pdo->query(
+            'SELECT
+                v.id,
+                COALESCE(NULLIF(TRIM(v.w_groupname), ""), "") AS w_groupname,
+                COALESCE(NULLIF(TRIM(d.zzs_typ), ""), "") AS zzs_typ,
+                COALESCE(NULLIF(TRIM(d.w_stanoviste), ""), "") AS w_stanoviste
+             FROM ' . self::TBL_VEHICLES . ' v
+             LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id'
+        );
+
+        $rows = $stmt->fetchAll() ?: [];
+        $vehicleIds = [];
+
+        foreach ($rows as $row) {
+            $vehicleId = (int) ($row['id'] ?? 0);
+            if ($vehicleId <= 0) {
+                continue;
+            }
+
+            $matches = false;
+
+            if ($stationSet !== []) {
+                $stationValue = $this->normalizeScopeValue((string) ($row['w_stanoviste'] ?? ''));
+                $matches = $matches || isset($stationSet[$stationValue]);
+            }
+
+            if ($groupSet !== []) {
+                $groupValue = $this->normalizeScopeValue((string) ($row['w_groupname'] ?? ''));
+                $matches = $matches || isset($groupSet[$groupValue]);
+            }
+
+            if ($typeSet !== []) {
+                $typeValue = $this->normalizeScopeValue((string) ($row['zzs_typ'] ?? ''));
+                $matches = $matches || isset($typeSet[$typeValue]);
+            }
+
+            if ($matches) {
+                $vehicleIds[] = $vehicleId;
+            }
+        }
+
+        $vehicleIds = array_values(array_unique($vehicleIds));
+        sort($vehicleIds);
+
+        return $vehicleIds;
+    }
+
+    public function rebuildUserVehicleAssignmentsForAllScopedUsers(): int
+    {
+        $stmt = $this->pdo->query(
+            'SELECT id
+             FROM ' . self::TBL_USERS . '
+             WHERE has_all_vehicles = 0'
+        );
+
+        $rows = $stmt->fetchAll() ?: [];
+        $processed = 0;
+
+        foreach ($rows as $row) {
+            $userId = (int) ($row['id'] ?? 0);
+            if ($userId <= 0) {
+                continue;
+            }
+
+            $this->rebuildUserVehicleAssignmentsForUser($userId);
+            $processed++;
+        }
+
+        return $processed;
+    }
+
+    public function rebuildUserVehicleAssignmentsForUser(int $userId): void
+    {
+        $user = $this->findById($userId);
+        if ($user === null) {
+            return;
+        }
+
+        $hasAllVehicles = (int) ($user['has_all_vehicles'] ?? 1) === 1;
+        if ($hasAllVehicles) {
+            $this->replaceUserVehicleAssignments($userId, []);
+            return;
+        }
+
+        $scope = $this->getUserVehicleScope($userId);
+        $manualIds = $this->filterExistingVehicleIds($scope['vehicle_ids'] ?? []);
+        $scopeIds = $this->getVehicleIdsByDynamicScopes(
+            $scope['scope_stations'] ?? [],
+            $scope['scope_groups'] ?? [],
+            $scope['scope_types'] ?? []
+        );
+
+        $finalIds = array_values(array_unique(array_merge($manualIds, $scopeIds)));
+        sort($finalIds);
+
+        $this->replaceUserVehicleAssignments($userId, $finalIds);
     }
 
     public function replaceUserVehicleAssignments(int $userId, array $vehicleIds): void
@@ -570,5 +741,56 @@ final class UserRepository
     private function truncate(string $value, int $maxLength): string
     {
         return mb_substr(trim($value), 0, $maxLength);
+    }
+
+    private function decodeIntArray(mixed $raw): array
+    {
+        if (!is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $ids = array_map('intval', $decoded);
+        $ids = array_values(array_unique(array_filter($ids, static fn(int $id): bool => $id > 0)));
+        sort($ids);
+
+        return $ids;
+    }
+
+    private function decodeStringArray(mixed $raw): array
+    {
+        if (!is_string($raw) || trim($raw) === '') {
+            return [];
+        }
+
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        $items = [];
+        foreach ($decoded as $value) {
+            $normalized = $this->normalizeScopeValue((string) $value);
+            $items[$normalized] = true;
+        }
+
+        $result = array_keys($items);
+        sort($result, SORT_NATURAL | SORT_FLAG_CASE);
+
+        return $result;
+    }
+
+    private function normalizeScopeValue(string $value): string
+    {
+        $trimmed = trim($value);
+        if ($trimmed === '') {
+            return self::EMPTY_SCOPE_LABEL;
+        }
+
+        return mb_substr($trimmed, 0, 120);
     }
 }

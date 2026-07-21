@@ -48,7 +48,7 @@ try {
 
     $authService = new AuthService($userRepository, $entraBridgeService);
     $userService = new UserService($userRepository);
-    $vehicleService = new VehicleService($vehicleRepository, $syncJobRepository, $webDispecinkClient);
+    $vehicleService = new VehicleService($vehicleRepository, $userRepository, $syncJobRepository, $webDispecinkClient);
 
     $authController = new AuthController($authService);
     $healthController = new HealthController();
@@ -154,6 +154,12 @@ try {
         exit;
     }
 
+    if ($method === 'GET' && $path === '/lookups') {
+        $authService->requireAuthenticated($request);
+        $vehicleController->lookups($request);
+        exit;
+    }
+
     if ($method === 'POST' && $path === '/stations/addresses/from-webdispecink') {
         $authService->requireRole($request, ['superadmin', 'administrator']);
         $vehicleController->upsertStationAddressFromWebdispecink($request);
@@ -202,9 +208,27 @@ try {
         exit;
     }
 
+    if ($method === 'GET' && $path === '/vehicles/events') {
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->events($request, $actor);
+        exit;
+    }
+
     if ($method === 'POST' && $path === '/vehicles/detail') {
-        $actor = $authService->requireRole($request, ['superadmin', 'administrator']);
+        $actor = $authService->requireRole($request, ['superadmin', 'administrator', 'fleet_manager']);
         $vehicleController->saveDetail($request, $actor);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/vehicles/bulk/location-state') {
+        $actor = $authService->requireRole($request, ['superadmin', 'administrator', 'fleet_manager']);
+        $vehicleController->bulkUpdateLocationState($request, $actor);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/vehicles/bulk/status') {
+        $actor = $authService->requireRole($request, ['superadmin', 'administrator', 'fleet_manager']);
+        $vehicleController->bulkUpdateStatus($request, $actor);
         exit;
     }
 

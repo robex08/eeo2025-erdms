@@ -138,6 +138,9 @@ function createEmptyForm() {
     must_change_password: true,
     has_all_vehicles: true,
     assigned_vehicle_ids: [],
+    scope_stations: [],
+    scope_groups: [],
+    scope_types: [],
     password: '',
   };
 }
@@ -161,8 +164,12 @@ export default function UsersManagementPage() {
   const [vehicleAssignmentLoading, setVehicleAssignmentLoading] = useState(false);
   const [vehicleAssignmentError, setVehicleAssignmentError] = useState('');
   const [vehicleFilterQuery, setVehicleFilterQuery] = useState('');
-  const [vehicleFilterStatus, setVehicleFilterStatus] = useState('all');
+  const [vehicleFilterStatus, setVehicleFilterStatus] = useState([]);
+  const [vehicleFilterStation, setVehicleFilterStation] = useState([]);
+  const [vehicleFilterGroup, setVehicleFilterGroup] = useState([]);
+  const [vehicleFilterType, setVehicleFilterType] = useState([]);
   const [activeEditTab, setActiveEditTab] = useState('basic');
+  const [vehicleAssignView, setVehicleAssignView] = useState('manual');
   const restoredFromLsRef = useRef(false);
 
   const currentRole = String(user?.role || '').toLowerCase();
@@ -370,8 +377,12 @@ export default function UsersManagementPage() {
     setEditError('');
     setVehicleAssignmentError('');
     setVehicleFilterQuery('');
-    setVehicleFilterStatus('all');
+    setVehicleFilterStatus([]);
+    setVehicleFilterStation([]);
+    setVehicleFilterGroup([]);
+    setVehicleFilterType([]);
     setActiveEditTab('basic');
+    setVehicleAssignView('manual');
     setEditingId(-1);
     setForm(createEmptyForm());
     void ensureVehicleCatalogLoaded();
@@ -381,8 +392,12 @@ export default function UsersManagementPage() {
     setEditError('');
     setVehicleAssignmentError('');
     setVehicleFilterQuery('');
-    setVehicleFilterStatus('all');
+    setVehicleFilterStatus([]);
+    setVehicleFilterStation([]);
+    setVehicleFilterGroup([]);
+    setVehicleFilterType([]);
     setActiveEditTab('basic');
+    setVehicleAssignView('manual');
     setEditingId(Number(row.id || 0));
     setForm({
       id: Number(row.id || 0),
@@ -399,6 +414,9 @@ export default function UsersManagementPage() {
       must_change_password: Boolean(row.must_change_password),
       has_all_vehicles: Boolean(row.has_all_vehicles ?? true),
       assigned_vehicle_ids: [],
+      scope_stations: [],
+      scope_groups: [],
+      scope_types: [],
       password: '',
     });
 
@@ -418,6 +436,15 @@ export default function UsersManagementPage() {
         has_all_vehicles: Boolean(item?.has_all_vehicles ?? true),
         assigned_vehicle_ids: Array.isArray(item?.vehicle_ids)
           ? item.vehicle_ids.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+          : [],
+        scope_stations: Array.isArray(item?.scope_stations)
+          ? item.scope_stations.map((value) => String(value || '').trim()).filter((value) => value !== '')
+          : [],
+        scope_groups: Array.isArray(item?.scope_groups)
+          ? item.scope_groups.map((value) => String(value || '').trim()).filter((value) => value !== '')
+          : [],
+        scope_types: Array.isArray(item?.scope_types)
+          ? item.scope_types.map((value) => String(value || '').trim()).filter((value) => value !== '')
           : [],
       }));
     } catch (err) {
@@ -455,6 +482,72 @@ export default function UsersManagementPage() {
       ...prev,
       has_all_vehicles: value,
       assigned_vehicle_ids: value ? [] : prev.assigned_vehicle_ids,
+      scope_stations: value ? [] : prev.scope_stations,
+      scope_groups: value ? [] : prev.scope_groups,
+      scope_types: value ? [] : prev.scope_types,
+    }));
+  }
+
+  function toggleScopeSelection(fieldName, scopeValue, enabled) {
+    const normalizedValue = String(scopeValue || '').trim();
+    if (normalizedValue === '') {
+      return;
+    }
+
+    setForm((prev) => {
+      const current = Array.isArray(prev[fieldName]) ? prev[fieldName] : [];
+      const set = new Set(current);
+
+      if (enabled) {
+        set.add(normalizedValue);
+      } else {
+        set.delete(normalizedValue);
+      }
+
+      const next = Array.from(set).sort((a, b) => String(a).localeCompare(String(b), 'cs', { sensitivity: 'base' }));
+      return {
+        ...prev,
+        [fieldName]: next,
+      };
+    });
+  }
+
+  function updateScopeMultiSelection(fieldName, selectedOptions) {
+    const nextValues = Array.from(selectedOptions || [])
+      .map((option) => String(option?.value || '').trim())
+      .filter((value) => value !== '')
+      .sort((a, b) => String(a).localeCompare(String(b), 'cs', { sensitivity: 'base' }));
+
+    setForm((prev) => ({
+      ...prev,
+      [fieldName]: nextValues,
+    }));
+  }
+
+  function updateVehicleFilterMultiSelection(setter, selectedOptions, normalize = null) {
+    const nextValues = Array.from(selectedOptions || [])
+      .map((option) => String(option?.value || '').trim())
+      .filter((value) => value !== '')
+      .map((value) => (typeof normalize === 'function' ? normalize(value) : value));
+
+    const deduplicated = Array.from(new Set(nextValues));
+    setter(deduplicated);
+  }
+
+  function clearVehicleFilters() {
+    setVehicleFilterQuery('');
+    setVehicleFilterStatus([]);
+    setVehicleFilterStation([]);
+    setVehicleFilterGroup([]);
+    setVehicleFilterType([]);
+  }
+
+  function clearScopeSelections() {
+    setForm((prev) => ({
+      ...prev,
+      scope_stations: [],
+      scope_groups: [],
+      scope_types: [],
     }));
   }
 
@@ -552,6 +645,9 @@ export default function UsersManagementPage() {
         must_change_password: form.must_change_password,
         has_all_vehicles: form.has_all_vehicles,
         assigned_vehicle_ids: form.assigned_vehicle_ids,
+        scope_stations: form.scope_stations,
+        scope_groups: form.scope_groups,
+        scope_types: form.scope_types,
         password: form.password,
       };
 
@@ -622,11 +718,39 @@ export default function UsersManagementPage() {
 
   const filteredAssignmentVehicles = useMemo(() => {
     const needle = normalizeText(vehicleFilterQuery);
-    const selectedStatus = String(vehicleFilterStatus || 'all').trim().toLowerCase();
+    const selectedStatuses = Array.isArray(vehicleFilterStatus)
+      ? vehicleFilterStatus.map((value) => String(value || '').trim().toLowerCase()).filter((value) => value !== '')
+      : [];
+    const selectedStations = Array.isArray(vehicleFilterStation)
+      ? vehicleFilterStation.map((value) => String(value || '').trim()).filter((value) => value !== '')
+      : [];
+    const selectedGroups = Array.isArray(vehicleFilterGroup)
+      ? vehicleFilterGroup.map((value) => String(value || '').trim()).filter((value) => value !== '')
+      : [];
+    const selectedTypes = Array.isArray(vehicleFilterType)
+      ? vehicleFilterType.map((value) => String(value || '').trim()).filter((value) => value !== '')
+      : [];
+
+    const normalizeScopeLabel = (value) => {
+      const text = String(value || '').trim();
+      return text === '' ? 'Nezadano' : text;
+    };
 
     return vehicleCatalog.filter((vehicle) => {
       const statusRaw = String(vehicle?.status || '').trim().toLowerCase();
-      if (selectedStatus !== 'all' && statusRaw !== selectedStatus) {
+      if (selectedStatuses.length > 0 && !selectedStatuses.includes(statusRaw)) {
+        return false;
+      }
+
+      if (selectedStations.length > 0 && !selectedStations.includes(normalizeScopeLabel(vehicle?.w_stanoviste))) {
+        return false;
+      }
+
+      if (selectedGroups.length > 0 && !selectedGroups.includes(normalizeScopeLabel(vehicle?.w_groupname))) {
+        return false;
+      }
+
+      if (selectedTypes.length > 0 && !selectedTypes.includes(normalizeScopeLabel(vehicle?.zzs_typ))) {
         return false;
       }
 
@@ -640,19 +764,48 @@ export default function UsersManagementPage() {
         vehicle.w_popis,
         vehicle.w_stanoviste,
         vehicle.w_groupname,
+        vehicle.zzs_typ,
         vehicle.w_tovarni_znacka,
         vehicle.w_model_vozu,
       ].map((value) => normalizeText(value)).join(' ');
 
       return haystack.includes(needle);
     });
-  }, [vehicleCatalog, vehicleFilterQuery, vehicleFilterStatus]);
+  }, [vehicleCatalog, vehicleFilterGroup, vehicleFilterQuery, vehicleFilterStation, vehicleFilterStatus, vehicleFilterType]);
+
+  const scopeOptionSets = useMemo(() => {
+    const stations = new Set();
+    const groups = new Set();
+    const types = new Set();
+
+    for (const vehicle of vehicleCatalog) {
+      stations.add(String(vehicle?.w_stanoviste || '').trim() || 'Nezadano');
+      groups.add(String(vehicle?.w_groupname || '').trim() || 'Nezadano');
+      types.add(String(vehicle?.zzs_typ || '').trim() || 'Nezadano');
+    }
+
+    return {
+      stations: Array.from(stations).sort((a, b) => a.localeCompare(b, 'cs', { sensitivity: 'base' })),
+      groups: Array.from(groups).sort((a, b) => a.localeCompare(b, 'cs', { sensitivity: 'base' })),
+      types: Array.from(types).sort((a, b) => a.localeCompare(b, 'cs', { sensitivity: 'base' })),
+    };
+  }, [vehicleCatalog]);
 
   const selectedAssignmentCount = Array.isArray(form.assigned_vehicle_ids) ? form.assigned_vehicle_ids.length : 0;
+  const selectedScopeStationsCount = Array.isArray(form.scope_stations) ? form.scope_stations.length : 0;
+  const selectedScopeGroupsCount = Array.isArray(form.scope_groups) ? form.scope_groups.length : 0;
+  const selectedScopeTypesCount = Array.isArray(form.scope_types) ? form.scope_types.length : 0;
+  const selectedScopeTotalCount = selectedScopeStationsCount + selectedScopeGroupsCount + selectedScopeTypesCount;
+  const activeVehicleFilterCount = (Array.isArray(vehicleFilterStatus) ? vehicleFilterStatus.length : 0)
+    + (Array.isArray(vehicleFilterStation) ? vehicleFilterStation.length : 0)
+    + (Array.isArray(vehicleFilterGroup) ? vehicleFilterGroup.length : 0)
+    + (Array.isArray(vehicleFilterType) ? vehicleFilterType.length : 0)
+    + (vehicleFilterQuery.trim() !== '' ? 1 : 0);
   const filteredVehicleIds = filteredAssignmentVehicles
     .map((vehicle) => Number(vehicle.id || 0))
     .filter((id) => Number.isFinite(id) && id > 0);
   const selectedInFilteredCount = filteredVehicleIds.filter((id) => form.assigned_vehicle_ids.includes(id)).length;
+  const isVehicleSectionBusy = saving || vehicleCatalogLoading || vehicleAssignmentLoading;
 
   function renderSortIcon(field) {
     if (sortBy !== field) {
@@ -932,7 +1085,7 @@ export default function UsersManagementPage() {
             </div>
 
             {activeEditTab === 'basic' ? (
-              <div className="station-edit-form-grid user-admin-form-grid" role="tabpanel">
+              <div className="station-edit-form-grid user-admin-form-grid user-edit-tab-panel" role="tabpanel">
                 <label>
                   Username
                   <input className="search-input" value={form.username} onChange={(event) => updateFormField('username', event.target.value)} disabled={saving} />
@@ -1003,13 +1156,13 @@ export default function UsersManagementPage() {
             ) : null}
 
             {activeEditTab === 'vehicles' ? (
-              <div className="user-vehicles-assignment-panel" role="tabpanel">
+              <div className="user-vehicles-assignment-panel user-edit-tab-panel" role="tabpanel">
                 <div className="user-vehicles-assignment-head">
                   <h4>Přiřazená vozidla</h4>
-                  <span className="muted">
+                  <span className="muted user-vehicles-assignment-subtitle">
                     {form.has_all_vehicles
                       ? 'Uživatel má přístup ke všem vozům.'
-                      : `Vybráno ${selectedAssignmentCount} vozidel.`}
+                      : `Ručně vybráno ${selectedAssignmentCount} vozidel. Scope: místa ${selectedScopeStationsCount}, skupiny ${selectedScopeGroupsCount}, typy ${selectedScopeTypesCount}.`}
                   </span>
                 </div>
 
@@ -1025,85 +1178,272 @@ export default function UsersManagementPage() {
 
                 {!form.has_all_vehicles ? (
                   <>
-                    <div className="user-vehicles-filter-row">
-                      <input
-                        className="search-input"
-                        placeholder="Filtrovat vozidla (SPZ, status, volací znak, stanoviště...)"
-                        value={vehicleFilterQuery}
-                        onChange={(event) => setVehicleFilterQuery(event.target.value)}
-                        disabled={saving || vehicleCatalogLoading || vehicleAssignmentLoading}
-                      />
+                    <p className="user-vehicles-intro-text">
+                      Automatická viditelnost podle kategorií: když se ve Webdispečinku objeví nové vozidlo v označeném Místě, Skupině nebo Typu, uživatel ho uvidí automaticky.
+                    </p>
 
-                      <select
-                        className="station-edit-select"
-                        value={vehicleFilterStatus}
-                        onChange={(event) => setVehicleFilterStatus(event.target.value)}
-                        disabled={saving || vehicleCatalogLoading || vehicleAssignmentLoading}
-                      >
-                        <option value="all">Všechny statusy</option>
-                        {vehicleStatuses.map((statusValue) => (
-                          <option key={statusValue} value={String(statusValue).toLowerCase()}>
-                            {vehicleStatusLabel(statusValue)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <div className="user-vehicles-workspace">
+                      <div className="user-vehicles-summary-strip" role="status">
+                        <span>Scope položky: {selectedScopeTotalCount}</span>
+                        <span>Ručně vybráno: {selectedAssignmentCount}</span>
+                        <span>Filtrovaných: {filteredVehicleIds.length}</span>
+                      </div>
 
-                    <div className="user-vehicles-bulk-actions">
-                      <button
-                        type="button"
-                        className="table-pager-btn"
-                        onClick={addFilteredVehiclesToSelection}
-                        disabled={saving || vehicleCatalogLoading || vehicleAssignmentLoading || filteredVehicleIds.length === 0}
-                      >
-                        Vybrat všechny filtrované ({filteredVehicleIds.length})
-                      </button>
-                      <button
-                        type="button"
-                        className="table-pager-btn"
-                        onClick={removeFilteredVehiclesFromSelection}
-                        disabled={saving || vehicleCatalogLoading || vehicleAssignmentLoading || selectedInFilteredCount === 0}
-                      >
-                        Odebrat filtrované ({selectedInFilteredCount})
-                      </button>
-                    </div>
+                      <div className="user-vehicles-mode-switch" role="tablist" aria-label="Režim výběru vozidel">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={vehicleAssignView === 'scope'}
+                          className={`user-vehicles-mode-btn${vehicleAssignView === 'scope' ? ' is-active' : ''}`}
+                          onClick={() => setVehicleAssignView('scope')}
+                          disabled={isVehicleSectionBusy}
+                        >
+                          Pravidla dle skupin
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={vehicleAssignView === 'manual'}
+                          className={`user-vehicles-mode-btn${vehicleAssignView === 'manual' ? ' is-active' : ''}`}
+                          onClick={() => setVehicleAssignView('manual')}
+                          disabled={isVehicleSectionBusy}
+                        >
+                          Ruční výběr vozidel
+                        </button>
+                      </div>
 
-                    <div className="user-vehicles-list" role="list">
-                      {filteredAssignmentVehicles.map((vehicle) => {
-                        const vehicleId = Number(vehicle.id || 0);
-                        const isChecked = form.assigned_vehicle_ids.includes(vehicleId);
+                      {vehicleAssignView === 'scope' ? (
+                        <div className="user-vehicles-scope-card" role="tabpanel">
+                          <div className="user-vehicles-card-head">
+                            <h5>Pravidla dle skupin</h5>
+                            <div className="user-vehicles-manual-meta">
+                              <span>{selectedScopeTotalCount} položek</span>
+                              <button
+                                type="button"
+                                className="table-pager-btn"
+                                onClick={clearScopeSelections}
+                                disabled={isVehicleSectionBusy || selectedScopeTotalCount === 0}
+                              >
+                                Vyčistit scope
+                              </button>
+                            </div>
+                          </div>
 
-                        return (
-                          <label key={vehicleId} className="user-vehicles-item" role="listitem">
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={(event) => toggleVehicleAssignment(vehicleId, event.target.checked)}
-                              disabled={saving || vehicleCatalogLoading || vehicleAssignmentLoading}
-                            />
+                          <div className="user-scope-multiselect-grid">
+                            <label className="users-filter-select user-scope-multi-field">
+                              Viditelnost podle Místa
+                              <select
+                                multiple
+                                size={4}
+                                className="station-edit-select user-scope-multiselect"
+                                value={form.scope_stations}
+                                onChange={(event) => updateScopeMultiSelection('scope_stations', event.target.selectedOptions)}
+                                disabled={isVehicleSectionBusy}
+                              >
+                                {scopeOptionSets.stations.map((value) => (
+                                  <option key={`scope-station-${value}`} value={value}>{value === 'Nezadano' ? 'Nezadáno' : value}</option>
+                                ))}
+                              </select>
+                            </label>
 
-                            <span className="user-vehicles-item-main">
-                              <strong>{vehicle.spz || `ID ${vehicleId}`}</strong>
-                              <small>
-                                {vehicle.w_popis || 'Bez volacího znaku'}
-                                {' · '}
-                                {vehicle.w_stanoviste || 'Bez stanoviště'}
-                                {' · '}
-                                {vehicle.w_groupname || 'Bez skupiny'}
-                              </small>
-                            </span>
+                            <label className="users-filter-select user-scope-multi-field">
+                              Viditelnost podle Skupiny
+                              <select
+                                multiple
+                                size={4}
+                                className="station-edit-select user-scope-multiselect"
+                                value={form.scope_groups}
+                                onChange={(event) => updateScopeMultiSelection('scope_groups', event.target.selectedOptions)}
+                                disabled={isVehicleSectionBusy}
+                              >
+                                {scopeOptionSets.groups.map((value) => (
+                                  <option key={`scope-group-${value}`} value={value}>{value === 'Nezadano' ? 'Nezadáno' : value}</option>
+                                ))}
+                              </select>
+                            </label>
 
-                            <span className="users-state-chip user-vehicle-status-chip">
-                              {vehicleStatusLabel(vehicle.status)}
-                            </span>
-                          </label>
-                        );
-                      })}
+                            <label className="users-filter-select user-scope-multi-field">
+                              Viditelnost podle Typu
+                              <select
+                                multiple
+                                size={4}
+                                className="station-edit-select user-scope-multiselect"
+                                value={form.scope_types}
+                                onChange={(event) => updateScopeMultiSelection('scope_types', event.target.selectedOptions)}
+                                disabled={isVehicleSectionBusy}
+                              >
+                                {scopeOptionSets.types.map((value) => (
+                                  <option key={`scope-type-${value}`} value={value}>{value === 'Nezadano' ? 'Nezadáno' : value}</option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
 
-                      {!vehicleCatalogLoading && !vehicleAssignmentLoading && filteredAssignmentVehicles.length === 0 ? (
-                        <div className="status-box">Žádná vozidla neodpovídají filtru.</div>
+                          <p className="muted user-scope-help-text">Tip: drž Ctrl/Cmd pro vícenásobný výběr, Shift pro rozsah.</p>
+                        </div>
+                      ) : null}
+
+                      {vehicleAssignView === 'manual' ? (
+                        <div className="user-vehicles-manual-card" role="tabpanel">
+                          <div className="user-vehicles-card-head">
+                            <h5>Ruční výběr vozidel</h5>
+                            <div className="user-vehicles-manual-meta">
+                              <span>Filtry: {activeVehicleFilterCount}</span>
+                              <button
+                                type="button"
+                                className="table-pager-btn"
+                                onClick={clearVehicleFilters}
+                                disabled={isVehicleSectionBusy || activeVehicleFilterCount === 0}
+                              >
+                                Vyčistit filtry
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="user-vehicles-compact-grid">
+                            <div className="user-vehicles-compact-controls">
+                              <input
+                                className="search-input user-vehicles-filter-search"
+                                placeholder="Hledat vozidla (SPZ, volací znak, stanoviště, skupina...)"
+                                value={vehicleFilterQuery}
+                                onChange={(event) => setVehicleFilterQuery(event.target.value)}
+                                disabled={isVehicleSectionBusy}
+                              />
+
+                              <details className="user-vehicles-advanced-filters">
+                                <summary>Rozšířené filtry ({activeVehicleFilterCount})</summary>
+                                <div className="user-vehicles-filter-row">
+                                  <label className="users-filter-select user-scope-multi-field">
+                                    Statusy
+                                    <select
+                                      multiple
+                                      size={3}
+                                      className="station-edit-select user-scope-multiselect user-vehicles-filter-multiselect"
+                                      value={vehicleFilterStatus}
+                                      onChange={(event) => updateVehicleFilterMultiSelection(setVehicleFilterStatus, event.target.selectedOptions, (value) => value.toLowerCase())}
+                                      disabled={isVehicleSectionBusy}
+                                    >
+                                      {vehicleStatuses.map((statusValue) => (
+                                        <option key={statusValue} value={String(statusValue).toLowerCase()}>
+                                          {vehicleStatusLabel(statusValue)}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+
+                                  <label className="users-filter-select user-scope-multi-field">
+                                    Místa
+                                    <select
+                                      multiple
+                                      size={3}
+                                      className="station-edit-select user-scope-multiselect user-vehicles-filter-multiselect"
+                                      value={vehicleFilterStation}
+                                      onChange={(event) => updateVehicleFilterMultiSelection(setVehicleFilterStation, event.target.selectedOptions)}
+                                      disabled={isVehicleSectionBusy}
+                                    >
+                                      {scopeOptionSets.stations.map((value) => (
+                                        <option key={`filter-station-${value}`} value={value}>{value === 'Nezadano' ? 'Nezadáno' : value}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+
+                                  <label className="users-filter-select user-scope-multi-field">
+                                    Skupiny
+                                    <select
+                                      multiple
+                                      size={3}
+                                      className="station-edit-select user-scope-multiselect user-vehicles-filter-multiselect"
+                                      value={vehicleFilterGroup}
+                                      onChange={(event) => updateVehicleFilterMultiSelection(setVehicleFilterGroup, event.target.selectedOptions)}
+                                      disabled={isVehicleSectionBusy}
+                                    >
+                                      {scopeOptionSets.groups.map((value) => (
+                                        <option key={`filter-group-${value}`} value={value}>{value === 'Nezadano' ? 'Nezadáno' : value}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+
+                                  <label className="users-filter-select user-scope-multi-field">
+                                    Typy
+                                    <select
+                                      multiple
+                                      size={3}
+                                      className="station-edit-select user-scope-multiselect user-vehicles-filter-multiselect"
+                                      value={vehicleFilterType}
+                                      onChange={(event) => updateVehicleFilterMultiSelection(setVehicleFilterType, event.target.selectedOptions)}
+                                      disabled={isVehicleSectionBusy}
+                                    >
+                                      {scopeOptionSets.types.map((value) => (
+                                        <option key={`filter-type-${value}`} value={value}>{value === 'Nezadano' ? 'Nezadáno' : value}</option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                </div>
+                              </details>
+
+                              <div className="user-vehicles-bulk-actions">
+                                <button
+                                  type="button"
+                                  className="table-pager-btn"
+                                  onClick={addFilteredVehiclesToSelection}
+                                  disabled={isVehicleSectionBusy || filteredVehicleIds.length === 0}
+                                >
+                                  Vybrat filtrované ({filteredVehicleIds.length})
+                                </button>
+                                <button
+                                  type="button"
+                                  className="table-pager-btn"
+                                  onClick={removeFilteredVehiclesFromSelection}
+                                  disabled={isVehicleSectionBusy || selectedInFilteredCount === 0}
+                                >
+                                  Odebrat filtrované ({selectedInFilteredCount})
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="user-vehicles-list" role="list">
+                              {filteredAssignmentVehicles.map((vehicle) => {
+                                const vehicleId = Number(vehicle.id || 0);
+                                const isChecked = form.assigned_vehicle_ids.includes(vehicleId);
+
+                                return (
+                                  <label key={vehicleId} className="user-vehicles-item" role="listitem">
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(event) => toggleVehicleAssignment(vehicleId, event.target.checked)}
+                                      disabled={isVehicleSectionBusy}
+                                    />
+
+                                    <span className="user-vehicles-item-main">
+                                      <strong>{vehicle.spz || `ID ${vehicleId}`}</strong>
+                                      <small>
+                                        {vehicle.w_popis || 'Bez volacího znaku'}
+                                        {' · '}
+                                        {vehicle.w_stanoviste || 'Bez stanoviště'}
+                                        {' · '}
+                                        {vehicle.w_groupname || 'Bez skupiny'}
+                                        {' · '}
+                                        {vehicle.zzs_typ || 'Bez typu'}
+                                      </small>
+                                    </span>
+
+                                    <span className="users-state-chip user-vehicle-status-chip is-approved">
+                                      {vehicleStatusLabel(vehicle.status)}
+                                    </span>
+                                  </label>
+                                );
+                              })}
+
+                              {!vehicleCatalogLoading && !vehicleAssignmentLoading && filteredAssignmentVehicles.length === 0 ? (
+                                <div className="status-box">Filtru neodpovídá žádné vozidlo.</div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </div>
                       ) : null}
                     </div>
+
                   </>
                 ) : null}
               </div>

@@ -7,7 +7,7 @@ function formatValue(value) {
   return String(value);
 }
 
-export default function VehicleTechnicalFormCard({ item, serviceStations, form, onChange, onSubmit, saving, saveMessage }) {
+export default function VehicleTechnicalFormCard({ item, serviceStations, form, onChange, onSubmit, saving, saveMessage, readOnly = false }) {
   const [activeTab, setActiveTab] = useState('basic');
   const [serviceStateUi, setServiceStateUi] = useState('unknown');
   const [selectedServiceUi, setSelectedServiceUi] = useState('');
@@ -82,6 +82,8 @@ export default function VehicleTechnicalFormCard({ item, serviceStations, form, 
       </div>
 
       <form className="detail-form" onSubmit={onSubmit}>
+        {readOnly ? <div className="status-box">Režim pouze pro čtení: editace je dostupná rolím superadmin, administrator a správce vozového parku.</div> : null}
+        <fieldset disabled={saving || readOnly} style={{ border: 0, padding: 0, margin: 0 }}>
         {activeTab === 'basic' ? (
           <div className="vehicle-edit-panel" role="tabpanel">
             <p className="vehicle-edit-panel-note">Zdroj většiny položek je synchronizace z Webdispečinku. Ruční úpravy dělej jen tam, kde to dává provozně smysl.</p>
@@ -174,7 +176,7 @@ export default function VehicleTechnicalFormCard({ item, serviceStations, form, 
         {activeTab === 'service' ? (
           <div className="vehicle-edit-panel" role="tabpanel">
             <div className="status-box status-box-warning">
-              Dočasný UI režim: stav servisu a historie jsou zatím připravené pouze v rozhraní. Datový model a automatizace doplníme v další fázi.
+              Metadata servisu se ukládají do V2 karty vozidla. Historie událostí je připravená v backendu a navazující timeline ve UI doplníme v další fázi.
             </div>
 
             <label htmlFor="service_state_ui">Stav vozu z pohledu servisu</label>
@@ -202,7 +204,34 @@ export default function VehicleTechnicalFormCard({ item, serviceStations, form, 
               ))}
             </select>
 
-            <label htmlFor="service_notes">Servisní poznámky</label>
+            <label htmlFor="service_context_name">Název servisu</label>
+            <input
+              id="service_context_name"
+              name="service_context_name"
+              value={form.service_context_name || ''}
+              onChange={onChange}
+              placeholder="Např. AutoServis Novák"
+            />
+
+            <label htmlFor="service_context_address">Adresa servisu</label>
+            <input
+              id="service_context_address"
+              name="service_context_address"
+              value={form.service_context_address || ''}
+              onChange={onChange}
+              placeholder="Např. U Dílny 12, Kladno"
+            />
+
+            <label htmlFor="service_context_contact">Kontakt servisu</label>
+            <input
+              id="service_context_contact"
+              name="service_context_contact"
+              value={form.service_context_contact || ''}
+              onChange={onChange}
+              placeholder="Telefon nebo e-mail"
+            />
+
+            <label htmlFor="service_notes">Poznámka k opravě</label>
             <textarea
               id="service_notes"
               name="service_notes"
@@ -334,12 +363,15 @@ export default function VehicleTechnicalFormCard({ item, serviceStations, form, 
             />
           </div>
         ) : null}
+        </fieldset>
 
         {saveMessage ? <div className="status-box">{saveMessage}</div> : null}
 
-        <button className="btn btn-primary" type="submit" disabled={saving}>
-          {saving ? 'Ukládám...' : 'Uložit detail'}
-        </button>
+        {!readOnly ? (
+          <button className="btn btn-primary" type="submit" disabled={saving}>
+            {saving ? 'Ukládám...' : 'Uložit detail'}
+          </button>
+        ) : null}
       </form>
     </article>
   );
