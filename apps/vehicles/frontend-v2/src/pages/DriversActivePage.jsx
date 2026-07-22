@@ -10,7 +10,20 @@ import {
 } from '../services/apiClient';
 
 const PAGE_SIZE_OPTIONS = [25, 50, 100];
-const SORT_FIELDS = ['driver_name', 'personal_number', 'phone', 'email', 'vehicle_spz', 'last_sync_at'];
+const SORT_FIELDS = [
+  'driver_name',
+  'personal_number',
+  'phone',
+  'email',
+  'vehicle_spz',
+  'km_business_month',
+  'km_private_month',
+  'km_total_month',
+  'costs_business_month',
+  'costs_private_month',
+  'costs_total_month',
+  'last_sync_at',
+];
 
 function parsePositiveInt(value, fallback) {
   const parsed = Number.parseInt(String(value || ''), 10);
@@ -338,42 +351,6 @@ export default function DriversActivePage() {
       const vehiclesResponse = await fetchVehiclesForDriversSync(year, month, isForceSync);
       const vehicles = vehiclesResponse?.data?.items || [];
 
-      // DEV debug výpis: kolik aut je už zapsaných v DB a kolik by se znovu syncovalo.
-      // Pro minulé měsíce porovnáme pending vs full seznam aut.
-      if (isPastMonth) {
-        try {
-          const pendingVehiclesResponse = isForceSync
-            ? await fetchVehiclesForDriversSync(year, month, false)
-            : vehiclesResponse;
-          const allVehiclesResponse = isForceSync
-            ? vehiclesResponse
-            : await fetchVehiclesForDriversSync(year, month, true);
-
-          const pendingVehicles = pendingVehiclesResponse?.data?.items || [];
-          const allVehicles = allVehiclesResponse?.data?.items || [];
-
-          const pendingCount = Number(pendingVehicles.length || 0);
-          const totalVehicles = Number(allVehicles.length || 0);
-          const syncedInDbCount = Math.max(0, totalVehicles - pendingCount);
-
-          console.groupCollapsed(`[Drivers KM Sync Debug] ${selectedMonth}`);
-          console.log('sync_records_in_db_for_vehicles:', syncedInDbCount);
-          console.log('vehicles_to_resync_now:', pendingCount);
-          console.log('total_vehicles_with_active_drivers:', totalVehicles);
-          console.log('force_sync_mode:', isForceSync);
-          console.groupEnd();
-        } catch (debugErr) {
-          console.warn('[Drivers KM Sync Debug] Nepodarilo se zjistit full seznam vozidel pro debug counters.', debugErr);
-        }
-      } else {
-        console.groupCollapsed(`[Drivers KM Sync Debug] ${selectedMonth}`);
-        console.log('sync_records_in_db_for_vehicles:', 'N/A (aktualni mesic)');
-        console.log('vehicles_to_resync_now:', Number(vehicles.length || 0));
-        console.log('total_vehicles_with_active_drivers:', 'N/A (aktualni mesic)');
-        console.log('force_sync_mode:', isForceSync);
-        console.groupEnd();
-      }
-
       if (vehicles.length === 0) {
         // Pro minulé měsíce: pokud není force sync, otevřít interní dialog (ne window.confirm).
         if (isPastMonth && !isForceSync) {
@@ -581,6 +558,14 @@ export default function DriversActivePage() {
         const leftDriver = String(left.driver_name_sort || formatDriverDisplayName(left.driver_name) || '');
         const rightDriver = String(right.driver_name_sort || formatDriverDisplayName(right.driver_name) || '');
         const cmp = leftDriver.localeCompare(rightDriver, 'cs', { sensitivity: 'base', numeric: true });
+        return sortDir === 'asc' ? cmp : -cmp;
+      }
+
+      // Numerické sortování pro KM a náklady
+      if (sortBy.startsWith('km_') || sortBy.startsWith('costs_')) {
+        const leftNum = Number.parseFloat(left[sortBy]) || 0;
+        const rightNum = Number.parseFloat(right[sortBy]) || 0;
+        const cmp = leftNum - rightNum;
         return sortDir === 'asc' ? cmp : -cmp;
       }
 
@@ -840,12 +825,12 @@ export default function DriversActivePage() {
               <SortableHeader field="phone" label="Telefon" />
               <SortableHeader field="email" label="E-mail" />
               <SortableHeader field="vehicle_spz" label="Vozidlo" />
-              <th className="table-col-number">Služ. km</th>
-              <th className="table-col-number">Soukr. km</th>
-              <th className="table-col-number">Celkem km</th>
-              <th className="table-col-number">Účt. služ.</th>
-              <th className="table-col-number">Účt. soukr.</th>
-              <th className="table-col-number">Účt. celkem</th>
+              <SortableHeader field="km_business_month" label="Služ. km" />
+              <SortableHeader field="km_private_month" label="Soukr. km" />
+              <SortableHeader field="km_total_month" label="Celkem km" />
+              <SortableHeader field="costs_business_month" label="Účt. služ." />
+              <SortableHeader field="costs_private_month" label="Účt. soukr." />
+              <SortableHeader field="costs_total_month" label="Účt. celkem" />
               <SortableHeader field="last_sync_at" label="Poslední sync" />
               <th className="table-col-actions">Akce</th>
             </tr>
