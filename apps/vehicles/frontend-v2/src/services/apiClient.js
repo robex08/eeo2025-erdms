@@ -77,6 +77,11 @@ export async function fetchVehicles(params = {}) {
   return response.data;
 }
 
+export async function fetchDrivers(params = {}) {
+  const response = await apiClient.get('/drivers', { params });
+  return response.data;
+}
+
 export async function fetchUsers() {
   const response = await apiClient.get('/users');
   return response.data;
@@ -182,6 +187,13 @@ export async function fetchVehicleManualEvents(vehicleId, params = {}) {
   return response.data;
 }
 
+export async function fetchVehicleMonthlyBilling(vehicleId, params = {}) {
+  const response = await apiClient.get('/vehicles/billing/monthly', {
+    params: { vehicleId, ...params },
+  });
+  return response.data;
+}
+
 export async function saveVehicleDetail(payload) {
   const response = await apiClient.post('/vehicles/detail', payload);
   return response.data;
@@ -204,6 +216,28 @@ export async function triggerSync() {
 
 export async function triggerQuickSync() {
   const response = await apiClient.post('/sync/vehicles/quick', {}, { timeout: QUICK_SYNC_TIMEOUT_MS });
+  return response.data;
+}
+
+export async function triggerDriversQuickSync() {
+  const response = await apiClient.post('/sync/drivers/quick', {}, { timeout: QUICK_SYNC_TIMEOUT_MS });
+  return response.data;
+}
+
+export async function syncDriversKm(year, month) {
+  const response = await apiClient.post('/drivers/sync-km', { year, month }, { timeout: 60000 });
+  return response.data;
+}
+
+export async function syncDriversKmForVehicle(vehicleId, year, month) {
+  const response = await apiClient.post('/drivers/sync-km-vehicle', { vehicleId, year, month }, { timeout: 30000 });
+  return response.data;
+}
+
+export async function fetchVehiclesForDriversSync(year, month, force = false) {
+  const response = await apiClient.get('/drivers/vehicles-for-sync', {
+    params: { year, month, force: force ? '1' : '0' },
+  });
   return response.data;
 }
 

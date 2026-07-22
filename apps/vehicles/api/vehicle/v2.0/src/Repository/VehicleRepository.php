@@ -9,6 +9,8 @@ final class VehicleRepository
     private const TBL_WD_POSITIONS = 'vehicles_wd_positions_v2';
     private const TBL_WD_KM_STATS = 'vehicles_wd_km_stats_v2';
     private const TBL_STATION_ADDRESSES = 'vehicles_station_addresses_v2';
+    private const TBL_WD_DRIVERS = 'vehicles_wd_drivers_v2';
+    private const TBL_DRIVERS_KM_SYNC_LOG = 'vehicles_drivers_km_sync_log_v2';
     private const TBL_MANUAL_EVENTS = 'vehicles_manual_events_v2';
     private const TBL_LOOKUPS = 'vehicles_lookups_v2';
     private array $tableExistsCache = [];
@@ -38,6 +40,8 @@ final class VehicleRepository
         array $groups = [],
         array $stations = [],
         array $locationStates = [],
+        array $ccsStates = [],
+        string $ccsExpiryFilter = '',
         array $models = [],
         array $manufacturers = [],
         array $fuels = [],
@@ -71,6 +75,24 @@ final class VehicleRepository
         $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
         $hasManualLocationUpdatedAt = $this->columnExists('vehicles_detail_cards', 'manual_location_updated_at');
         $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
+        $hasCcsCardNumber = $this->columnExists('vehicles_cars_list_v2', 'ccs_card_number');
+        $hasCcsCardExpiration = $this->columnExists('vehicles_cars_list_v2', 'ccs_card_expiration');
+        $hasCcsExpr = $hasCcsCardNumber
+            ? '(CASE WHEN NULLIF(TRIM(v.ccs_card_number), "") IS NULL THEN 0 ELSE 1 END)'
+            : '0';
+        $ccsExpirationDateExpr = $hasCcsCardExpiration
+            ? 'COALESCE('
+                . 'STR_TO_DATE(NULLIF(TRIM(v.ccs_card_expiration), ""), "%Y-%m-%d"), '
+                . 'STR_TO_DATE(NULLIF(TRIM(v.ccs_card_expiration), ""), "%e.%c.%Y"), '
+                . 'STR_TO_DATE(NULLIF(TRIM(v.ccs_card_expiration), ""), "%d.%m.%Y")'
+            . ')'
+            : 'NULL';
+        $ccsExpiredExpr = ($hasCcsCardNumber && $hasCcsCardExpiration)
+            ? '(CASE WHEN ' . $hasCcsExpr . ' = 1 AND ' . $ccsExpirationDateExpr . ' IS NOT NULL AND ' . $ccsExpirationDateExpr . ' < CURDATE() THEN 1 ELSE 0 END)'
+            : '0';
+        $ccsExpiringSoonExpr = ($hasCcsCardNumber && $hasCcsCardExpiration)
+            ? '(CASE WHEN ' . $hasCcsExpr . ' = 1 AND ' . $ccsExpirationDateExpr . ' IS NOT NULL AND ' . $ccsExpirationDateExpr . ' >= CURDATE() AND ' . $ccsExpirationDateExpr . ' <= DATE_ADD(CURDATE(), INTERVAL 3 MONTH) THEN 1 ELSE 0 END)'
+            : '0';
 
         $sortColumns = [
             'spz' => 'v.spz',
@@ -87,6 +109,7 @@ final class VehicleRepository
             'last_update' => 'v.last_update',
             'dotace' => $hasLegacyDotace ? 'legacy_dotace.dotace' : 'v.id',
             'status' => 'v.status',
+            'has_ccs' => $hasCcsExpr,
         ];
 
         $normalizedSortBy = array_key_exists($sortBy, $sortColumns) ? $sortBy : 'spz';
@@ -168,6 +191,12 @@ final class VehicleRepository
         $serviceContextJsonSelect = $hasServiceContextJson
             ? 'd.service_context_json'
             : 'NULL AS service_context_json';
+        $ccsCardNumberSelect = $hasCcsCardNumber
+            ? 'NULLIF(TRIM(v.ccs_card_number), "") AS ccs_card_number'
+            : 'NULL AS ccs_card_number';
+        $ccsCardExpirationSelect = $hasCcsCardExpiration
+            ? 'NULLIF(TRIM(v.ccs_card_expiration), "") AS ccs_card_expiration'
+            : 'NULL AS ccs_card_expiration';
         $typeLabelSql = 'CASE
             WHEN d.zzs_typ IS NULL THEN "Nezadáno"
             WHEN TRIM(d.zzs_typ) = "" THEN "Nezadáno"
@@ -423,6 +452,26 @@ final class VehicleRepository
         $whereClauses = array_merge($baseWhereClauses, $typeWhereClauses, $callSignWhereClauses, $groupWhereClauses, $stationWhereClauses, $modelWhereClauses, $manufacturerWhereClauses, $fuelWhereClauses, $yearWhereClauses, $mileageBandWhereClauses);
         $params = array_merge($baseParams, $typeParams, $callSignParams, $groupParams, $stationParams, $modelParams, $manufacturerParams, $fuelParams, $yearParams, $mileageBandParams);
 
+        $ccsStates = $this->normalizeCcsStatesFilter($ccsStates);
+        if ($ccsStates !== []) {
+            $hasSelections = array_fill_keys($ccsStates, true);
+            if (isset($hasSelections['has']) && !isset($hasSelections['none'])) {
+                $whereClauses[] = $hasCcsExpr . ' = 1';
+            } elseif (!isset($hasSelections['has']) && isset($hasSelections['none'])) {
+                $whereClauses[] = $hasCcsExpr . ' = 0';
+            }
+        }
+
+        $summaryWhereClauses = $whereClauses;
+        $summaryWhereSql = $summaryWhereClauses !== [] ? ' WHERE ' . implode(' AND ', $summaryWhereClauses) : '';
+
+        $normalizedCcsExpiryFilter = strtolower(trim($ccsExpiryFilter));
+        if ($normalizedCcsExpiryFilter === 'expiring') {
+            $whereClauses[] = $ccsExpiringSoonExpr . ' = 1';
+        } elseif ($normalizedCcsExpiryFilter === 'expired') {
+            $whereClauses[] = $ccsExpiredExpr . ' = 1';
+        }
+
         $whereSql = $whereClauses !== [] ? ' WHERE ' . implode(' AND ', $whereClauses) : '';
 
         $dotaceCountSql = $hasLegacyDotace
@@ -438,8 +487,20 @@ final class VehicleRepository
             $updatedAt = trim($updatedAtRaw);
         }
 
+        $ccsSummaryStmt = $this->pdo->prepare(
+            'SELECT '
+            . 'COUNT(DISTINCT CASE WHEN ' . $ccsExpiringSoonExpr . ' = 1 THEN v.id END) AS ccs_expiring_soon_count, '
+            . 'COUNT(DISTINCT CASE WHEN ' . $ccsExpiredExpr . ' = 1 THEN v.id END) AS ccs_expired_count'
+            . $fromSql
+            . $summaryWhereSql
+        );
+        $ccsSummaryStmt->execute($params);
+        $ccsSummaryRow = $ccsSummaryStmt->fetch() ?: [];
+        $ccsExpiringSoonCount = (int) ($ccsSummaryRow['ccs_expiring_soon_count'] ?? 0);
+        $ccsExpiredCount = (int) ($ccsSummaryRow['ccs_expired_count'] ?? 0);
+
         $totalAll = $totalFiltered;
-        if ($query !== '' || $chartCarIds !== [] || $statusFilter !== 'all' || $types !== [] || $callSigns !== [] || $groups !== [] || $stations !== [] || $models !== [] || $manufacturers !== [] || $fuels !== [] || $years !== [] || $mileageBands !== [] || $hasLocationStateFilter) {
+        if ($query !== '' || $chartCarIds !== [] || $statusFilter !== 'all' || $types !== [] || $callSigns !== [] || $groups !== [] || $stations !== [] || $models !== [] || $manufacturers !== [] || $fuels !== [] || $years !== [] || $mileageBands !== [] || $hasLocationStateFilter || $ccsStates !== [] || $normalizedCcsExpiryFilter !== '') {
             if ($restrictByAssignments) {
                 $totalAllStmt = $this->pdo->prepare('SELECT COUNT(*)' . $fromSql);
                 $totalAllStmt->bindValue(':access_user_id', $actorUserId, PDO::PARAM_INT);
@@ -471,6 +532,8 @@ final class VehicleRepository
                                      ' . $posUpdatedSelect . ',
                    v.w_online,
                    v.w_disabled,
+                   ' . $ccsCardNumberSelect . ',
+                   ' . $ccsCardExpirationSelect . ',
                    ' . $fuelTankSelect . ',
                    ' . $manualLocationStateSelect . ',
                    ' . $manualLocationUpdatedAtSelect . ',
@@ -758,6 +821,10 @@ final class VehicleRepository
             'total' => $totalFiltered,
             'totalAll' => $totalAll,
             'locationStateSummary' => $locationStateSummary,
+            'ccsExpirySummary' => [
+                'expiringSoonCount' => $ccsExpiringSoonCount,
+                'expiredCount' => $ccsExpiredCount,
+            ],
             'updatedAt' => $updatedAt,
             'page' => $page,
             'perPage' => $perPage,
@@ -861,6 +928,21 @@ final class VehicleRepository
     private function normalizeLocationStatesFilter(array $states): array
     {
         $allowed = ['doma', 'v_akci', 'v_servisu', 'nezname'];
+        $normalized = [];
+
+        foreach ($states as $stateRaw) {
+            $state = strtolower(trim((string) $stateRaw));
+            if (in_array($state, $allowed, true)) {
+                $normalized[$state] = true;
+            }
+        }
+
+        return array_keys($normalized);
+    }
+
+    private function normalizeCcsStatesFilter(array $states): array
+    {
+        $allowed = ['has', 'none'];
         $normalized = [];
 
         foreach ($states as $stateRaw) {
@@ -1181,6 +1263,790 @@ final class VehicleRepository
         $stmt->execute();
 
         return $stmt->fetchAll() ?: [];
+    }
+
+    public function listDrivers(
+        bool $activeOnly = true,
+        string $query = '',
+        int $actorUserId = 0,
+        bool $actorHasAllDrivers = true
+    ): array
+    {
+        if (!$this->tableExists(self::TBL_WD_DRIVERS)) {
+            return [];
+        }
+
+        $restrictByAssignments = $actorUserId > 0 && !$actorHasAllDrivers;
+
+        $hasLegacyCarId = $this->columnExists(self::TBL_WD_DRIVERS, 'legacy_carid');
+        $hasVehicleIdentifier = $this->columnExists(self::TBL_WD_DRIVERS, 'vehicle_identifier');
+        $hasRawJson = $this->columnExists(self::TBL_WD_DRIVERS, 'raw_json');
+        $hasKmColumns = $this->columnExists(self::TBL_WD_DRIVERS, 'km_month');
+        $driverNameSortExpr = 'TRIM(CASE
+                    WHEN d.driver_name IS NULL OR TRIM(d.driver_name) = "" THEN ""
+                    WHEN LOCATE(" ", TRIM(d.driver_name)) = 0 THEN TRIM(d.driver_name)
+                    ELSE CONCAT(
+                        SUBSTRING_INDEX(TRIM(d.driver_name), " ", -1),
+                        " ",
+                        TRIM(SUBSTRING(
+                            TRIM(d.driver_name),
+                            1,
+                            CHAR_LENGTH(TRIM(d.driver_name)) - CHAR_LENGTH(SUBSTRING_INDEX(TRIM(d.driver_name), " ", -1)) - 1
+                        ))
+                    )
+                END)';
+        $normalizedVehicleIdentifierExpr = 'REPLACE(REPLACE(REPLACE(REPLACE(UPPER(TRIM(d.vehicle_identifier)), " ", ""), ";", ","), "|", ","), "/", ",")';
+        $vehicleMatchConditionForV = '(
+                            (d.legacy_carid IS NOT NULL AND d.legacy_carid > 0 AND v.legacy_carid = d.legacy_carid)
+                            OR (
+                                d.vehicle_identifier IS NOT NULL
+                                AND TRIM(d.vehicle_identifier) <> ""
+                                AND FIND_IN_SET(
+                                    REPLACE(UPPER(TRIM(v.spz)), " ", ""),
+                                    ' . $normalizedVehicleIdentifierExpr . '
+                                ) > 0
+                            )
+                        )';
+        $vehicleMatchConditionForVv = '(
+                            (d.legacy_carid IS NOT NULL AND d.legacy_carid > 0 AND vv.legacy_carid = d.legacy_carid)
+                            OR (
+                                d.vehicle_identifier IS NOT NULL
+                                AND TRIM(d.vehicle_identifier) <> ""
+                                AND FIND_IN_SET(
+                                    REPLACE(UPPER(TRIM(vv.spz)), " ", ""),
+                                    ' . $normalizedVehicleIdentifierExpr . '
+                                ) > 0
+                            )
+                        )';
+
+        $sql = 'SELECT
+                    d.id,
+                    d.legacy_driverid,
+                    d.driver_name,
+                    d.personal_number,
+                    d.phone,
+                    d.email,
+                    d.is_active,
+                    DATE_FORMAT(d.last_sync_at, "%Y-%m-%d %H:%i:%s") AS last_sync_at,
+                    ' . $driverNameSortExpr . ' AS driver_name_sort';
+
+        if ($hasLegacyCarId) {
+            $sql .= ', d.legacy_carid';
+        } else {
+            $sql .= ', NULL AS legacy_carid';
+        }
+
+        if ($hasVehicleIdentifier) {
+            $sql .= ', d.vehicle_identifier';
+        } else {
+            $sql .= ', NULL AS vehicle_identifier';
+        }
+
+        if ($hasRawJson) {
+            $sql .= ', d.raw_json';
+        } else {
+            $sql .= ', NULL AS raw_json';
+        }
+
+        $sql .= ',
+                    v.id AS vehicle_id,
+                    v.legacy_carid AS vehicle_legacy_carid,
+                    COALESCE(d.legacy_carid, v.legacy_carid) AS webdisp_carid,
+                    v.spz AS vehicle_spz,
+                    v.w_tovarni_znacka,
+                    v.w_model_vozu';
+
+        if ($hasKmColumns) {
+            $sql .= ',
+                    d.km_business_month,
+                    d.km_private_month,
+                    d.km_total_month,
+                    d.km_month,
+                    DATE_FORMAT(d.km_synced_at, "%Y-%m-%d %H:%i:%s") AS km_synced_at';
+        } else {
+            $sql .= ',
+                    NULL AS km_business_month,
+                    NULL AS km_private_month,
+                    NULL AS km_total_month,
+                    NULL AS km_month,
+                    NULL AS km_synced_at';
+        }
+
+        $hasCostsColumns = $this->columnExists(self::TBL_WD_DRIVERS, 'costs_total_month');
+        if ($hasCostsColumns) {
+            $sql .= ',
+                    d.costs_total_month,
+                    d.costs_business_month,
+                    d.costs_private_month';
+        } else {
+            $sql .= ',
+                    NULL AS costs_total_month,
+                    NULL AS costs_business_month,
+                    NULL AS costs_private_month';
+        }
+
+        $sql .= ',
+                    (
+                        SELECT COALESCE(
+                            GROUP_CONCAT(
+                                CONCAT_WS(
+                                    "::",
+                                    COALESCE(CAST(vv.id AS CHAR), ""),
+                                    COALESCE(TRIM(vv.spz), ""),
+                                    COALESCE(TRIM(vv.w_tovarni_znacka), ""),
+                                    COALESCE(TRIM(vv.w_model_vozu), ""),
+                                    COALESCE(CAST(vv.legacy_carid AS CHAR), "")
+                                )
+                                ORDER BY
+                                    CASE
+                                        WHEN d.legacy_carid IS NOT NULL AND d.legacy_carid > 0 AND vv.legacy_carid = d.legacy_carid THEN 0
+                                        ELSE 1
+                                    END ASC,
+                                    vv.id ASC
+                                SEPARATOR "||"
+                            ),
+                            ""
+                        )
+                        FROM vehicles_cars_list_v2 vv
+                        WHERE ' . $vehicleMatchConditionForVv . '
+                    ) AS matched_vehicles_payload
+                FROM ' . self::TBL_WD_DRIVERS . ' d';
+
+        if ($restrictByAssignments) {
+            $sql .= '
+                INNER JOIN (
+                    SELECT DISTINCT vv.id AS vehicle_id, vv.legacy_carid
+                    FROM ' . self::TBL_ASSIGNMENTS . ' uva
+                    INNER JOIN vehicles_cars_list_v2 vv ON vv.id = uva.vehicle_id
+                    WHERE uva.user_id = :access_user_id
+                ) user_vehicles ON (
+                    (d.legacy_carid IS NOT NULL AND d.legacy_carid > 0 AND user_vehicles.legacy_carid = d.legacy_carid)
+                    OR (
+                        d.vehicle_identifier IS NOT NULL
+                        AND TRIM(d.vehicle_identifier) <> ""
+                        AND EXISTS (
+                            SELECT 1
+                            FROM vehicles_cars_list_v2 vx
+                            WHERE vx.id = user_vehicles.vehicle_id
+                            AND FIND_IN_SET(
+                                REPLACE(UPPER(TRIM(vx.spz)), " ", ""),
+                                ' . $normalizedVehicleIdentifierExpr . '
+                            ) > 0
+                        )
+                    )
+                )
+                LEFT JOIN vehicles_cars_list_v2 v';
+        } else {
+            $sql .= '
+                LEFT JOIN vehicles_cars_list_v2 v';
+        }
+
+        $sql .= '
+                    ON v.id = (
+                        SELECT vv.id
+                        FROM vehicles_cars_list_v2 vv
+                        WHERE ' . $vehicleMatchConditionForVv . '
+                        ORDER BY
+                            CASE
+                                WHEN d.legacy_carid IS NOT NULL AND d.legacy_carid > 0 AND vv.legacy_carid = d.legacy_carid THEN 0
+                                ELSE 1
+                            END ASC,
+                            vv.id ASC
+                        LIMIT 1
+                    )
+                WHERE 1=1';
+
+        $params = [];
+
+        if ($restrictByAssignments) {
+            $params['access_user_id'] = $actorUserId;
+        }
+
+        if ($activeOnly) {
+            $sql .= ' AND d.is_active = 1';
+        }
+
+        $query = trim($query);
+        if ($query !== '') {
+            $sql .= ' AND (
+                d.driver_name LIKE :term
+                OR d.personal_number LIKE :term
+                OR d.phone LIKE :term
+                OR d.email LIKE :term
+                OR d.vehicle_identifier LIKE :term
+                OR v.spz LIKE :term
+                OR v.w_tovarni_znacka LIKE :term
+                OR v.w_model_vozu LIKE :term
+            )';
+            $params['term'] = '%' . $query . '%';
+        }
+
+        $sql .= ' ORDER BY
+                    CASE WHEN ' . $driverNameSortExpr . ' = "" THEN d.personal_number ELSE ' . $driverNameSortExpr . ' END ASC,
+                    d.id ASC';
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $name => $value) {
+            $stmt->bindValue(':' . $name, $value, PDO::PARAM_STR);
+        }
+        $stmt->execute();
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    public function upsertDriversFromWebDispecink(array $drivers): array
+    {
+        if (!$this->tableExists(self::TBL_WD_DRIVERS)) {
+            return [
+                'processed' => 0,
+                'inserted' => 0,
+                'updated' => 0,
+                'unchanged' => 0,
+                'touched' => 0,
+            ];
+        }
+
+        if ($drivers === []) {
+            return [
+                'processed' => 0,
+                'inserted' => 0,
+                'updated' => 0,
+                'unchanged' => 0,
+                'touched' => 0,
+            ];
+        }
+
+        $incomingIds = [];
+        foreach ($drivers as $row) {
+            $legacyDriverId = (int) ($row['legacy_driverid'] ?? 0);
+            if ($legacyDriverId > 0) {
+                $incomingIds[] = $legacyDriverId;
+            }
+        }
+        $incomingIds = array_values(array_unique($incomingIds));
+
+        $existingIds = [];
+        if ($incomingIds !== []) {
+            $placeholders = [];
+            $params = [];
+            foreach ($incomingIds as $index => $legacyDriverId) {
+                $name = 'legacy_driverid_' . $index;
+                $placeholders[] = ':' . $name;
+                $params[$name] = $legacyDriverId;
+            }
+
+            $existingStmt = $this->pdo->prepare(
+                'SELECT legacy_driverid
+                 FROM ' . self::TBL_WD_DRIVERS . '
+                 WHERE legacy_driverid IN (' . implode(', ', $placeholders) . ')'
+            );
+            foreach ($params as $name => $value) {
+                $existingStmt->bindValue(':' . $name, (int) $value, PDO::PARAM_INT);
+            }
+            $existingStmt->execute();
+
+            foreach (($existingStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) as $existingRow) {
+                $existingId = (int) ($existingRow['legacy_driverid'] ?? 0);
+                if ($existingId > 0) {
+                    $existingIds[$existingId] = true;
+                }
+            }
+        }
+
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . self::TBL_WD_DRIVERS . '
+                (legacy_driverid, driver_name, personal_number, phone, email, legacy_carid, vehicle_identifier, is_active, raw_json, last_sync_at)
+             VALUES
+                (:legacy_driverid, :driver_name, :personal_number, :phone, :email, :legacy_carid, :vehicle_identifier, :is_active, :raw_json, :last_sync_at)
+             ON DUPLICATE KEY UPDATE
+                driver_name = VALUES(driver_name),
+                personal_number = VALUES(personal_number),
+                phone = VALUES(phone),
+                email = VALUES(email),
+                legacy_carid = VALUES(legacy_carid),
+                vehicle_identifier = VALUES(vehicle_identifier),
+                is_active = VALUES(is_active),
+                raw_json = VALUES(raw_json),
+                last_sync_at = VALUES(last_sync_at),
+                updated_at = CURRENT_TIMESTAMP'
+        );
+
+        $now = $this->nowForDb();
+        $processed = 0;
+        $inserted = 0;
+        $updated = 0;
+        $unchanged = 0;
+
+        foreach ($drivers as $row) {
+            $legacyDriverId = (int) ($row['legacy_driverid'] ?? 0);
+            if ($legacyDriverId <= 0) {
+                continue;
+            }
+
+            $processed++;
+            $wasExisting = array_key_exists($legacyDriverId, $existingIds);
+
+            $stmt->execute([
+                'legacy_driverid' => $legacyDriverId,
+                'driver_name' => $this->normalizeNullableText($row['driver_name'] ?? null, 190),
+                'personal_number' => $this->normalizeNullableText($row['personal_number'] ?? null, 64),
+                'phone' => $this->normalizeNullableText($row['phone'] ?? null, 64),
+                'email' => $this->normalizeNullableText($row['email'] ?? null, 190),
+                'legacy_carid' => $this->normalizeNullableInt($row['legacy_carid'] ?? null),
+                'vehicle_identifier' => $this->normalizeNullableText($row['vehicle_identifier'] ?? null, 128),
+                'is_active' => ((int) ($row['is_active'] ?? 1)) === 1 ? 1 : 0,
+                'raw_json' => $this->normalizeNullableText($row['raw_json'] ?? null, 65535),
+                'last_sync_at' => $now,
+            ]);
+
+            $rowCount = (int) $stmt->rowCount();
+            if (!$wasExisting) {
+                $inserted++;
+                continue;
+            }
+
+            if ($rowCount > 0) {
+                $updated++;
+            } else {
+                $unchanged++;
+            }
+        }
+
+        return [
+            'processed' => $processed,
+            'inserted' => $inserted,
+            'updated' => $updated,
+            'unchanged' => $unchanged,
+            'touched' => $inserted + $updated,
+        ];
+    }
+
+    /**
+     * Aktualizuje km statistiky a CCS accounting pro řidiče za konkrétní měsíc.
+     * Hledá řidiče podle personal_number nebo driver_name.
+     */
+    public function updateDriverKmStats(
+        string $personalNumber,
+        string $driverName,
+        float $kmBusiness,
+        float $kmPrivate,
+        float $kmTotal,
+        float $costsTotal,
+        float $costsBusiness,
+        float $costsPrivate,
+        int $vehicleLegacyCarId,
+        string $vehicleSpz,
+        int $year,
+        int $month
+    ): bool
+    {
+        if (!$this->tableExists(self::TBL_WD_DRIVERS)) {
+            return false;
+        }
+
+        $kmMonth = sprintf('%04d-%02d', $year, $month);
+        $now = $this->nowForDb();
+
+        // Hledání řidiče podle personal_number nebo driver_name
+        $whereCond = [];
+        $params = [];
+        
+        if (trim($personalNumber) !== '') {
+            $whereCond[] = 'personal_number = :personal_number';
+            $params['personal_number'] = trim($personalNumber);
+        }
+        
+        if (trim($driverName) !== '') {
+            $whereCond[] = 'driver_name = :driver_name';
+            $params['driver_name'] = trim($driverName);
+        }
+
+        if ($whereCond === []) {
+            return false;
+        }
+
+        $normalizedSpzForMatch = strtoupper(str_replace(' ', '', trim($vehicleSpz)));
+
+        $selectSql = 'SELECT id, raw_json
+            FROM ' . self::TBL_WD_DRIVERS . '
+            WHERE (' . implode(' OR ', $whereCond) . ')
+            ORDER BY
+                CASE WHEN is_active = 1 THEN 0 ELSE 1 END ASC,
+                CASE
+                    WHEN :spz_match <> "" AND vehicle_identifier IS NOT NULL
+                         AND FIND_IN_SET(:spz_match, REPLACE(vehicle_identifier, " ", "")) > 0
+                    THEN 0
+                    ELSE 1
+                END ASC,
+                id ASC
+            LIMIT 1';
+
+        $selectStmt = $this->pdo->prepare($selectSql);
+        foreach ($params as $name => $value) {
+            $selectStmt->bindValue(':' . $name, $value, PDO::PARAM_STR);
+        }
+        $selectStmt->bindValue(':spz_match', $normalizedSpzForMatch, PDO::PARAM_STR);
+        $selectStmt->execute();
+        $targetRow = $selectStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!is_array($targetRow) || !isset($targetRow['id'])) {
+            return false;
+        }
+
+        $targetId = (int) $targetRow['id'];
+        $rawJson = is_string($targetRow['raw_json'] ?? null) ? trim((string) $targetRow['raw_json']) : '';
+        $payload = [];
+        if ($rawJson !== '') {
+            $decoded = json_decode($rawJson, true);
+            if (is_array($decoded)) {
+                $payload = $decoded;
+            }
+        }
+
+        $monthKey = $kmMonth;
+        $normalizedSpz = strtoupper(str_replace(' ', '', trim($vehicleSpz)));
+        $vehicleKey = $vehicleLegacyCarId > 0
+            ? 'carid:' . $vehicleLegacyCarId
+            : 'spz:' . $normalizedSpz;
+
+        if (!isset($payload['_km_by_vehicle']) || !is_array($payload['_km_by_vehicle'])) {
+            $payload['_km_by_vehicle'] = [];
+        }
+        if (!isset($payload['_km_by_vehicle'][$monthKey]) || !is_array($payload['_km_by_vehicle'][$monthKey])) {
+            $payload['_km_by_vehicle'][$monthKey] = [];
+        }
+
+        $payload['_km_by_vehicle'][$monthKey][$vehicleKey] = [
+            'legacy_carid' => $vehicleLegacyCarId,
+            'vehicle_spz' => trim($vehicleSpz),
+            'km_business' => $kmBusiness,
+            'km_private' => $kmPrivate,
+            'km_total' => $kmTotal,
+            'costs_total' => $costsTotal,
+            'costs_business' => $costsBusiness,
+            'costs_private' => $costsPrivate,
+            'updated_at' => $now,
+        ];
+
+        $aggBusiness = 0.0;
+        $aggPrivate = 0.0;
+        $aggTotal = 0.0;
+        $aggCostsTotal = 0.0;
+        $aggCostsBusiness = 0.0;
+        $aggCostsPrivate = 0.0;
+
+        foreach ($payload['_km_by_vehicle'][$monthKey] as $vehicleMetrics) {
+            if (!is_array($vehicleMetrics)) {
+                continue;
+            }
+            $aggBusiness += (float) ($vehicleMetrics['km_business'] ?? 0.0);
+            $aggPrivate += (float) ($vehicleMetrics['km_private'] ?? 0.0);
+            $aggTotal += (float) ($vehicleMetrics['km_total'] ?? 0.0);
+            $aggCostsTotal += (float) ($vehicleMetrics['costs_total'] ?? 0.0);
+            $aggCostsBusiness += (float) ($vehicleMetrics['costs_business'] ?? 0.0);
+            $aggCostsPrivate += (float) ($vehicleMetrics['costs_private'] ?? 0.0);
+        }
+
+        $encodedPayload = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($encodedPayload === false) {
+            $encodedPayload = '{}';
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . self::TBL_WD_DRIVERS . '
+             SET
+                km_business_month = :km_business,
+                km_private_month = :km_private,
+                km_total_month = :km_total,
+                costs_total_month = :costs_total,
+                costs_business_month = :costs_business,
+                costs_private_month = :costs_private,
+                km_month = :km_month,
+                km_synced_at = :km_synced_at,
+                raw_json = :raw_json,
+                updated_at = CURRENT_TIMESTAMP
+             WHERE id = :id'
+        );
+
+        $stmt->bindValue(':km_business', $aggBusiness, PDO::PARAM_STR);
+        $stmt->bindValue(':km_private', $aggPrivate, PDO::PARAM_STR);
+        $stmt->bindValue(':km_total', $aggTotal, PDO::PARAM_STR);
+        $stmt->bindValue(':costs_total', $aggCostsTotal, PDO::PARAM_STR);
+        $stmt->bindValue(':costs_business', $aggCostsBusiness, PDO::PARAM_STR);
+        $stmt->bindValue(':costs_private', $aggCostsPrivate, PDO::PARAM_STR);
+        $stmt->bindValue(':km_month', $kmMonth, PDO::PARAM_STR);
+        $stmt->bindValue(':km_synced_at', $now, PDO::PARAM_STR);
+        $stmt->bindValue(':raw_json', $encodedPayload, PDO::PARAM_STR);
+        $stmt->bindValue(':id', $targetId, PDO::PARAM_INT);
+
+        $stmt->execute();
+        
+        return (int) $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Zkontroluje jestli pro dané vozidlo existují km data pro daný měsíc.
+     * Kontroluje:
+     * 1. Agregované sloupce (km_month, km_total_month)
+     * 2. Per-vehicle data v raw_json._km_by_vehicle[YYYY-MM]
+     */
+    public function vehicleHasKmDataForMonth(string $vehicleSpz, int $vehicleCarId, string $kmMonth): bool
+    {
+        $normalizedSpz = strtoupper(str_replace(' ', '', trim($vehicleSpz)));
+        
+        if ($normalizedSpz === '' || $vehicleCarId <= 0) {
+            return false;
+        }
+        
+        // Najdeme aktivní řidiče tohoto vozidla
+        $stmt = $this->pdo->prepare(
+            'SELECT km_month, km_total_month, raw_json
+             FROM ' . self::TBL_WD_DRIVERS . '
+             WHERE is_active = 1
+               AND vehicle_identifier IS NOT NULL
+               AND FIND_IN_SET(:normalized_spz, REPLACE(vehicle_identifier, " ", "")) > 0'
+        );
+        $stmt->bindValue(':normalized_spz', $normalizedSpz, PDO::PARAM_STR);
+        $stmt->execute();
+        $drivers = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+        
+        if (empty($drivers)) {
+            return false;
+        }
+        
+        // Pro každého řidiče zkontrolujeme data
+        foreach ($drivers as $driver) {
+            // 1. Kontrola agregovaných sloupců
+            $driverKmMonth = trim((string) ($driver['km_month'] ?? ''));
+            $driverKmTotal = $driver['km_total_month'] ?? null;
+            
+            if ($driverKmMonth === $kmMonth && $driverKmTotal !== null) {
+                // Řidič má agregovaná data pro tento měsíc
+                return true;
+            }
+            
+            // 2. Kontrola per-vehicle dat v raw_json
+            $rawJsonStr = (string) ($driver['raw_json'] ?? '');
+            if ($rawJsonStr === '') {
+                continue;
+            }
+            
+            $rawJson = json_decode($rawJsonStr, true);
+            if (!is_array($rawJson)) {
+                continue;
+            }
+            
+            $kmByVehicle = $rawJson['_km_by_vehicle'] ?? null;
+            if (!is_array($kmByVehicle)) {
+                continue;
+            }
+            
+            $monthData = $kmByVehicle[$kmMonth] ?? null;
+            if (!is_array($monthData)) {
+                continue;
+            }
+            
+            // Zkontrolujeme jestli existuje záznam pro toto vozidlo (podle carId nebo SPZ)
+            $caridKey = 'carid:' . $vehicleCarId;
+            $spzKey = 'spz:' . $normalizedSpz;
+            
+            if (isset($monthData[$caridKey]) || isset($monthData[$spzKey])) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+
+    /**
+     * Zaznamená provedený pokus o synchronizaci km dat pro konkrétní vozidlo
+     * a měsíc. Volá se z Service vrstvy po každém volání WebDispečinku, bez
+     * ohledu na to, zda WD nějaká data vrátil. Slouží jako zdroj pravdy pro
+     * detekci "již synchronizováno" v UI (dialog force-resync).
+     */
+    public function recordVehicleKmSync(
+        int $vehicleId,
+        int $legacyCarId,
+        string $kmMonth,
+        int $driversUpdated,
+        bool $hadData,
+        string $note = ''
+    ): void
+    {
+        if ($vehicleId <= 0 || $kmMonth === '') {
+            return;
+        }
+
+        if (!$this->tableExists(self::TBL_DRIVERS_KM_SYNC_LOG)) {
+            return;
+        }
+
+        $now = $this->nowForDb();
+        $stmt = $this->pdo->prepare(
+            'INSERT INTO ' . self::TBL_DRIVERS_KM_SYNC_LOG . '
+                (vehicle_id, legacy_carid, km_month, synced_at, drivers_updated, had_data, note)
+             VALUES
+                (:vehicle_id, :legacy_carid, :km_month, :synced_at, :drivers_updated, :had_data, :note)
+             ON DUPLICATE KEY UPDATE
+                legacy_carid = VALUES(legacy_carid),
+                synced_at = VALUES(synced_at),
+                drivers_updated = VALUES(drivers_updated),
+                had_data = VALUES(had_data),
+                note = VALUES(note)'
+        );
+
+        $stmt->bindValue(':vehicle_id', $vehicleId, PDO::PARAM_INT);
+        $stmt->bindValue(':legacy_carid', $legacyCarId, PDO::PARAM_INT);
+        $stmt->bindValue(':km_month', $kmMonth, PDO::PARAM_STR);
+        $stmt->bindValue(':synced_at', $now, PDO::PARAM_STR);
+        $stmt->bindValue(':drivers_updated', $driversUpdated, PDO::PARAM_INT);
+        $stmt->bindValue(':had_data', $hadData ? 1 : 0, PDO::PARAM_INT);
+        $stmt->bindValue(':note', $note !== '' ? mb_substr($note, 0, 255) : null, $note !== '' ? PDO::PARAM_STR : PDO::PARAM_NULL);
+        $stmt->execute();
+    }
+
+    /**
+     * Zjistí, zda pro dané vozidlo a měsíc už proběhl pokus o synchronizaci
+     * (bez ohledu na to, zda WebDispečink vrátil data).
+     */
+    public function vehicleWasSyncedForMonth(int $vehicleId, string $kmMonth): bool
+    {
+        if ($vehicleId <= 0 || $kmMonth === '') {
+            return false;
+        }
+
+        if (!$this->tableExists(self::TBL_DRIVERS_KM_SYNC_LOG)) {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM ' . self::TBL_DRIVERS_KM_SYNC_LOG . '
+             WHERE vehicle_id = :vehicle_id AND km_month = :km_month
+             LIMIT 1'
+        );
+        $stmt->bindValue(':vehicle_id', $vehicleId, PDO::PARAM_INT);
+        $stmt->bindValue(':km_month', $kmMonth, PDO::PARAM_STR);
+        $stmt->execute();
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Vrátí IDs vozidel, pro která již proběhla synchronizace km v daném měsíci.
+     * @param int[] $vehicleIds
+     * @return array<int,bool> mapa vehicle_id => true
+     */
+    public function getVehiclesSyncedForMonth(array $vehicleIds, string $kmMonth): array
+    {
+        if ($vehicleIds === [] || $kmMonth === '') {
+            return [];
+        }
+
+        if (!$this->tableExists(self::TBL_DRIVERS_KM_SYNC_LOG)) {
+            return [];
+        }
+
+        $normalized = array_values(array_unique(array_map('intval', $vehicleIds)));
+        $normalized = array_filter($normalized, static fn($id) => $id > 0);
+
+        if ($normalized === []) {
+            return [];
+        }
+
+        $placeholders = implode(',', array_fill(0, count($normalized), '?'));
+        $sql = 'SELECT vehicle_id FROM ' . self::TBL_DRIVERS_KM_SYNC_LOG
+            . ' WHERE km_month = ? AND vehicle_id IN (' . $placeholders . ')';
+
+        $stmt = $this->pdo->prepare($sql);
+        $paramIndex = 1;
+        $stmt->bindValue($paramIndex++, $kmMonth, PDO::PARAM_STR);
+        foreach ($normalized as $id) {
+            $stmt->bindValue($paramIndex++, $id, PDO::PARAM_INT);
+        }
+        $stmt->execute();
+
+        $result = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) ?: [] as $id) {
+            $result[(int) $id] = true;
+        }
+        return $result;
+    }
+
+    /**
+     * Vrátí seznam aktivních řidičů pro dané vozidlo (podle SPZ).
+     */
+    public function getActiveDriversForVehicle(string $vehicleSpz): array
+    {
+        $normalizedSpz = strtoupper(str_replace(' ', '', trim($vehicleSpz)));
+        
+        if ($normalizedSpz === '') {
+            return [];
+        }
+        
+        $stmt = $this->pdo->prepare(
+            'SELECT DISTINCT personal_number, driver_name 
+             FROM ' . self::TBL_WD_DRIVERS . '
+             WHERE is_active = 1
+               AND vehicle_identifier IS NOT NULL
+               AND FIND_IN_SET(:normalized_spz, REPLACE(vehicle_identifier, " ", "")) > 0'
+        );
+        $stmt->bindValue(':normalized_spz', $normalizedSpz, PDO::PARAM_STR);
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+    }
+
+    /**
+     * Vrátí seznam vozidel pro synchronizaci km řidičů.
+     * Zahrnuje pouze vozidla s WebDispečink ID.
+     */
+    public function listVehiclesForDriversSync(int $actorUserId, bool $actorHasAllVehicles, string $kmMonth, bool $isCurrentMonth, bool $force = false): array
+    {
+        $joins = '';
+        $where = ['v.legacy_carid IS NOT NULL', 'v.legacy_carid > 0'];
+        $params = [];
+
+        // Všechna vozidla která mají aktivní řidiče (podle SPZ)
+        // Filtrování podle stavu dat se dělá v Service vrstvě
+        $joins .= ' INNER JOIN (' .
+                  '  SELECT DISTINCT vehicle_identifier ' .
+                  '  FROM ' . self::TBL_WD_DRIVERS . ' ' .
+                  "  WHERE vehicle_identifier IS NOT NULL AND vehicle_identifier != '' AND is_active = 1" .
+                  ' ) d ON FIND_IN_SET(REPLACE(v.spz, " ", ""), REPLACE(d.vehicle_identifier, " ", "")) > 0';
+
+        // Access control - pokud uživatel nemá přístup ke všem vozidlům
+        if (!$actorHasAllVehicles && $actorUserId > 0) {
+            if ($this->tableExists(self::TBL_ASSIGNMENTS)) {
+                $joins .= ' INNER JOIN ' . self::TBL_ASSIGNMENTS . ' va ON va.vehicle_id = v.id';
+                $where[] = 'va.user_id = :actor_user_id';
+                $params['actor_user_id'] = $actorUserId;
+            } else {
+                // Pokud tabulka neexistuje a uživatel nemá přístup ke všem, vrátit prázdný seznam
+                return [];
+            }
+        }
+
+        $sql = 'SELECT 
+                    v.id,
+                    v.legacy_carid,
+                    v.spz,
+                    v.w_tovarni_znacka,
+                    v.w_model_vozu
+                FROM vehicles_cars_list_v2 v' .
+                $joins .
+                ' WHERE ' . implode(' AND ', $where) .
+                ' ORDER BY v.spz ASC';
+
+        $stmt = $this->pdo->prepare($sql);
+        
+        foreach ($params as $name => $value) {
+            $type = is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR;
+            $stmt->bindValue(':' . $name, $value, $type);
+        }
+        
+        $stmt->execute();
+        
+        return $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
     }
 
     public function listVsStationsForMap(): array
@@ -2152,6 +3018,78 @@ final class VehicleRepository
         return $count;
     }
 
+    public function syncCcsCardsFromWebDispecink(array $legacyCarIds, array $ccsRows): int
+    {
+        $hasCcsCardNumber = $this->columnExists('vehicles_cars_list_v2', 'ccs_card_number');
+        $hasCcsCardExpiration = $this->columnExists('vehicles_cars_list_v2', 'ccs_card_expiration');
+        if (!$hasCcsCardNumber && !$hasCcsCardExpiration) {
+            return 0;
+        }
+
+        $legacyCarIds = array_values(array_unique(array_filter(array_map('intval', $legacyCarIds), static fn(int $value): bool => $value > 0)));
+
+        $setClauses = [];
+        if ($hasCcsCardNumber) {
+            $setClauses[] = 'ccs_card_number = :ccs_card_number';
+        }
+        if ($hasCcsCardExpiration) {
+            $setClauses[] = 'ccs_card_expiration = :ccs_card_expiration';
+        }
+
+        if ($setClauses === []) {
+            return 0;
+        }
+
+        if ($legacyCarIds !== []) {
+            $clearSetParts = [];
+            if ($hasCcsCardNumber) {
+                $clearSetParts[] = 'ccs_card_number = NULL';
+            }
+            if ($hasCcsCardExpiration) {
+                $clearSetParts[] = 'ccs_card_expiration = NULL';
+            }
+
+            $clearPlaceholders = implode(', ', array_fill(0, count($legacyCarIds), '?'));
+            $clearSql = 'UPDATE vehicles_cars_list_v2
+                         SET ' . implode(', ', $clearSetParts) . ', migrated_at = NOW()
+                         WHERE legacy_carid IN (' . $clearPlaceholders . ')';
+            $clearStmt = $this->pdo->prepare($clearSql);
+            $clearStmt->execute($legacyCarIds);
+        }
+
+        $sql = 'UPDATE vehicles_cars_list_v2
+                SET ' . implode(', ', $setClauses) . ', migrated_at = NOW()
+                WHERE legacy_carid = :legacy_carid';
+        $stmt = $this->pdo->prepare($sql);
+
+        $updated = 0;
+        foreach ($ccsRows as $row) {
+            $legacyCarId = (int) ($row['legacy_carid'] ?? 0);
+            if ($legacyCarId <= 0) {
+                continue;
+            }
+
+            $params = [
+                'legacy_carid' => $legacyCarId,
+            ];
+
+            if ($hasCcsCardNumber) {
+                $cardNumber = trim((string) ($row['ccs_card_number'] ?? ''));
+                $params['ccs_card_number'] = $cardNumber !== '' ? $cardNumber : null;
+            }
+
+            if ($hasCcsCardExpiration) {
+                $cardExpiration = trim((string) ($row['ccs_card_expiration'] ?? ''));
+                $params['ccs_card_expiration'] = $cardExpiration !== '' ? $cardExpiration : null;
+            }
+
+            $stmt->execute($params);
+            $updated += $stmt->rowCount();
+        }
+
+        return $updated;
+    }
+
     public function markCarsMissingFromWebDispecinkAsRetired(array $returnedCarIds): int
     {
         if ($returnedCarIds === []) {
@@ -2968,6 +3906,26 @@ final class VehicleRepository
         return $value !== '' ? mb_substr($value, 0, 255) : '';
     }
 
+    private function normalizeNullableText(mixed $value, int $maxLength = 255): ?string
+    {
+        $normalized = trim((string) ($value ?? ''));
+        if ($normalized === '') {
+            return null;
+        }
+
+        return mb_substr($normalized, 0, max(1, $maxLength));
+    }
+
+    private function normalizeNullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $normalized = (int) $value;
+        return $normalized > 0 ? $normalized : null;
+    }
+
     private function normalizeFloat(mixed $value): float
     {
         if (is_string($value)) {
@@ -3037,6 +3995,7 @@ final class VehicleRepository
 
         $sql = 'SELECT
                 v.id,
+            v.legacy_carid,
                 v.spz,
                 v.status,
                 v.w_tovarni_znacka,
