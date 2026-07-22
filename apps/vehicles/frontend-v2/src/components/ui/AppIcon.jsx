@@ -27,6 +27,7 @@ import {
   EnvelopeSimple,
   Phone,
   Wrench,
+  CreditCard,
 } from '@phosphor-icons/react';
 
 const ICONS = {
@@ -58,6 +59,7 @@ const ICONS = {
   email: EnvelopeSimple,
   phone: Phone,
   service: Wrench,
+  ccsCard: CreditCard,
 };
 
 export default function AppIcon({ name, size = 18, weight = 'regular', className = '', ...rest }) {

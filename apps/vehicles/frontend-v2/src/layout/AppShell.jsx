@@ -10,6 +10,7 @@ const assetBase = import.meta.env.BASE_URL || '/';
 const baseNavItems = [
   { to: '/', label: 'Nástěnka', icon: 'dashboard' },
   { to: '/vehicles', label: 'Přehled vozidel', icon: 'vehicles' },
+  { to: '/drivers', label: 'Seznam řidičů', icon: 'users' },
   { to: '/stations', label: 'Seznam stanovišť', icon: 'map' },
   { to: '/map', label: 'Vozidla na mapě', icon: 'map' },
 ];

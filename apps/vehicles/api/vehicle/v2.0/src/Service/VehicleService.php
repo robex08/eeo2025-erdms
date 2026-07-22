@@ -25,6 +25,8 @@ final class VehicleService
         array $groups = [],
         array $stations = [],
         array $locationStates = [],
+        array $ccsStates = [],
+        string $ccsExpiryFilter = '',
         array $models = [],
         array $manufacturers = [],
         array $fuels = [],
@@ -48,6 +50,8 @@ final class VehicleService
             $groups,
             $stations,
             $locationStates,
+            $ccsStates,
+            $ccsExpiryFilter,
             $models,
             $manufacturers,
             $fuels,
@@ -77,6 +81,381 @@ final class VehicleService
     public function listLookupItems(array $categories = []): array
     {
         return $this->vehicles->listLookupItems($categories);
+    }
+
+    public function listDrivers(
+        bool $activeOnly = true,
+        string $query = '',
+        int $actorUserId = 0,
+        bool $actorHasAllDrivers = true
+    ): array
+    {
+        return $this->vehicles->listDrivers($activeOnly, $query, $actorUserId, $actorHasAllDrivers);
+    }
+
+    public function runDriversSync(bool $activeOnly = true): array
+    {
+        $drivers = $this->webDispecink->getDriversList(0);
+        if ($activeOnly) {
+            $drivers = array_values(array_filter(
+                $drivers,
+                static fn(array $row): bool => ((int) ($row['is_active'] ?? 0)) === 1
+            ));
+        }
+
+        $stats = $this->vehicles->upsertDriversFromWebDispecink($drivers);
+        $inserted = (int) ($stats['inserted'] ?? 0);
+        $updated = (int) ($stats['updated'] ?? 0);
+        $unchanged = (int) ($stats['unchanged'] ?? 0);
+        $processed = (int) ($stats['processed'] ?? count($drivers));
+        $touched = (int) ($stats['touched'] ?? ($inserted + $updated));
+
+        return [
+            'affectedRows' => $touched,
+            'count' => $processed,
+            'inserted' => $inserted,
+            'updated' => $updated,
+            'unchanged' => $unchanged,
+            'message' => sprintf(
+                'Synchronizace řidičů dokončena: načteno %d, nové %d, aktualizováno %d, beze změny %d.',
+                $processed,
+                $inserted,
+                $updated,
+                $unchanged
+            ),
+        ];
+    }
+
+    /**
+     * Synchronizuje km statistiky a CCS accounting řidičů pro zadaný měsíc.
+     * Načítá data z WebDispečinku a ukládá do cache.
+     */
+    public function syncDriversKm(int $year, int $month): array
+    {
+        $driversKm = $this->webDispecink->getDriversMonthlyKm($year, $month);
+        
+        $updated = 0;
+        $failed = 0;
+        
+        foreach ($driversKm as $driverKm) {
+            $personalNumber = trim((string) ($driverKm['personal_number'] ?? ''));
+            $driverName = trim((string) ($driverKm['driver_name'] ?? ''));
+            $kmBusiness = (float) ($driverKm['km_business'] ?? 0.0);
+            $kmPrivate = (float) ($driverKm['km_private'] ?? 0.0);
+            $kmTotal = (float) ($driverKm['km_total'] ?? 0.0);
+            $costsTotal = (float) ($driverKm['costs_total'] ?? 0.0);
+            $costsBusiness = (float) ($driverKm['costs_business'] ?? 0.0);
+            $costsPrivate = (float) ($driverKm['costs_private'] ?? 0.0);
+            
+            if ($personalNumber === '' && $driverName === '') {
+                $failed++;
+                continue;
+            }
+            
+            $success = $this->vehicles->updateDriverKmStats(
+                $personalNumber,
+                $driverName,
+                $kmBusiness,
+                $kmPrivate,
+                $kmTotal,
+                $costsTotal,
+                $costsBusiness,
+                $costsPrivate,
+                0,
+                '',
+                $year,
+                $month
+            );
+            
+            if ($success) {
+                $updated++;
+            } else {
+                $failed++;
+            }
+        }
+        
+        $total = count($driversKm);
+        
+        return [
+            'total' => $total,
+            'updated' => $updated,
+            'failed' => $failed,
+            'message' => sprintf(
+                'Načtení km dokončeno: celkem %d řidičů, aktualizováno %d, chyby %d.',
+                $total,
+                $updated,
+                $failed
+            ),
+        ];
+    }
+
+    /**
+    /**
+     * Synchronizuje km a costs data pro řidiče konkrétního vozidla.
+     * Načítá data z WebDispečinku pro dané vozidlo a ukládá do cache.
+     *
+     * KAŽDÝ pokus o synchronizaci je zaznamenán do log tabulky
+     * (vehicles_drivers_km_sync_log_v2) - i když WebDispečink nevrátí data
+     * nebo řidiče nelze v DB dohledat. Díky tomu UI ví, že měsíc už byl
+     * načten, a při dalším sync může nabídnout dialog force-resync.
+     */
+    public function syncDriversKmForVehicle(int $vehicleId, int $year, int $month, int $actorUserId, bool $actorHasAllVehicles): array
+    {
+        $logFile = '/tmp/vehicles-sync-debug.log';
+        $kmMonth = sprintf('%04d-%02d', $year, $month);
+        file_put_contents($logFile, sprintf("[%s] syncDriversKmForVehicle START: vehicleId=%d, year=%d, month=%d, actorUserId=%d\n", date('Y-m-d H:i:s'), $vehicleId, $year, $month, $actorUserId), FILE_APPEND);
+
+        try {
+            // Ověření přístupu k vozidlu
+            $vehicle = $this->getVehicleDetail($vehicleId, $actorUserId, $actorHasAllVehicles);
+            file_put_contents($logFile, sprintf("[%s] getVehicleDetail result: %s\n", date('Y-m-d H:i:s'), $vehicle ? 'found' : 'null'), FILE_APPEND);
+
+            if ($vehicle === null) {
+                throw new \RuntimeException('Vozidlo nebylo nalezeno nebo k němu nemáte přístup.');
+            }
+
+            $carId = (int) ($vehicle['legacy_carid'] ?? 0);
+            $vehicleSpz = (string) ($vehicle['spz'] ?? '');
+            $vehicleName = $this->formatVehicleName($vehicle);
+            file_put_contents($logFile, sprintf("[%s] carId=%d\n", date('Y-m-d H:i:s'), $carId), FILE_APPEND);
+
+            // Vozidlo bez WebDispečink ID: nemá smysl volat WD.
+            if ($carId <= 0) {
+                return [
+                    'vehicle_id' => $vehicleId,
+                    'vehicle_name' => $vehicleName,
+                    'drivers_updated' => 0,
+                    'message' => 'Vozidlo nemá přiřazené WebDispečink ID.',
+                ];
+            }
+
+            // Načtení stats z WebDispečinku pro toto konkrétní vozidlo
+            $wdError = null;
+            $stats = [];
+            try {
+                $stats = $this->webDispecink->getMonthlyStats($carId, $year, $month);
+            } catch (Throwable $e) {
+                $wdError = $e->getMessage();
+                error_log('VehicleService::syncDriversKmForVehicle - getMonthlyStats failed: ' . $wdError);
+            }
+
+            // WebDispečink selhal (výjimka) - vrátit chybu.
+            if ($wdError !== null) {
+                return [
+                    'vehicle_id' => $vehicleId,
+                    'vehicle_name' => $vehicleName,
+                    'drivers_updated' => 0,
+                    'message' => 'Načtení dat z WebDispečinku selhalo: ' . $wdError,
+                ];
+            }
+
+            $hadData = !empty($stats);
+            $updated = 0;
+
+            if (!$hadData) {
+                // WebDispečink nevrátil žádná data pro toto auto.
+                // Uložit 0 km/náklady pro všechny aktivní řidiče tohoto auta,
+                // aby zůstala per-vehicle stopa v raw_json._km_by_vehicle.
+                $activeDrivers = $this->vehicles->getActiveDriversForVehicle($vehicleSpz);
+
+                foreach ($activeDrivers as $driver) {
+                    $personalNumber = trim((string) ($driver['personal_number'] ?? ''));
+                    $driverName = trim((string) ($driver['driver_name'] ?? ''));
+
+                    if ($personalNumber === '' && $driverName === '') {
+                        continue;
+                    }
+
+                    $success = $this->vehicles->updateDriverKmStats(
+                        $personalNumber,
+                        $driverName,
+                        0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                        $carId,
+                        $vehicleSpz,
+                        $year,
+                        $month
+                    );
+
+                    if ($success) {
+                        $updated++;
+                    }
+                }
+            } else {
+                foreach ($stats as $stat) {
+                    $personalNumber = trim((string) ($stat['driver_personal_number'] ?? ''));
+                    $driverName = trim((string) ($stat['driver_name'] ?? ''));
+
+                    if ($personalNumber === '' && $driverName === '') {
+                        continue;
+                    }
+
+                    $kmBusiness = (float) ($stat['km_business'] ?? 0.0);
+                    $kmPrivate = (float) ($stat['km_private'] ?? 0.0);
+                    $kmTotal = (float) ($stat['km_total'] ?? 0.0);
+                    $totalCosts = (float) ($stat['total_costs_czk'] ?? 0.0);
+
+                    $costsBusiness = 0.0;
+                    $costsPrivate = 0.0;
+
+                    if ($kmTotal > 0 && $totalCosts > 0) {
+                        $costsBusiness = $totalCosts * ($kmBusiness / $kmTotal);
+                        $costsPrivate = $totalCosts * ($kmPrivate / $kmTotal);
+                    }
+
+                    $success = $this->vehicles->updateDriverKmStats(
+                        $personalNumber,
+                        $driverName,
+                        $kmBusiness,
+                        $kmPrivate,
+                        $kmTotal,
+                        $totalCosts,
+                        $costsBusiness,
+                        $costsPrivate,
+                        $carId,
+                        $vehicleSpz,
+                        $year,
+                        $month
+                    );
+
+                    if ($success) {
+                        $updated++;
+                    }
+                }
+            }
+
+            // Pokud WD data přišla, ale nepodařilo se je spárovat na aktivní řidiče,
+            // uložíme fallback 0 km pro aktivní řidiče vozidla. Tím vznikne měsíční
+            // stopa pro vozidlo a nebude donekonečna vracené jako "nenačtené".
+            if ($hadData && $updated === 0) {
+                $activeDrivers = $this->vehicles->getActiveDriversForVehicle($vehicleSpz);
+                foreach ($activeDrivers as $driver) {
+                    $personalNumber = trim((string) ($driver['personal_number'] ?? ''));
+                    $driverName = trim((string) ($driver['driver_name'] ?? ''));
+
+                    if ($personalNumber === '' && $driverName === '') {
+                        continue;
+                    }
+
+                    $success = $this->vehicles->updateDriverKmStats(
+                        $personalNumber,
+                        $driverName,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        0.0,
+                        $carId,
+                        $vehicleSpz,
+                        $year,
+                        $month
+                    );
+
+                    if ($success) {
+                        $updated++;
+                    }
+                }
+            }
+
+            if ($hadData) {
+                $message = $updated > 0
+                    ? "Aktualizováno {$updated} řidičů."
+                    : 'Žádní řidiči nenalezeni.';
+            } else {
+                $message = $updated > 0
+                    ? "Vozidlo bez dat z WebDispečinku - uloženo 0 km pro {$updated} řidičů."
+                    : 'Vozidlo bez dat z WebDispečinku - synchronizace zaznamenána.';
+            }
+
+            return [
+                'vehicle_id' => $vehicleId,
+                'vehicle_name' => $vehicleName,
+                'drivers_updated' => $updated,
+                'message' => $message,
+            ];
+        } catch (\Throwable $e) {
+            file_put_contents($logFile, sprintf("[%s] EXCEPTION: %s in %s:%d\n", date('Y-m-d H:i:s'), $e->getMessage(), $e->getFile(), $e->getLine()), FILE_APPEND);
+            file_put_contents($logFile, sprintf("[%s] TRACE: %s\n", date('Y-m-d H:i:s'), $e->getTraceAsString()), FILE_APPEND);
+            throw $e;
+        }
+    }
+
+    /**
+     * Vrátí seznam vozidel pro synchronizaci km řidičů.
+     * 
+     * Pro minulé měsíce: vrátí jen vozidla která NEMAJÍ uložená data v drivers cache
+     * (kontrola přes vehicles_wd_drivers_v2/raw_json).
+     * Pro aktuální měsíc: vrátí všechna vozidla (data se mohou měnit během dne).
+     */
+    public function listVehiclesForDriversSync(int $actorUserId, bool $actorHasAllVehicles, int $year, int $month, bool $force = false): array
+    {
+        $kmMonth = sprintf('%04d-%02d', $year, $month);
+        $currentKmMonth = date('Y-m');
+        $isCurrentMonth = ($kmMonth === $currentKmMonth);
+
+        // Načteme VŠECHNA vozidla s aktivními řidiči
+        $allVehicles = $this->vehicles->listVehiclesForDriversSync($actorUserId, $actorHasAllVehicles, $kmMonth, $isCurrentMonth, true);
+        
+        // Pro aktuální měsíc nebo force sync: vrátit vše
+        if ($isCurrentMonth || $force) {
+            return $allVehicles;
+        }
+        
+        if ($allVehicles === []) {
+            return [];
+        }
+
+        // Pro minulý měsíc bez force: vyfiltrovat vozidla která už byla synchronizována.
+        // Zdrojem pravdy je log tabulka (zaznamenává pokus o sync i když WD nevrátí data).
+            // Pro minulý měsíc bez force: vyfiltrovat vozidla která už mají data v DB.
+        $needsSync = [];
+        foreach ($allVehicles as $vehicle) {
+            $vehicleId = (int) ($vehicle['id'] ?? 0);
+                $vehicleSpz = (string) ($vehicle['spz'] ?? '');
+                $carId = (int) ($vehicle['legacy_carid'] ?? 0);
+
+            if ($vehicleId <= 0) {
+                continue;
+            }
+
+                if ($carId <= 0) {
+                    // Vozidlo bez legacy carId nelze přes WD načítat.
+                    continue;
+                }
+
+                $hasData = $this->vehicles->vehicleHasKmDataForMonth($vehicleSpz, $carId, $kmMonth);
+                if (!$hasData) {
+                $needsSync[] = $vehicle;
+            }
+        }
+        
+        return $needsSync;
+    }
+
+    /**
+     * Formátuje název vozidla pro zobrazení.
+     */
+    private function formatVehicleName(array $vehicle): string
+    {
+        $parts = [];
+        
+        $make = trim((string) ($vehicle['w_tovarni_znacka'] ?? ''));
+        $model = trim((string) ($vehicle['w_model_vozu'] ?? ''));
+        $spz = trim((string) ($vehicle['spz'] ?? ''));
+        
+        if ($make !== '' && $model !== '') {
+            $parts[] = $make . ' ' . $model;
+        } elseif ($make !== '') {
+            $parts[] = $make;
+        } elseif ($model !== '') {
+            $parts[] = $model;
+        }
+        
+        if ($spz !== '') {
+            $parts[] = '(' . $spz . ')';
+        }
+        
+        return implode(' ', $parts) ?: 'Vozidlo #' . ($vehicle['id'] ?? '?');
     }
 
     public function upsertStationAddressFromWebdispecink(string $wLn, string $typ, string $organizace = 'ZZS SK'): array
@@ -126,6 +505,15 @@ final class VehicleService
             $generalInfo = $this->webDispecink->getCarsGeneralInfoByIds($returnedCarIds);
             $detailUpdated = $this->vehicles->upsertGeneralInfoFromWebDispecink($generalInfo);
             $typeUpdated = $this->vehicles->upsertZzsTypFromLegacyCarsList();
+            $ccsSynced = 0;
+
+            try {
+                $ccsCards = $this->webDispecink->getCcsCardsAssignedToVehicles();
+                $ccsSynced = $this->vehicles->syncCcsCardsFromWebDispecink($returnedCarIds, $ccsCards);
+            } catch (Throwable $e) {
+                $warnings[] = 'ccs-karty: ' . $e->getMessage();
+                error_log('Vehicles v2 CCS cards sync: ' . $e->getMessage());
+            }
 
             $positionsSaved = 0;
             $kmSaved = 0;
@@ -164,12 +552,13 @@ final class VehicleService
             }
 
             $message = sprintf(
-                'WebDispečink sync dokončen: %d skupin aktualizováno, %d vozidel synchronizováno, %d vozidel označeno jako vyřazené, %d detailů aktualizováno, %d typů doplněno, %d pozic uloženo, %d km záznamů aktualizováno, scope přepočítán pro %d uživatelů',
+                'WebDispečink sync dokončen: %d skupin aktualizováno, %d vozidel synchronizováno, %d vozidel označeno jako vyřazené, %d detailů aktualizováno, %d typů doplněno, %d CCS karet spárováno, %d pozic uloženo, %d km záznamů aktualizováno, scope přepočítán pro %d uživatelů',
                 $groupsUpdated,
                 $upserted,
                 $retired,
                 $detailUpdated,
                 $typeUpdated,
+                $ccsSynced,
                 $positionsSaved,
                 $kmSaved,
                 $scopedUsersRebuilt
@@ -218,6 +607,105 @@ final class VehicleService
         bool $actorHasAllVehicles = true
     ): array {
         return $this->vehicles->listVehicleManualEvents($vehicleId, $query, $limit, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function getMonthlyBilling(
+        int $vehicleId,
+        int $year,
+        int $month,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
+    ): array {
+        $detail = $this->vehicles->getVehicleDetailById($vehicleId, $actorUserId, $actorHasAllVehicles);
+        if ($detail === null) {
+            throw new RuntimeException('Vozidlo nebylo nalezeno nebo k němu nemáte přístup.');
+        }
+
+        $legacyCarId = (int) ($detail['legacy_carid'] ?? 0);
+        if ($legacyCarId <= 0) {
+            throw new RuntimeException('Vozidlo nemá dostupné WebDispečink ID (legacy_carid).');
+        }
+
+        $notice = null;
+        try {
+            $stats = $this->webDispecink->getMonthlyStats($legacyCarId, $year, $month);
+            $consumption = $this->webDispecink->getMonthlyConsumption($legacyCarId, $year, $month);
+            $ccsInfo = $this->webDispecink->getCcsCardInfo(
+                $legacyCarId,
+                $year,
+                $month,
+                (string) ($detail['spz'] ?? ''),
+                (string) ($detail['w_popis'] ?? '')
+            );
+            $hasCcs = (bool) ($ccsInfo['imported'] ?? false);
+            $ccsCardNumber = $ccsInfo['card_number'] ?? null;
+            $ccsCardExpiration = $ccsInfo['card_expiration'] ?? null;
+        } catch (RuntimeException $e) {
+            if (!$this->webDispecink->isPackageNotActivatedError($e)) {
+                throw $e;
+            }
+
+            $stats = [];
+            $consumption = [];
+            $hasCcs = false;
+            $ccsCardNumber = null;
+            $ccsCardExpiration = null;
+            $notice = 'WebDispecink API balíček pro měsíční vyúčtování není pro tuto firmu aktivní.';
+        }
+
+        $stat = $stats[0] ?? [];
+        $cons = $consumption[0] ?? [];
+
+        $kmBusiness = (float) ($stat['km_business'] ?? 0);
+        $kmPrivate = (float) ($stat['km_private'] ?? 0);
+        $kmTotal = (float) ($stat['km_total'] ?? 0);
+        $totalCosts = (float) ($stat['total_costs_czk'] ?? 0);
+
+        $privateCosts = 0.0;
+        $businessCosts = 0.0;
+        if ($kmTotal > 0.0 && $totalCosts > 0.0) {
+            $businessCosts = $totalCosts * ($kmBusiness / $kmTotal);
+            $privateCosts = $totalCosts * ($kmPrivate / $kmTotal);
+        }
+
+        $avgConsumptionFromStats = (float) ($stat['avg_consumption_l_100km'] ?? 0);
+        $avgConsumption = (float) ($cons['avg_consumption'] ?? 0);
+        if ($avgConsumption <= 0.0 && $avgConsumptionFromStats > 0.0) {
+            $avgConsumption = $avgConsumptionFromStats;
+        }
+
+        return [
+            'period' => sprintf('%02d/%04d', $month, $year),
+            'notice' => $notice,
+            'item' => [
+                'car_id' => $legacyCarId,
+                'driver_name' => is_string($stat['driver_name'] ?? null) && trim((string) $stat['driver_name']) !== ''
+                    ? trim((string) $stat['driver_name'])
+                    : null,
+                'driver_personal_number' => is_string($stat['driver_personal_number'] ?? null) && trim((string) $stat['driver_personal_number']) !== ''
+                    ? trim((string) $stat['driver_personal_number'])
+                    : null,
+                'ccs_card_imported' => (bool) $hasCcs,
+                'ccs_card_number' => is_string($ccsCardNumber) && trim($ccsCardNumber) !== '' ? trim($ccsCardNumber) : null,
+                'ccs_card_expiration' => is_string($ccsCardExpiration) && trim($ccsCardExpiration) !== '' ? trim($ccsCardExpiration) : null,
+                'km_business' => $kmBusiness,
+                'km_private' => $kmPrivate,
+                'km_total' => $kmTotal,
+                'fuel_start_l' => (float) ($stat['fuel_start_l'] ?? 0),
+                'fuel_end_l' => (float) ($stat['fuel_end_l'] ?? 0),
+                'fuel_draw_l' => (float) ($stat['fuel_draw_l'] ?? 0),
+                'fuel_draw_cost_czk' => (float) ($stat['fuel_draw_cost_czk'] ?? 0),
+                'paid_by_driver_czk' => (float) ($stat['paid_by_driver_czk'] ?? 0),
+                'avg_fuel_price_czk_l' => (float) ($stat['avg_fuel_price_czk_l'] ?? 0),
+                'total_consumption_l' => (float) ($cons['total_consumption_l'] ?? 0),
+                'avg_consumption' => $avgConsumption,
+                'amortization_czk' => (float) ($stat['amortization_czk'] ?? 0),
+                'driver_reimbursement_czk' => (float) ($stat['driver_reimbursement_czk'] ?? 0),
+                'total_costs_czk' => $totalCosts,
+                'costs_business_czk' => $businessCosts,
+                'costs_private_czk' => $privateCosts,
+            ],
+        ];
     }
 
     public function getDashboardMetrics(string $status = 'all', int $actorUserId = 0, bool $actorHasAllVehicles = true): array
