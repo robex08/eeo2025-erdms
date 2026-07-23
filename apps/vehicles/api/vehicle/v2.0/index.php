@@ -19,6 +19,7 @@ require_once __DIR__ . '/src/Config/Env.php';
 require_once __DIR__ . '/src/Config/Database.php';
 require_once __DIR__ . '/src/Http/Response.php';
 require_once __DIR__ . '/src/Http/Request.php';
+require_once __DIR__ . '/src/Utils/WebDispecinkDateHelper.php';
 require_once __DIR__ . '/src/Security/AuthToken.php';
 require_once __DIR__ . '/src/Repository/UserRepository.php';
 require_once __DIR__ . '/src/Repository/VehicleRepository.php';
@@ -100,6 +101,30 @@ try {
         exit;
     }
 
+    if ($method === 'GET' && $path === '/drivers') {
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->drivers($request, $actor);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/drivers/sync-km') {
+        $authService->requireAuthenticated($request);
+        $vehicleController->syncDriversKm($request);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/drivers/sync-km-vehicle') {
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->syncDriversKmForVehicle($request, $actor);
+        exit;
+    }
+
+    if ($method === 'GET' && $path === '/drivers/vehicles-for-sync') {
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->listVehiclesForDriversSync($request, $actor);
+        exit;
+    }
+
     if ($method === 'GET' && $path === '/users') {
         $authService->requireRole($request, ['superadmin', 'administrator']);
         $userController->list();
@@ -161,13 +186,13 @@ try {
     }
 
     if ($method === 'POST' && $path === '/stations/addresses/from-webdispecink') {
-        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $authService->requireRole($request, ['superadmin', 'administrator', 'fleet_manager']);
         $vehicleController->upsertStationAddressFromWebdispecink($request);
         exit;
     }
 
     if ($method === 'POST' && $path === '/stations/addresses/update') {
-        $authService->requireRole($request, ['superadmin', 'administrator']);
+        $authService->requireRole($request, ['superadmin', 'administrator', 'fleet_manager']);
         $vehicleController->updateStationAddress($request);
         exit;
     }
@@ -214,6 +239,12 @@ try {
         exit;
     }
 
+    if ($method === 'GET' && $path === '/vehicles/billing/monthly') {
+        $actor = $authService->requireAuthenticated($request);
+        $vehicleController->monthlyBilling($request, $actor);
+        exit;
+    }
+
     if ($method === 'POST' && $path === '/vehicles/detail') {
         $actor = $authService->requireRole($request, ['superadmin', 'administrator', 'fleet_manager']);
         $vehicleController->saveDetail($request, $actor);
@@ -241,6 +272,18 @@ try {
     if ($method === 'POST' && $path === '/sync/vehicles/quick') {
         $authService->requireAuthenticated($request);
         $syncController->triggerVehiclesQuickSync();
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/sync/drivers') {
+        $authService->requireAuthenticated($request);
+        $syncController->triggerDriversSync($request);
+        exit;
+    }
+
+    if ($method === 'POST' && $path === '/sync/drivers/quick') {
+        $authService->requireAuthenticated($request);
+        $syncController->triggerDriversQuickSync($request);
         exit;
     }
 

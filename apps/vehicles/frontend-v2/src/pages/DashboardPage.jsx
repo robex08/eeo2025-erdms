@@ -7,6 +7,7 @@ import SyncGate from '../components/vehicles/SyncGate';
 const DASHBOARD_SETTINGS_KEY = 'vehicles_v2_dashboard_settings';
 
 const PIE_COLORS = ['#d9dce3', '#ede8d2', '#f0deab', '#f7c94a', '#f59e0b', '#ea580c', '#c2410c', '#9a3412'];
+const OPERATION_STATE_COLORS = ['#22c55e', '#f87171'];
 const FORECAST_MONTH_COLORS = ['#1976d2', '#388e3c', '#fbc02d', '#d84315', '#8e24aa', '#00838f', '#43a047', '#ff9800', '#e53935', '#00897b', '#6d4c41', '#7e57c2'];
 const MONTH_NAMES = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen', 'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'];
 
@@ -344,7 +345,7 @@ function ChartCard({ title, subtitle, rows, onRowSelect }) {
   );
 }
 
-function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentSelect }) {
+function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentSelect, valueUnit = 'vozidel', centerLabel = 'vozidel', colors = PIE_COLORS }) {
   const cardRef = useRef(null);
   const [tooltip, setTooltip] = useState(null);
   const positiveRows = rows.filter((row) => row.value > 0);
@@ -360,7 +361,7 @@ function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentS
       ...row,
       start,
       end: cursor,
-      color: PIE_COLORS[index % PIE_COLORS.length],
+      color: colors[index % colors.length],
     };
   });
 
@@ -484,7 +485,7 @@ function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentS
           </svg>
           <div className="dashboard-pie-center">
             <strong>{total}</strong>
-            <span>vozidel</span>
+            <span>{centerLabel}</span>
           </div>
         </div>
 
@@ -525,10 +526,72 @@ function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentS
             <strong>{tooltip.label}</strong>
             <span>{tooltip.shortLabel}</span>
           </div>
-          <div className="dashboard-smart-tooltip-value">{tooltip.value} vozidel</div>
+          <div className="dashboard-smart-tooltip-value">{tooltip.value} {valueUnit}</div>
           <div className="dashboard-smart-tooltip-meta">Podíl: {tooltip.percentage} %</div>
         </div>
       ) : null}
+    </article>
+  );
+}
+
+function ServiceTopListCard({ rows }) {
+  return (
+    <article className="info-card dashboard-service-card">
+      <h3>Top 10 vozidel s největší servisní četností dle EEO v2</h3>
+      <div className="dashboard-service-list-head" role="presentation">
+        <span>#</span>
+        <span>SPZ</span>
+        <span>ZKL</span>
+        <span>Místo</span>
+        <span className="dashboard-service-list-head-right">POČET</span>
+      </div>
+
+      {rows.length > 0 ? (
+        <div className="dashboard-service-list">
+          {rows.map((item, index) => (
+            <div className="dashboard-service-list-row" key={`svc-top-${item.spz}-${index}`}>
+              <span className="dashboard-service-rank">#{index + 1}</span>
+              <span className="dashboard-service-main">{item.spz || '-'}</span>
+              <span className="dashboard-service-sub">{item.zkl || '-'}</span>
+              <span className="dashboard-service-place">{item.misto || '-'}</span>
+              <strong className="dashboard-service-value">{item.serviceCount}</strong>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">Data zatím nejsou k dispozici.</p>
+      )}
+    </article>
+  );
+}
+
+function VehiclesInServiceCard({ rows }) {
+  return (
+    <article className="info-card dashboard-service-card">
+      <h3>Seznam vozidel právě v servisu</h3>
+      <div className="dashboard-service-list-head dashboard-service-list-head-service" role="presentation">
+        <span>Sr/Sa</span>
+        <span>SPZ</span>
+        <span>ZKL</span>
+        <span>Místo</span>
+        <span>Název servisu</span>
+      </div>
+
+      {rows.length > 0 ? (
+        <div className="dashboard-service-list">
+          {rows.map((item, index) => (
+            <div className="dashboard-service-list-row dashboard-service-list-row-service" key={`svc-now-${item.spz}-${item.source}-${index}`}>
+              <span className={`dashboard-service-source dashboard-service-source-${String(item.source || '').toLowerCase()}`}>{item.source || '-'}</span>
+              <span className="dashboard-service-main">{item.spz || '-'}</span>
+              <span className="dashboard-service-sub">{item.zkl || '-'}</span>
+              <span className="dashboard-service-place">{item.misto || '-'}</span>
+              <span className="dashboard-service-name">{item.serviceName || '-'}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">Aktuálně není evidováno žádné vozidlo v servisu.</p>
+      )}
     </article>
   );
 }
@@ -1007,7 +1070,7 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
-    fetchDashboardMetrics({ status: 'all' })
+    fetchDashboardMetrics({ status: forecastStatus })
       .then((metricsResponse) => {
         setMetrics(metricsResponse?.data || null);
       })
@@ -1075,9 +1138,9 @@ export default function DashboardPage() {
     try {
       const syncResponse = await triggerQuickSync();
       const [metricsResponse, forecastResponse, summaryResponse] = await Promise.all([
-        fetchDashboardMetrics({ status: 'all' }),
+        fetchDashboardMetrics({ status: forecastStatus }),
         fetchFleetForecast({ months: forecastMonths, status: forecastStatus }),
-        fetchDashboardMetrics({ status: 'all' }),
+        fetchDashboardMetrics({ status: forecastStatus }),
       ]);
 
       const synchronized = Number(syncResponse?.data?.affectedRows || 0);
@@ -1152,6 +1215,18 @@ export default function DashboardPage() {
     navigateToOverview({ mileageBands: band });
   }
 
+  function handleOperationStateSelect(segment) {
+    const label = String(segment?.label || '').trim().toLowerCase();
+    if (label.includes('servisu')) {
+      navigateToOverview({ locationStates: 'v_servisu' });
+      return;
+    }
+
+    if (label.includes('provozu')) {
+      navigateToOverview({ locationStates: 'doma,v_akci,nezname' });
+    }
+  }
+
   function handleForecastSegmentSelect(carIds) {
     if (!Array.isArray(carIds) || carIds.length === 0) {
       return;
@@ -1192,11 +1267,17 @@ export default function DashboardPage() {
     nezname: 0,
     total: 0,
   };
+  const eeoServiceStats = metrics?.eeoServiceStats || {
+    vehiclesWithService: 0,
+    totalServices: 0,
+  };
   const serviceManual = Number(locationStateSummary.v_servisu_manual || 0);
   const serviceAutoRaw = Number(locationStateSummary.v_servisu_auto || 0);
   const serviceAuto = serviceManual + serviceAutoRaw > 0
     ? serviceAutoRaw
     : Number(locationStateSummary.v_servisu || 0);
+
+  const eeoServiceLabel = `${eeoServiceStats.vehiclesWithService} ${eeoServiceStats.vehiclesWithService === 1 ? 'vůz' : eeoServiceStats.vehiclesWithService < 5 ? 'vozy' : 'vozů'} / ${eeoServiceStats.totalServices} ${eeoServiceStats.totalServices === 1 ? 'servis' : eeoServiceStats.totalServices < 5 ? 'servisy' : 'servisů'}`;
 
   const tileData = [
     { label: 'Celkem vozidel', value: summary.total, tone: 'neutral' },
@@ -1204,12 +1285,22 @@ export default function DashboardPage() {
     { label: 'DOTAČNÍCH', value: summary.dotace, tone: 'dotace' },
     { label: 'Vyřazených', value: summary.retired, tone: 'retired' },
     { label: 'Neaktivních', value: summary.inactive, tone: 'inactive' },
+    { label: 'SERVISOVANÁ dle EEO v2', value: eeoServiceLabel, tone: 'service' },
   ];
 
   const fuelRows = toChartRows(metrics?.fuelDistribution);
   const typeRows = toChartRows(metrics?.typeDistribution);
   const groupRows = toChartRows(metrics?.groupDistribution || metrics?.stationDistribution);
   const mileageRows = toChartRows(metrics?.mileageDistribution);
+  const eeoTopVehicles = Array.isArray(metrics?.eeoTopVehicles) ? metrics.eeoTopVehicles : [];
+  const vehiclesInServiceNow = Array.isArray(metrics?.vehiclesInServiceNow) ? metrics.vehiclesInServiceNow : [];
+  const activeTotal = Number(summary.active || 0);
+  const inServiceNow = Number(locationStateSummary.v_servisu || 0);
+  const inOperationNow = Math.max(0, activeTotal - inServiceNow);
+  const operationStateRows = [
+    { label: 'Právě v provozu', value: inOperationNow },
+    { label: 'Právě v servisu', value: inServiceNow },
+  ];
   const dashboardUpdatedAtRaw = metrics?.updatedAt || forecast?.updatedAt || null;
   const dashboardUpdatedAtLabel = formatDateTimeCs(dashboardUpdatedAtRaw);
   const urgent250kCount = countDueTo250kWithinMonths(forecastRaw, forecastTypes, 2);
@@ -1224,7 +1315,7 @@ export default function DashboardPage() {
         </div>
         <div className="dashboard-global-actions">
           <span className="dashboard-global-service-pill">
-            V servisu - Sr (manuální zadání): <strong>{serviceManual}</strong>, Sa (automaticky): <strong>{serviceAuto}</strong>
+            V servisu - <span title="Sr = manuální zadání">Sr</span>: <strong>{serviceManual}</strong>, <span title="Sa = automatický stav">Sa</span>: <strong>{serviceAuto}</strong>
           </span>
 
           <span className={`dashboard-global-alert-pill${urgent250kCount > 0 ? ' is-alert' : ''}`}>
@@ -1290,6 +1381,21 @@ export default function DashboardPage() {
             <p className="dashboard-stat-value">{tile.value}</p>
           </article>
         ))}
+      </div>
+
+      <div className="dashboard-service-insights">
+        <PieChartCard
+          title="Graf provozního stavu vozidel"
+          subtitle={`Aktivní celkem: ${activeTotal} vozidel`}
+          rows={operationStateRows}
+          compactLegend
+          onSegmentSelect={handleOperationStateSelect}
+          valueUnit="vozidel"
+          centerLabel="vozidel"
+          colors={OPERATION_STATE_COLORS}
+        />
+        <ServiceTopListCard rows={eeoTopVehicles} />
+        <VehiclesInServiceCard rows={vehiclesInServiceNow} />
       </div>
 
       <div className="dashboard-distribution-layout">

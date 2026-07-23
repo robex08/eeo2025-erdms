@@ -7,6 +7,7 @@ export default function SyncGate({
   showRuntime = true,
   inline = false,
   compact = false,
+  progress = null, // např. "Zpracováno 3 z 15 vozidel"
 }) {
   const wrapperClass = `sync-gate${inline ? ' sync-gate-inline' : ''}${compact ? ' sync-gate-compact' : ''}`;
 
@@ -22,6 +23,12 @@ export default function SyncGate({
         </div>
 
         <p className="sync-gate-text">{description}</p>
+        
+        {progress && (
+          <p className="sync-gate-text" style={{ marginTop: '0.5rem', fontWeight: 500 }}>
+            {progress}
+          </p>
+        )}
 
         {showRuntime ? (
           <div className="sync-gate-meta">

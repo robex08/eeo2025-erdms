@@ -434,7 +434,14 @@ function buildServiceHistoryBlock(status, orders = [], errorMessage = '') {
     const orderSubject = escapeHtml(order?.predmet || '-');
     const supplier = escapeHtml(order?.dodavatel_nazev || '-');
     const sentDate = formatDateTimeCs(order?.dt_odeslani, false);
-    const acceptedDate = formatDateTimeCs(order?.dt_akceptace, false);
+    
+    // Prioritně zobrazit dt_dokonceni, pokud není, tak dt_akceptace
+    const completedDate = order?.dt_dokonceni;
+    const acceptedDate = order?.dt_akceptace;
+    const displayDate = completedDate || acceptedDate || order?.dt_odeslani || order?.dt_objednavky;
+    const displayDateFormatted = formatDateTimeCs(displayDate, false);
+    const displayLabel = completedDate ? 'Dokonč' : 'Potv';
+    
     const total = Number(order?.faktura_celkem) > 0 ? formatMoney(order?.faktura_celkem) : formatMoney(order?.polozky_celkem);
     const stateClass = normalizeText(orderState).includes('dokonc') ? 'done' : 'default';
 
@@ -447,7 +454,7 @@ function buildServiceHistoryBlock(status, orders = [], errorMessage = '') {
         <div class="mapa-popup-history-subject">${orderSubject}</div>
         <div class="mapa-popup-history-meta">
           <span>Odes: ${escapeHtml(sentDate)}</span>
-          <span>Potv: ${escapeHtml(acceptedDate)}</span>
+          <span>${displayLabel}: ${escapeHtml(displayDateFormatted)}</span>
         </div>
         <div class="mapa-popup-history-meta">
           <span>${supplier}</span>
@@ -1772,7 +1779,7 @@ export default function VehicleMapPage() {
     try {
       const syncResponse = await triggerQuickSync();
       const [summaryResponse] = await Promise.all([
-        fetchDashboardMetrics({ status: 'all' }),
+        fetchDashboardMetrics({ status: statusFilter }),
         loadData(),
       ]);
 
@@ -2283,8 +2290,8 @@ export default function VehicleMapPage() {
             : (Array.isArray(response?.data) ? response.data : []);
 
           const ordersSorted = [...ordersRaw].sort((a, b) => {
-            const dateA = new Date(a?.dt_akceptace || a?.dt_odeslani || a?.dt_objednavky || 0);
-            const dateB = new Date(b?.dt_akceptace || b?.dt_odeslani || b?.dt_objednavky || 0);
+            const dateA = new Date(a?.dt_dokonceni || a?.dt_akceptace || a?.dt_odeslani || a?.dt_objednavky || 0);
+            const dateB = new Date(b?.dt_dokonceni || b?.dt_akceptace || b?.dt_odeslani || b?.dt_objednavky || 0);
             return dateB - dateA;
           });
 

@@ -87,10 +87,11 @@ final class VehicleService
         bool $activeOnly = true,
         string $query = '',
         int $actorUserId = 0,
-        bool $actorHasAllDrivers = true
+        bool $actorHasAllDrivers = true,
+        ?string $requestedKmMonth = null
     ): array
     {
-        return $this->vehicles->listDrivers($activeOnly, $query, $actorUserId, $actorHasAllDrivers);
+        return $this->vehicles->listDrivers($activeOnly, $query, $actorUserId, $actorHasAllDrivers, $requestedKmMonth);
     }
 
     public function runDriversSync(bool $activeOnly = true): array

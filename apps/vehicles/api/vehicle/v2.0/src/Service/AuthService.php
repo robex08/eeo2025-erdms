@@ -142,6 +142,10 @@ final class AuthService
         $this->users->touchUserActivity((int) $user['id'], false, $clientIp, $userAgent);
         $user = $this->users->findById((int) $user['id']) ?? $user;
 
+        $role = strtolower((string) $user['role_code']);
+        $hasAllVehicles = (int) ($user['has_all_vehicles'] ?? 1) === 1;
+        $hasAllDrivers = in_array($role, ['superadmin', 'administrator', 'fleet_manager'], true) || $hasAllVehicles;
+
         return [
             'id' => (int) $user['id'],
             'username' => (string) $user['username'],
@@ -150,9 +154,10 @@ final class AuthService
             'phone' => (string) ($user['phone'] ?? ''),
             'last_login_at' => (string) ($user['last_login_at'] ?? ''),
             'last_activity_at' => (string) ($user['last_activity_at'] ?? ''),
-            'role' => strtolower((string) $user['role_code']),
+            'role' => $role,
             'auth_source' => $authSource,
-            'has_all_vehicles' => (int) ($user['has_all_vehicles'] ?? 1) === 1,
+            'has_all_vehicles' => $hasAllVehicles,
+            'has_all_drivers' => $hasAllDrivers,
             'must_change_password' => (int) $user['must_change_password'] === 1,
         ];
     }
@@ -214,7 +219,13 @@ final class AuthService
     public function requireRole(Request $request, array $roles): array
     {
         $user = $this->requireAuthenticated($request);
-        if (!in_array($user['role'], $roles, true)) {
+        $userRole = strtolower(trim((string) ($user['role'] ?? '')));
+        $normalizedRoles = array_values(array_unique(array_map(
+            static fn(string $role): string => strtolower(trim($role)),
+            $roles
+        )));
+
+        if (!in_array($userRole, $normalizedRoles, true)) {
             Response::error('Nedostatečná oprávnění', 403);
             exit;
         }
