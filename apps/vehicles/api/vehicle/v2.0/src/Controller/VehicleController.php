@@ -31,6 +31,8 @@ final class VehicleController
         $groupsRaw = trim((string) ($request->query['groups'] ?? ''));
         $stationsRaw = trim((string) ($request->query['stations'] ?? ''));
         $locationStatesRaw = trim((string) ($request->query['locationStates'] ?? ''));
+        $ccsStatesRaw = trim((string) ($request->query['ccsStates'] ?? ''));
+        $ccsExpiryRaw = trim((string) ($request->query['ccsExpiry'] ?? ''));
         $modelsRaw = trim((string) ($request->query['models'] ?? ''));
         $manufacturersRaw = trim((string) ($request->query['manufacturers'] ?? ''));
         $fuelsRaw = trim((string) ($request->query['fuels'] ?? ''));
@@ -43,6 +45,11 @@ final class VehicleController
         $groups = $groupsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $groupsRaw)), static fn(string $value): bool => $value !== ''));
         $stations = $stationsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $stationsRaw)), static fn(string $value): bool => $value !== ''));
         $locationStates = $locationStatesRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $locationStatesRaw)), static fn(string $value): bool => $value !== ''));
+        $ccsStates = $ccsStatesRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $ccsStatesRaw)), static fn(string $value): bool => $value !== ''));
+        $ccsExpiryNormalized = strtolower($ccsExpiryRaw);
+        $ccsExpiryFilter = ($ccsExpiryNormalized === 'expiring' || $ccsExpiryNormalized === 'expired')
+            ? $ccsExpiryNormalized
+            : '';
         $models = $modelsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $modelsRaw)), static fn(string $value): bool => $value !== ''));
         $manufacturers = $manufacturersRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $manufacturersRaw)), static fn(string $value): bool => $value !== ''));
         $fuels = $fuelsRaw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $fuelsRaw)), static fn(string $value): bool => $value !== ''));
@@ -68,6 +75,8 @@ final class VehicleController
             $groups,
             $stations,
             $locationStates,
+            $ccsStates,
+            $ccsExpiryFilter,
             $models,
             $manufacturers,
             $fuels,
@@ -136,6 +145,131 @@ final class VehicleController
         Response::success([
             'items' => $items,
             'byCategory' => $byCategory,
+            'count' => count($items),
+        ]);
+    }
+
+    public function drivers(Request $request, array $actor): void
+    {
+        $activeOnly = (int) ($request->query['activeOnly'] ?? 1);
+        $query = trim((string) ($request->query['q'] ?? ''));
+        $year = (int) ($request->query['year'] ?? 0);
+        $month = (int) ($request->query['month'] ?? 0);
+
+        $requestedKmMonth = null;
+        if ($year >= 2000 && $year <= 2100 && $month >= 1 && $month <= 12) {
+            $requestedKmMonth = sprintf('%04d-%02d', $year, $month);
+        }
+
+        $items = $this->vehicles->listDrivers(
+            $activeOnly === 1,
+            $query,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_drivers'] ?? true),
+            $requestedKmMonth
+        );
+
+        Response::success([
+            'items' => $items,
+            'count' => count($items),
+            'activeOnly' => $activeOnly === 1 ? 1 : 0,
+        ]);
+    }
+
+    public function syncDriversKm(Request $request): void
+    {
+        $year = (int) ($request->body['year'] ?? date('Y'));
+        $month = (int) ($request->body['month'] ?? date('n'));
+
+        if ($month < 1 || $month > 12) {
+            Response::error('Neplatný měsíc (1-12)', 422);
+            return;
+        }
+
+        if ($year < 2000 || $year > 2100) {
+            Response::error('Neplatný rok', 422);
+            return;
+        }
+
+        $result = $this->vehicles->syncDriversKm($year, $month);
+
+        Response::success([
+            'total' => (int) ($result['total'] ?? 0),
+            'updated' => (int) ($result['updated'] ?? 0),
+            'failed' => (int) ($result['failed'] ?? 0),
+            'message' => (string) ($result['message'] ?? 'OK'),
+        ]);
+    }
+
+    public function syncDriversKmForVehicle(Request $request, array $actor): void
+    {
+        $logFile = '/tmp/vehicles-sync-debug.log';
+        file_put_contents($logFile, sprintf("[%s] Controller START: request body=%s\n", date('Y-m-d H:i:s'), json_encode($request->body)), FILE_APPEND);
+        
+        $vehicleId = (int) ($request->body['vehicleId'] ?? 0);
+        $year = (int) ($request->body['year'] ?? date('Y'));
+        $month = (int) ($request->body['month'] ?? date('n'));
+
+        if ($vehicleId <= 0) {
+            Response::error('Parametr vehicleId je povinný', 422);
+            return;
+        }
+
+        if ($month < 1 || $month > 12) {
+            Response::error('Neplatný měsíc (1-12)', 422);
+            return;
+        }
+
+        if ($year < 2000 || $year > 2100) {
+            Response::error('Neplatný rok', 422);
+            return;
+        }
+
+        try {
+            $result = $this->vehicles->syncDriversKmForVehicle(
+                $vehicleId,
+                $year,
+                $month,
+                (int) ($actor['id'] ?? 0),
+                (bool) ($actor['has_all_vehicles'] ?? true)
+            );
+
+            Response::success($result);
+        } catch (\RuntimeException $e) {
+            file_put_contents($logFile, sprintf("[%s] Controller caught RuntimeException: %s\n", date('Y-m-d H:i:s'), $e->getMessage()), FILE_APPEND);
+            Response::error($e->getMessage(), 422);
+        } catch (\Throwable $e) {
+            file_put_contents($logFile, sprintf("[%s] Controller caught Throwable: %s in %s:%d\n", date('Y-m-d H:i:s'), $e->getMessage(), $e->getFile(), $e->getLine()), FILE_APPEND);
+            Response::error('Interní chyba serveru: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function listVehiclesForDriversSync(Request $request, array $actor): void
+    {
+        $year = (int) ($request->query['year'] ?? date('Y'));
+        $month = (int) ($request->query['month'] ?? date('n'));
+        $force = filter_var($request->query['force'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if ($month < 1 || $month > 12) {
+            Response::error('Neplatný měsíc (1-12)', 422);
+            return;
+        }
+
+        if ($year < 2000 || $year > 2100) {
+            Response::error('Neplatný rok', 422);
+            return;
+        }
+
+        $items = $this->vehicles->listVehiclesForDriversSync(
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true),
+            $year,
+            $month,
+            $force
+        );
+
+        Response::success([
+            'items' => $items,
             'count' => count($items),
         ]);
     }
@@ -261,6 +395,42 @@ final class VehicleController
             'items' => $items,
             'count' => count($items),
         ]);
+    }
+
+    public function monthlyBilling(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
+        $year = (int) ($request->query['year'] ?? date('Y'));
+        $month = (int) ($request->query['month'] ?? date('m'));
+
+        if ($vehicleId <= 0) {
+            Response::error('Parametr vehicleId je povinný', 422);
+            return;
+        }
+
+        if ($year < 2000 || $year > 2100) {
+            Response::error('Parametr year je mimo povolený rozsah', 422);
+            return;
+        }
+
+        if ($month < 1 || $month > 12) {
+            Response::error('Parametr month musí být číslo 1-12', 422);
+            return;
+        }
+
+        try {
+            $payload = $this->vehicles->getMonthlyBilling(
+                $vehicleId,
+                $year,
+                $month,
+                (int) ($actor['id'] ?? 0),
+                (bool) ($actor['has_all_vehicles'] ?? true)
+            );
+
+            Response::success($payload);
+        } catch (RuntimeException $e) {
+            Response::error($e->getMessage(), 422);
+        }
     }
 
     public function saveDetail(Request $request, array $actor): void

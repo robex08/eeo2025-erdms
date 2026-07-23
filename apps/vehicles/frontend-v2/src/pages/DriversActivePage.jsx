@@ -284,7 +284,7 @@ export default function DriversActivePage() {
     setError('');
 
     try {
-      const response = await fetchDrivers({ activeOnly: 1 });
+      const response = await fetchDrivers({ activeOnly: 1, year, month });
       setItems(Array.isArray(response?.data?.items) ? response.data.items : []);
     } catch {
       setItems([]);
@@ -296,7 +296,7 @@ export default function DriversActivePage() {
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, [year, month]);
 
   useEffect(() => {
     if (!syncingKm) {

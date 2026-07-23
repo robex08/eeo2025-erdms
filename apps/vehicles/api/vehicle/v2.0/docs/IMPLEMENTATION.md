@@ -16,11 +16,13 @@
 - POST /auth/logout
 - GET /auth/me
 - GET /vehicles
+- GET /drivers
 - GET /vehicles/detail?vehicleId=123
 - GET /vehicles/events?vehicleId=123
 - POST /vehicles/detail
 - POST /vehicles/bulk/location-state
 - POST /sync/vehicles
+- POST /sync/drivers/quick
 
 ## Auth policy
 - Local login is allowed only for roles superadmin and administrator.
@@ -46,8 +48,10 @@
 12. Apply db/029_add_manual_location_state_to_vehicle_detail_cards.sql
 13. Apply db/030_add_service_context_json_to_vehicle_detail_cards.sql
 14. Apply db/031_create_vehicle_manual_events_v2.sql
-15. Seed admin users using db/002_seed_local_admins.sql
-16. Trigger POST /sync/vehicles for direct sync from WebDispecink into vehicles_cars_list_v2
+15. Apply db/034_add_ccs_columns_to_vehicles_cars_list_v2.sql
+16. Seed admin users using db/002_seed_local_admins.sql
+17. Trigger POST /sync/vehicles for direct sync from WebDispecink into vehicles_cars_list_v2
+18. Apply db/035_create_drivers_cache_v2.sql and trigger POST /sync/drivers/quick for cache aktivních řidičů
 
 Poznámka:
 - Pole `status` ve `vehicles_cars_list_v2` se ukládá jako raw hodnota ze sync logiky bez další byznys interpretace ve v2 UI.

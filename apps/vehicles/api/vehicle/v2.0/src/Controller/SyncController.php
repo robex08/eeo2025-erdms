@@ -38,6 +38,32 @@ final class SyncController
         }
     }
 
+    public function triggerDriversSync(Request $request): void
+    {
+        $activeOnly = (int) ($request->body['activeOnly'] ?? $request->query['activeOnly'] ?? 0);
+
+        try {
+            $result = $this->vehicles->runDriversSync($activeOnly === 1);
+            Response::success([
+                'message' => $result['message'],
+                'affectedRows' => $result['affectedRows'],
+                'count' => $result['count'],
+                'inserted' => $result['inserted'] ?? 0,
+                'updated' => $result['updated'] ?? 0,
+                'unchanged' => $result['unchanged'] ?? 0,
+                'activeOnly' => $activeOnly === 1 ? 1 : 0,
+            ], 202);
+        } catch (Throwable $e) {
+            Response::error('Synchronizace řidičů selhala: ' . $e->getMessage(), 500);
+        }
+    }
+
+    public function triggerDriversQuickSync(Request $request): void
+    {
+        $request->body['activeOnly'] = 1;
+        $this->triggerDriversSync($request);
+    }
+
     public function getSyncProgress(Request $request): void
     {
         $jobId = (int) ($request->query['jobId'] ?? 0);

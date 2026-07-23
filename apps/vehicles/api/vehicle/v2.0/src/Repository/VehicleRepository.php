@@ -54,6 +54,9 @@ final class VehicleRepository
     {
         $restrictByAssignments = $actorUserId > 0 && !$actorHasAllVehicles;
 
+        // EEO databáze pro cross-database query
+        $eeoDbName = Env::get('EEO_DB_NAME', 'eeo2025');
+
         $hasPositionsKm = $this->tableExists(self::TBL_WD_POSITIONS)
             && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
             && $this->columnExists(self::TBL_WD_POSITIONS, 'w_km');
@@ -107,6 +110,7 @@ final class VehicleRepository
             'najeto_km' => $hasPositionsKm ? 'last_pos.w_km' : 'v.id',
                 'location_state' => 'v.id',
             'last_update' => 'v.last_update',
+            'eeo_service_count' => 'COALESCE(eeo_svc.service_count, 0)',
             'dotace' => $hasLegacyDotace ? 'legacy_dotace.dotace' : 'v.id',
             'status' => 'v.status',
             'has_ccs' => $hasCcsExpr,
@@ -158,6 +162,24 @@ final class VehicleRepository
             $fromSql .= '
                 LEFT JOIN cars_dotace legacy_dotace ON REPLACE(v.spz, " ", "") = REPLACE(legacy_dotace.w_spz, " ", "")';
         }
+
+        // Cross-database LEFT JOIN pro EEO servisní historii
+        // Subquery agreguje objednávky podle SPZ vozidla, aby nevznikaly duplicity
+        $fromSql .= "
+            LEFT JOIN (
+                SELECT 
+                    v_eeo.spz,
+                    COUNT(DISTINCT o.id) AS service_count
+                FROM vehicles_cars_list_v2 v_eeo
+                INNER JOIN {$eeoDbName}.25a_objednavky o 
+                    ON REPLACE(o.predmet, ' ', '') LIKE CONCAT('%', REPLACE(v_eeo.spz, ' ', ''), '%')
+                WHERE o.aktivni = 1
+                  AND o.stav_objednavky NOT IN ('Rozpracovaná', 'Ke schválení', 'Schválená', 'Zamítnutá', 'Zrušena')
+                  AND LENGTH(REPLACE(v_eeo.spz, ' ', '')) >= 4
+                GROUP BY v_eeo.spz
+            ) eeo_svc ON eeo_svc.spz = v.spz
+        ";
+
             $datumZarazeniSelect = $hasLegacyDatod
                 ? 'DATE_FORMAT(legacy_detail.w_datod, "%Y-%m-%d %H:%i:%s") AS datum_zarazeni'
             : 'NULL AS datum_zarazeni';
@@ -539,7 +561,8 @@ final class VehicleRepository
                    ' . $manualLocationUpdatedAtSelect . ',
                                      ' . $serviceContextJsonSelect . ',
                      DATE_FORMAT(v.last_update, "%Y-%m-%d %H:%i:%s") AS last_update,
-                     ' . $dotaceSelect . '
+                     ' . $dotaceSelect . ',
+                     COALESCE(eeo_svc.service_count, 0) AS eeo_service_count
             ' . $fromSql . $whereSql;
         $stationContext = $this->buildStationAddressIndex();
         $requiresPhpLocationPipeline = $hasLocationStateFilter || $normalizedSortBy === 'location_state';
@@ -1269,7 +1292,8 @@ final class VehicleRepository
         bool $activeOnly = true,
         string $query = '',
         int $actorUserId = 0,
-        bool $actorHasAllDrivers = true
+        bool $actorHasAllDrivers = true,
+        ?string $requestedKmMonth = null
     ): array
     {
         if (!$this->tableExists(self::TBL_WD_DRIVERS)) {
@@ -1491,7 +1515,18 @@ final class VehicleRepository
         }
         $stmt->execute();
 
-        return $stmt->fetchAll() ?: [];
+        $rows = $stmt->fetchAll() ?: [];
+        if ($requestedKmMonth !== null && preg_match('/^\d{4}-\d{2}$/', $requestedKmMonth) === 1) {
+            foreach ($rows as &$row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $this->applyRequestedMonthMetrics($row, $requestedKmMonth);
+            }
+            unset($row);
+        }
+
+        return $rows;
     }
 
     public function upsertDriversFromWebDispecink(array $drivers): array
@@ -1525,7 +1560,7 @@ final class VehicleRepository
         }
         $incomingIds = array_values(array_unique($incomingIds));
 
-        $existingIds = [];
+        $existingRowsByLegacyId = [];
         if ($incomingIds !== []) {
             $placeholders = [];
             $params = [];
@@ -1536,7 +1571,7 @@ final class VehicleRepository
             }
 
             $existingStmt = $this->pdo->prepare(
-                'SELECT legacy_driverid
+                'SELECT legacy_driverid, raw_json
                  FROM ' . self::TBL_WD_DRIVERS . '
                  WHERE legacy_driverid IN (' . implode(', ', $placeholders) . ')'
             );
@@ -1548,7 +1583,9 @@ final class VehicleRepository
             foreach (($existingStmt->fetchAll(PDO::FETCH_ASSOC) ?: []) as $existingRow) {
                 $existingId = (int) ($existingRow['legacy_driverid'] ?? 0);
                 if ($existingId > 0) {
-                    $existingIds[$existingId] = true;
+                    $existingRowsByLegacyId[$existingId] = [
+                        'raw_json' => (string) ($existingRow['raw_json'] ?? ''),
+                    ];
                 }
             }
         }
@@ -1584,7 +1621,13 @@ final class VehicleRepository
             }
 
             $processed++;
-            $wasExisting = array_key_exists($legacyDriverId, $existingIds);
+            $wasExisting = array_key_exists($legacyDriverId, $existingRowsByLegacyId);
+
+            $existingRawJson = (string) (($existingRowsByLegacyId[$legacyDriverId]['raw_json'] ?? '') ?: '');
+            $mergedRawJson = $this->mergeDriverRawJsonWithInternalState(
+                (string) ($row['raw_json'] ?? ''),
+                $existingRawJson
+            );
 
             $stmt->execute([
                 'legacy_driverid' => $legacyDriverId,
@@ -1595,7 +1638,7 @@ final class VehicleRepository
                 'legacy_carid' => $this->normalizeNullableInt($row['legacy_carid'] ?? null),
                 'vehicle_identifier' => $this->normalizeNullableText($row['vehicle_identifier'] ?? null, 128),
                 'is_active' => ((int) ($row['is_active'] ?? 1)) === 1 ? 1 : 0,
-                'raw_json' => $this->normalizeNullableText($row['raw_json'] ?? null, 65535),
+                'raw_json' => $this->normalizeNullableText($mergedRawJson, 65535),
                 'last_sync_at' => $now,
             ]);
 
@@ -1619,6 +1662,89 @@ final class VehicleRepository
             'unchanged' => $unchanged,
             'touched' => $inserted + $updated,
         ];
+    }
+
+    private function applyRequestedMonthMetrics(array &$row, string $requestedKmMonth): void
+    {
+        $rawJson = is_string($row['raw_json'] ?? null) ? trim((string) $row['raw_json']) : '';
+        if ($rawJson === '') {
+            return;
+        }
+
+        $decoded = json_decode($rawJson, true);
+        if (!is_array($decoded)) {
+            return;
+        }
+
+        $monthData = $decoded['_km_by_vehicle'][$requestedKmMonth] ?? null;
+        if (!is_array($monthData) || $monthData === []) {
+            return;
+        }
+
+        $aggBusiness = 0.0;
+        $aggPrivate = 0.0;
+        $aggTotal = 0.0;
+        $aggCostsTotal = 0.0;
+        $aggCostsBusiness = 0.0;
+        $aggCostsPrivate = 0.0;
+        $latestUpdatedAt = '';
+
+        foreach ($monthData as $metrics) {
+            if (!is_array($metrics)) {
+                continue;
+            }
+
+            $aggBusiness += (float) ($metrics['km_business'] ?? 0.0);
+            $aggPrivate += (float) ($metrics['km_private'] ?? 0.0);
+            $aggTotal += (float) ($metrics['km_total'] ?? 0.0);
+            $aggCostsTotal += (float) ($metrics['costs_total'] ?? 0.0);
+            $aggCostsBusiness += (float) ($metrics['costs_business'] ?? 0.0);
+            $aggCostsPrivate += (float) ($metrics['costs_private'] ?? 0.0);
+
+            $updatedAt = trim((string) ($metrics['updated_at'] ?? ''));
+            if ($updatedAt !== '' && ($latestUpdatedAt === '' || strcmp($updatedAt, $latestUpdatedAt) > 0)) {
+                $latestUpdatedAt = $updatedAt;
+            }
+        }
+
+        $row['km_business_month'] = $aggBusiness;
+        $row['km_private_month'] = $aggPrivate;
+        $row['km_total_month'] = $aggTotal;
+        $row['costs_total_month'] = $aggCostsTotal;
+        $row['costs_business_month'] = $aggCostsBusiness;
+        $row['costs_private_month'] = $aggCostsPrivate;
+        $row['km_month'] = $requestedKmMonth;
+
+        if ($latestUpdatedAt !== '') {
+            $row['km_synced_at'] = $latestUpdatedAt;
+        }
+    }
+
+    private function mergeDriverRawJsonWithInternalState(string $incomingRawJson, string $existingRawJson): string
+    {
+        $incoming = json_decode(trim($incomingRawJson), true);
+        if (!is_array($incoming)) {
+            $incoming = [];
+        }
+
+        $existing = json_decode(trim($existingRawJson), true);
+        if (is_array($existing)) {
+            foreach ($existing as $key => $value) {
+                if (!is_string($key)) {
+                    continue;
+                }
+                if (str_starts_with($key, '_') && !array_key_exists($key, $incoming)) {
+                    $incoming[$key] = $value;
+                }
+            }
+        }
+
+        $encoded = json_encode($incoming, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($encoded === false) {
+            return '{}';
+        }
+
+        return $encoded;
     }
 
     /**
@@ -3795,6 +3921,11 @@ final class VehicleRepository
             $mileageDistribution = $mileageStmt->fetchAll() ?: [];
         }
 
+        // EEO servisní statistiky
+        $eeoServiceStats = $this->getEeoServiceStats($accessJoin, $aliasWhere, $params);
+        $eeoTopVehicles = $this->getEeoTopVehicles($accessJoin, $aliasWhere, $params, 10);
+        $vehiclesInServiceNow = $this->getVehiclesInServiceNow($accessJoin, $aliasWhere, $params);
+
         return [
             'summary' => [
                 'total' => (int) ($summary['total'] ?? 0),
@@ -3805,6 +3936,9 @@ final class VehicleRepository
                 'unknown' => (int) ($summary['unknown'] ?? 0),
             ],
             'locationStateSummary' => $locationStateSummary,
+            'eeoServiceStats' => $eeoServiceStats,
+            'eeoTopVehicles' => $eeoTopVehicles,
+            'vehiclesInServiceNow' => $vehiclesInServiceNow,
             'updatedAt' => is_string($updatedAt) && trim($updatedAt) !== '' ? $updatedAt : null,
             'fuelDistribution' => $this->normalizeBuckets($fuelDistribution),
             'typeDistribution' => $this->normalizeBuckets($typeDistribution),
@@ -3812,6 +3946,220 @@ final class VehicleRepository
             'stationDistribution' => $this->normalizeBuckets($groupDistribution),
             'mileageDistribution' => $this->normalizeBuckets($mileageDistribution),
         ];
+    }
+
+    private function getEeoServiceStats(string $accessJoin, string $aliasWhere, array $params): array
+    {
+        try {
+            $eeoDb = Database::connectEeo();
+            $eeoDbName = Env::get('EEO_DB_NAME', 'eeo2025');
+
+            // Spočítat vozidla s alespoň jednou servisní historií a celkový počet servisů
+            $sql = "
+                SELECT 
+                    COUNT(DISTINCT v.spz) AS vehicles_with_service,
+                    COUNT(DISTINCT o.id) AS total_services
+                FROM vehicles_cars_list_v2 v
+                {$accessJoin}
+                INNER JOIN {$eeoDbName}.25a_objednavky o 
+                    ON REPLACE(o.predmet, ' ', '') LIKE CONCAT('%', REPLACE(v.spz, ' ', ''), '%')
+                    AND o.aktivni = 1
+                    AND o.stav_objednavky NOT IN ('Rozpracovaná', 'Ke schválení', 'Schválená', 'Zamítnutá', 'Zrušena')
+                    AND LENGTH(REPLACE(v.spz, ' ', '')) >= 4
+                {$aliasWhere}
+            ";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $result = $stmt->fetch() ?: [];
+
+            return [
+                'vehiclesWithService' => (int) ($result['vehicles_with_service'] ?? 0),
+                'totalServices' => (int) ($result['total_services'] ?? 0),
+            ];
+        } catch (\Exception $e) {
+            error_log("EEO service stats error: " . $e->getMessage());
+            return [
+                'vehiclesWithService' => 0,
+                'totalServices' => 0,
+            ];
+        }
+    }
+
+    private function getEeoTopVehicles(string $accessJoin, string $aliasWhere, array $params, int $limit = 10): array
+    {
+        try {
+            $eeoDb = Database::connectEeo();
+            $eeoDbName = Env::get('EEO_DB_NAME', 'eeo2025');
+
+            $sql = "
+                SELECT
+                    v.spz,
+                    COALESCE(NULLIF(TRIM(d.w_popis), ''), '-') AS zkl,
+                    COALESCE(NULLIF(TRIM(d.w_stanoviste), ''), '-') AS misto,
+                    COUNT(DISTINCT o.id) AS service_count
+                FROM vehicles_cars_list_v2 v
+                LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id
+                {$accessJoin}
+                INNER JOIN {$eeoDbName}.25a_objednavky o
+                    ON REPLACE(o.predmet, ' ', '') LIKE CONCAT('%', REPLACE(v.spz, ' ', ''), '%')
+                    AND o.aktivni = 1
+                    AND o.stav_objednavky NOT IN ('Rozpracovaná', 'Ke schválení', 'Schválená', 'Zamítnutá', 'Zrušena')
+                    AND LENGTH(REPLACE(v.spz, ' ', '')) >= 4
+                {$aliasWhere}
+                GROUP BY v.id, v.spz, zkl, misto
+                ORDER BY service_count DESC, v.spz ASC
+                LIMIT :eeo_top_limit
+            ";
+
+            $stmt = $this->pdo->prepare($sql);
+            foreach ($params as $paramName => $paramValue) {
+                if ($paramName === 'access_user_id') {
+                    $stmt->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
+                    continue;
+                }
+
+                $stmt->bindValue(':' . $paramName, (string) $paramValue, PDO::PARAM_STR);
+            }
+            $stmt->bindValue(':eeo_top_limit', max(1, min(50, $limit)), PDO::PARAM_INT);
+            $stmt->execute();
+
+            $rows = $stmt->fetchAll() ?: [];
+
+            return array_map(
+                static fn(array $row): array => [
+                    'spz' => (string) ($row['spz'] ?? ''),
+                    'zkl' => (string) ($row['zkl'] ?? '-'),
+                    'misto' => (string) ($row['misto'] ?? '-'),
+                    'serviceCount' => (int) ($row['service_count'] ?? 0),
+                ],
+                $rows
+            );
+        } catch (\Exception $e) {
+            error_log('EEO top vehicles error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function getVehiclesInServiceNow(string $accessJoin, string $aliasWhere, array $params): array
+    {
+        try {
+            $hasPositionsLn = $this->tableExists(self::TBL_WD_POSITIONS)
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_ln');
+            $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
+            $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
+
+            $posLnSelect = $hasPositionsLn
+                ? 'COALESCE(last_pos.w_ln, "") AS pos_ln'
+                : '"" AS pos_ln';
+            $manualLocationStateSelect = $hasManualLocationState
+                ? 'COALESCE(d.manual_location_state, "") AS manual_location_state'
+                : '"" AS manual_location_state';
+            $serviceContextJsonSelect = $hasServiceContextJson
+                ? 'd.service_context_json'
+                : 'NULL AS service_context_json';
+
+            $sql = 'SELECT
+                    v.id,
+                    v.spz,
+                    COALESCE(NULLIF(TRIM(d.w_popis), ""), "-") AS zkl,
+                    COALESCE(NULLIF(TRIM(d.w_stanoviste), ""), "") AS w_stanoviste,
+                    ' . $posLnSelect . ',
+                    ' . $manualLocationStateSelect . ',
+                    ' . $serviceContextJsonSelect . '
+                FROM vehicles_cars_list_v2 v
+                LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
+
+            if ($hasPositionsLn) {
+                $sql .= '
+                LEFT JOIN (
+                    SELECT cp.w_carid, cp.w_ln
+                    FROM ' . self::TBL_WD_POSITIONS . ' cp
+                    INNER JOIN (
+                        SELECT w_carid, MAX(id) AS max_id
+                        FROM ' . self::TBL_WD_POSITIONS . '
+                        GROUP BY w_carid
+                    ) latest ON latest.w_carid = cp.w_carid AND latest.max_id = cp.id
+                ) last_pos ON last_pos.w_carid = v.legacy_carid';
+            }
+
+            $sql .= "\n" . $accessJoin . "\n" . $aliasWhere . "\nORDER BY v.spz ASC";
+
+            $stmt = $this->pdo->prepare($sql);
+            foreach ($params as $paramName => $paramValue) {
+                if ($paramName === 'access_user_id') {
+                    $stmt->bindValue(':access_user_id', (int) $paramValue, PDO::PARAM_INT);
+                    continue;
+                }
+
+                $stmt->bindValue(':' . $paramName, (string) $paramValue, PDO::PARAM_STR);
+            }
+            $stmt->execute();
+
+            $rows = $stmt->fetchAll() ?: [];
+            if ($rows === []) {
+                return [];
+            }
+
+            $rows = $this->appendLocationState($rows, $this->buildStationAddressIndex());
+            $result = [];
+
+            foreach ($rows as $row) {
+                $state = strtolower(trim((string) ($row['location_state'] ?? '')));
+                if ($state !== 'v_servisu') {
+                    continue;
+                }
+
+                $manualState = strtolower(trim((string) ($row['manual_location_state'] ?? '')));
+                $isManualService = $manualState === 'v_servisu';
+
+                $serviceContext = $this->decodeContextJson((string) ($row['service_context_json'] ?? ''));
+                $manualServiceName = $this->firstNonEmptyContextValue(
+                    $serviceContext,
+                    ['name', 'service_name', 'serviceName', 'nazev', 'servis_nazev'],
+                    160
+                );
+                $manualServiceAddress = $this->firstNonEmptyContextValue(
+                    $serviceContext,
+                    ['address', 'service_address', 'serviceAddress', 'adresa', 'servis_adresa'],
+                    255
+                );
+
+                $currentPlace = trim((string) ($row['pos_ln'] ?? ''));
+                $serviceName = $isManualService
+                    ? ($manualServiceName ?: ($manualServiceAddress ?: ($currentPlace !== '' ? $currentPlace : '-')))
+                    : ($currentPlace !== '' ? $currentPlace : 'Detekováno automaticky');
+
+                $result[] = [
+                    'spz' => (string) ($row['spz'] ?? ''),
+                    'zkl' => (string) ($row['zkl'] ?? '-'),
+                    'misto' => trim((string) ($row['w_stanoviste'] ?? '')) !== '' ? (string) ($row['w_stanoviste'] ?? '') : '-',
+                    'serviceName' => $serviceName,
+                    'source' => $isManualService ? 'Sr' : 'Sa',
+                ];
+            }
+
+            return $result;
+        } catch (\Exception $e) {
+            error_log('Vehicles in service dashboard error: ' . $e->getMessage());
+            return [];
+        }
+    }
+
+    private function decodeContextJson(string $raw): array
+    {
+        $value = trim($raw);
+        if ($value === '') {
+            return [];
+        }
+
+        $decoded = json_decode($value, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+
+        return $decoded;
     }
 
     public function getAccessibleLegacyCarIds(int $actorUserId, bool $actorHasAllVehicles): array

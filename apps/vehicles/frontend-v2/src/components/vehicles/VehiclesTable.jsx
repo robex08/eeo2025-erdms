@@ -47,6 +47,119 @@ function formatMileageCs(value) {
   return `${Math.round(km).toLocaleString('cs-CZ')} km`;
 }
 
+function parseCardExpirationDate(value) {
+  const normalized = String(value || '').trim();
+  if (normalized === '') {
+    return null;
+  }
+
+  const isoMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const [, year, month, day] = isoMatch;
+    const parsed = new Date(`${year}-${month}-${day}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const isoDateTimeMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (isoDateTimeMatch) {
+    const [, year, month, day, hour, minute, second = '00'] = isoDateTimeMatch;
+    const parsed = new Date(`${year}-${month}-${day}T${hour}:${minute}:${second}`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const czMatch = normalized.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  if (czMatch) {
+    const [, day, month, year] = czMatch;
+    const paddedMonth = String(month).padStart(2, '0');
+    const paddedDay = String(day).padStart(2, '0');
+    const parsed = new Date(`${year}-${paddedMonth}-${paddedDay}T00:00:00`);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const fallback = new Date(normalized);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
+function formatCardExpirationCs(value) {
+  const parsed = parseCardExpirationDate(value);
+  if (!parsed) {
+    return String(value || '').trim();
+  }
+
+  return parsed.toLocaleDateString('cs-CZ', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  });
+}
+
+function getCardExpirationStatus(expirationValue) {
+  const expirationDate = parseCardExpirationDate(expirationValue);
+  if (!expirationDate) {
+    return 'missing-date';
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const threshold = new Date(today);
+  threshold.setMonth(threshold.getMonth() + 3);
+
+  expirationDate.setHours(0, 0, 0, 0);
+
+  if (expirationDate.getTime() < today.getTime()) {
+    return 'expired';
+  }
+
+  if (expirationDate.getTime() <= threshold.getTime()) {
+    return 'expiring';
+  }
+
+  return 'valid';
+}
+
+function getCcsIndicatorColor(status) {
+  const colors = {
+    empty: 'var(--ink-soft)',
+    'missing-date': '#9ca3af',
+    valid: '#16a34a',
+    expiring: '#ea580c',
+    expired: '#dc2626',
+  };
+
+  return colors[status] || colors.empty;
+}
+
+function getCcsIndicatorIcon(status) {
+  if (status === 'valid') {
+    return { name: 'approve', weight: 'fill' };
+  }
+
+  if (status === 'expiring' || status === 'expired') {
+    return { name: 'warning', weight: 'fill' };
+  }
+
+  return { name: 'ccsCard', weight: 'regular' };
+}
+
+function getCcsIndicatorTitle(cardNumber, expirationValue, status) {
+  const expirationLabel = expirationValue !== '' ? formatCardExpirationCs(expirationValue) : '';
+
+  if (status === 'missing-date') {
+    return `CCS karta ${cardNumber}, datum platnosti není vyplněno`;
+  }
+
+  if (status === 'expired') {
+    return `CCS karta ${cardNumber}, po splatnosti od ${expirationLabel}`;
+  }
+
+  if (status === 'expiring') {
+    return `CCS karta ${cardNumber}, platnost brzy končí ${expirationLabel}`;
+  }
+
+  return `CCS karta ${cardNumber}, platnost do ${expirationLabel}`;
+}
+
 function getMileageBand(kmValue) {
   const km = Number(kmValue);
   if (!Number.isFinite(km) || km <= 0) {
@@ -193,6 +306,7 @@ export default function VehiclesTable({
   onSetVehicleStatusActive,
   onSetVehicleStatusInactive,
   canEditVehicleCard = true,
+  onShowEeoHistory,
 }) {
   const pageSelectAllRef = useRef(null);
   const selectedSet = useMemo(() => new Set(selectedRowKeys.map((key) => String(key))), [selectedRowKeys]);
@@ -327,9 +441,11 @@ export default function VehiclesTable({
             <SortableHeader field="datum_zarazeni" label="Datum zařazení" className="table-col-date" />
             <SortableHeader field="najeto_km" label="Najeté km" className="table-col-km" />
             <SortableHeader field="last_update" label="Poslední aktualizace" className="table-col-last-update" />
+            <SortableHeader field="eeo_service_count" label="EEO" className="table-col-eeo" />
             <SortableHeader field="location_state" label="Servis" className="table-col-service" />
             <SortableHeader field="dotace" label="Dotace" className="table-col-dotace" />
             <SortableHeader field="status" label="Stav" className="table-col-status" />
+            <SortableHeader field="has_ccs" label="CCS" className="table-col-ccs" />
             <th className="table-col-actions">Akce</th>
           </tr>
         </thead>
@@ -357,21 +473,40 @@ export default function VehiclesTable({
               item.pos_ln || item.w_stanoviste,
               item.service_context_json
             );
-            let rowClassName = '';
+            const ccsCardNumber = String(item.ccs_card_number || '').trim();
+            const ccsCardExpiration = String(item.ccs_card_expiration || '').trim();
+            const hasCcsCard = ccsCardNumber !== '';
+            const ccsExpirationLabel = ccsCardExpiration !== '' ? formatCardExpirationCs(ccsCardExpiration) : '';
+            const ccsIndicatorTone = hasCcsCard ? getCardExpirationStatus(ccsCardExpiration) : 'empty';
+            const ccsIndicatorTitle = hasCcsCard ? getCcsIndicatorTitle(ccsCardNumber, ccsCardExpiration, ccsIndicatorTone) : '';
+            const ccsIndicatorColor = getCcsIndicatorColor(ccsIndicatorTone);
+            const ccsIndicatorIcon = getCcsIndicatorIcon(ccsIndicatorTone);
+
+            const rowClasses = [];
             if (effectiveLocationStateRaw === 'v_akci') {
-              rowClassName = 'table-row-v-akci';
+              rowClasses.push('table-row-v-akci');
             } else if (effectiveLocationStateRaw === 'doma') {
-              rowClassName = 'table-row-doma';
+              rowClasses.push('table-row-doma');
             } else if (effectiveLocationStateRaw === 'v_servisu') {
-              rowClassName = 'table-row-v-servisu';
+              rowClasses.push('table-row-v-servisu');
             }
+
+            if (ccsIndicatorTone === 'expiring') {
+              rowClasses.push('table-row-ccs-expiring');
+            }
+
+            if (ccsIndicatorTone === 'expired') {
+              rowClasses.push('table-row-ccs-expired');
+            }
+
+            const rowClassName = rowClasses.join(' ');
 
             const rowKey = item.id;
             const normalizedRowKey = rowKey !== null && rowKey !== undefined && rowKey !== '' ? String(rowKey) : null;
             const isSelected = normalizedRowKey ? selectedSet.has(normalizedRowKey) : false;
 
             return (
-              <tr key={item.id || item.spz} className={rowClassName}>
+              <tr key={item.spz || item.id || index} className={rowClassName}>
               {showSelectionColumn ? (
                 <td className="table-cell-select">
                   <input
@@ -411,6 +546,26 @@ export default function VehiclesTable({
               <td className="table-cell-last-update">
                 <span className="table-cell-last-update-inner">{formatDateTimeCs(item.last_update)}</span>
               </td>
+              <td className="table-cell-eeo">
+                {(() => {
+                  const count = Number(item?.eeo_service_count || 0);
+                  
+                  if (typeof onShowEeoHistory === 'function' && count > 0) {
+                    return (
+                      <button
+                        type="button"
+                        className="table-eeo-count-btn"
+                        title={`Zobrazit ${count} servisních objednávek z EEO`}
+                        onClick={() => onShowEeoHistory(item)}
+                      >
+                        {count}
+                      </button>
+                    );
+                  }
+                  
+                  return <span className="table-eeo-empty">-</span>;
+                })()}
+              </td>
               <td className="table-cell-service">
                 <span className="table-status-wrap" title={serviceMeta.label} aria-label={serviceMeta.label}>
                   <span className={`table-service-chip table-service-chip-${serviceMeta.tone}`}>{serviceMeta.code}</span>
@@ -426,9 +581,49 @@ export default function VehiclesTable({
                   <span className={`table-status-chip table-status-chip-${statusMeta.tone}`}>{statusMeta.code}</span>
                 </span>
               </td>
+              <td className="table-cell-ccs">
+                {hasCcsCard ? (
+                  <span
+                    className={`table-ccs-indicator table-ccs-indicator-${ccsIndicatorTone}`}
+                    title={ccsIndicatorTitle}
+                    aria-label={ccsIndicatorTitle}
+                    style={{ color: ccsIndicatorColor }}
+                  >
+                    <AppIcon
+                      name={ccsIndicatorIcon.name}
+                      size={18}
+                      weight={ccsIndicatorIcon.weight}
+                      color={ccsIndicatorColor}
+                    />
+                  </span>
+                ) : (
+                  <span className="table-ccs-empty">-</span>
+                )}
+              </td>
               <td className="table-cell-actions">
                 {item.id ? (
                   <div className="table-action-icons">
+                    {typeof onOpenVehicleDetail === 'function' ? (
+                      <button
+                        type="button"
+                        className="table-icon-btn"
+                        title="Detail vozidla"
+                        aria-label="Detail vozidla"
+                        onClick={() => onOpenVehicleDetail(item)}
+                      >
+                        <AppIcon name="detail" size={14} weight="duotone" />
+                      </button>
+                    ) : (
+                      <Link
+                        className="table-icon-btn"
+                        to={`/vehicles/${item.id}`}
+                        title="Detail vozidla"
+                        aria-label="Detail vozidla"
+                      >
+                        <AppIcon name="detail" size={14} weight="duotone" />
+                      </Link>
+                    )}
+
                     {vehicleStatusRaw === 'vyrazene' && typeof onSetVehicleStatusActive === 'function' ? (
                       <button
                         type="button"
@@ -489,26 +684,6 @@ export default function VehiclesTable({
                       </button>
                     ) : null}
 
-                    {typeof onOpenVehicleDetail === 'function' ? (
-                      <button
-                        type="button"
-                        className="table-icon-btn"
-                        title="Detail vozidla"
-                        aria-label="Detail vozidla"
-                        onClick={() => onOpenVehicleDetail(item)}
-                      >
-                        <AppIcon name="detail" size={14} weight="duotone" />
-                      </button>
-                    ) : (
-                      <Link
-                        className="table-icon-btn"
-                        to={`/vehicles/${item.id}`}
-                        title="Detail vozidla"
-                        aria-label="Detail vozidla"
-                      >
-                        <AppIcon name="detail" size={14} weight="duotone" />
-                      </Link>
-                    )}
                     <Link
                       className="table-icon-btn"
                       to="/map"

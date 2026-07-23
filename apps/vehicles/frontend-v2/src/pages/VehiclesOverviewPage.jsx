@@ -8,11 +8,13 @@ import {
   fetchVehicleDetail,
   fetchVehicleManualEvents,
   fetchVehicles,
+  fetchVehicleServiceHistory,
   triggerQuickSync,
 } from '../services/apiClient';
 import OverviewActionButtons from '../components/vehicles/OverviewActionButtons';
 import SyncGate from '../components/vehicles/SyncGate';
 import VehiclesTable from '../components/vehicles/VehiclesTable';
+import VehicleMonthlyBillingCard from '../components/vehicles/detail/VehicleMonthlyBillingCard';
 import AppIcon from '../components/ui/AppIcon';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { useAuth } from '../auth/AuthContext';
@@ -32,8 +34,10 @@ const SORT_FIELDS = [
   'najeto_km',
   'location_state',
   'last_update',
+  'eeo_service_count',
   'dotace',
   'status',
+  'has_ccs',
 ];
 
 const STATUS_OPTIONS = [
@@ -47,6 +51,12 @@ const LOCATION_STATE_OPTIONS = [
   { value: 'doma', label: 'Doma' },
   { value: 'v_akci', label: 'V akci' },
   { value: 'v_servisu', label: 'V servisu' },
+  { value: 'nezname', label: 'Neznámé' },
+];
+
+const CCS_STATE_OPTIONS = [
+  { value: 'has', label: 'Má CCS' },
+  { value: 'none', label: 'Nemá CCS' },
 ];
 const INITIAL_BULK_SERVICE_FORM = {
   serviceName: '',
@@ -140,6 +150,14 @@ function parseServiceContext(rawValue) {
   } catch {
     return {};
   }
+}
+
+function formatMoney(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num) || num <= 0) {
+    return '-';
+  }
+  return `${num.toLocaleString('cs-CZ', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} Kč`;
 }
 
 function printableValue(value, fallback = 'Nezadáno') {
@@ -371,6 +389,15 @@ export default function VehiclesOverviewPage() {
     nezname: 0,
     total: 0,
   });
+  const [ccsExpirySummary, setCcsExpirySummary] = useState({
+    expiringSoonCount: 0,
+    expiredCount: 0,
+  });
+  const [eeoHistoryModalOpen, setEeoHistoryModalOpen] = useState(false);
+  const [eeoHistoryVehicle, setEeoHistoryVehicle] = useState(null);
+  const [eeoHistoryOrders, setEeoHistoryOrders] = useState([]);
+  const [eeoHistoryLoading, setEeoHistoryLoading] = useState(false);
+  const [eeoHistoryError, setEeoHistoryError] = useState('');
   const [openFilterKey, setOpenFilterKey] = useState(null);
   const filterRowRef = useRef(null);
   const loadRequestRef = useRef(0);
@@ -431,6 +458,15 @@ export default function VehiclesOverviewPage() {
     const allowed = new Set(LOCATION_STATE_OPTIONS.map((item) => item.value));
     return raw.filter((value) => allowed.has(value));
   }, [searchParams]);
+  const selectedCcsStates = useMemo(() => {
+    const raw = parseCsvValues(searchParams.get('ccsStates'));
+    const allowed = new Set(CCS_STATE_OPTIONS.map((item) => item.value));
+    return raw.filter((value) => allowed.has(value));
+  }, [searchParams]);
+  const ccsExpiryFilterRaw = String(searchParams.get('ccsExpiry') || '').trim().toLowerCase();
+  const ccsExpiryFilter = ccsExpiryFilterRaw === 'expiring' || ccsExpiryFilterRaw === 'expired'
+    ? ccsExpiryFilterRaw
+    : '';
   const selectedGroups = useMemo(() => parseCsvValues(searchParams.get('groups')), [searchParams]);
   const selectedStations = useMemo(() => parseCsvValues(searchParams.get('stations')), [searchParams]);
   const selectedModels = useMemo(() => parseCsvValues(searchParams.get('models')), [searchParams]);
@@ -534,6 +570,8 @@ export default function VehiclesOverviewPage() {
     groups: selectedGroups.length > 0 ? selectedGroups.join(',') : undefined,
     stations: selectedStations.length > 0 ? selectedStations.join(',') : undefined,
     locationStates: selectedLocationStates.length > 0 ? selectedLocationStates.join(',') : undefined,
+    ccsStates: selectedCcsStates.length > 0 ? selectedCcsStates.join(',') : undefined,
+    ccsExpiry: ccsExpiryFilter !== '' ? ccsExpiryFilter : undefined,
     models: selectedModels.length > 0 ? selectedModels.join(',') : undefined,
     manufacturers: selectedManufacturers.length > 0 ? selectedManufacturers.join(',') : undefined,
     fuels: selectedFuels.length > 0 ? selectedFuels.join(',') : undefined,
@@ -548,6 +586,8 @@ export default function VehiclesOverviewPage() {
     selectedFuels,
     selectedGroups,
     selectedCallSigns,
+    selectedCcsStates,
+    ccsExpiryFilter,
     selectedLocationStates,
     selectedManufacturers,
     selectedMileageBands,
@@ -576,6 +616,10 @@ export default function VehiclesOverviewPage() {
       setTotalAll(Number(fastResponse?.data?.totalAll || fastResponse?.data?.total || 0));
       setUpdatedAt(fastResponse?.data?.updatedAt || null);
       setLocationStateCounts(normalizeLocationStateSummary(fastResponse?.data?.locationStateSummary, fastResponse?.data?.items || []));
+      setCcsExpirySummary({
+        expiringSoonCount: Number(fastResponse?.data?.ccsExpirySummary?.expiringSoonCount || 0),
+        expiredCount: Number(fastResponse?.data?.ccsExpirySummary?.expiredCount || 0),
+      });
 
       void fetchVehicles(buildVehiclesParams(true))
         .then((optionsResponse) => {
@@ -760,6 +804,8 @@ export default function VehiclesOverviewPage() {
       chartCarids: null,
       callSigns: null,
       locationStates: null,
+      ccsStates: null,
+      ccsExpiry: null,
       years: null,
       mileageBands: null,
       mileageBand: null,
@@ -783,6 +829,8 @@ export default function VehiclesOverviewPage() {
     || selectedTypes.length > 0
     || selectedCallSigns.length > 0
     || selectedLocationStates.length > 0
+    || selectedCcsStates.length > 0
+    || ccsExpiryFilter !== ''
     || selectedGroups.length > 0
     || selectedStations.length > 0
     || selectedModels.length > 0
@@ -804,6 +852,13 @@ export default function VehiclesOverviewPage() {
     skipNextDebouncedQuerySyncRef.current = true;
     setQueryInput('');
     updateSearchParams({ chartCarids: null, page: 1, q: '' });
+  }
+
+  function toggleCcsExpiryFilter(nextFilter) {
+    updateSearchParams({
+      ccsExpiry: ccsExpiryFilter === nextFilter ? null : nextFilter,
+      page: 1,
+    });
   }
 
   const visibleVehicleKeys = useMemo(() => {
@@ -997,6 +1052,39 @@ export default function VehiclesOverviewPage() {
         setDetailDrawerLoading(false);
       }
     }
+  }
+
+  async function handleShowEeoHistory(vehicle) {
+    const spz = String(vehicle?.spz || '').trim();
+    if (!spz) {
+      setSyncMessage('Vozidlo nemá SPZ pro načtení servisní historie z EEO.');
+      setSyncMessageVisible(true);
+      return;
+    }
+
+    setEeoHistoryVehicle(vehicle);
+    setEeoHistoryModalOpen(true);
+    setEeoHistoryLoading(true);
+    setEeoHistoryError('');
+    setEeoHistoryOrders([]);
+
+    try {
+      const response = await fetchVehicleServiceHistory(spz);
+      const orders = Array.isArray(response?.orders) ? response.orders : [];
+      setEeoHistoryOrders(orders);
+    } catch (error) {
+      const message = String(error?.response?.data?.error || error?.message || '').trim();
+      setEeoHistoryError(message !== '' ? message : 'Servisní historii se nepodařilo načíst z EEO.');
+    } finally {
+      setEeoHistoryLoading(false);
+    }
+  }
+
+  function handleCloseEeoHistory() {
+    setEeoHistoryModalOpen(false);
+    setEeoHistoryVehicle(null);
+    setEeoHistoryOrders([]);
+    setEeoHistoryError('');
   }
 
   function handleToggleVehicleSelection(vehicleKey, checked) {
@@ -1237,6 +1325,34 @@ export default function VehiclesOverviewPage() {
         </div>
 
         <div className="overview-header-actions">
+          {Number(ccsExpirySummary.expiringSoonCount || 0) > 0 ? (
+            <button
+              type="button"
+              className={`overview-ccs-expiry-badge overview-ccs-expiry-badge-expiring${ccsExpiryFilter === 'expiring' ? ' is-active' : ''}`}
+              onClick={() => toggleCcsExpiryFilter('expiring')}
+              title={`Filtrovat vozidla s CCS kartou končící do 3 měsíců. Nalezeno: ${Number(ccsExpirySummary.expiringSoonCount || 0)}`}
+              aria-label={`Filtrovat vozidla s CCS kartou končící do 3 měsíců. Nalezeno: ${Number(ccsExpirySummary.expiringSoonCount || 0)}`}
+            >
+              <AppIcon name="warning" size={14} weight="fill" className="overview-ccs-expiry-badge-icon" />
+              <span className="overview-ccs-expiry-badge-label">CCS brzy končí</span>
+              <span>{Number(ccsExpirySummary.expiringSoonCount || 0)}</span>
+            </button>
+          ) : null}
+
+          {Number(ccsExpirySummary.expiredCount || 0) > 0 ? (
+            <button
+              type="button"
+              className={`overview-ccs-expiry-badge overview-ccs-expiry-badge-expired${ccsExpiryFilter === 'expired' ? ' is-active' : ''}`}
+              onClick={() => toggleCcsExpiryFilter('expired')}
+              title={`Filtrovat vozidla s propadlou CCS kartou. Nalezeno: ${Number(ccsExpirySummary.expiredCount || 0)}`}
+              aria-label={`Filtrovat vozidla s propadlou CCS kartou. Nalezeno: ${Number(ccsExpirySummary.expiredCount || 0)}`}
+            >
+              <AppIcon name="warning" size={14} weight="fill" className="overview-ccs-expiry-badge-icon" />
+              <span className="overview-ccs-expiry-badge-label">CCS po splatnosti</span>
+              <span>{Number(ccsExpirySummary.expiredCount || 0)}</span>
+            </button>
+          ) : null}
+
           <div className="overview-location-legend" aria-label="Legenda polohy vozidel">
             <span className="overview-location-legend-title">Legenda:</span>
             <span className="overview-location-legend-item">
@@ -1249,7 +1365,7 @@ export default function VehiclesOverviewPage() {
             </span>
             <span className="overview-location-legend-item">
               <span className="overview-location-legend-strip overview-location-legend-strip-v-servisu" aria-hidden="true" />
-              <span>V servisu - Sr (manuální zadání): {locationStateCounts.v_servisu_manual}, Sa (automaticky): {locationStateCounts.v_servisu_auto}</span>
+              <span>V servisu - <span title="Sr = manuální zadání">Sr</span>: {locationStateCounts.v_servisu_manual}, <span title="Sa = automatický stav">Sa</span>: {locationStateCounts.v_servisu_auto}</span>
             </span>
           </div>
 
@@ -1330,6 +1446,31 @@ export default function VehiclesOverviewPage() {
                   type="checkbox"
                   checked={selectedLocationStates.includes(option.value)}
                   onChange={() => toggleMultiFilter('locationStates', selectedLocationStates, option.value)}
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+
+        <details
+          className="overview-multifilter"
+          open={openFilterKey === 'ccsStates'}
+          onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'ccsStates' : null)}
+        >
+          <summary>
+            CCS: {selectedLabel(
+              selectedCcsStates.map((value) => CCS_STATE_OPTIONS.find((option) => option.value === value)?.label || value),
+              'vše'
+            )}
+          </summary>
+          <div className="overview-multifilter-menu">
+            {CCS_STATE_OPTIONS.map((option) => (
+              <label key={`ccs-state-${option.value}`} className="overview-multifilter-option">
+                <input
+                  type="checkbox"
+                  checked={selectedCcsStates.includes(option.value)}
+                  onChange={() => toggleMultiFilter('ccsStates', selectedCcsStates, option.value)}
                 />
                 <span>{option.label}</span>
               </label>
@@ -1512,6 +1653,24 @@ export default function VehiclesOverviewPage() {
       {selectedLocationStates.length > 0 ? (
         <div className="status-box">
           Aktivní filtr polohy: {selectedLocationStates.map((value) => LOCATION_STATE_OPTIONS.find((option) => option.value === value)?.label || value).join(', ')}.
+        </div>
+      ) : null}
+
+      {selectedCcsStates.length > 0 ? (
+        <div className="status-box">
+          Aktivní filtr CCS: {selectedCcsStates.map((value) => CCS_STATE_OPTIONS.find((option) => option.value === value)?.label || value).join(', ')}.
+        </div>
+      ) : null}
+
+      {ccsExpiryFilter === 'expiring' ? (
+        <div className="status-box status-box-warning">
+          Aktivní filtr CCS: vozidla s kartou končící do 3 měsíců.
+        </div>
+      ) : null}
+
+      {ccsExpiryFilter === 'expired' ? (
+        <div className="status-box status-box-alert">
+          Aktivní filtr CCS: vozidla s kartou po splatnosti.
         </div>
       ) : null}
 
@@ -1861,6 +2020,7 @@ export default function VehiclesOverviewPage() {
         onSetVehicleStatusActive={canEditVehicles ? ((item) => handleBulkSetVehicleStatus('aktivni', item?.id)) : undefined}
         onSetVehicleStatusInactive={canEditVehicles ? ((item) => handleOpenBulkStatusDialog('neaktivni', item?.id)) : undefined}
         canEditVehicleCard={canEditVehicles}
+        onShowEeoHistory={handleShowEeoHistory}
       />
 
       {detailDrawerOpen ? (
@@ -1885,7 +2045,21 @@ export default function VehiclesOverviewPage() {
                       detailDrawerItem?.w_model_vozu || detailDrawerSummary?.w_model_vozu,
                       'Nezadáno'
                     );
-                    return `${manufacturer} ${model}`.trim();
+                    const webdispecinkCarId = String(
+                      detailDrawerSummary?.legacy_carid || detailDrawerItem?.legacy_carid || ''
+                    ).trim();
+                    const title = `${manufacturer} ${model}`.trim();
+
+                    return (
+                      <>
+                        {title}
+                        {webdispecinkCarId !== '' ? (
+                          <sup className="vehicle-detail-drawer-wd-id" title="WebDispečink ID vozidla">
+                            #{webdispecinkCarId}
+                          </sup>
+                        ) : null}
+                      </>
+                    );
                   })()}
                 </h3>
                 <p className="vehicle-detail-drawer-subline">
@@ -1969,6 +2143,15 @@ export default function VehiclesOverviewPage() {
                   })()}
                 </section>
 
+                <VehicleMonthlyBillingCard
+                  vehicleId={Number(detailDrawerVehicleId || 0)}
+                  carName={joinNonEmpty([
+                    detailDrawerSummary?.w_tovarni_znacka,
+                    detailDrawerSummary?.w_model_vozu,
+                    detailDrawerSummary?.spz,
+                  ], ' ')}
+                />
+
                 <section className="vehicle-detail-drawer-block">
                   <h4>
                     <AppIcon name="legacy" size={16} weight="duotone" />
@@ -2031,6 +2214,111 @@ export default function VehiclesOverviewPage() {
           </aside>
         </div>
       ) : null}
+
+      {eeoHistoryModalOpen ? (() => {
+        // Spočítat celkový součet cen ze všech objednávek
+        const totalEeoPrice = eeoHistoryOrders.reduce((sum, order) => {
+          const price = Number(order?.faktura_celkem) > 0 
+            ? Number(order?.faktura_celkem) 
+            : Number(order?.polozky_celkem || 0);
+          return sum + price;
+        }, 0);
+
+        return (
+          <div className="vehicle-detail-drawer-backdrop" role="presentation" onClick={handleCloseEeoHistory}>
+            <aside
+              className="vehicle-detail-drawer eeo-history-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Servisní historie z EEO"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="vehicle-detail-drawer-head">
+                <div className="vehicle-detail-drawer-head-main">
+                  <h3>
+                    <AppIcon name="legacy" size={20} weight="duotone" />
+                    <span>Servisní historie z EEO</span>
+                  </h3>
+                  <p className="vehicle-detail-drawer-subline">
+                    <strong>{printableValue(eeoHistoryVehicle?.spz)}</strong>
+                    <span>•</span>
+                    <span>{printableValue(eeoHistoryVehicle?.w_popis, 'Bez volacího znaku')}</span>
+                  </p>
+                </div>
+                <div className="vehicle-detail-drawer-head-side">
+                  <button
+                    type="button"
+                    className="station-edit-close"
+                    onClick={handleCloseEeoHistory}
+                    aria-label="Zavřít servisní historii"
+                  >
+                    ×
+                  </button>
+                  {eeoHistoryOrders.length > 0 && (
+                    <div className="eeo-total-price">
+                      <strong>{formatMoney(totalEeoPrice)}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+            <div className="vehicle-detail-drawer-body">
+              {eeoHistoryLoading ? (
+                <p className="muted">Načítám servisní historii z EEO...</p>
+              ) : null}
+
+              {eeoHistoryError ? (
+                <div className="status-box status-box-warning">{eeoHistoryError}</div>
+              ) : null}
+
+              {!eeoHistoryLoading && !eeoHistoryError && eeoHistoryOrders.length === 0 ? (
+                <p className="muted">V EEO nebyly nalezeny servisní objednávky pro toto vozidlo.</p>
+              ) : null}
+
+              {!eeoHistoryLoading && eeoHistoryOrders.length > 0 ? (
+                <div className="eeo-history-list">
+                  {eeoHistoryOrders.map((order, index) => {
+                    const orderNumber = order?.cislo_objednavky || '-';
+                    const orderState = order?.stav_objednavky || '-';
+                    const orderSubject = order?.predmet || '-';
+                    const supplier = order?.dodavatel_nazev || '-';
+                    const sentDate = formatDateTimeCs(order?.dt_odeslani);
+                    
+                    // Prioritně zobrazit dt_dokonceni, pokud není, tak dt_akceptace
+                    const completedDate = order?.dt_dokonceni;
+                    const acceptedDate = order?.dt_akceptace;
+                    const displayDate = completedDate || acceptedDate || order?.dt_odeslani || order?.dt_objednavky;
+                    const displayDateFormatted = formatDateTimeCs(displayDate);
+                    const displayLabel = completedDate ? 'Dokončeno' : 'Potvrzeno';
+                    
+                    const total = Number(order?.faktura_celkem) > 0 ? formatMoney(order?.faktura_celkem) : formatMoney(order?.polozky_celkem);
+                    const stateClass = normalizeText(orderState).includes('dokonc') ? 'done' : 'default';
+
+                    return (
+                      <article key={`order-${order?.id || index}`} className="eeo-history-item">
+                        <div className="eeo-history-head">
+                          <strong>{orderNumber}</strong>
+                          <span className="eeo-history-price">{total}</span>
+                        </div>
+                        <p className="eeo-history-subject">{orderSubject}</p>
+                        <div className="eeo-history-meta">
+                          <span>Odesláno: {sentDate}</span>
+                          <span>{displayLabel}: {displayDateFormatted}</span>
+                        </div>
+                        <div className="eeo-history-meta">
+                          <span>{supplier}</span>
+                          <span className={`eeo-history-state ${stateClass}`}>{orderState}</span>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          </aside>
+        </div>
+        );
+      })() : null}
 
       <div className="table-footer-controls">
         <p className="muted">

@@ -228,7 +228,7 @@ class Queries
         WHERE REPLACE(o.predmet, ' ', '') LIKE CONCAT('%', :spz, '%')
           AND o.aktivni = 1
           AND o.stav_objednavky NOT IN ('Rozpracovaná', 'Ke schválení', 'Schválená', 'Zamítnutá', 'Zrušena')
-        ORDER BY o.dt_akceptace DESC
+        ORDER BY COALESCE(o.dt_dokonceni, o.dt_akceptace, o.dt_odeslani, o.dt_objednavky) DESC
         LIMIT 50
     ";
 }
