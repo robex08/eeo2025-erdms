@@ -3992,14 +3992,38 @@ final class VehicleRepository
             $eeoDb = Database::connectEeo();
             $eeoDbName = Env::get('EEO_DB_NAME', 'eeo2025');
 
+            $hasPositionsKm = $this->tableExists(self::TBL_WD_POSITIONS)
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_km');
+            $posKmSelect = $hasPositionsKm
+                ? 'COALESCE(last_pos.w_km, NULL) AS najeto_km'
+                : 'NULL AS najeto_km';
+
             $sql = "
                 SELECT
+                    v.id,
                     v.spz,
                     COALESCE(NULLIF(TRIM(d.w_popis), ''), '-') AS zkl,
                     COALESCE(NULLIF(TRIM(d.w_stanoviste), ''), '-') AS misto,
-                    COUNT(DISTINCT o.id) AS service_count
+                    COUNT(DISTINCT o.id) AS service_count,
+                    " . $posKmSelect . "
                 FROM vehicles_cars_list_v2 v
-                LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id
+                LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id";
+
+            if ($hasPositionsKm) {
+                $sql .= "
+                LEFT JOIN (
+                    SELECT cp.w_carid, cp.w_km
+                    FROM " . self::TBL_WD_POSITIONS . " cp
+                    INNER JOIN (
+                        SELECT w_carid, MAX(id) AS max_id
+                        FROM " . self::TBL_WD_POSITIONS . "
+                        GROUP BY w_carid
+                    ) latest ON latest.w_carid = cp.w_carid AND latest.max_id = cp.id
+                ) last_pos ON last_pos.w_carid = v.legacy_carid";
+            }
+
+            $sql .= "
                 {$accessJoin}
                 INNER JOIN {$eeoDbName}.25a_objednavky o
                     ON REPLACE(o.predmet, ' ', '') LIKE CONCAT('%', REPLACE(v.spz, ' ', ''), '%')
@@ -4007,7 +4031,13 @@ final class VehicleRepository
                     AND o.stav_objednavky NOT IN ('Rozpracovaná', 'Ke schválení', 'Schválená', 'Zamítnutá', 'Zrušena')
                     AND LENGTH(REPLACE(v.spz, ' ', '')) >= 4
                 {$aliasWhere}
-                GROUP BY v.id, v.spz, zkl, misto
+                GROUP BY v.id, v.spz, zkl, misto";
+
+            if ($hasPositionsKm) {
+                $sql .= ", najeto_km";
+            }
+
+            $sql .= "
                 ORDER BY service_count DESC, v.spz ASC
                 LIMIT :eeo_top_limit
             ";
@@ -4028,10 +4058,12 @@ final class VehicleRepository
 
             return array_map(
                 static fn(array $row): array => [
+                    'id' => (int) ($row['id'] ?? 0),
                     'spz' => (string) ($row['spz'] ?? ''),
                     'zkl' => (string) ($row['zkl'] ?? '-'),
                     'misto' => (string) ($row['misto'] ?? '-'),
                     'serviceCount' => (int) ($row['service_count'] ?? 0),
+                    'najetoKm' => $row['najeto_km'] !== null ? (int) $row['najeto_km'] : null,
                 ],
                 $rows
             );
@@ -4047,12 +4079,18 @@ final class VehicleRepository
             $hasPositionsLn = $this->tableExists(self::TBL_WD_POSITIONS)
                 && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
                 && $this->columnExists(self::TBL_WD_POSITIONS, 'w_ln');
+            $hasPositionsKm = $this->tableExists(self::TBL_WD_POSITIONS)
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
+                && $this->columnExists(self::TBL_WD_POSITIONS, 'w_km');
             $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
             $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
 
             $posLnSelect = $hasPositionsLn
                 ? 'COALESCE(last_pos.w_ln, "") AS pos_ln'
                 : '"" AS pos_ln';
+            $posKmSelect = $hasPositionsKm
+                ? 'COALESCE(last_pos.w_km, NULL) AS najeto_km'
+                : 'NULL AS najeto_km';
             $manualLocationStateSelect = $hasManualLocationState
                 ? 'COALESCE(d.manual_location_state, "") AS manual_location_state'
                 : '"" AS manual_location_state';
@@ -4066,15 +4104,23 @@ final class VehicleRepository
                     COALESCE(NULLIF(TRIM(d.w_popis), ""), "-") AS zkl,
                     COALESCE(NULLIF(TRIM(d.w_stanoviste), ""), "") AS w_stanoviste,
                     ' . $posLnSelect . ',
+                    ' . $posKmSelect . ',
                     ' . $manualLocationStateSelect . ',
                     ' . $serviceContextJsonSelect . '
                 FROM vehicles_cars_list_v2 v
                 LEFT JOIN vehicles_detail_cards d ON d.vehicle_id = v.id';
 
-            if ($hasPositionsLn) {
+            if ($hasPositionsLn || $hasPositionsKm) {
+                $selectFields = [];
+                if ($hasPositionsLn) {
+                    $selectFields[] = 'cp.w_ln';
+                }
+                if ($hasPositionsKm) {
+                    $selectFields[] = 'cp.w_km';
+                }
                 $sql .= '
                 LEFT JOIN (
-                    SELECT cp.w_carid, cp.w_ln
+                    SELECT cp.w_carid' . ($selectFields !== [] ? ', ' . implode(', ', $selectFields) : '') . '
                     FROM ' . self::TBL_WD_POSITIONS . ' cp
                     INNER JOIN (
                         SELECT w_carid, MAX(id) AS max_id
@@ -4131,12 +4177,19 @@ final class VehicleRepository
                     ? ($manualServiceName ?: ($manualServiceAddress ?: ($currentPlace !== '' ? $currentPlace : '-')))
                     : ($currentPlace !== '' ? $currentPlace : 'Detekováno automaticky');
 
+                $najetoKm = $row['najeto_km'] ?? null;
+                if ($najetoKm !== null) {
+                    $najetoKm = (int) $najetoKm;
+                }
+
                 $result[] = [
+                    'id' => (int) ($row['id'] ?? 0),
                     'spz' => (string) ($row['spz'] ?? ''),
                     'zkl' => (string) ($row['zkl'] ?? '-'),
                     'misto' => trim((string) ($row['w_stanoviste'] ?? '')) !== '' ? (string) ($row['w_stanoviste'] ?? '') : '-',
                     'serviceName' => $serviceName,
                     'source' => $isManualService ? 'Sr' : 'Sa',
+                    'najetoKm' => $najetoKm,
                 ];
             }
 
