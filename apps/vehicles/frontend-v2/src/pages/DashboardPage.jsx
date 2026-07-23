@@ -535,28 +535,71 @@ function PieChartCard({ title, subtitle, rows, compactLegend = false, onSegmentS
 }
 
 function ServiceTopListCard({ rows }) {
+  const navigate = useNavigate();
+
+  const handleRowClick = (item) => {
+    if (!item?.spz) return;
+    const params = new URLSearchParams();
+    params.set('q', String(item.spz));
+    params.set('status', 'all');
+    params.set('page', '1');
+    params.set('sortBy', 'spz');
+    params.set('sortDir', 'asc');
+    params.set('perPage', '25');
+    navigate(`/vehicles?${params.toString()}`);
+  };
+
+  const formatKm = (km) => {
+    if (km == null || km === '') return '-';
+    const num = Number(km);
+    if (!Number.isFinite(num)) return '-';
+    return num.toLocaleString('cs-CZ').replace(/\s/g, ' ') + ' km';
+  };
+
   return (
     <article className="info-card dashboard-service-card">
       <h3>Top 10 vozidel s největší servisní četností dle EEO v2</h3>
-      <div className="dashboard-service-list-head" role="presentation">
-        <span>#</span>
-        <span>SPZ</span>
-        <span>ZKL</span>
-        <span>Místo</span>
-        <span className="dashboard-service-list-head-right">POČET</span>
-      </div>
-
       {rows.length > 0 ? (
-        <div className="dashboard-service-list">
-          {rows.map((item, index) => (
-            <div className="dashboard-service-list-row" key={`svc-top-${item.spz}-${index}`}>
-              <span className="dashboard-service-rank">#{index + 1}</span>
-              <span className="dashboard-service-main">{item.spz || '-'}</span>
-              <span className="dashboard-service-sub">{item.zkl || '-'}</span>
-              <span className="dashboard-service-place">{item.misto || '-'}</span>
-              <strong className="dashboard-service-value">{item.serviceCount}</strong>
-            </div>
-          ))}
+        <div className="dashboard-service-table-wrap">
+          <table className="dashboard-service-table dashboard-service-table-top10">
+            <colgroup>
+              <col />
+              <col />
+              <col />
+              <col />
+              <col />
+              <col />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">#</th>
+                <th scope="col">SPZ</th>
+                <th scope="col">ZKL</th>
+                <th scope="col">Místo</th>
+                <th scope="col" className="dashboard-service-col-km">NÁJEZD</th>
+                <th scope="col" className="dashboard-service-col-count">POČET</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item, index) => (
+                <tr
+                  className="dashboard-service-row-clickable"
+                  key={`svc-top-${item.id}-${item.spz}-${index}`}
+                  onClick={() => handleRowClick(item)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleRowClick(item)}
+                >
+                  <td className="dashboard-service-rank">#{index + 1}</td>
+                  <td className="dashboard-service-main">{item.spz || '-'}</td>
+                  <td className="dashboard-service-sub">{item.zkl || '-'}</td>
+                  <td className="dashboard-service-place">{item.misto || '-'}</td>
+                  <td className="dashboard-service-km dashboard-service-col-km">{formatKm(item.najetoKm)}</td>
+                  <td className="dashboard-service-value dashboard-service-col-count">{item.serviceCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <p className="muted">Data zatím nejsou k dispozici.</p>
@@ -566,28 +609,71 @@ function ServiceTopListCard({ rows }) {
 }
 
 function VehiclesInServiceCard({ rows }) {
+  const navigate = useNavigate();
+
+  const handleRowClick = (item) => {
+    if (!item?.spz) return;
+    const params = new URLSearchParams();
+    params.set('q', String(item.spz));
+    params.set('status', 'all');
+    params.set('page', '1');
+    params.set('sortBy', 'spz');
+    params.set('sortDir', 'asc');
+    params.set('perPage', '25');
+    navigate(`/vehicles?${params.toString()}`);
+  };
+
+  const formatKm = (km) => {
+    if (km == null || km === '') return '-';
+    const num = Number(km);
+    if (!Number.isFinite(num)) return '-';
+    return num.toLocaleString('cs-CZ').replace(/\s/g, ' ') + ' km';
+  };
+
   return (
     <article className="info-card dashboard-service-card">
       <h3>Seznam vozidel právě v servisu</h3>
-      <div className="dashboard-service-list-head dashboard-service-list-head-service" role="presentation">
-        <span>Sr/Sa</span>
-        <span>SPZ</span>
-        <span>ZKL</span>
-        <span>Místo</span>
-        <span>Název servisu</span>
-      </div>
-
       {rows.length > 0 ? (
-        <div className="dashboard-service-list">
-          {rows.map((item, index) => (
-            <div className="dashboard-service-list-row dashboard-service-list-row-service" key={`svc-now-${item.spz}-${item.source}-${index}`}>
-              <span className={`dashboard-service-source dashboard-service-source-${String(item.source || '').toLowerCase()}`}>{item.source || '-'}</span>
-              <span className="dashboard-service-main">{item.spz || '-'}</span>
-              <span className="dashboard-service-sub">{item.zkl || '-'}</span>
-              <span className="dashboard-service-place">{item.misto || '-'}</span>
-              <span className="dashboard-service-name">{item.serviceName || '-'}</span>
-            </div>
-          ))}
+        <div className="dashboard-service-table-wrap">
+          <table className="dashboard-service-table dashboard-service-table-service">
+            <colgroup>
+              <col />
+              <col />
+              <col />
+              <col />
+              <col />
+              <col />
+            </colgroup>
+            <thead>
+              <tr>
+                <th scope="col">Sr/Sa</th>
+                <th scope="col">SPZ</th>
+                <th scope="col">ZKL</th>
+                <th scope="col">Místo</th>
+                <th scope="col">Název servisu</th>
+                <th scope="col" className="dashboard-service-col-km">NÁJEZD</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((item, index) => (
+                <tr
+                  className="dashboard-service-row-clickable"
+                  key={`svc-now-${item.id}-${item.spz}-${item.source}-${index}`}
+                  onClick={() => handleRowClick(item)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && handleRowClick(item)}
+                >
+                  <td><span className={`dashboard-service-source dashboard-service-source-${String(item.source || '').toLowerCase()}`}>{item.source || '-'}</span></td>
+                  <td className="dashboard-service-main">{item.spz || '-'}</td>
+                  <td className="dashboard-service-sub">{item.zkl || '-'}</td>
+                  <td className="dashboard-service-place">{item.misto || '-'}</td>
+                  <td className="dashboard-service-name">{item.serviceName || '-'}</td>
+                  <td className="dashboard-service-km dashboard-service-col-km">{formatKm(item.najetoKm)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       ) : (
         <p className="muted">Aktuálně není evidováno žádné vozidlo v servisu.</p>

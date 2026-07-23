@@ -640,31 +640,7 @@
   margin: 0.18rem 0 0.62rem;
 }
 
-.dashboard-service-list-head {
-  display: grid;
-  grid-template-columns: auto minmax(70px, auto) minmax(70px, 1fr) minmax(120px, 1.25fr) auto;
-  gap: 0.45rem;
-  align-items: center;
-  margin: 0.2rem 0 0.45rem;
-  padding: 0 0.5rem;
-  color: var(--ink-soft);
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.dashboard-service-list-head-service {
-  grid-template-columns: auto minmax(70px, auto) minmax(64px, 1fr) minmax(120px, 1.25fr) minmax(140px, 1.5fr);
-}
-
-.dashboard-service-list-head-right {
-  justify-self: end;
-}
-
-.dashboard-service-list {
-  display: grid;
-  gap: 0.4rem;
+.dashboard-service-table-wrap {
   max-height: 390px;
   overflow: auto;
   padding-right: 0.2rem;
@@ -672,38 +648,109 @@
   scrollbar-color: color-mix(in srgb, var(--primary) 38%, var(--border)) transparent;
 }
 
-.dashboard-service-list::-webkit-scrollbar {
+.dashboard-service-table-wrap::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.dashboard-service-list::-webkit-scrollbar-track {
+.dashboard-service-table-wrap::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.dashboard-service-list::-webkit-scrollbar-thumb {
+.dashboard-service-table-wrap::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--primary) 34%, var(--border));
   border-radius: 999px;
 }
 
-.dashboard-service-list::-webkit-scrollbar-thumb:hover {
+.dashboard-service-table-wrap::-webkit-scrollbar-thumb:hover {
   background: color-mix(in srgb, var(--primary) 52%, var(--border));
 }
 
-.dashboard-service-list-row {
-  display: grid;
-  grid-template-columns: auto minmax(70px, auto) minmax(70px, 1fr) minmax(120px, 1.25fr) auto;
-  gap: 0.45rem;
-  align-items: center;
-  padding: 0.42rem 0.5rem;
-  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--surface) 88%, var(--surface-2) 12%);
+.dashboard-service-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 0.4rem;
+  table-layout: fixed;
 }
 
-.dashboard-service-list-row-service {
-  grid-template-columns: auto minmax(70px, auto) minmax(64px, 1fr) minmax(120px, 1.25fr) minmax(140px, 1.5fr);
-  align-items: start;
+.dashboard-service-table th {
+  padding: 0 0.5rem;
+  color: var(--ink-soft);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  text-align: left;
+}
+
+.dashboard-service-table td {
+  padding: 0.42rem 0.5rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  background: color-mix(in srgb, var(--surface) 88%, var(--surface-2) 12%);
+  vertical-align: middle;
+  text-align: left;
+}
+
+.dashboard-service-table td:first-child {
+  border-left: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+.dashboard-service-table td:last-child {
+  border-right: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+.dashboard-service-table-top10 col:nth-child(1) { width: 3.2rem; }
+.dashboard-service-table-top10 col:nth-child(2) { width: 7.2rem; }
+.dashboard-service-table-top10 col:nth-child(3) { width: 18%; }
+.dashboard-service-table-top10 col:nth-child(4) { width: 28%; }
+.dashboard-service-table-top10 col:nth-child(5) { width: 8.2rem; }
+.dashboard-service-table-top10 col:nth-child(6) { width: 3.2rem; }
+
+.dashboard-service-table-service col:nth-child(1) { width: 3.8rem; }
+.dashboard-service-table-service col:nth-child(2) { width: 6.8rem; }
+.dashboard-service-table-service col:nth-child(3) { width: 16%; }
+.dashboard-service-table-service col:nth-child(4) { width: 24%; }
+.dashboard-service-table-service col:nth-child(5) { width: 31%; }
+.dashboard-service-table-service col:nth-child(6) { width: 9.2rem; }
+
+.dashboard-service-row-clickable {
+  cursor: pointer;
+}
+
+.dashboard-service-row-clickable td {
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.dashboard-service-row-clickable:hover td {
+  background: color-mix(in srgb, var(--primary) 8%, var(--surface));
+  border-top-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+  border-bottom-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+}
+
+.dashboard-service-row-clickable:hover td:first-child {
+  border-left-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+}
+
+.dashboard-service-row-clickable:hover td:last-child {
+  border-right-color: color-mix(in srgb, var(--primary) 28%, var(--border));
+}
+
+.dashboard-service-row-clickable:focus-visible td {
+  border-top-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  border-bottom-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+
+.dashboard-service-row-clickable:focus-visible td:first-child {
+  border-left-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+
+.dashboard-service-row-clickable:focus-visible td:last-child {
+  border-right-color: color-mix(in srgb, var(--primary) 45%, var(--border));
 }
 
 .dashboard-service-rank {
@@ -721,7 +768,8 @@
 
 .dashboard-service-sub,
 .dashboard-service-place,
-.dashboard-service-name {
+.dashboard-service-name,
+.dashboard-service-km {
   color: var(--ink-soft);
   font-size: 0.76rem;
   white-space: normal;
@@ -730,11 +778,36 @@
   word-break: break-word;
 }
 
+.dashboard-service-km {
+  color: var(--ink);
+  font-weight: 700;
+}
+
 .dashboard-service-value {
-  justify-self: end;
   color: color-mix(in srgb, var(--primary) 82%, var(--ink) 18%);
   font-size: 0.86rem;
   font-weight: 800;
+}
+
+.dashboard-service-col-km {
+  text-align: right;
+}
+
+.dashboard-service-col-count {
+  text-align: center;
+}
+
+/* Explicit table-column alignment to avoid conflicts with generic th/td rules */
+.dashboard-service-table-top10 th:nth-child(5),
+.dashboard-service-table-top10 td:nth-child(5),
+.dashboard-service-table-service th:nth-child(6),
+.dashboard-service-table-service td:nth-child(6) {
+  text-align: right;
+}
+
+.dashboard-service-table-top10 th:nth-child(6),
+.dashboard-service-table-top10 td:nth-child(6) {
+  text-align: center;
 }
 
 .dashboard-service-source {
@@ -1241,21 +1314,12 @@
     grid-template-columns: 1fr;
   }
 
-  .dashboard-service-list-row,
-  .dashboard-service-list-row,
-  .dashboard-service-list-head,
-  .dashboard-service-list-row-service,
-  .dashboard-service-list-head-service {
-    grid-template-columns: auto minmax(64px, auto) minmax(0, 1fr);
+  .dashboard-service-table-top10 {
+    min-width: 640px;
   }
 
-  .dashboard-service-value,
-  .dashboard-service-sub,
-  .dashboard-service-place,
-  .dashboard-service-name,
-  .dashboard-service-list-head-right {
-    grid-column: 2 / -1;
-    justify-self: start;
+  .dashboard-service-table-service {
+    min-width: 760px;
   }
 }
 
