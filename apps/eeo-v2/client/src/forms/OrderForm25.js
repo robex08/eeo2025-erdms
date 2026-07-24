@@ -23717,9 +23717,10 @@ function OrderForm25() {
                       </>
                     )}
 
-                  {/* 📊 INFO BOX - Zobrazí se POD checkboxy AŽ PO ULOŽENÍ DO DATABÁZE */}
+                  {/* 📊 INFO BOX PRO UŽIVATELE S PRÁVY SCHVALOVÁNÍ - Zobrazí se POD checkboxy AŽ PO ULOŽENÍ DO DATABÁZE */}
                   {/* Zobrazí se pouze když workflow stav obsahuje SCHVALENA (= uloženo v DB se schválením) */}
-                  {hasWorkflowState(formData.stav_workflow_kod, 'SCHVALENA') && formData.stav_schvaleni && !!formData.schvalovatel_id && formData.dt_schvaleni && (
+                  {/* ⚠️ OPRAVENO: Přidána kontrola canViewApprovalSection aby se nezobrazoval duplicitně */}
+                  {canViewApprovalSection && hasWorkflowState(formData.stav_workflow_kod, 'SCHVALENA') && formData.stav_schvaleni && !!formData.schvalovatel_id && formData.dt_schvaleni && (
                     <div style={{
                       marginTop: '1rem',
                       padding: '1rem',
@@ -23861,9 +23862,12 @@ function OrderForm25() {
 
               {/* 📊 INFO BOX PRO UŽIVATELE BEZ PRÁV SCHVALOVÁNÍ */}
               {/* Zobrazí se uživatelům bez práva ke schvalování, pokud má objednávka stav schválení */}
+              {/* ⚠️ OPRAVENO: Použití !canViewApprovalSection místo !(canApproveOrders || canManageOrders) */}
+              {/* Důvod: Při zastupování může mít uživatel canViewApprovalSection=true, ale canApproveOrders=false */}
+              {/* což způsobovalo duplicitní zobrazení info boxu */}
               {!!formData.id &&
                !hasWorkflowState(formData.stav_workflow_kod, 'NOVA') &&
-               !(canApproveOrders || canManageOrders) &&
+               !canViewApprovalSection &&
                formData.stav_schvaleni && !!formData.schvalovatel_id && formData.dt_schvaleni && (
                 <div style={{
                   marginTop: '1rem',
