@@ -2484,6 +2484,13 @@ const parseOrdersResponse = (response) => {
   return { orders, pagination, status, message };
 };
 
+const normalizeContractsResponse = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.smlouvy)) return response.smlouvy;
+  if (Array.isArray(response?.data)) return response.data;
+  return [];
+};
+
 /* ─── Vlastní MultiSelect filtr (V3 styl) ───────────────────────── */
 function FilterMultiSelect({ options, values, onChange, placeholder, disabled = false }) {
   const [open, setOpen] = React.useState(false);
@@ -3844,7 +3851,7 @@ export default function StatsReportsPage() {
       platnost_od: filters.dateFrom || null,
       platnost_do: filters.dateTo || null
     });
-    return response?.smlouvy || response?.data || [];
+    return normalizeContractsResponse(response);
   }, [token, username, filters.usekIds, filters.dateFrom, filters.dateTo]);
 
   const loadCashbookData = useCallback(async () => {
@@ -4107,7 +4114,6 @@ export default function StatsReportsPage() {
     setLoadingTabs(prev => new Set([...prev, 'spend']));
     try {
       const promises = [];
-      if (needsOrders) promises.push(loadOrders());
       if (needsOrders) promises.push(loadOrders({ source: 'spend' }));
       if (needsInvoices) promises.push(loadInvoices({ source: 'spend' }));
       promises.push(loadContracts());
@@ -4122,7 +4128,7 @@ export default function StatsReportsPage() {
         setInvoices(results[idx].data || []);
         idx++;
       }
-      setContracts(results[idx] || []);
+      setContracts(normalizeContractsResponse(results[idx]));
       
       setLoadedTabs(prev => new Set([...prev, 'spend']));
     } catch (e) {
@@ -4342,7 +4348,7 @@ export default function StatsReportsPage() {
       setInvoices(invoicesResult.data || []);
     }
     if (contractsResult) {
-      setContracts(contractsResult || []);
+      setContracts(normalizeContractsResponse(contractsResult));
     }
 
     if (ordersResult || invoicesResult) {
