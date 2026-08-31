@@ -1531,14 +1531,18 @@ function handle_orders_v3_update($input, $config) {
         // 🔐 Autorizační guard pro schvalovací akce:
         // musí být přímý příkazce objednávky, admin/ORDER_MANAGE, nebo aktivní zástupce
         // právě tohoto příkazce s oprávněním approve.
+        // Posuzujeme jen NOVĚ přidávané stavy oproti historii (ne celé kumulativní pole),
+        // protože STORNO (ZRUSENA) není schvalovací akce - i po dřívějším SCHVALENA
+        // (které v historii zůstává) musí jít stornovat běžným uživatelem.
         $is_approval_action = false;
         $workflow_for_auth = [];
         if (isset($payload['stav_workflow_kod'])) {
             $workflow_for_auth = json_decode($payload['stav_workflow_kod'], true);
             if (is_array($workflow_for_auth)) {
-                $is_approval_action = in_array('SCHVALENA', $workflow_for_auth, true)
-                    || in_array('ZAMITNUTA', $workflow_for_auth, true)
-                    || in_array('CEKA_SE', $workflow_for_auth, true);
+                $newly_added_workflow_states = array_diff($workflow_for_auth, $audit_old_workflow);
+                $is_approval_action = in_array('SCHVALENA', $newly_added_workflow_states, true)
+                    || in_array('ZAMITNUTA', $newly_added_workflow_states, true)
+                    || in_array('CEKA_SE', $newly_added_workflow_states, true);
             }
         }
 

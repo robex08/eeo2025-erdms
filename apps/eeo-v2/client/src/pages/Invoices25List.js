@@ -3560,7 +3560,7 @@ const Invoices25List = () => {
           }
 
           // Moje nezkontrolované faktury (předané na mě, bez věcné kontroly)
-          if (user_id && inv.fa_predana_zam_id === user_id && !inv.potvrdil_vecnou_spravnost_id) {
+          if (user_id && inv.aktivni && inv.stav !== 'STORNO' && inv.fa_predana_zam_id === user_id && !inv.potvrdil_vecnou_spravnost_id) {
             acc.myUncheckedInvoices++;
           }
 

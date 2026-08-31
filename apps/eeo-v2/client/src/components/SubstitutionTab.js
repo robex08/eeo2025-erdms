@@ -927,7 +927,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     if (!form.zastupce_id) { setFormError('Vyberte zástupce ze seznamu.'); return; }
     if (!form.dt_od || !form.dt_do) { setFormError('Vyplňte datum začátku i konce zastupování.'); return; }
     if (modal !== 'edit' && form.dt_od < today()) { setFormError('Datum začátku nesmí být v minulosti.'); return; }
-    if (form.dt_od >= form.dt_do) { setFormError('Datum začátku musí být před datem konce.'); return; }
+    if (form.dt_od > form.dt_do) { setFormError('Datum začátku nesmí být po datu konce.'); return; }
     if (!form.popis || !form.popis.trim()) {
       setFormError('Poznámka / odůvodnění je povinná.');
       return;
@@ -987,7 +987,7 @@ export default function SubstitutionTab({ token, username, showToast, hasPermiss
     if (!adminForm.zastupce_id) { setAdminFormError('Vyberte zástupce.'); return; }
     if (adminForm.zastupovany_id === adminForm.zastupce_id) { setAdminFormError('Zastupovaný a zástupce nesmí být stejný uživatel.'); return; }
     if (!adminForm.dt_od || !adminForm.dt_do) { setAdminFormError('Vyplňte datum začátku i konce.'); return; }
-    if (adminForm.dt_od >= adminForm.dt_do) { setAdminFormError('Datum začátku musí být před datem konce.'); return; }
+    if (adminForm.dt_od > adminForm.dt_do) { setAdminFormError('Datum začátku nesmí být po datu konce.'); return; }
     if (!adminForm.popis || !adminForm.popis.trim()) { setAdminFormError('Poznámka / odůvodnění je povinná.'); return; }
     const opravneni = {};
     Object.keys(adminForm.opravneni).forEach(k => { opravneni[k] = adminForm.opravneni[k] ? 1 : 0; });

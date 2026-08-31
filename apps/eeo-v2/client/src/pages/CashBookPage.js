@@ -2296,12 +2296,12 @@ const CashBookPage = () => {
 
   // 🚨 Helper: Kontrola, zda existují uzavřené měsíce v budoucnosti
   const checkForClosedFutureMonths = useCallback(async (targetYear, targetMonth) => {
-    if (!mainAssignment?.uzivatel_id) {
+    if (!mainAssignment?.pokladna_id) {
       return { hasClosedFuture: false, closedMonths: [] };
     }
 
     try {
-      const userId = mainAssignment.uzivatel_id;
+      const pokladnaId = mainAssignment.pokladna_id;
       const closedMonths = [];
 
       // Projít všechny měsíce od targetMonth+1 do aktuálního měsíce
@@ -2323,7 +2323,9 @@ const CashBookPage = () => {
         checkYear < currentSystemYear ||
         (checkYear === currentSystemYear && checkMonth <= currentSystemMonth)
       ) {
-        const booksResult = await cashbookAPI.listBooks(userId, checkYear, checkMonth);
+        // ✅ OPRAVA: kontrola musí být podle pokladny, ne podle uživatele
+        // v nové logice je jedna kniha na pokladnu pro všechny uživatele
+        const booksResult = await cashbookAPI.listBooksForCashbox(pokladnaId, checkYear, checkMonth);
 
         if (booksResult.status === 'ok' && booksResult.data?.books?.length > 0) {
           const book = booksResult.data.books[0];
@@ -2480,14 +2482,16 @@ const CashBookPage = () => {
     }
 
     // 🚨 OCHRANA: Kontrola, zda pro cílový měsíc již kniha EXISTUJE
-    if (mainAssignment?.uzivatel_id) {
+    // ✅ OPRAVA: podle pokladny, ne podle uživatele
+    if (mainAssignment?.pokladna_id || mainAssignment?.uzivatel_id) {
       try {
-        const userId = mainAssignment.uzivatel_id;
-        const targetBooksResult = await cashbookAPI.listBooks(userId, targetYear, targetMonth);
+        const targetBooksResult = mainAssignment?.pokladna_id
+          ? await cashbookAPI.listBooksForCashbox(mainAssignment.pokladna_id, targetYear, targetMonth)
+          : await cashbookAPI.listBooks(mainAssignment.uzivatel_id, targetYear, targetMonth);
 
         // Pokud kniha NEEXISTUJE → zkontrolovat uzavřené měsíce v budoucnosti
-        if (!targetBooksResult.data?.books || targetBooksResult.data.books.length === 0) {
-          const { hasClosedFuture, closedMonths } = await checkForClosedFutureMonths(targetYear, targetMonth);
+        if (!targetBooksResult?.data?.books || targetBooksResult.data.books.length === 0) {
+          const { hasClosedFuture } = await checkForClosedFutureMonths(targetYear, targetMonth);
 
           if (hasClosedFuture) {
             // Existují uzavřené měsíce → BLOKOVAT vytvoření nové knihy v minulosti

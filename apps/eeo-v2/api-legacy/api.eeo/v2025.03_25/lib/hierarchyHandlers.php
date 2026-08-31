@@ -425,8 +425,8 @@ function handle_substitution_create($data, $pdo) {
     if (!$dt_od || !$dt_do || strtotime($dt_od) === false || strtotime($dt_do) === false) {
         return array('status' => 'error', 'message' => 'Neplatný formát datumu (YYYY-MM-DD)');
     }
-    if (strtotime($dt_od) >= strtotime($dt_do)) {
-        return array('status' => 'error', 'message' => 'Datum začátku musí být před datem konce');
+    if (strtotime($dt_od) > strtotime($dt_do)) {
+        return array('status' => 'error', 'message' => 'Datum začátku nesmí být po datu konce');
     }
 
     // Validace opravneni - musí být objekt/pole
@@ -625,8 +625,8 @@ function handle_substitution_update($data, $pdo) {
     if ($zastupovany_id === $zastupce_id) {
         return array('status' => 'error', 'message' => 'Nemůžete nastavit sebe jako vlastního zástupce');
     }
-    if (strtotime($dt_od) >= strtotime($dt_do)) {
-        return array('status' => 'error', 'message' => 'Datum začátku musí být před datem konce');
+    if (strtotime($dt_od) > strtotime($dt_do)) {
+        return array('status' => 'error', 'message' => 'Datum začátku nesmí být po datu konce');
     }
 
     $opravneni_input = $data['opravneni'];

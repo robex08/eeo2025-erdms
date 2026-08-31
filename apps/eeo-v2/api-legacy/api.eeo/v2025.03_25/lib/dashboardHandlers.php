@@ -328,9 +328,7 @@ function _dashboard_get_order_stats($db, $user_id, $is_admin, $has_order_read, $
     $v3_filter = _dashboard_build_order_v3_where($user_id, $is_admin, $permissions, $db);
     
     // Rok filtr - stejný jako OrderV3 (dt_objednavky = datum objednávky)
-    // + vyloučit zrušené/zamítnuté/smazané (stejná logika jako getOrderStatsWithPeriod)
     $where_sql = "o.aktivni = 1 AND o.id != 1 AND YEAR(o.dt_objednavky) = YEAR(CURDATE())"
-        . " AND JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN ('ZRUSENA', 'ZAMITNUTA', 'SMAZANA')"
         . " {$v3_filter['where']}";
     $params = $v3_filter['params'];
     $sql = "
@@ -2070,7 +2068,7 @@ function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_man
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(f.rozsirujici_data, '$.kontrola_radku.kontrolovano')) = 'true' THEN 1 ELSE 0 END) as zkontrolovano,
             SUM(CASE WHEN f.fa_poznamka IS NOT NULL AND TRIM(f.fa_poznamka) <> '' THEN 1 ELSE 0 END) as s_poznamkou,
             SUM(CASE WHEN f.vytvoril_uzivatel_id = {$uid} OR f.fa_predana_zam_id = {$uid} OR f.potvrdil_vecnou_spravnost_id = {$uid} THEN 1 ELSE 0 END) as moje_faktury,
-            SUM(CASE WHEN f.fa_predana_zam_id = {$uid} AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) THEN 1 ELSE 0 END) as moje_nezkontrolovane,
+            SUM(CASE WHEN f.fa_predana_zam_id = {$uid} AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) AND f.stav != 'STORNO' THEN 1 ELSE 0 END) as moje_nezkontrolovane,
             COALESCE(SUM(CASE WHEN f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as castka_zaplaceno,
             COALESCE(SUM(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as castka_po_splatnosti
         FROM `" . TBL_FAKTURY . "` f
@@ -2098,7 +2096,14 @@ function _dashboard_get_my_unchecked_invoices_count($db, $user_id) {
     $sql = "
         SELECT COUNT(*) as count
         FROM `" . TBL_FAKTURY . "` f
+                LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                LEFT JOIN `" . TBL_SMLOUVY . "` sm ON f.smlouva_id = sm.id
         WHERE f.aktivni = 1
+                    AND f.stav != 'STORNO'
+                    AND (
+                            (f.objednavka_id IS NULL OR o.aktivni = 1)
+                            AND (f.smlouva_id IS NULL OR sm.aktivni = 1)
+                    )
           AND f.fa_predana_zam_id = :user_id
           AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0)
     ";
@@ -3608,52 +3613,62 @@ function _finance_fetch_forex($targets = ['CZK', 'USD']) {
 }
 
 /**
- * Fetch akcií z Yahoo Finance v8 quote API (free, server-side only)
+ * Fetch akcií z Yahoo Finance v8 chart API (v7 quote endpoint nově vrací 401).
  * @param array $tickers - pole tickerů (např. ['AAPL', 'MSFT', 'TSLA'])
  */
 function _finance_fetch_stocks($tickers) {
     if (empty($tickers)) return [];
 
-    $symbols = implode(',', $tickers);
-    $url = 'https://query1.finance.yahoo.com/v8/finance/chart/' . urlencode($tickers[0]) . '?comparisons=' . urlencode(implode(',', array_slice($tickers, 1))) . '&range=1d&interval=1d';
-
-    // Alternativa: použít v7 quote endpoint pro více symbolů najednou
-    $url = 'https://query1.finance.yahoo.com/v7/finance/quote?symbols=' . urlencode($symbols);
-
-    $ctx = stream_context_create([
-        'http' => [
-            'method' => 'GET',
-            'timeout' => 12,
-            'header' => "Accept: application/json\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n"
-        ]
-    ]);
-
-    $response = @file_get_contents($url, false, $ctx);
-    if ($response === false) {
-        error_log("📈 Yahoo Finance API Error: Nepodařilo se načíst data pro: " . $symbols);
-        // Fallback: zkusit alternativní API
-        return _finance_fetch_stocks_fallback($tickers);
-    }
-
-    $data = json_decode($response, true);
-    $quotes = $data['quoteResponse']['result'] ?? [];
-
-    if (empty($quotes)) {
-        return _finance_fetch_stocks_fallback($tickers);
-    }
-
     $result = [];
-    foreach ($quotes as $q) {
+    foreach (array_slice($tickers, 0, 15) as $ticker) {
+        $ticker = strtoupper(trim($ticker));
+        if ($ticker === '') continue;
+
+        $meta = [];
+        foreach (['query1.finance.yahoo.com', 'query2.finance.yahoo.com'] as $host) {
+            $url = 'https://' . $host . '/v8/finance/chart/' . urlencode($ticker) . '?range=1d&interval=1d&includePrePost=false';
+            $ctx = stream_context_create([
+                'http' => [
+                    'method' => 'GET',
+                    'timeout' => 8,
+                    'ignore_errors' => true,
+                    'header' => "Accept: application/json\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\n"
+                ]
+            ]);
+
+            $response = @file_get_contents($url, false, $ctx);
+            if ($response === false) {
+                error_log("📈 Yahoo Chart API Error: Nepodařilo se načíst akcii {$ticker} přes {$host}");
+                continue;
+            }
+
+            $data = json_decode($response, true);
+            $chart = $data['chart']['result'][0] ?? null;
+            $meta = is_array($chart) ? ($chart['meta'] ?? []) : [];
+            if (!empty($meta) && isset($meta['regularMarketPrice'])) {
+                break;
+            }
+        }
+
+        if (empty($meta) || !isset($meta['regularMarketPrice'])) {
+            error_log("📈 Yahoo Chart API Error: Neplatná odpověď pro akcii: " . $ticker);
+            continue;
+        }
+
         $result[] = [
-            'ticker' => $q['symbol'] ?? '',
-            'name' => $q['shortName'] ?? $q['longName'] ?? $q['symbol'] ?? '',
-            'price' => $q['regularMarketPrice'] ?? null,
-            'change' => $q['regularMarketChangePercent'] ?? null,
-            'currency' => $q['currency'] ?? 'USD',
-            'market_cap' => $q['marketCap'] ?? null,
-            'exchange' => $q['exchangeTimezoneName'] ?? '',
-            'market_state' => $q['marketState'] ?? ''
+            'ticker' => $meta['symbol'] ?? $ticker,
+            'name' => $meta['longName'] ?? $meta['shortName'] ?? $meta['symbol'] ?? $ticker,
+            'price' => $meta['regularMarketPrice'] ?? null,
+            'change' => $meta['regularMarketChangePercent'] ?? null,
+            'currency' => $meta['currency'] ?? 'USD',
+            'market_cap' => null,
+            'exchange' => $meta['exchangeTimezoneName'] ?? '',
+            'market_state' => $meta['marketState'] ?? ''
         ];
+    }
+
+    if (empty($result)) {
+        return _finance_fetch_stocks_fallback($tickers);
     }
 
     return $result;
@@ -3666,7 +3681,7 @@ function _finance_fetch_stocks_fallback($tickers) {
     // Zkusit stooq.com CSV API (free, bez registrace)
     $result = [];
     foreach (array_slice($tickers, 0, 8) as $ticker) {
-        $url = 'https://stooq.com/q/l/?s=' . urlencode(strtolower($ticker) . '.us') . '&f=sd2t2ohlcv&h&e=json';
+        $url = 'https://stooq.com/q/l/?s=' . urlencode(strtolower($ticker) . '.us') . '&f=sd2t2ohlcv&h';
         $ctx = stream_context_create([
             'http' => [
                 'method' => 'GET',
@@ -3678,12 +3693,15 @@ function _finance_fetch_stocks_fallback($tickers) {
         $response = @file_get_contents($url, false, $ctx);
         if ($response === false) continue;
 
-        $data = json_decode($response, true);
-        $symbols = $data['symbols'] ?? [];
-        if (!empty($symbols) && isset($symbols[0]['close'])) {
-            $s = $symbols[0];
-            $open = $s['open'] ?? 0;
-            $close = $s['close'] ?? 0;
+        $lines = array_values(array_filter(array_map('trim', explode("\n", $response))));
+        if (count($lines) < 2) continue;
+
+        $columns = str_getcsv($lines[0]);
+        $values = str_getcsv($lines[1]);
+        $s = array_combine($columns, $values);
+        if ($s && isset($s['Close']) && is_numeric($s['Close'])) {
+            $open = isset($s['Open']) && is_numeric($s['Open']) ? (float)$s['Open'] : 0;
+            $close = (float)$s['Close'];
             $change_pct = $open > 0 ? (($close - $open) / $open * 100) : null;
 
             $result[] = [

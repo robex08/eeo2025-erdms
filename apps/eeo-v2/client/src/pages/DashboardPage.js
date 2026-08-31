@@ -6012,6 +6012,7 @@ function OrderStatsWidget({ stats, navigate }) {
     { key: 'total', label: 'Celkem', value: stats.total, color: '#1d4ed8', bg: '#dbeafe', filter: null },
     { key: 'ke_schvaleni', label: 'Ke schválení', value: stats.ke_schvaleni, color: '#dc2626', bg: '#fee2e2', filter: 'ke_schvaleni' },
     { key: 'schvalena', label: 'Schváleno', value: stats.schvalena, color: '#166534', bg: '#dcfce7', filter: 'schvalena' },
+    { key: 'zamitnuta', label: 'Zamítnuté', value: stats.zamitnuta, color: '#6b7280', bg: '#f3f4f6', filter: 'zamitnuta' },
     { key: 'rozpracovana', label: 'Rozpracované', value: stats.rozpracovana, color: '#b45309', bg: '#fef3c7', filter: 'rozpracovana' },
     { key: 'odeslana', label: 'Odeslané', value: stats.odeslana, color: '#0284c7', bg: '#e0f2fe', filter: 'odeslana' },
     { key: 'potvrzena', label: 'Potvrzené', value: stats.potvrzena, color: '#7c3aed', bg: '#ede9fe', filter: 'potvrzena' },
@@ -6020,7 +6021,8 @@ function OrderStatsWidget({ stats, navigate }) {
     { key: 'zkontrolovana', label: 'Zkontrolováno', value: stats.zkontrolovana, color: '#16a34a', bg: '#dcfce7', filter: 'zkontrolovana' },
     { key: 'k_uverejneni_do_registru', label: 'Ke zveřejnění', value: stats.k_uverejneni_do_registru, color: '#ea580c', bg: '#fff7ed', filter: 'k_uverejneni' },
     { key: 'uverejnena', label: 'Zveřejněné', value: stats.uverejnena, color: '#059669', bg: '#ecfdf5', filter: 'uverejnena' },
-    { key: 'dokoncena', label: 'Dokončené', value: stats.dokoncena, color: '#059669', bg: '#d1fae5', filter: 'dokoncena' }
+    { key: 'dokoncena', label: 'Dokončené', value: stats.dokoncena, color: '#059669', bg: '#d1fae5', filter: 'dokoncena' },
+    { key: 'zrusena', label: 'Zrušené', value: stats.zrusena, color: '#dc2626', bg: '#fee2e2', filter: 'zrusena' }
   ];
 
   return (

@@ -307,6 +307,11 @@ const SectionTitle = styled.div`
 // MAIN COMPONENT
 // =============================================================================
 
+const trimOrNull = (value) => {
+  const trimmedValue = String(value ?? '').trim();
+  return trimmedValue || null;
+};
+
 const LPFormModal = ({ isOpen, onClose, onSave, mode, initialData }) => {
   const { user, token } = useContext(AuthContext);
   const [formData, setFormData] = useState({
@@ -403,13 +408,13 @@ const LPFormModal = ({ isOpen, onClose, onSave, mode, initialData }) => {
   useEffect(() => {
     if (mode === 'edit' && initialData) {
       setFormData({
-        cislo_lp: initialData.cislo_lp || '',
-        cislo_uctu: initialData.cislo_uctu || '',
-        nazev_uctu: initialData.nazev_uctu || '',
-        vyuziti: initialData.vyuziti || '',
+        cislo_lp: String(initialData.cislo_lp ?? ''),
+        cislo_uctu: String(initialData.cislo_uctu ?? ''),
+        nazev_uctu: String(initialData.nazev_uctu ?? ''),
+        vyuziti: String(initialData.vyuziti ?? ''),
         usek_id: initialData.usek_id || '',
         user_id: initialData.user_id ? String(initialData.user_id) : '',
-        kategorie: initialData.kategorie || '',
+        kategorie: String(initialData.kategorie ?? ''),
         vyse_financniho_kryti: initialData.vyse_financniho_kryti || '',
         platne_od: initialData.platne_od || '',
         platne_do: initialData.platne_do || ''
@@ -477,13 +482,13 @@ const LPFormModal = ({ isOpen, onClose, onSave, mode, initialData }) => {
     try {
       // Připravit data pro API
       const dataToSave = {
-        cislo_lp: formData.cislo_lp.toString().trim(),
-        cislo_uctu: formData.cislo_uctu.trim() || null,
-        nazev_uctu: formData.nazev_uctu.trim() || null,
-        vyuziti: formData.vyuziti.trim() || null,
+        cislo_lp: String(formData.cislo_lp ?? '').trim(),
+        cislo_uctu: trimOrNull(formData.cislo_uctu),
+        nazev_uctu: trimOrNull(formData.nazev_uctu),
+        vyuziti: trimOrNull(formData.vyuziti),
         usek_id: parseInt(formData.usek_id, 10),
         user_id: formData.user_id ? parseInt(formData.user_id, 10) : null,
-        kategorie: formData.kategorie.trim() || null,
+        kategorie: trimOrNull(formData.kategorie),
         vyse_financniho_kryti: formData.vyse_financniho_kryti ? parseFloat(formData.vyse_financniho_kryti) : null,
         platne_od: formData.platne_od || null,
         platne_do: formData.platne_do || null

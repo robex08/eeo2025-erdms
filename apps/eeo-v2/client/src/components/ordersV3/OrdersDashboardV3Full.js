@@ -593,7 +593,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {(stats.withInvoices || 0) > 0 && (
+          {(displayStats.withInvoices || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.WITH_INVOICES.dark}
               $clickable
@@ -601,7 +601,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('s_fakturou')}
             >
               <StatHeader>
-                <StatValue>{stats.withInvoices || 0}</StatValue>
+                <StatValue>{displayStats.withInvoices || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.WITH_INVOICES.dark}>
                   <FontAwesomeIcon icon={faFileInvoice} />
                 </StatIcon>
@@ -610,7 +610,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {(stats.withUnpaidInvoices || 0) > 0 && (
+          {(displayStats.withUnpaidInvoices || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.WITH_UNPAID_INVOICES.dark}
               $clickable
@@ -618,7 +618,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('s_nezaplacenymi_fakturami')}
             >
               <StatHeader>
-                <StatValue>{stats.withUnpaidInvoices || 0}</StatValue>
+                <StatValue>{displayStats.withUnpaidInvoices || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.WITH_UNPAID_INVOICES.dark}>
                   <FontAwesomeIcon icon={faFileInvoice} />
                 </StatIcon>
@@ -627,7 +627,7 @@ const OrdersDashboardV3Full = ({
             </StatCard>
           )}
 
-          {(stats.withPaidInvoices || 0) > 0 && (
+          {(displayStats.withPaidInvoices || 0) > 0 && (
             <StatCard
               $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}
               $clickable
@@ -635,7 +635,7 @@ const OrdersDashboardV3Full = ({
               onClick={() => onStatusClick?.('se_zaplacenou_fakturou')}
             >
               <StatHeader>
-                <StatValue>{stats.withPaidInvoices || 0}</StatValue>
+                <StatValue>{displayStats.withPaidInvoices || 0}</StatValue>
                 <StatIcon $color={STATUS_COLORS.WITH_PAID_INVOICES.dark}>
                   <FontAwesomeIcon icon={faFileInvoice} />
                 </StatIcon>
@@ -1081,7 +1081,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.withInvoices || 0) && (
+        {shouldShowTile(displayStats.withInvoices || 0) && (
           <StatCard
             $color={STATUS_COLORS.WITH_INVOICES.dark}
             $clickable
@@ -1089,7 +1089,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('s_fakturou')}
           >
             <StatHeader>
-              <StatValue>{stats.withInvoices || 0}</StatValue>
+              <StatValue>{displayStats.withInvoices || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.WITH_INVOICES.dark}>
                 <FontAwesomeIcon icon={faFileInvoice} />
               </StatIcon>
@@ -1200,7 +1200,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.withComments || 0) && (
+        {shouldShowTile(displayStats.withComments || 0) && (
           <StatCard
             $color={STATUS_COLORS.WITH_COMMENTS.dark}
             $clickable
@@ -1208,7 +1208,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('s_komentari')}
           >
             <StatHeader>
-              <StatValue>{stats.withComments || 0}</StatValue>
+              <StatValue>{displayStats.withComments || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.WITH_COMMENTS.dark}>
                 <FontAwesomeIcon icon={faComment} />
               </StatIcon>
@@ -1217,7 +1217,7 @@ const OrdersDashboardV3Full = ({
           </StatCard>
         )}
 
-        {shouldShowTile(stats.withMyComments || 0) && (
+        {shouldShowTile(displayStats.withMyComments || 0) && (
           <StatCard
             $color={STATUS_COLORS.WITH_MY_COMMENTS.dark}
             $clickable
@@ -1225,7 +1225,7 @@ const OrdersDashboardV3Full = ({
             onClick={() => onStatusClick?.('s_mymi_komentari')}
           >
             <StatHeader>
-              <StatValue>{stats.withMyComments || 0}</StatValue>
+              <StatValue>{displayStats.withMyComments || 0}</StatValue>
               <StatIcon $color={STATUS_COLORS.WITH_MY_COMMENTS.dark}>
                 <FontAwesomeIcon icon={faCommentDots} />
               </StatIcon>

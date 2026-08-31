@@ -186,6 +186,13 @@ const Container = styled.div`
   z-index: ${props => props.isFullscreen ? '99999' : 'auto'};
   transition: all 0.3s ease-in-out;
 
+  input:disabled::placeholder,
+  input[readonly]::placeholder,
+  textarea:disabled::placeholder,
+  textarea[readonly]::placeholder {
+    color: transparent;
+  }
+
   /* Animace pro loading spinner */
   @keyframes spin {
     0% { transform: rotate(0deg); }
@@ -6061,27 +6068,24 @@ function OrderForm25() {
 
             if (draftData?.formData) {
               // 🎯 KONTROLA: Patří draft k této objednávce?
-              const draftOrderId = draftData.formData.id || draftData.formData?.id;
+              const draftOrderId = draftData.savedOrderId || draftData.formData.id;
               const currentOrderId = editOrderId || loadedData?.id;
 
-              // 💰 LP ČERPÁNÍ: Načíst z draftu pokud existuje
-              if (draftData.fakturyLPCerpani && typeof draftData.fakturyLPCerpani === 'object') {
-                setFakturyLPCerpani(draftData.fakturyLPCerpani);
-              }
+              // Při editaci lze použít jen draft se stejným ID. Koncept bez ID nesmí přepsat DB data.
+              if (currentOrderId && (!draftOrderId || String(draftOrderId) !== String(currentOrderId))) {
+                console.warn('⚠️ Draft nepatří k otevírané objednávce, ignoruji:', { draftOrderId, currentOrderId });
+              } else {
+                // 💰 LP ČERPÁNÍ: Načíst pouze z draftu stejné objednávky nebo z konceptu nové objednávky
+                if (draftData.fakturyLPCerpani && typeof draftData.fakturyLPCerpani === 'object') {
+                  setFakturyLPCerpani(draftData.fakturyLPCerpani);
+                }
 
-              // 🎯 Pokud draft má ID objednávky, JE TO EDITACE - nastav HNED!
-              if (draftOrderId) {
-                setIsEditMode(true);
-                // NOTE: formData.id removed - formData.id is single source of truth
-                // 🎯 PERSISTENCE: Ulož do draftManager pro refresh
-                draftManager.saveMetadata({ editOrderId: String(draftOrderId) });
-              }
+                if (draftOrderId) {
+                  setIsEditMode(true);
+                  draftManager.saveMetadata({ editOrderId: String(draftOrderId) });
+                }
 
-              // ❌ Pokud je draft od JINÉ objednávky, IGNORUJ ho!
-              if (currentOrderId && draftOrderId && String(draftOrderId) !== String(currentOrderId)) {
-                // NEPOUŽÍVAT tento draft - patří k jiné objednávce
-                console.warn('⚠️ Draft patří k jiné objednávce, ignoruji:', { draftOrderId, currentOrderId });
-              } else if (hasDbData) {
+                if (hasDbData) {
                 // ✅ Draft patří k TÉTO objednávce - použij ho!
                 // 🎯 NOVÁ LOGIKA: LocalStorage VŽDY má prioritu (obsahuje aktuální změny uživatele)
                 // DB slouží jen jako základ pro systémová/immutable pole
@@ -6102,9 +6106,10 @@ function OrderForm25() {
                     ? draftData.formData.faktury 
                     : (loadedData.faktury || [])
                 };
-              } else {
-                // NEW: Použij draft
-                finalData = draftData.formData;
+                } else {
+                  // NEW: Použij draft
+                  finalData = draftData.formData;
+                }
               }
             }
           }
@@ -11513,17 +11518,17 @@ function OrderForm25() {
       if (formData.zaruka) orderData.zaruka = formData.zaruka;
 
       // Informace o dodavateli
-      if (formData.dodavatel_id) orderData.dodavatel_id = formData.dodavatel_id;
-      if (formData.dodavatel_nazev) orderData.dodavatel_nazev = formData.dodavatel_nazev;
-      if (formData.dodavatel_adresa) orderData.dodavatel_adresa = formData.dodavatel_adresa;
-      if (formData.dodavatel_ico) orderData.dodavatel_ico = formData.dodavatel_ico;
-      if (formData.dodavatel_dic) orderData.dodavatel_dic = formData.dodavatel_dic;
-      if (formData.dodavatel_zastoupeny) orderData.dodavatel_zastoupeny = formData.dodavatel_zastoupeny;
+      orderData.dodavatel_id = formData.dodavatel_id || null;
+      orderData.dodavatel_nazev = formData.dodavatel_nazev || '';
+      orderData.dodavatel_adresa = formData.dodavatel_adresa || '';
+      orderData.dodavatel_ico = formData.dodavatel_ico || '';
+      orderData.dodavatel_dic = formData.dodavatel_dic || '';
+      orderData.dodavatel_zastoupeny = formData.dodavatel_zastoupeny || '';
 
       // Kontaktní osoba dodavatele
-      if (formData.dodavatel_kontakt_jmeno) orderData.dodavatel_kontakt_jmeno = formData.dodavatel_kontakt_jmeno;
-      if (formData.dodavatel_kontakt_email) orderData.dodavatel_kontakt_email = formData.dodavatel_kontakt_email;
-      if (formData.dodavatel_kontakt_telefon) orderData.dodavatel_kontakt_telefon = formData.dodavatel_kontakt_telefon;
+      orderData.dodavatel_kontakt_jmeno = formData.dodavatel_kontakt_jmeno || '';
+      orderData.dodavatel_kontakt_email = formData.dodavatel_kontakt_email || '';
+      orderData.dodavatel_kontakt_telefon = formData.dodavatel_kontakt_telefon || '';
 
       // Kontaktní údaje objednatele
       if (formData.objednatel_jmeno) orderData.objednatel_jmeno = formData.objednatel_jmeno;
