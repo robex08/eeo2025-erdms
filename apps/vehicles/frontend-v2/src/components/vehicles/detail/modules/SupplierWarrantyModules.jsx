@@ -26,6 +26,7 @@ function ModuleForm({ title, children, onCancel, onSubmit, saving, uploadRef, qu
       if (savedId > 0) {
         onCancel();
       }
+    } catch {
     } finally {
       setSubmitPhase('');
     }
