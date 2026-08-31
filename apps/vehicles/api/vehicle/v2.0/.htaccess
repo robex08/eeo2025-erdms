@@ -1,5 +1,9 @@
 RewriteEngine On
 
+<FilesMatch "^test_.*\.php$">
+	Require all denied
+</FilesMatch>
+
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^ index.php [QSA,L]

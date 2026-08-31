@@ -21,6 +21,8 @@ final class VehicleRepository
     private const TBL_CLAIMS = 'vehicles_claims_v2';
     private const TBL_VEHICLE_TIRES = 'vehicles_vehicle_tires_v2';
     private const TBL_VEHICLE_FUNDING = 'vehicles_vehicle_funding_v2';
+    private const TBL_VEHICLE_SUPPLIERS = 'vehicles_vehicle_suppliers_v2';
+    private const TBL_VEHICLE_WARRANTY_CLAIMS = 'vehicles_vehicle_warranty_claims_v2';
     private const TBL_LOOKUPS = 'vehicles_lookups_v2';
     private array $tableExistsCache = [];
     private array $columnExistsCache = [];
@@ -165,6 +167,7 @@ final class VehicleRepository
                 WHERE deleted_at IS NULL AND funding_status_code IN ("awarded", "sustainability")
                 GROUP BY vehicle_id
             ) funding ON funding.vehicle_id = v.id';
+        $fromSql .= $this->buildCardRecordCountsJoinSql('v.id');
 
         // Cross-database LEFT JOIN pro EEO servisní historii
         // Subquery agreguje objednávky podle SPZ vozidla, aby nevznikaly duplicity
@@ -561,6 +564,7 @@ final class VehicleRepository
                                      ' . $serviceContextJsonSelect . ',
                      DATE_FORMAT(v.last_update, "%Y-%m-%d %H:%i:%s") AS last_update,
                      ' . $dotaceSelect . ',
+                                     COALESCE(card_records.record_count, 0) AS card_record_count,
                      COALESCE(eeo_svc.service_count, 0) AS eeo_service_count
             ' . $fromSql . $whereSql;
         $stationContext = $this->buildStationAddressIndex();
@@ -605,7 +609,8 @@ final class VehicleRepository
             $allRowsStmt->execute();
 
             $allItems = $allRowsStmt->fetchAll() ?: [];
-            $allItems = $this->appendLocationState($allItems, $stationContext);
+            $activeServiceVehicleIds = $this->resolveActiveServiceVehicleIds(array_values(array_unique(array_filter(array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $allItems), static fn(int $vehicleId): bool => $vehicleId > 0))));
+            $allItems = $this->appendLocationState($allItems, $stationContext, $activeServiceVehicleIds);
 
             if ($hasLocationStateFilter) {
                 $locationStateIndex = array_fill_keys($locationStates, true);
@@ -634,17 +639,19 @@ final class VehicleRepository
             $pagedStmt->execute();
 
             $items = $pagedStmt->fetchAll() ?: [];
-            $items = $this->appendLocationState($items, $stationContext);
+            $activeServiceVehicleIds = $this->resolveActiveServiceVehicleIds(array_values(array_unique(array_filter(array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $items), static fn(int $vehicleId): bool => $vehicleId > 0))));
+            $items = $this->appendLocationState($items, $stationContext, $activeServiceVehicleIds);
 
             $locationSummaryStmt = $this->pdo->prepare(
-                'SELECT d.w_stanoviste, ' . $posLnSelect . ', ' . $manualLocationStateSelect . $fromSql . $whereSql
+                'SELECT v.id AS vehicle_id, d.w_stanoviste, ' . $posLnSelect . ', ' . $manualLocationStateSelect . $fromSql . $whereSql
             );
             $bindListParams($locationSummaryStmt);
             $locationSummaryStmt->execute();
 
             $locationSummaryRows = $locationSummaryStmt->fetchAll() ?: [];
             if ($locationSummaryRows !== []) {
-                $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext);
+                $activeServiceVehicleIdsForSummary = $this->resolveActiveServiceVehicleIds(array_values(array_unique(array_filter(array_map(static fn(array $row): int => (int) ($row['vehicle_id'] ?? $row['id'] ?? 0), $locationSummaryRows), static fn(int $vehicleId): bool => $vehicleId > 0))));
+                $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext, $activeServiceVehicleIdsForSummary);
                 $locationStateSummary = $this->summarizeLocationStates($locationSummaryRows);
             }
         }
@@ -857,22 +864,89 @@ final class VehicleRepository
         ];
     }
 
-    private function appendLocationState(array $items, array $stationContext): array
+    private function resolveActiveServiceVehicleIds(array $vehicleIds): array
+    {
+        if (!$this->tableExists(self::TBL_SERVICE_RECORDS) || $vehicleIds === []) {
+            return [];
+        }
+
+        $normalizedVehicleIds = array_values(array_unique(array_filter(array_map('intval', $vehicleIds), static fn(int $vehicleId): bool => $vehicleId > 0)));
+        if ($normalizedVehicleIds === []) {
+            return [];
+        }
+
+        $placeholders = [];
+        $params = [];
+        foreach ($normalizedVehicleIds as $index => $vehicleId) {
+            $paramName = 'vehicle_id_' . $index;
+            $placeholders[] = ':' . $paramName;
+            $params[$paramName] = $vehicleId;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT DISTINCT s.vehicle_id
+             FROM ' . self::TBL_SERVICE_RECORDS . ' s
+             WHERE s.deleted_at IS NULL
+               AND LOWER(TRIM(COALESCE(s.status_code, ""))) IN ("planned", "in_progress")
+               AND s.vehicle_id IN (' . implode(', ', $placeholders) . ')'
+        );
+
+        foreach ($params as $paramName => $paramValue) {
+            $stmt->bindValue(':' . $paramName, (int) $paramValue, PDO::PARAM_INT);
+        }
+
+        $stmt->execute();
+        $rows = $stmt->fetchAll() ?: [];
+
+        $result = [];
+        foreach ($rows as $row) {
+            $vehicleId = (int) ($row['vehicle_id'] ?? 0);
+            if ($vehicleId > 0) {
+                $result[$vehicleId] = true;
+            }
+        }
+
+        return $result;
+    }
+
+    private function appendLocationState(array $items, array $stationContext, array $activeServiceVehicleIds = []): array
     {
         $stationIndex = $stationContext['byStation'] ?? [];
         $serviceCandidates = $stationContext['serviceCandidates'] ?? [];
+        $activeServiceVehicleIdMap = [];
+        foreach ($activeServiceVehicleIds as $vehicleId => $value) {
+            $activeServiceVehicleIdMap[(int) $vehicleId] = (bool) $value;
+        }
 
         foreach ($items as &$item) {
+            $vehicleId = 0;
+            if (isset($item['vehicle_id'])) {
+                $vehicleId = (int) ($item['vehicle_id'] ?? 0);
+            }
+            if ($vehicleId <= 0 && isset($item['id'])) {
+                $vehicleId = (int) ($item['id'] ?? 0);
+            }
+
+            $hasActiveServiceRecord = $vehicleId > 0 && isset($activeServiceVehicleIdMap[$vehicleId]);
+            if ($hasActiveServiceRecord) {
+                $item['manual_location_state'] = 'v_servisu';
+            }
             $manualState = $this->normalizeManualLocationState((string) ($item['manual_location_state'] ?? ''));
             if ($manualState !== null) {
-                $item['location_state'] = $manualState;
+                $item['location_state'] = $hasActiveServiceRecord ? 'v_servisu' : $manualState;
                 if ($manualState === 'doma') {
-                    $item['is_home_location'] = 1;
+                    $item['is_home_location'] = $hasActiveServiceRecord ? 0 : 1;
                 } elseif ($manualState === 'v_akci' || $manualState === 'v_servisu') {
                     $item['is_home_location'] = 0;
                 } else {
                     $item['is_home_location'] = null;
                 }
+                continue;
+            }
+
+            if ($hasActiveServiceRecord) {
+                $item['location_state'] = 'v_servisu';
+                $item['is_home_location'] = 0;
                 continue;
             }
 
@@ -1257,6 +1331,7 @@ final class VehicleRepository
         $sql = 'SELECT
                     id,
                     category,
+                    category_name,
                     code,
                     item_name,
                     item_description,
@@ -1293,22 +1368,32 @@ final class VehicleRepository
 
     public function saveLookupItem(array $payload): array
     {
+        $categoryNameUpdate = $this->pdo->prepare(
+            'UPDATE ' . self::TBL_LOOKUPS . '
+             SET category_name = :category_name, updated_at = CURRENT_TIMESTAMP
+             WHERE category = :category'
+        );
+        $categoryNameUpdate->execute([
+            'category_name' => $payload['category_name'],
+            'category' => $payload['category'],
+        ]);
         $stmt = $this->pdo->prepare(
             'INSERT INTO ' . self::TBL_LOOKUPS . ' (
-                category, code, item_name, item_description, sort_order, is_active, metadata_json
+                category, category_name, code, item_name, item_description, sort_order, is_active, metadata_json
             ) VALUES (
-                :category, :code, :item_name, :item_description, :sort_order, :is_active, :metadata_json
+                :category, :category_name, :code, :item_name, :item_description, :sort_order, :is_active, :metadata_json
             ) ON DUPLICATE KEY UPDATE
+                category_name = VALUES(category_name),
                 item_name = VALUES(item_name),
                 item_description = VALUES(item_description),
                 sort_order = VALUES(sort_order),
                 is_active = VALUES(is_active),
-                metadata_json = VALUES(metadata_json),
+                metadata_json = COALESCE(VALUES(metadata_json), metadata_json),
                 updated_at = CURRENT_TIMESTAMP'
         );
         $stmt->execute($payload);
         $select = $this->pdo->prepare(
-            'SELECT id, category, code, item_name, item_description, sort_order, is_active, metadata_json
+            'SELECT id, category, category_name, code, item_name, item_description, sort_order, is_active, metadata_json
              FROM ' . self::TBL_LOOKUPS . '
              WHERE category = :category AND code = :code LIMIT 1'
         );
@@ -1325,6 +1410,25 @@ final class VehicleRepository
         );
         $stmt->execute(['category' => $category, 'code' => $code]);
         return $stmt->rowCount() > 0;
+    }
+
+    public function hasActiveLookupItem(string $category, string $code): bool
+    {
+        if (!$this->tableExists(self::TBL_LOOKUPS)) {
+            return false;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'SELECT 1 FROM ' . self::TBL_LOOKUPS . '
+             WHERE category = :category AND code = :code AND is_active = 1
+             LIMIT 1'
+        );
+        $stmt->execute([
+            'category' => strtolower(trim($category)),
+            'code' => strtolower(trim($code)),
+        ]);
+
+        return (bool) $stmt->fetchColumn();
     }
 
     public function listDrivers(
@@ -1417,7 +1521,8 @@ final class VehicleRepository
                     COALESCE(d.legacy_carid, v.legacy_carid) AS webdisp_carid,
                     v.spz AS vehicle_spz,
                     v.w_tovarni_znacka,
-                    v.w_model_vozu';
+                    v.w_model_vozu,
+                    COALESCE(card_records.record_count, 0) AS card_record_count';
 
         if ($hasKmColumns) {
             $sql .= ',
@@ -1517,6 +1622,7 @@ final class VehicleRepository
                             vv.id ASC
                         LIMIT 1
                     )
+                ' . $this->buildCardRecordCountsJoinSql('v.id') . '
                 WHERE 1=1';
 
         $params = [];
@@ -3875,7 +3981,7 @@ final class VehicleRepository
                 ? 'COALESCE(d.manual_location_state, "") AS manual_location_state'
                 : '"" AS manual_location_state';
 
-            $locationSummarySql = 'SELECT d.w_stanoviste, ' . ($hasPositionsLn
+            $locationSummarySql = 'SELECT v.id AS vehicle_id, d.w_stanoviste, ' . ($hasPositionsLn
                 ? 'COALESCE(last_pos.w_ln, "") AS pos_ln'
                 : '"" AS pos_ln') . ', ' . $manualLocationStateSelect . '
                  FROM vehicles_cars_list_v2 v
@@ -3901,7 +4007,8 @@ final class VehicleRepository
             $locationSummaryRows = $locationSummaryStmt->fetchAll() ?: [];
             if ($locationSummaryRows !== []) {
                 $stationContext = $this->buildStationAddressIndex();
-                $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext);
+                $activeServiceVehicleIds = $this->resolveActiveServiceVehicleIds(array_values(array_unique(array_filter(array_map(static fn(array $row): int => (int) ($row['vehicle_id'] ?? $row['id'] ?? 0), $locationSummaryRows), static fn(int $vehicleId): bool => $vehicleId > 0))));
+                $locationSummaryRows = $this->appendLocationState($locationSummaryRows, $stationContext, $activeServiceVehicleIds);
                 $locationStateSummary = $this->summarizeLocationStates($locationSummaryRows);
             }
         }
@@ -4255,7 +4362,8 @@ final class VehicleRepository
                 return [];
             }
 
-            $rows = $this->appendLocationState($rows, $this->buildStationAddressIndex());
+            $activeServiceVehicleIds = $this->resolveActiveServiceVehicleIds(array_values(array_unique(array_filter(array_map(static fn(array $row): int => (int) ($row['id'] ?? 0), $rows), static fn(int $vehicleId): bool => $vehicleId > 0))));
+            $rows = $this->appendLocationState($rows, $this->buildStationAddressIndex(), $activeServiceVehicleIds);
             $result = [];
 
             foreach ($rows as $row) {
@@ -4264,8 +4372,9 @@ final class VehicleRepository
                     continue;
                 }
 
+                $vehicleId = (int) ($row['id'] ?? 0);
                 $manualState = strtolower(trim((string) ($row['manual_location_state'] ?? '')));
-                $isManualService = $manualState === 'v_servisu';
+                $isManualService = $manualState === 'v_servisu' || isset($activeServiceVehicleIds[$vehicleId]);
 
                 $serviceContext = $this->decodeContextJson((string) ($row['service_context_json'] ?? ''));
                 $manualServiceName = $this->firstNonEmptyContextValue(
@@ -4443,6 +4552,37 @@ final class VehicleRepository
         return (float) $value;
     }
 
+    private function buildCardRecordCountsJoinSql(string $vehicleIdExpression): string
+    {
+        $tables = [
+            self::TBL_SERVICE_RECORDS,
+            self::TBL_VEHICLE_EQUIPMENT,
+            self::TBL_INSURANCE_POLICIES,
+            self::TBL_CLAIMS,
+            self::TBL_VEHICLE_TIRES,
+            self::TBL_VEHICLE_FUNDING,
+            self::TBL_VEHICLE_SUPPLIERS,
+            self::TBL_VEHICLE_WARRANTY_CLAIMS,
+            self::TBL_CARD_ATTACHMENTS,
+        ];
+        $selects = [];
+        foreach ($tables as $table) {
+            if ($this->tableExists($table)) {
+                $selects[] = 'SELECT vehicle_id FROM ' . $table . ' WHERE deleted_at IS NULL';
+            }
+        }
+
+        if ($selects === []) {
+            return ' LEFT JOIN (SELECT NULL AS vehicle_id, 0 AS record_count) card_records ON 1 = 0';
+        }
+
+        return ' LEFT JOIN (
+                SELECT vehicle_id, COUNT(*) AS record_count
+                FROM (' . implode(' UNION ALL ', $selects) . ') active_card_records
+                GROUP BY vehicle_id
+            ) card_records ON card_records.vehicle_id = ' . $vehicleIdExpression;
+    }
+
     private function tableExists(string $table): bool
     {
         if (array_key_exists($table, $this->tableExistsCache)) {
@@ -4490,6 +4630,8 @@ final class VehicleRepository
         $hasManualLocationState = $this->columnExists('vehicles_detail_cards', 'manual_location_state');
         $hasManualLocationUpdatedAt = $this->columnExists('vehicles_detail_cards', 'manual_location_updated_at');
         $hasServiceContextJson = $this->columnExists('vehicles_detail_cards', 'service_context_json');
+        $hasCcsCardNumber = $this->columnExists('vehicles_cars_list_v2', 'ccs_card_number');
+        $hasCcsCardExpiration = $this->columnExists('vehicles_cars_list_v2', 'ccs_card_expiration');
 
         $manualLocationStateSelect = $hasManualLocationState
             ? 'd.manual_location_state'
@@ -4500,6 +4642,12 @@ final class VehicleRepository
         $serviceContextJsonSelect = $hasServiceContextJson
             ? 'd.service_context_json'
             : 'NULL AS service_context_json';
+        $ccsCardNumberSelect = $hasCcsCardNumber
+            ? 'NULLIF(TRIM(v.ccs_card_number), "") AS ccs_card_number'
+            : 'NULL AS ccs_card_number';
+        $ccsCardExpirationSelect = $hasCcsCardExpiration
+            ? 'NULLIF(TRIM(v.ccs_card_expiration), "") AS ccs_card_expiration'
+            : 'NULL AS ccs_card_expiration';
         $hasInServiceFrom = $this->columnExists('vehicles_detail_cards', 'in_service_from');
         $hasPositionsKm = $this->tableExists(self::TBL_WD_POSITIONS)
             && $this->columnExists(self::TBL_WD_POSITIONS, 'w_carid')
@@ -4525,6 +4673,8 @@ final class VehicleRepository
                 v.w_groupname,
                 v.w_online,
                 v.w_disabled,
+                ' . $ccsCardNumberSelect . ',
+                ' . $ccsCardExpirationSelect . ',
                 v.last_update,
                 d.zzs_typ,
                 ' . $datumZarazeniSelect . ',
@@ -4587,6 +4737,47 @@ final class VehicleRepository
         $row = $stmt->fetch();
 
         return $row ?: null;
+    }
+
+    public function getVehicleModuleSummary(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
+    {
+        if ($this->getVehicleDetailById($vehicleId, $actorUserId, $actorHasAllVehicles) === null) {
+            return null;
+        }
+
+        $counts = [];
+        foreach ([
+            'service' => self::TBL_SERVICE_RECORDS,
+            'equipment' => self::TBL_VEHICLE_EQUIPMENT,
+            'policies' => self::TBL_INSURANCE_POLICIES,
+            'claims' => self::TBL_CLAIMS,
+            'tires' => self::TBL_VEHICLE_TIRES,
+            'funding' => self::TBL_VEHICLE_FUNDING,
+            'suppliers' => self::TBL_VEHICLE_SUPPLIERS,
+            'warranty_claims' => self::TBL_VEHICLE_WARRANTY_CLAIMS,
+            'attachments' => self::TBL_CARD_ATTACHMENTS,
+        ] as $key => $table) {
+            if (!$this->tableExists($table)) {
+                $counts[$key] = 0;
+                continue;
+            }
+            $stmt = $this->pdo->prepare('SELECT COUNT(*) FROM ' . $table . ' WHERE vehicle_id = :vehicle_id AND deleted_at IS NULL');
+            $stmt->execute(['vehicle_id' => $vehicleId]);
+            $counts[$key] = (int) $stmt->fetchColumn();
+        }
+
+        return [
+            'service' => $counts['service'],
+            'equipment' => $counts['equipment'],
+            'insurance' => $counts['policies'] + $counts['claims'],
+            'policies' => $counts['policies'],
+            'claims' => $counts['claims'],
+            'tires' => $counts['tires'],
+            'funding' => $counts['funding'],
+            'suppliers' => $counts['suppliers'],
+            'warranty_claims' => $counts['warranty_claims'],
+            'attachments' => $counts['attachments'],
+        ];
     }
 
     public function saveVehicleDetailById(int $vehicleId, array $payload, int $actorUserId = 0): void
@@ -4923,6 +5114,74 @@ final class VehicleRepository
         $stmt->execute();
 
         return $stmt->fetchAll() ?: [];
+    }
+
+    public function listVehicleEeoServiceHistory(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        $vehicleId = (int) $vehicleId;
+        if ($vehicleId <= 0) {
+            return [];
+        }
+
+        $vehicleSql = 'SELECT spz FROM vehicles_cars_list_v2 WHERE id = :vehicle_id LIMIT 1';
+        if ($actorUserId > 0 && !$actorHasAllVehicles) {
+            $vehicleSql = 'SELECT v.spz
+                FROM vehicles_cars_list_v2 v
+                INNER JOIN ' . self::TBL_ASSIGNMENTS . ' uva ON uva.vehicle_id = v.id AND uva.user_id = :access_user_id
+                WHERE v.id = :vehicle_id LIMIT 1';
+        }
+
+        try {
+            $vehicleStmt = $this->pdo->prepare($vehicleSql);
+            $vehicleStmt->bindValue(':vehicle_id', $vehicleId, PDO::PARAM_INT);
+            if ($actorUserId > 0 && !$actorHasAllVehicles) {
+                $vehicleStmt->bindValue(':access_user_id', $actorUserId, PDO::PARAM_INT);
+            }
+            $vehicleStmt->execute();
+            $spz = preg_replace('/\s+/', '', (string) ($vehicleStmt->fetchColumn() ?: ''));
+            if ($spz === '' || strlen($spz) < 4) {
+                return [];
+            }
+
+            $eeoDb = Database::connectEeo();
+            $eeoStmt = $eeoDb->prepare(
+                'SELECT
+                    o.id,
+                    o.cislo_objednavky,
+                    o.predmet,
+                    o.dodavatel_nazev,
+                    o.stav_objednavky,
+                    o.dt_objednavky,
+                    o.dt_odeslani,
+                    o.dt_akceptace,
+                    o.dt_dokonceni,
+                    COALESCE(f.fa_suma, 0) AS faktura_celkem,
+                    COALESCE(p.polozky_suma, 0) AS polozky_celkem
+                FROM 25a_objednavky o
+                LEFT JOIN (
+                    SELECT objednavka_id, SUM(fa_castka) AS fa_suma
+                    FROM 25a_objednavky_faktury
+                    WHERE stav != \'STORNO\'
+                    GROUP BY objednavka_id
+                ) f ON o.id = f.objednavka_id
+                LEFT JOIN (
+                    SELECT objednavka_id, SUM(cena_s_dph) AS polozky_suma
+                    FROM 25a_objednavky_polozky
+                    GROUP BY objednavka_id
+                ) p ON o.id = p.objednavka_id
+                WHERE REPLACE(o.predmet, \' \', \'\') LIKE CONCAT(\'%\', :spz, \'%\')
+                  AND o.aktivni = 1
+                  AND o.stav_objednavky NOT IN (\'Rozpracovaná\', \'Ke schválení\', \'Schválená\', \'Zamítnutá\', \'Zrušena\')
+                ORDER BY COALESCE(o.dt_dokonceni, o.dt_akceptace, o.dt_odeslani, o.dt_objednavky) DESC, o.id DESC
+                LIMIT 50'
+            );
+            $eeoStmt->execute(['spz' => $spz]);
+
+            return $eeoStmt->fetchAll() ?: [];
+        } catch (Throwable $e) {
+            error_log('Vehicles V2 EEO service history error: ' . $e->getMessage());
+            return [];
+        }
     }
 
     public function bulkUpdateLocationState(
@@ -5468,6 +5727,8 @@ final class VehicleRepository
         $sql = 'SELECT
                     a.id,
                     a.vehicle_id,
+                    a.context_module,
+                    a.context_record_id,
                     a.document_type_code,
                     a.original_filename,
                     a.mime_type,
@@ -5510,17 +5771,19 @@ final class VehicleRepository
     {
         $stmt = $this->pdo->prepare(
             'INSERT INTO ' . self::TBL_CARD_ATTACHMENTS . ' (
-                vehicle_id, document_type_code, original_filename, storage_key,
+                vehicle_id, context_module, context_record_id, document_type_code, original_filename, storage_key,
                 mime_type, size_bytes, sha256, note, valid_from, valid_to,
                 uploaded_by_user_id, metadata_json
             ) VALUES (
-                :vehicle_id, :document_type_code, :original_filename, :storage_key,
+                :vehicle_id, :context_module, :context_record_id, :document_type_code, :original_filename, :storage_key,
                 :mime_type, :size_bytes, :sha256, :note, :valid_from, :valid_to,
                 :uploaded_by_user_id, :metadata_json
             )'
         );
         $stmt->execute([
             'vehicle_id' => $payload['vehicle_id'],
+            'context_module' => $payload['context_module'],
+            'context_record_id' => $payload['context_record_id'],
             'document_type_code' => $payload['document_type_code'],
             'original_filename' => $payload['original_filename'],
             'storage_key' => $payload['storage_key'],
@@ -5535,6 +5798,95 @@ final class VehicleRepository
         ]);
 
         return (int) $this->pdo->lastInsertId();
+    }
+
+    public function attachmentContextRecordBelongsToVehicle(string $contextModule, int $recordId, int $vehicleId): bool
+    {
+        $tables = match ($contextModule) {
+            'service' => [self::TBL_SERVICE_RECORDS],
+            'equipment' => [self::TBL_VEHICLE_EQUIPMENT],
+            'tires' => [self::TBL_VEHICLE_TIRES],
+            'funding' => [self::TBL_VEHICLE_FUNDING],
+            'supplier' => [self::TBL_VEHICLE_SUPPLIERS],
+            'warranty_claim' => [self::TBL_VEHICLE_WARRANTY_CLAIMS],
+            'insurance_policy' => [self::TBL_INSURANCE_POLICIES],
+            'insurance_claim' => [self::TBL_CLAIMS],
+            default => [],
+        };
+        foreach ($tables as $table) {
+            $stmt = $this->pdo->prepare('SELECT 1 FROM ' . $table . ' WHERE id = :id AND vehicle_id = :vehicle_id AND deleted_at IS NULL LIMIT 1');
+            $stmt->execute(['id' => $recordId, 'vehicle_id' => $vehicleId]);
+            if ($stmt->fetchColumn()) return true;
+        }
+        return false;
+    }
+
+    public function listVehicleAttachmentsForContext(
+        int $vehicleId,
+        string $contextModule,
+        int $contextRecordId,
+        int $actorUserId = 0,
+        bool $actorHasAllVehicles = true
+    ): array {
+        if (!$this->tableExists(self::TBL_CARD_ATTACHMENTS) || $vehicleId <= 0 || $contextRecordId <= 0) {
+            return [];
+        }
+
+        $sql = 'SELECT a.id, a.vehicle_id, a.context_module, a.context_record_id, a.storage_key, a.original_filename
+                FROM ' . self::TBL_CARD_ATTACHMENTS . ' a
+                WHERE a.vehicle_id = :vehicle_id
+                  AND a.context_module = :context_module
+                  AND a.context_record_id = :context_record_id
+                  AND a.deleted_at IS NULL';
+        $params = [
+            'vehicle_id' => $vehicleId,
+            'context_module' => strtolower(trim($contextModule)),
+            'context_record_id' => $contextRecordId,
+        ];
+
+        if ($actorUserId > 0 && !$actorHasAllVehicles) {
+            $sql .= ' AND EXISTS (
+                        SELECT 1
+                        FROM ' . self::TBL_ASSIGNMENTS . ' uva
+                        WHERE uva.vehicle_id = a.vehicle_id
+                          AND uva.user_id = :access_user_id
+                    )';
+            $params['access_user_id'] = $actorUserId;
+        }
+
+        $stmt = $this->pdo->prepare($sql . ' ORDER BY a.created_at DESC, a.id DESC');
+        $stmt->execute($params);
+
+        return $stmt->fetchAll() ?: [];
+    }
+
+    public function softDeleteVehicleAttachmentsForContext(
+        int $vehicleId,
+        string $contextModule,
+        int $contextRecordId,
+        int $actorUserId
+    ): int {
+        if (!$this->tableExists(self::TBL_CARD_ATTACHMENTS) || $vehicleId <= 0 || $contextRecordId <= 0) {
+            return 0;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . self::TBL_CARD_ATTACHMENTS . '
+             SET deleted_at = :deleted_at, deleted_by_user_id = :deleted_by_user_id
+             WHERE vehicle_id = :vehicle_id
+               AND context_module = :context_module
+               AND context_record_id = :context_record_id
+               AND deleted_at IS NULL'
+        );
+        $stmt->execute([
+            'deleted_at' => $this->nowForDb(),
+            'deleted_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
+            'vehicle_id' => $vehicleId,
+            'context_module' => strtolower(trim($contextModule)),
+            'context_record_id' => $contextRecordId,
+        ]);
+
+        return $stmt->rowCount();
     }
 
     public function findVehicleAttachmentById(
@@ -5597,10 +5949,10 @@ final class VehicleRepository
 
         $stmt = $this->pdo->prepare(
             'INSERT INTO ' . self::TBL_CARD_AUDIT . ' (
-                vehicle_id, event_type, field_name, old_value, new_value,
+                vehicle_id, event_type, field_name, old_value, new_value, old_value_json, new_value_json,
                 actor_user_id, actor_type, source, occurred_at, metadata_json
             ) VALUES (
-                :vehicle_id, :event_type, :field_name, :old_value, :new_value,
+                :vehicle_id, :event_type, :field_name, :old_value, :new_value, :old_value_json, :new_value_json,
                 :actor_user_id, :actor_type, :source, :occurred_at, :metadata_json
             )'
         );
@@ -5610,11 +5962,86 @@ final class VehicleRepository
             'field_name' => $payload['field_name'] ?? null,
             'old_value' => $payload['old_value'] ?? null,
             'new_value' => $payload['new_value'] ?? null,
+            'old_value_json' => $payload['old_value_json'] ?? null,
+            'new_value_json' => $payload['new_value_json'] ?? null,
             'actor_user_id' => $payload['actor_user_id'] ?? null,
             'actor_type' => $payload['actor_type'] ?? 'system',
             'source' => $payload['source'] ?? 'v2',
             'occurred_at' => $payload['occurred_at'] ?? $this->nowForDb(),
             'metadata_json' => $payload['metadata_json'] ?? null,
+        ]);
+    }
+
+    private function moduleAuditChanges(array $existing, array $payload): array
+    {
+        $ignoredFields = ['id', 'vehicle_id', 'updated_by_user_id', 'metadata_json'];
+        $oldValues = [];
+        $newValues = [];
+
+        foreach ($payload as $field => $newValue) {
+            if (in_array($field, $ignoredFields, true)) {
+                continue;
+            }
+            $oldValue = $existing[$field] ?? null;
+            if ($this->moduleAuditValuesEqual($oldValue, $newValue)) {
+                continue;
+            }
+            $oldValues[$field] = $oldValue;
+            $newValues[$field] = $newValue;
+        }
+
+        return ['old' => $oldValues, 'new' => $newValues];
+    }
+
+    private function moduleAuditValuesEqual(mixed $oldValue, mixed $newValue): bool
+    {
+        $oldNormalized = $oldValue === null || $oldValue === '' ? null : $oldValue;
+        $newNormalized = $newValue === null || $newValue === '' ? null : $newValue;
+        if ($oldNormalized === null || $newNormalized === null) {
+            return $oldNormalized === $newNormalized;
+        }
+        if (is_numeric($oldNormalized) && is_numeric($newNormalized)) {
+            return (float) $oldNormalized === (float) $newNormalized;
+        }
+
+        return (string) $oldNormalized === (string) $newNormalized;
+    }
+
+    private function appendModuleUpdateAudit(array $existing, array $changes, string $eventType, string $fieldName, string $source, int $actorUserId): void
+    {
+        $this->appendVehicleAuditEvent([
+            'vehicle_id' => (int) $existing['vehicle_id'],
+            'event_type' => $eventType,
+            'field_name' => $fieldName,
+            'old_value_json' => json_encode($changes['old'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'new_value_json' => json_encode($changes['new'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'actor_user_id' => $actorUserId,
+            'actor_type' => 'user',
+            'source' => $source,
+        ]);
+    }
+
+    private function appendModuleCreateAudit(array $payload, string $eventType, string $fieldName, string $source): void
+    {
+        $ignoredFields = [
+            'id', 'vehicle_id', 'created_by_user_id', 'updated_by_user_id', 'metadata_json', 'source',
+            'cost_currency', 'premium_currency', 'deductible_currency', 'payout_currency', 'amount_currency',
+            'insurance_policy_id', 'service_station_code',
+        ];
+        $snapshot = [];
+        foreach ($payload as $field => $value) {
+            if (!in_array($field, $ignoredFields, true) && $value !== null && $value !== '') {
+                $snapshot[$field] = $value;
+            }
+        }
+        $this->appendVehicleAuditEvent([
+            'vehicle_id' => (int) $payload['vehicle_id'],
+            'event_type' => $eventType,
+            'field_name' => $fieldName,
+            'new_value_json' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'actor_user_id' => $payload['created_by_user_id'] ?? null,
+            'actor_type' => 'user',
+            'source' => $source,
         ]);
     }
 
@@ -5634,6 +6061,11 @@ final class VehicleRepository
                     s.service_kind_code,
                     s.status_code,
                     s.service_station_code,
+                    s.service_organization,
+                    s.service_station_name,
+                    s.service_city,
+                    s.service_street,
+                    s.service_postal_code,
                     s.supplier_name,
                     s.service_date,
                     s.planned_date,
@@ -5677,13 +6109,17 @@ final class VehicleRepository
             $stmt = $this->pdo->prepare(
                 'INSERT INTO ' . self::TBL_SERVICE_RECORDS . ' (
                     vehicle_id, service_type_code, service_kind_code, status_code,
-                    service_station_code, supplier_name, service_date, planned_date,
+                    service_station_code, service_organization, service_station_name,
+                    service_city, service_street, service_postal_code, supplier_name,
+                    service_date, planned_date,
                     completed_date, description, parts_description, cost_amount,
                     cost_currency, source, external_reference, created_by_user_id,
                     updated_by_user_id, metadata_json
                 ) VALUES (
                     :vehicle_id, :service_type_code, :service_kind_code, :status_code,
-                    :service_station_code, :supplier_name, :service_date, :planned_date,
+                    :service_station_code, :service_organization, :service_station_name,
+                    :service_city, :service_street, :service_postal_code, :supplier_name,
+                    :service_date, :planned_date,
                     :completed_date, :description, :parts_description, :cost_amount,
                     :cost_currency, :source, :external_reference, :created_by_user_id,
                     :updated_by_user_id, :metadata_json
@@ -5715,15 +6151,7 @@ final class VehicleRepository
                 ]);
             }
 
-            $this->appendVehicleAuditEvent([
-                'vehicle_id' => $payload['vehicle_id'],
-                'event_type' => 'service_record_created',
-                'field_name' => 'service_record',
-                'new_value' => (string) $recordId,
-                'actor_user_id' => $payload['created_by_user_id'],
-                'actor_type' => 'user',
-                'source' => 'v2_service',
-            ]);
+            $this->appendModuleCreateAudit($payload, 'service_record_created', 'service_record', 'v2_service');
 
             if ($startedTransaction) {
                 $this->pdo->commit();
@@ -5785,15 +6213,7 @@ final class VehicleRepository
         );
         $stmt->execute($payload);
         $id = (int) $this->pdo->lastInsertId();
-        $this->appendVehicleAuditEvent([
-            'vehicle_id' => $payload['vehicle_id'],
-            'event_type' => 'equipment_created',
-            'field_name' => 'equipment',
-            'new_value' => (string) $id,
-            'actor_user_id' => $payload['created_by_user_id'],
-            'actor_type' => 'user',
-            'source' => 'v2_equipment',
-        ]);
+        $this->appendModuleCreateAudit($payload, 'equipment_created', 'equipment', 'v2_equipment');
         return $id;
     }
 
@@ -5815,7 +6235,7 @@ final class VehicleRepository
     {
         $stmt = $this->pdo->prepare('INSERT INTO ' . self::TBL_INSURANCE_POLICIES . ' (vehicle_id, policy_type_code, policy_number, insurer_name, valid_from, valid_to, premium_amount, premium_currency, deductible_amount, deductible_currency, note, source, created_by_user_id, updated_by_user_id, metadata_json) VALUES (:vehicle_id, :policy_type_code, :policy_number, :insurer_name, :valid_from, :valid_to, :premium_amount, :premium_currency, :deductible_amount, :deductible_currency, :note, :source, :created_by_user_id, :updated_by_user_id, :metadata_json)');
         $stmt->execute($payload); $id = (int) $this->pdo->lastInsertId();
-        $this->appendVehicleAuditEvent(['vehicle_id' => $payload['vehicle_id'], 'event_type' => 'insurance_policy_created', 'field_name' => 'insurance_policy', 'new_value' => (string) $id, 'actor_user_id' => $payload['created_by_user_id'], 'actor_type' => 'user', 'source' => 'v2_insurance']);
+        $this->appendModuleCreateAudit($payload, 'insurance_policy_created', 'insurance_policy', 'v2_insurance');
         return $id;
     }
 
@@ -5837,7 +6257,7 @@ final class VehicleRepository
     {
         $stmt = $this->pdo->prepare('INSERT INTO ' . self::TBL_CLAIMS . ' (vehicle_id, insurance_policy_id, claim_status_code, claim_date, settled_date, title, description, payout_amount, payout_currency, deductible_amount, deductible_currency, source, external_reference, created_by_user_id, updated_by_user_id, metadata_json) VALUES (:vehicle_id, :insurance_policy_id, :claim_status_code, :claim_date, :settled_date, :title, :description, :payout_amount, :payout_currency, :deductible_amount, :deductible_currency, :source, :external_reference, :created_by_user_id, :updated_by_user_id, :metadata_json)');
         $stmt->execute($payload); $id = (int) $this->pdo->lastInsertId();
-        $this->appendVehicleAuditEvent(['vehicle_id' => $payload['vehicle_id'], 'event_type' => 'claim_created', 'field_name' => 'claim', 'new_value' => (string) $id, 'actor_user_id' => $payload['created_by_user_id'], 'actor_type' => 'user', 'source' => 'v2_claims']);
+        $this->appendModuleCreateAudit($payload, 'claim_created', 'claim', 'v2_claims');
         return $id;
     }
 
@@ -5859,7 +6279,7 @@ final class VehicleRepository
     {
         $stmt = $this->pdo->prepare('INSERT INTO ' . self::TBL_VEHICLE_TIRES . ' (vehicle_id, season_code, status_code, tire_set_name, dimension, quantity, tread_depth_mm, acquired_at, installed_at, removed_at, supplier_name, storage_location, cost_amount, cost_currency, note, source, created_by_user_id, updated_by_user_id, metadata_json) VALUES (:vehicle_id, :season_code, :status_code, :tire_set_name, :dimension, :quantity, :tread_depth_mm, :acquired_at, :installed_at, :removed_at, :supplier_name, :storage_location, :cost_amount, :cost_currency, :note, :source, :created_by_user_id, :updated_by_user_id, :metadata_json)');
         $stmt->execute($payload); $id = (int) $this->pdo->lastInsertId();
-        $this->appendVehicleAuditEvent(['vehicle_id' => $payload['vehicle_id'], 'event_type' => 'tires_created', 'field_name' => 'tires', 'new_value' => (string) $id, 'actor_user_id' => $payload['created_by_user_id'], 'actor_type' => 'user', 'source' => 'v2_tires']);
+        $this->appendModuleCreateAudit($payload, 'tires_created', 'tires', 'v2_tires');
         return $id;
     }
 
@@ -5881,7 +6301,7 @@ final class VehicleRepository
     {
         $stmt = $this->pdo->prepare('INSERT INTO ' . self::TBL_VEHICLE_FUNDING . ' (vehicle_id, funding_status_code, grant_title_code, call_code, provider_name, reference_number, award_date, eligible_amount, grant_amount, own_share_amount, amount_currency, sustainability_from, sustainability_to, note, source, created_by_user_id, updated_by_user_id, metadata_json) VALUES (:vehicle_id, :funding_status_code, :grant_title_code, :call_code, :provider_name, :reference_number, :award_date, :eligible_amount, :grant_amount, :own_share_amount, :amount_currency, :sustainability_from, :sustainability_to, :note, :source, :created_by_user_id, :updated_by_user_id, :metadata_json)');
         $stmt->execute($payload); $id = (int) $this->pdo->lastInsertId();
-        $this->appendVehicleAuditEvent(['vehicle_id' => $payload['vehicle_id'], 'event_type' => 'funding_created', 'field_name' => 'funding', 'new_value' => (string) $id, 'actor_user_id' => $payload['created_by_user_id'], 'actor_type' => 'user', 'source' => 'v2_funding']);
+        $this->appendModuleCreateAudit($payload, 'funding_created', 'funding', 'v2_funding');
         return $id;
     }
 
@@ -5903,9 +6323,12 @@ final class VehicleRepository
     {
         $existing = $this->findVehicleServiceRecordById($id, $actorUserId, $actorHasAllVehicles);
         if ($existing === null) return null;
-        $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_SERVICE_RECORDS . ' SET service_type_code = :service_type_code, service_kind_code = :service_kind_code, status_code = :status_code, service_station_code = :service_station_code, supplier_name = :supplier_name, service_date = :service_date, planned_date = :planned_date, completed_date = :completed_date, description = :description, parts_description = :parts_description, cost_amount = :cost_amount, cost_currency = :cost_currency, external_reference = :external_reference, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP, metadata_json = :metadata_json WHERE id = :id AND deleted_at IS NULL');
+        $changes = $this->moduleAuditChanges($existing, $payload);
+        if ($changes['old'] === []) return $existing;
+        $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_SERVICE_RECORDS . ' SET service_type_code = :service_type_code, service_kind_code = :service_kind_code, status_code = :status_code, service_station_code = :service_station_code, service_organization = :service_organization, service_station_name = :service_station_name, service_city = :service_city, service_street = :service_street, service_postal_code = :service_postal_code, supplier_name = :supplier_name, service_date = :service_date, planned_date = :planned_date, completed_date = :completed_date, description = :description, parts_description = :parts_description, cost_amount = :cost_amount, cost_currency = :cost_currency, external_reference = :external_reference, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP, metadata_json = :metadata_json WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute($payload + ['id' => $id]);
-        $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'service_record_updated', 'field_name' => 'service_record', 'old_value' => (string) $id, 'new_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_service']);
+        $this->updateManualEventForServiceRecord($id, $payload);
+        $this->appendModuleUpdateAudit($existing, $changes, 'service_record_updated', 'service_record', 'v2_service', $actorUserId);
         return $this->findVehicleServiceRecordById($id, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -5915,8 +6338,47 @@ final class VehicleRepository
         if ($existing === null) return false;
         $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_SERVICE_RECORDS . ' SET deleted_at = CURRENT_TIMESTAMP, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute(['id' => $id, 'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null]);
+        $this->deleteManualEventForServiceRecord($id);
         $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'service_record_deleted', 'field_name' => 'service_record', 'old_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_service']);
         return $stmt->rowCount() > 0;
+    }
+
+    private function updateManualEventForServiceRecord(int $serviceRecordId, array $payload): void
+    {
+        if (!$this->tableExists(self::TBL_MANUAL_EVENTS)) {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'UPDATE ' . self::TBL_MANUAL_EVENTS . '
+             SET event_state = :event_state,
+                 service_name = :service_name,
+                 note = :note,
+                 effective_at = COALESCE(:service_date, effective_at)
+             WHERE source = "v2_service"
+               AND JSON_UNQUOTE(JSON_EXTRACT(metadata_json, "$.service_record_id")) = :service_record_id'
+        );
+        $stmt->execute([
+            'event_state' => $payload['status_code'],
+            'service_name' => $payload['supplier_name'],
+            'note' => $payload['description'],
+            'service_date' => $payload['service_date'],
+            'service_record_id' => (string) $serviceRecordId,
+        ]);
+    }
+
+    private function deleteManualEventForServiceRecord(int $serviceRecordId): void
+    {
+        if (!$this->tableExists(self::TBL_MANUAL_EVENTS)) {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare(
+            'DELETE FROM ' . self::TBL_MANUAL_EVENTS . '
+             WHERE source = "v2_service"
+               AND JSON_UNQUOTE(JSON_EXTRACT(metadata_json, "$.service_record_id")) = :service_record_id'
+        );
+        $stmt->execute(['service_record_id' => (string) $serviceRecordId]);
     }
 
     public function findVehicleEquipmentById(int $id, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
@@ -5937,9 +6399,11 @@ final class VehicleRepository
     {
         $existing = $this->findVehicleEquipmentById($id, $actorUserId, $actorHasAllVehicles);
         if ($existing === null) return null;
+        $changes = $this->moduleAuditChanges($existing, $payload);
+        if ($changes['old'] === []) return $existing;
         $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_VEHICLE_EQUIPMENT . ' SET equipment_type_code = :equipment_type_code, status_code = :status_code, equipment_name = :equipment_name, manufacturer = :manufacturer, model = :model, serial_number = :serial_number, inventory_number = :inventory_number, supplier_name = :supplier_name, acquired_at = :acquired_at, warranty_valid_to = :warranty_valid_to, revision_valid_to = :revision_valid_to, cost_amount = :cost_amount, cost_currency = :cost_currency, note = :note, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP, metadata_json = :metadata_json WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute($payload + ['id' => $id]);
-        $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'equipment_updated', 'field_name' => 'equipment', 'old_value' => (string) $id, 'new_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_equipment']);
+        $this->appendModuleUpdateAudit($existing, $changes, 'equipment_updated', 'equipment', 'v2_equipment', $actorUserId);
         return $this->findVehicleEquipmentById($id, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -5971,9 +6435,11 @@ final class VehicleRepository
     {
         $existing = $this->findVehicleInsurancePolicyById($id, $actorUserId, $actorHasAllVehicles);
         if ($existing === null) return null;
+        $changes = $this->moduleAuditChanges($existing, $payload);
+        if ($changes['old'] === []) return $existing;
         $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_INSURANCE_POLICIES . ' SET policy_type_code = :policy_type_code, policy_number = :policy_number, insurer_name = :insurer_name, valid_from = :valid_from, valid_to = :valid_to, premium_amount = :premium_amount, premium_currency = :premium_currency, deductible_amount = :deductible_amount, deductible_currency = :deductible_currency, note = :note, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP, metadata_json = :metadata_json WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute($payload + ['id' => $id]);
-        $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'insurance_policy_updated', 'field_name' => 'insurance_policy', 'old_value' => (string) $id, 'new_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_insurance']);
+        $this->appendModuleUpdateAudit($existing, $changes, 'insurance_policy_updated', 'insurance_policy', 'v2_insurance', $actorUserId);
         return $this->findVehicleInsurancePolicyById($id, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -6005,9 +6471,11 @@ final class VehicleRepository
     {
         $existing = $this->findVehicleClaimById($id, $actorUserId, $actorHasAllVehicles);
         if ($existing === null) return null;
+        $changes = $this->moduleAuditChanges($existing, $payload);
+        if ($changes['old'] === []) return $existing;
         $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_CLAIMS . ' SET insurance_policy_id = :insurance_policy_id, claim_status_code = :claim_status_code, claim_date = :claim_date, settled_date = :settled_date, title = :title, description = :description, payout_amount = :payout_amount, payout_currency = :payout_currency, deductible_amount = :deductible_amount, deductible_currency = :deductible_currency, external_reference = :external_reference, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP, metadata_json = :metadata_json WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute($payload + ['id' => $id]);
-        $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'claim_updated', 'field_name' => 'claim', 'old_value' => (string) $id, 'new_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_claims']);
+        $this->appendModuleUpdateAudit($existing, $changes, 'claim_updated', 'claim', 'v2_claims', $actorUserId);
         return $this->findVehicleClaimById($id, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -6039,9 +6507,11 @@ final class VehicleRepository
     {
         $existing = $this->findVehicleTiresById($id, $actorUserId, $actorHasAllVehicles);
         if ($existing === null) return null;
+        $changes = $this->moduleAuditChanges($existing, $payload);
+        if ($changes['old'] === []) return $existing;
         $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_VEHICLE_TIRES . ' SET season_code = :season_code, status_code = :status_code, tire_set_name = :tire_set_name, dimension = :dimension, quantity = :quantity, tread_depth_mm = :tread_depth_mm, acquired_at = :acquired_at, installed_at = :installed_at, removed_at = :removed_at, supplier_name = :supplier_name, storage_location = :storage_location, cost_amount = :cost_amount, cost_currency = :cost_currency, note = :note, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP, metadata_json = :metadata_json WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute($payload + ['id' => $id]);
-        $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'tires_updated', 'field_name' => 'tires', 'old_value' => (string) $id, 'new_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_tires']);
+        $this->appendModuleUpdateAudit($existing, $changes, 'tires_updated', 'tires', 'v2_tires', $actorUserId);
         return $this->findVehicleTiresById($id, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -6073,9 +6543,11 @@ final class VehicleRepository
     {
         $existing = $this->findVehicleFundingById($id, $actorUserId, $actorHasAllVehicles);
         if ($existing === null) return null;
+        $changes = $this->moduleAuditChanges($existing, $payload);
+        if ($changes['old'] === []) return $existing;
         $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_VEHICLE_FUNDING . ' SET funding_status_code = :funding_status_code, grant_title_code = :grant_title_code, call_code = :call_code, provider_name = :provider_name, reference_number = :reference_number, award_date = :award_date, eligible_amount = :eligible_amount, grant_amount = :grant_amount, own_share_amount = :own_share_amount, amount_currency = :amount_currency, sustainability_from = :sustainability_from, sustainability_to = :sustainability_to, note = :note, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP, metadata_json = :metadata_json WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute($payload + ['id' => $id]);
-        $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'funding_updated', 'field_name' => 'funding', 'old_value' => (string) $id, 'new_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_funding']);
+        $this->appendModuleUpdateAudit($existing, $changes, 'funding_updated', 'funding', 'v2_funding', $actorUserId);
         return $this->findVehicleFundingById($id, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -6086,6 +6558,114 @@ final class VehicleRepository
         $stmt = $this->pdo->prepare('UPDATE ' . self::TBL_VEHICLE_FUNDING . ' SET deleted_at = CURRENT_TIMESTAMP, updated_by_user_id = :updated_by_user_id, updated_at = CURRENT_TIMESTAMP WHERE id = :id AND deleted_at IS NULL');
         $stmt->execute(['id' => $id, 'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null]);
         $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => 'funding_deleted', 'field_name' => 'funding', 'old_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => 'v2_funding']);
+        return $stmt->rowCount() > 0;
+    }
+
+    public function listVehicleSuppliers(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        return $this->listVehicleModuleRecords(self::TBL_VEHICLE_SUPPLIERS, 's', $vehicleId, $actorUserId, $actorHasAllVehicles, 's.supplier_name ASC, s.id DESC');
+    }
+
+    public function createVehicleSupplier(array $payload): int
+    {
+        return $this->createVehicleModuleRecord(self::TBL_VEHICLE_SUPPLIERS, $payload, 'supplier_created', 'supplier', 'v2_supplier');
+    }
+
+    public function findVehicleSupplierById(int $id, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
+    {
+        return $this->findVehicleModuleRecord(self::TBL_VEHICLE_SUPPLIERS, 's', $id, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function updateVehicleSupplier(int $id, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
+    {
+        return $this->updateVehicleModuleRecord(self::TBL_VEHICLE_SUPPLIERS, 's', $id, $payload, $actorUserId, $actorHasAllVehicles, 'supplier_updated', 'supplier', 'v2_supplier');
+    }
+
+    public function softDeleteVehicleSupplier(int $id, int $actorUserId, bool $actorHasAllVehicles = true): bool
+    {
+        return $this->softDeleteVehicleModuleRecord(self::TBL_VEHICLE_SUPPLIERS, 's', $id, $actorUserId, $actorHasAllVehicles, 'supplier_deleted', 'supplier', 'v2_supplier');
+    }
+
+    public function listVehicleWarrantyClaims(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        return $this->listVehicleModuleRecords(self::TBL_VEHICLE_WARRANTY_CLAIMS, 'w', $vehicleId, $actorUserId, $actorHasAllVehicles, 'COALESCE(w.reported_at, w.warranty_to) DESC, w.id DESC');
+    }
+
+    public function createVehicleWarrantyClaim(array $payload): int
+    {
+        return $this->createVehicleModuleRecord(self::TBL_VEHICLE_WARRANTY_CLAIMS, $payload, 'warranty_claim_created', 'warranty_claim', 'v2_warranty_claim');
+    }
+
+    public function findVehicleWarrantyClaimById(int $id, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
+    {
+        return $this->findVehicleModuleRecord(self::TBL_VEHICLE_WARRANTY_CLAIMS, 'w', $id, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function updateVehicleWarrantyClaim(int $id, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
+    {
+        return $this->updateVehicleModuleRecord(self::TBL_VEHICLE_WARRANTY_CLAIMS, 'w', $id, $payload, $actorUserId, $actorHasAllVehicles, 'warranty_claim_updated', 'warranty_claim', 'v2_warranty_claim');
+    }
+
+    public function softDeleteVehicleWarrantyClaim(int $id, int $actorUserId, bool $actorHasAllVehicles = true): bool
+    {
+        return $this->softDeleteVehicleModuleRecord(self::TBL_VEHICLE_WARRANTY_CLAIMS, 'w', $id, $actorUserId, $actorHasAllVehicles, 'warranty_claim_deleted', 'warranty_claim', 'v2_warranty_claim');
+    }
+
+    private function listVehicleModuleRecords(string $table, string $alias, int $vehicleId, int $actorUserId, bool $actorHasAllVehicles, string $orderBy): array
+    {
+        if (!$this->tableExists($table) || $vehicleId <= 0) return [];
+        $sql = 'SELECT ' . $alias . '.* FROM ' . $table . ' ' . $alias . ' WHERE ' . $alias . '.vehicle_id = :vehicle_id AND ' . $alias . '.deleted_at IS NULL';
+        $params = ['vehicle_id' => $vehicleId];
+        if ($actorUserId > 0 && !$actorHasAllVehicles) {
+            $sql .= ' AND EXISTS (SELECT 1 FROM ' . self::TBL_ASSIGNMENTS . ' uva WHERE uva.vehicle_id = ' . $alias . '.vehicle_id AND uva.user_id = :access_user_id)';
+            $params['access_user_id'] = $actorUserId;
+        }
+        $stmt = $this->pdo->prepare($sql . ' ORDER BY ' . $orderBy); $stmt->execute($params);
+        return $stmt->fetchAll() ?: [];
+    }
+
+    private function findVehicleModuleRecord(string $table, string $alias, int $id, int $actorUserId, bool $actorHasAllVehicles): ?array
+    {
+        if (!$this->tableExists($table) || $id <= 0) return null;
+        $sql = 'SELECT ' . $alias . '.* FROM ' . $table . ' ' . $alias . ' WHERE ' . $alias . '.id = :id AND ' . $alias . '.deleted_at IS NULL';
+        $params = ['id' => $id];
+        if ($actorUserId > 0 && !$actorHasAllVehicles) {
+            $sql .= ' AND EXISTS (SELECT 1 FROM ' . self::TBL_ASSIGNMENTS . ' uva WHERE uva.vehicle_id = ' . $alias . '.vehicle_id AND uva.user_id = :access_user_id)';
+            $params['access_user_id'] = $actorUserId;
+        }
+        $stmt = $this->pdo->prepare($sql . ' LIMIT 1'); $stmt->execute($params);
+        return $stmt->fetch() ?: null;
+    }
+
+    private function createVehicleModuleRecord(string $table, array $payload, string $eventType, string $fieldName, string $source): int
+    {
+        $columns = array_keys($payload);
+        $stmt = $this->pdo->prepare('INSERT INTO ' . $table . ' (' . implode(', ', $columns) . ') VALUES (:' . implode(', :', $columns) . ')');
+        $stmt->execute($payload); $id = (int) $this->pdo->lastInsertId();
+        $this->appendModuleCreateAudit($payload, $eventType, $fieldName, $source);
+        return $id;
+    }
+
+    private function updateVehicleModuleRecord(string $table, string $alias, int $id, array $payload, int $actorUserId, bool $actorHasAllVehicles, string $eventType, string $fieldName, string $source): ?array
+    {
+        $existing = $this->findVehicleModuleRecord($table, $alias, $id, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) return null;
+        $changes = $this->moduleAuditChanges($existing, $payload);
+        if ($changes['old'] === []) return $existing;
+        $assignments = array_map(static fn(string $column): string => $column . ' = :' . $column, array_keys($payload));
+        $stmt = $this->pdo->prepare('UPDATE ' . $table . ' SET ' . implode(', ', $assignments) . ', updated_at = CURRENT_TIMESTAMP WHERE id = :id AND deleted_at IS NULL');
+        $stmt->execute($payload + ['id' => $id]);
+        $this->appendModuleUpdateAudit($existing, $changes, $eventType, $fieldName, $source, $actorUserId);
+        return $this->findVehicleModuleRecord($table, $alias, $id, $actorUserId, $actorHasAllVehicles);
+    }
+
+    private function softDeleteVehicleModuleRecord(string $table, string $alias, int $id, int $actorUserId, bool $actorHasAllVehicles, string $eventType, string $fieldName, string $source): bool
+    {
+        $existing = $this->findVehicleModuleRecord($table, $alias, $id, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) return false;
+        $stmt = $this->pdo->prepare('UPDATE ' . $table . ' SET deleted_at = CURRENT_TIMESTAMP, deleted_by_user_id = :actor_user_id, updated_by_user_id = :actor_user_id, updated_at = CURRENT_TIMESTAMP WHERE id = :id AND deleted_at IS NULL');
+        $stmt->execute(['id' => $id, 'actor_user_id' => $actorUserId > 0 ? $actorUserId : null]);
+        $this->appendVehicleAuditEvent(['vehicle_id' => (int) $existing['vehicle_id'], 'event_type' => $eventType, 'field_name' => $fieldName, 'old_value' => (string) $id, 'actor_user_id' => $actorUserId, 'actor_type' => 'user', 'source' => $source]);
         return $stmt->rowCount() > 0;
     }
 

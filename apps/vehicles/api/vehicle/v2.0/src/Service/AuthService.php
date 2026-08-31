@@ -59,8 +59,6 @@ final class AuthService
     {
         $identity = $this->entraBridge->fetchAuthenticatedIdentity($request);
 
-        error_log('Vehicles v2 Entra identity: ' . json_encode($identity, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
-
         $user = $this->users->findAuthorizedForEntra(
             (string) $identity['entra_id'],
             (string) $identity['username'],
@@ -183,6 +181,13 @@ final class AuthService
         }
 
         $this->users->updatePasswordById((int) $current['id'], password_hash($newPassword, PASSWORD_DEFAULT));
+        $this->users->appendUserAuditEvent(
+            (int) $current['id'],
+            (int) $current['id'],
+            'user_password_changed_self',
+            (string) ($current['username'] ?? ''),
+            ['password_changed']
+        );
 
         $updated = $this->users->findById((int) $current['id']);
         if ($updated === null) {

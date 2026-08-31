@@ -1,45 +1,36 @@
-import React, { useState } from 'react';
+import React from 'react';
 import VehicleModulesDashboard from './VehicleModulesDashboard';
 import VehicleRecentEventsCard from './VehicleRecentEventsCard';
 import ServiceRecordsModule from './modules/ServiceRecordsModule';
 import EquipmentModule from './modules/EquipmentModule';
 import InsuranceModule from './modules/InsuranceModule';
+import ClaimsModule from './modules/ClaimsModule';
 import TiresModule from './modules/TiresModule';
 import FundingModule from './modules/FundingModule';
+import { SupplierModule, WarrantyClaimModule } from './modules/SupplierWarrantyModules';
 import AttachmentsModule from './modules/AttachmentsModule';
 import HistoryModule from './modules/HistoryModule';
 import LookupSelect from './modules/LookupSelect';
 import AppIcon from '../../ui/AppIcon';
+import DismissibleMessage from '../../ui/DismissibleMessage';
 
-function formatValue(value) {
-  if (value === null || value === undefined || String(value).trim() === '') {
-    return '-';
-  }
-  return String(value);
-}
-
-function formatDateTime(dateString) {
-  if (!dateString) return '-';
-  try {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return dateString;
-    return date.toLocaleString('cs-CZ', { 
-      day: '2-digit', 
-      month: '2-digit', 
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  } catch {
-    return dateString;
-  }
-}
+const MODULE_HEADER_META = {
+  service: { title: 'Servisy a opravy', icon: 'service' },
+  equipment: { title: 'Výbava a zařízení', icon: 'detail' },
+  insurance: { title: 'Pojištění', icon: 'ccsCard' },
+  claims: { title: 'Škodní události', icon: 'warning' },
+  tires: { title: 'Pneumatiky', icon: 'wheel' },
+  funding: { title: 'Dotace a financování', icon: 'money' },
+  suppliers: { title: 'Dodavatelé', icon: 'users' },
+  warrantyClaims: { title: 'Záruka a reklamace', icon: 'approve' },
+  attachments: { title: 'Přílohy', icon: 'file' },
+  history: { title: 'Historie změn', icon: 'history' },
+};
 
 export default function VehicleTechnicalFormCard({ 
   activeModule, 
   onManageModule, 
   onCloseModule, 
-  item, 
   form, 
   onChange, 
   onSubmit, 
@@ -47,12 +38,14 @@ export default function VehicleTechnicalFormCard({
   saveMessage, 
   isDirty = false, 
   onReset,
+  serviceStations = [],
   serviceRecords = [],
   serviceRecordsLoading,
   serviceRecordsError,
   serviceRecordMessage,
   creatingServiceRecord,
   onCreateServiceRecord,
+  onCreateServiceStation,
   onDeleteServiceRecord,
   vehicleEquipment = [],
   equipmentLoading,
@@ -86,11 +79,26 @@ export default function VehicleTechnicalFormCard({
   creatingFunding,
   onCreateFunding,
   onDeleteFunding,
+  suppliers = [],
+  suppliersLoading,
+  suppliersError,
+  suppliersMessage,
+  creatingSupplier,
+  onSaveSupplier,
+  onDeleteSupplier,
+  warrantyClaims = [],
+  warrantyClaimsLoading,
+  warrantyClaimsError,
+  warrantyClaimsMessage,
+  creatingWarrantyClaim,
+  onSaveWarrantyClaim,
+  onDeleteWarrantyClaim,
   attachments = [],
   attachmentsLoading,
   attachmentsError,
   attachmentMessage,
   uploadingAttachment,
+  attachmentUploadProgress,
   onUploadAttachment,
   onDownloadAttachment,
   onDeleteAttachment,
@@ -100,8 +108,13 @@ export default function VehicleTechnicalFormCard({
   editingBasic = false,
   onEditingBasicChange,
   lookupByCategory = {},
+  validationErrors = {},
   readOnly = false,
 }) {
+  function hasValidationError(fieldName) {
+    return Boolean(validationErrors?.[fieldName]);
+  }
+
   return (
     <>
     <article className="info-card vehicle-edit-card" id="karta">
@@ -110,8 +123,10 @@ export default function VehicleTechnicalFormCard({
         <form
           className="detail-form"
           onSubmit={async (event) => {
-            await onSubmit(event);
-            onEditingBasicChange?.(false);
+            const saved = await onSubmit(event);
+            if (saved !== false) {
+              onEditingBasicChange?.(false);
+            }
           }}
           style={{ marginTop: '1.5rem' }}
         >
@@ -135,7 +150,9 @@ export default function VehicleTechnicalFormCard({
                 value={form.w_popis || ''} 
                 onChange={onChange} 
                 placeholder="Např. ZKL 123" 
+                aria-invalid={hasValidationError('w_popis')}
               />
+              {validationErrors.w_popis && <span className="field-error">{validationErrors.w_popis}</span>}
             </label>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -146,7 +163,9 @@ export default function VehicleTechnicalFormCard({
                   name="evidencni_cislo_zzs" 
                   value={form.evidencni_cislo_zzs || ''} 
                   onChange={onChange} 
+                  aria-invalid={hasValidationError('evidencni_cislo_zzs')}
                 />
+                {validationErrors.evidencni_cislo_zzs && <span className="field-error">{validationErrors.evidencni_cislo_zzs}</span>}
               </label>
 
               <label htmlFor="vin">
@@ -156,7 +175,9 @@ export default function VehicleTechnicalFormCard({
                   name="vin" 
                   value={form.vin || ''} 
                   onChange={onChange} 
+                  aria-invalid={hasValidationError('vin')}
                 />
+                {validationErrors.vin && <span className="field-error">{validationErrors.vin}</span>}
               </label>
             </div>
 
@@ -171,7 +192,9 @@ export default function VehicleTechnicalFormCard({
                   max="2100" 
                   value={form.acquisition_year || ''} 
                   onChange={onChange} 
+                  aria-invalid={hasValidationError('acquisition_year')}
                 />
+                {validationErrors.acquisition_year && <span className="field-error">{validationErrors.acquisition_year}</span>}
               </label>
 
               <label htmlFor="acquisition_supplier">
@@ -181,7 +204,9 @@ export default function VehicleTechnicalFormCard({
                   name="acquisition_supplier" 
                   value={form.acquisition_supplier || ''} 
                   onChange={onChange} 
+                  aria-invalid={hasValidationError('acquisition_supplier')}
                 />
+                {validationErrors.acquisition_supplier && <span className="field-error">{validationErrors.acquisition_supplier}</span>}
               </label>
             </div>
 
@@ -201,7 +226,7 @@ export default function VehicleTechnicalFormCard({
               </div>
             </div>
 
-            {saveMessage && <div className="status-box">{saveMessage}</div>}
+            <DismissibleMessage message={saveMessage} variant="status" />
           </fieldset>
         </form>
       ) : !activeModule ? (
@@ -214,24 +239,21 @@ export default function VehicleTechnicalFormCard({
             claims={claims}
             tires={tires}
             funding={funding}
+            suppliers={suppliers}
+            warrantyClaims={warrantyClaims}
             attachments={attachments}
             onManageModule={onManageModule}
+            lookupByCategory={lookupByCategory}
             readOnly={readOnly}
           />
         </div>
       ) : (
         /* Detail modulu */
         <div style={{ marginTop: '1.5rem' }}>
-          <div className="vehicle-form-header">
-            <h4>
-              {activeModule === 'service' ? 'Servisy a opravy' :
-               activeModule === 'equipment' ? 'Výbava a zařízení' :
-               activeModule === 'insurance' ? 'Pojištění a škody' :
-               activeModule === 'tires' ? 'Pneumatiky' :
-               activeModule === 'funding' ? 'Dotace a financování' :
-               activeModule === 'attachments' ? 'Přílohy' :
-               activeModule === 'history' ? 'Historie změn' :
-               'Detail'}
+          <div className="vehicle-form-header vehicle-module-detail-header">
+            <h4 className="vehicle-module-detail-title">
+              <AppIcon name={MODULE_HEADER_META[activeModule]?.icon || 'detail'} size={19} weight="duotone" />
+              <span>{MODULE_HEADER_META[activeModule]?.title || 'Detail'}</span>
             </h4>
             <button type="button" className="btn btn-ghost btn-sm btn-back-icon" onClick={onCloseModule} title="Zpět na přehled modulů">
               <AppIcon name="arrowLeft" size={18} weight="regular" />
@@ -242,12 +264,16 @@ export default function VehicleTechnicalFormCard({
             {activeModule === 'service' && (
               <ServiceRecordsModule
                 serviceRecords={serviceRecords}
+                serviceStations={serviceStations}
                 onCreateServiceRecord={onCreateServiceRecord}
+                onCreateServiceStation={onCreateServiceStation}
                 onDeleteServiceRecord={onDeleteServiceRecord}
                 serviceRecordsLoading={serviceRecordsLoading}
                 serviceRecordsError={serviceRecordsError}
                 serviceRecordMessage={serviceRecordMessage}
                 creatingServiceRecord={creatingServiceRecord}
+                attachmentUploadProgress={attachmentUploadProgress}
+                attachments={attachments} onUploadAttachment={onUploadAttachment} onDeleteAttachment={onDeleteAttachment} onDownloadAttachment={onDownloadAttachment} uploadingAttachment={uploadingAttachment}
                 readOnly={readOnly}
                 lookupByCategory={lookupByCategory}
               />
@@ -262,6 +288,8 @@ export default function VehicleTechnicalFormCard({
                 equipmentError={equipmentError}
                 equipmentMessage={equipmentMessage}
                 creatingEquipment={creatingEquipment}
+                attachmentUploadProgress={attachmentUploadProgress}
+                attachments={attachments} onUploadAttachment={onUploadAttachment} onDeleteAttachment={onDeleteAttachment} onDownloadAttachment={onDownloadAttachment} uploadingAttachment={uploadingAttachment}
                 readOnly={readOnly}
                 lookupByCategory={lookupByCategory}
               />
@@ -270,16 +298,35 @@ export default function VehicleTechnicalFormCard({
             {activeModule === 'insurance' && (
               <InsuranceModule
                 insurancePolicies={insurancePolicies}
-                claims={claims}
                 onCreateInsurancePolicy={onCreateInsurancePolicy}
                 onDeleteInsurancePolicy={onDeleteInsurancePolicy}
-                onCreateClaim={onCreateClaim}
-                onDeleteClaim={onDeleteClaim}
                 insuranceLoading={insuranceLoading}
                 insuranceError={insuranceError}
                 insuranceMessage={insuranceMessage}
                 creatingInsurance={creatingInsurance}
+                attachmentUploadProgress={attachmentUploadProgress}
+                attachments={attachments} onUploadAttachment={onUploadAttachment} onDeleteAttachment={onDeleteAttachment} onDownloadAttachment={onDownloadAttachment} uploadingAttachment={uploadingAttachment}
+                readOnly={readOnly}
+                lookupByCategory={lookupByCategory}
+              />
+            )}
+
+            {activeModule === 'claims' && (
+              <ClaimsModule
+                claims={claims}
+                insurancePolicies={insurancePolicies}
+                onCreateClaim={onCreateClaim}
+                onDeleteClaim={onDeleteClaim}
+                claimsLoading={insuranceLoading}
+                claimsError={insuranceError}
+                claimsMessage={insuranceMessage}
                 creatingClaim={creatingClaim}
+                attachmentUploadProgress={attachmentUploadProgress}
+                attachments={attachments}
+                onUploadAttachment={onUploadAttachment}
+                onDeleteAttachment={onDeleteAttachment}
+                onDownloadAttachment={onDownloadAttachment}
+                uploadingAttachment={uploadingAttachment}
                 readOnly={readOnly}
                 lookupByCategory={lookupByCategory}
               />
@@ -294,6 +341,8 @@ export default function VehicleTechnicalFormCard({
                 tiresError={tiresError}
                 tiresMessage={tiresMessage}
                 creatingTires={creatingTires}
+                attachmentUploadProgress={attachmentUploadProgress}
+                attachments={attachments} onUploadAttachment={onUploadAttachment} onDeleteAttachment={onDeleteAttachment} onDownloadAttachment={onDownloadAttachment} uploadingAttachment={uploadingAttachment}
                 readOnly={readOnly}
                 lookupByCategory={lookupByCategory}
               />
@@ -308,8 +357,63 @@ export default function VehicleTechnicalFormCard({
                 fundingError={fundingError}
                 fundingMessage={fundingMessage}
                 creatingFunding={creatingFunding}
+                attachmentUploadProgress={attachmentUploadProgress}
+                attachments={attachments} onUploadAttachment={onUploadAttachment} onDeleteAttachment={onDeleteAttachment} onDownloadAttachment={onDownloadAttachment} uploadingAttachment={uploadingAttachment}
                 readOnly={readOnly}
                 lookupByCategory={lookupByCategory}
+              />
+            )}
+
+            {activeModule === 'suppliers' && (
+              <SupplierModule
+                suppliers={suppliers}
+                onSave={onSaveSupplier}
+                onDelete={onDeleteSupplier}
+                loading={suppliersLoading}
+                error={suppliersError}
+                message={suppliersMessage}
+                saving={creatingSupplier}
+                attachments={attachments}
+                onUploadAttachment={onUploadAttachment}
+                onDeleteAttachment={onDeleteAttachment}
+                onDownloadAttachment={onDownloadAttachment}
+                uploadingAttachment={uploadingAttachment}
+                attachmentUploadProgress={attachmentUploadProgress}
+                readOnly={readOnly}
+                lookupByCategory={lookupByCategory}
+              />
+            )}
+
+            {activeModule === 'warrantyClaims' && (
+              <WarrantyClaimModule
+                records={warrantyClaims}
+                suppliers={suppliers}
+                equipment={vehicleEquipment}
+                onSave={onSaveWarrantyClaim}
+                onDelete={onDeleteWarrantyClaim}
+                loading={warrantyClaimsLoading}
+                error={warrantyClaimsError}
+                message={warrantyClaimsMessage}
+                saving={creatingWarrantyClaim}
+                attachments={attachments}
+                onUploadAttachment={onUploadAttachment}
+                onDeleteAttachment={onDeleteAttachment}
+                onDownloadAttachment={onDownloadAttachment}
+                uploadingAttachment={uploadingAttachment}
+                attachmentUploadProgress={attachmentUploadProgress}
+                readOnly={readOnly}
+                lookupByCategory={lookupByCategory}
+                contextRecords={{
+                  service: serviceRecords,
+                  equipment: vehicleEquipment,
+                  insurance: [...insurancePolicies, ...claims],
+                  insurance_policy: insurancePolicies,
+                  insurance_claim: claims,
+                  tires,
+                  funding,
+                  supplier: suppliers,
+                  warranty_claim: warrantyClaims,
+                }}
               />
             )}
 
@@ -323,6 +427,7 @@ export default function VehicleTechnicalFormCard({
                 attachmentsError={attachmentsError}
                 attachmentMessage={attachmentMessage}
                 uploadingAttachment={uploadingAttachment}
+                attachmentUploadProgress={attachmentUploadProgress}
                 readOnly={readOnly}
                 lookupByCategory={lookupByCategory}
               />
@@ -333,6 +438,7 @@ export default function VehicleTechnicalFormCard({
                 cardHistory={cardHistory}
                 cardHistoryLoading={cardHistoryLoading}
                 cardHistoryError={cardHistoryError}
+                lookupByCategory={lookupByCategory}
               />
             )}
           </div>
@@ -344,6 +450,7 @@ export default function VehicleTechnicalFormCard({
         cardHistory={cardHistory}
         cardHistoryLoading={cardHistoryLoading}
         cardHistoryError={cardHistoryError}
+        lookupByCategory={lookupByCategory}
         onShowAll={() => onManageModule?.('history')}
       />
     ) : null}

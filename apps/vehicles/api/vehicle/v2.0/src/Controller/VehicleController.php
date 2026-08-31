@@ -226,9 +226,6 @@ final class VehicleController
 
     public function syncDriversKmForVehicle(Request $request, array $actor): void
     {
-        $logFile = '/tmp/vehicles-sync-debug.log';
-        file_put_contents($logFile, sprintf("[%s] Controller START: request body=%s\n", date('Y-m-d H:i:s'), json_encode($request->body)), FILE_APPEND);
-        
         $vehicleId = (int) ($request->body['vehicleId'] ?? 0);
         $year = (int) ($request->body['year'] ?? date('Y'));
         $month = (int) ($request->body['month'] ?? date('n'));
@@ -259,10 +256,8 @@ final class VehicleController
 
             Response::success($result);
         } catch (\RuntimeException $e) {
-            file_put_contents($logFile, sprintf("[%s] Controller caught RuntimeException: %s\n", date('Y-m-d H:i:s'), $e->getMessage()), FILE_APPEND);
             Response::error($e->getMessage(), 422);
         } catch (\Throwable $e) {
-            file_put_contents($logFile, sprintf("[%s] Controller caught Throwable: %s in %s:%d\n", date('Y-m-d H:i:s'), $e->getMessage(), $e->getFile(), $e->getLine()), FILE_APPEND);
             Response::error('Interní chyba serveru: ' . $e->getMessage(), 500);
         }
     }
@@ -420,6 +415,26 @@ final class VehicleController
         ]);
     }
 
+    public function eeoServiceHistory(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
+        if ($vehicleId <= 0) {
+            Response::error('Parametr vehicleId je povinný', 422);
+            return;
+        }
+
+        $items = $this->vehicles->getVehicleEeoServiceHistory(
+            $vehicleId,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        );
+
+        Response::success([
+            'items' => $items,
+            'count' => count($items),
+        ]);
+    }
+
     public function cardHistory(Request $request, array $actor): void
     {
         $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
@@ -464,6 +479,25 @@ final class VehicleController
             'items' => $items,
             'count' => count($items),
         ]);
+    }
+
+    public function moduleSummary(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
+        if ($vehicleId <= 0) {
+            Response::error('Parametr vehicleId je povinný', 422);
+            return;
+        }
+        $summary = $this->vehicles->getVehicleModuleSummary(
+            $vehicleId,
+            (int) ($actor['id'] ?? 0),
+            (bool) ($actor['has_all_vehicles'] ?? true)
+        );
+        if ($summary === null) {
+            Response::error('Vozidlo nebylo nalezeno nebo k němu nemáte přístup.', 404);
+            return;
+        }
+        Response::success(['summary' => $summary]);
     }
 
     public function serviceRecords(Request $request, array $actor): void
@@ -566,6 +600,82 @@ final class VehicleController
         $deleted = $this->vehicles->deleteVehicleFunding($id, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true));
         if (!$deleted) { Response::error('Záznam financování nebyl nalezen', 404); return; }
         Response::success(['message' => 'Financování bylo smazáno.']);
+    }
+
+    public function suppliers(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
+        if ($vehicleId <= 0) { Response::error('Parametr vehicleId je povinný', 422); return; }
+        $items = $this->vehicles->getVehicleSuppliers($vehicleId, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true));
+        Response::success(['items' => $items, 'count' => count($items)]);
+    }
+
+    public function createSupplier(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->body['vehicleId'] ?? 0);
+        if ($vehicleId <= 0) { Response::error('Parametr vehicleId je povinný', 422); return; }
+        try {
+            if ($this->vehicles->getVehicleDetail($vehicleId, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true)) === null) { Response::error('Vozidlo nebylo nalezeno', 404); return; }
+            $id = $this->vehicles->createVehicleSupplier($vehicleId, $request->body, (int) ($actor['id'] ?? 0));
+            Response::success(['message' => 'Dodavatel byl uložen.', 'id' => $id], 201);
+        } catch (RuntimeException $e) { Response::error($e->getMessage(), 422); }
+    }
+
+    public function updateSupplier(Request $request, array $actor): void
+    {
+        $id = (int) ($request->body['id'] ?? 0);
+        if ($id <= 0) { Response::error('Parametr id je povinný', 422); return; }
+        try {
+            $item = $this->vehicles->updateVehicleSupplier($id, $request->body, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true));
+            if ($item === null) { Response::error('Dodavatel nebyl nalezen', 404); return; }
+            Response::success(['message' => 'Dodavatel byl upraven.', 'item' => $item]);
+        } catch (RuntimeException $e) { Response::error($e->getMessage(), 422); }
+    }
+
+    public function deleteSupplier(Request $request, array $actor): void
+    {
+        $id = (int) ($request->body['id'] ?? 0);
+        if ($id <= 0) { Response::error('Parametr id je povinný', 422); return; }
+        if (!$this->vehicles->deleteVehicleSupplier($id, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true))) { Response::error('Dodavatel nebyl nalezen', 404); return; }
+        Response::success(['message' => 'Dodavatel byl smazán.']);
+    }
+
+    public function warrantyClaims(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->query['vehicleId'] ?? 0);
+        if ($vehicleId <= 0) { Response::error('Parametr vehicleId je povinný', 422); return; }
+        $items = $this->vehicles->getVehicleWarrantyClaims($vehicleId, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true));
+        Response::success(['items' => $items, 'count' => count($items)]);
+    }
+
+    public function createWarrantyClaim(Request $request, array $actor): void
+    {
+        $vehicleId = (int) ($request->body['vehicleId'] ?? 0);
+        if ($vehicleId <= 0) { Response::error('Parametr vehicleId je povinný', 422); return; }
+        try {
+            if ($this->vehicles->getVehicleDetail($vehicleId, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true)) === null) { Response::error('Vozidlo nebylo nalezeno', 404); return; }
+            $id = $this->vehicles->createVehicleWarrantyClaim($vehicleId, $request->body, (int) ($actor['id'] ?? 0));
+            Response::success(['message' => 'Záruka nebo reklamace byla uložena.', 'id' => $id], 201);
+        } catch (RuntimeException $e) { Response::error($e->getMessage(), 422); }
+    }
+
+    public function updateWarrantyClaim(Request $request, array $actor): void
+    {
+        $id = (int) ($request->body['id'] ?? 0);
+        if ($id <= 0) { Response::error('Parametr id je povinný', 422); return; }
+        try {
+            $item = $this->vehicles->updateVehicleWarrantyClaim($id, $request->body, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true));
+            if ($item === null) { Response::error('Záznam záruky nebo reklamace nebyl nalezen', 404); return; }
+            Response::success(['message' => 'Záruka nebo reklamace byla upravena.', 'item' => $item]);
+        } catch (RuntimeException $e) { Response::error($e->getMessage(), 422); }
+    }
+
+    public function deleteWarrantyClaim(Request $request, array $actor): void
+    {
+        $id = (int) ($request->body['id'] ?? 0);
+        if ($id <= 0) { Response::error('Parametr id je povinný', 422); return; }
+        if (!$this->vehicles->deleteVehicleWarrantyClaim($id, (int) ($actor['id'] ?? 0), (bool) ($actor['has_all_vehicles'] ?? true))) { Response::error('Záznam záruky nebo reklamace nebyl nalezen', 404); return; }
+        Response::success(['message' => 'Záznam záruky nebo reklamace byl smazán.']);
     }
 
     public function createTires(Request $request, array $actor): void
@@ -765,7 +875,12 @@ final class VehicleController
             return;
         }
 
-        $root = rtrim(Env::get('VEHICLES_V2_ATTACHMENT_ROOT', '/var/www/erdms-dev/data/vehicles-v2/attachments'), '/');
+        try {
+            $root = $this->vehicles->getAttachmentStorageRoot();
+        } catch (RuntimeException $e) {
+            Response::error('Úložiště příloh není správně nakonfigurováno.', 500);
+            return;
+        }
         $rootReal = realpath($root);
         $pathReal = realpath($root . '/' . ltrim((string) $item['storage_key'], '/'));
         if ($rootReal === false || $pathReal === false || !str_starts_with($pathReal, $rootReal . DIRECTORY_SEPARATOR) || !is_file($pathReal)) {
@@ -773,10 +888,23 @@ final class VehicleController
             return;
         }
 
+        $originalFilename = $this->normalizeAttachmentDownloadFilename((string) $item['original_filename']);
+        $asciiFilename = preg_replace('/[^A-Za-z0-9._-]+/', '_', $originalFilename) ?? 'attachment';
+        $asciiFilename = trim($asciiFilename, '._') ?: 'attachment';
+
         header('Content-Type: ' . $item['mime_type']);
         header('Content-Length: ' . (string) filesize($pathReal));
-        header('Content-Disposition: attachment; filename="' . addcslashes((string) $item['original_filename'], "\\\"") . '"');
+        header(
+            'Content-Disposition: attachment; filename="' . addcslashes($asciiFilename, "\\\"")
+            . '"; filename*=UTF-8\'\'' . rawurlencode($originalFilename)
+        );
         readfile($pathReal);
+    }
+
+    private function normalizeAttachmentDownloadFilename(string $filename): string
+    {
+        $filename = preg_replace('/[\x00-\x1F\x7F]/u', '', trim($filename)) ?? '';
+        return $filename !== '' && mb_check_encoding($filename, 'UTF-8') ? $filename : 'attachment';
     }
 
     public function deleteAttachment(Request $request, array $actor): void
@@ -854,17 +982,21 @@ final class VehicleController
             return;
         }
 
-        $this->vehicles->saveVehicleDetail($vehicleId, $request->body, (int) ($actor['id'] ?? 0));
-        $updated = $this->vehicles->getVehicleDetail(
-            $vehicleId,
-            (int) ($actor['id'] ?? 0),
-            (bool) ($actor['has_all_vehicles'] ?? true)
-        );
+        try {
+            $this->vehicles->saveVehicleDetail($vehicleId, $request->body, (int) ($actor['id'] ?? 0));
+            $updated = $this->vehicles->getVehicleDetail(
+                $vehicleId,
+                (int) ($actor['id'] ?? 0),
+                (bool) ($actor['has_all_vehicles'] ?? true)
+            );
 
-        Response::success([
-            'message' => 'Detail vozidla byl uložen',
-            'item' => $updated,
-        ]);
+            Response::success([
+                'message' => 'Detail vozidla byl uložen',
+                'item' => $updated,
+            ]);
+        } catch (RuntimeException $e) {
+            Response::error($e->getMessage(), 422);
+        }
     }
 
     public function bulkUpdateLocationState(Request $request, array $actor): void

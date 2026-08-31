@@ -32,6 +32,14 @@ import {
   createVehicleFunding,
   updateVehicleFunding,
   deleteVehicleFunding,
+  fetchVehicleSuppliers,
+  createVehicleSupplier,
+  updateVehicleSupplier,
+  deleteVehicleSupplier,
+  fetchVehicleWarrantyClaims,
+  createVehicleWarrantyClaim,
+  updateVehicleWarrantyClaim,
+  deleteVehicleWarrantyClaim,
   fetchLookupItems,
   deleteVehicleAttachment,
   downloadVehicleAttachment,
@@ -116,6 +124,16 @@ export default function VehicleDetailPage() {
   const [fundingError, setFundingError] = useState('');
   const [fundingMessage, setFundingMessage] = useState('');
   const [creatingFunding, setCreatingFunding] = useState(false);
+  const [suppliers, setSuppliers] = useState([]);
+  const [suppliersLoading, setSuppliersLoading] = useState(false);
+  const [suppliersError, setSuppliersError] = useState('');
+  const [suppliersMessage, setSuppliersMessage] = useState('');
+  const [creatingSupplier, setCreatingSupplier] = useState(false);
+  const [warrantyClaims, setWarrantyClaims] = useState([]);
+  const [warrantyClaimsLoading, setWarrantyClaimsLoading] = useState(false);
+  const [warrantyClaimsError, setWarrantyClaimsError] = useState('');
+  const [warrantyClaimsMessage, setWarrantyClaimsMessage] = useState('');
+  const [creatingWarrantyClaim, setCreatingWarrantyClaim] = useState(false);
   const [lookupByCategory, setLookupByCategory] = useState({});
   const [serviceStations, setServiceStations] = useState([]);
   const [form, setForm] = useState({
@@ -144,6 +162,7 @@ export default function VehicleDetailPage() {
   });
   const [savedForm, setSavedForm] = useState(null);
   const [activeModule, setActiveModule] = useState(null);
+  const [appliedRequestedTab, setAppliedRequestedTab] = useState(null);
   const currentRole = String(user?.role || '').toLowerCase();
   const canEditVehicleDetails = ['superadmin', 'administrator', 'fleet_manager'].includes(currentRole);
   const requestedTab = new URLSearchParams(location.search).get('tab') || null;
@@ -299,6 +318,35 @@ export default function VehicleDetailPage() {
   }, [vehicleId]);
 
   useEffect(() => { void loadFunding(); }, [loadFunding]);
+
+  const loadSuppliers = useCallback(async () => {
+    setSuppliersLoading(true);
+    setSuppliersError('');
+    try {
+      const response = await fetchVehicleSuppliers(vehicleId);
+      setSuppliers(Array.isArray(response?.data?.items) ? response.data.items : []);
+    } catch (err) {
+      setSuppliersError(err?.response?.data?.error?.message || 'Dodavatele se nepodařilo načíst.');
+    } finally {
+      setSuppliersLoading(false);
+    }
+  }, [vehicleId]);
+
+  const loadWarrantyClaims = useCallback(async () => {
+    setWarrantyClaimsLoading(true);
+    setWarrantyClaimsError('');
+    try {
+      const response = await fetchVehicleWarrantyClaims(vehicleId);
+      setWarrantyClaims(Array.isArray(response?.data?.items) ? response.data.items : []);
+    } catch (err) {
+      setWarrantyClaimsError(err?.response?.data?.error?.message || 'Záruky a reklamace se nepodařilo načíst.');
+    } finally {
+      setWarrantyClaimsLoading(false);
+    }
+  }, [vehicleId]);
+
+  useEffect(() => { void loadSuppliers(); }, [loadSuppliers]);
+  useEffect(() => { void loadWarrantyClaims(); }, [loadWarrantyClaims]);
 
   useEffect(() => {
     let active = true;
@@ -481,7 +529,7 @@ export default function VehicleDetailPage() {
     event.preventDefault();
     if (!canEditVehicleDetails) {
       setSaveMessage('Režim pouze pro čtení: nemáte oprávnění k editaci vozidla.');
-      return;
+      return false;
     }
     setError('');
     setSaveMessage('');
@@ -503,7 +551,7 @@ export default function VehicleDetailPage() {
     setValidationErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) {
       setSaveMessage('Opravte prosím zvýrazněná pole.');
-      return;
+      return false;
     }
     setSaving(true);
 
@@ -536,9 +584,11 @@ export default function VehicleDetailPage() {
       setSaveMessage(response?.data?.message || 'Detail vozidla byl uložen.');
       setValidationErrors({});
       await loadCardHistory();
+      return true;
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setError(apiMessage || 'Uložení detailu vozidla se nepodařilo.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -851,20 +901,74 @@ export default function VehicleDetailPage() {
     }
   }
 
+  async function handleSaveSupplier(payload) {
+    if (!canEditVehicleDetails) return null;
+    setCreatingSupplier(true); setSuppliersError(''); setSuppliersMessage('');
+    try {
+      const response = payload?.id ? await updateVehicleSupplier(payload) : await createVehicleSupplier({ vehicleId: Number(vehicleId), ...payload });
+      setSuppliersMessage(response?.data?.message || 'Dodavatel byl uložen.');
+      await Promise.all([loadSuppliers(), loadCardHistory()]);
+      return response?.data?.item || { id: response?.data?.id };
+    } catch (err) {
+      setSuppliersError(err?.response?.data?.error?.message || 'Dodavatele se nepodařilo uložit.');
+      return null;
+    } finally { setCreatingSupplier(false); }
+  }
+
+  async function handleDeleteSupplier(supplier) {
+    if (!canEditVehicleDetails || !supplier?.id) return;
+    setSuppliersError('');
+    try {
+      const response = await deleteVehicleSupplier(supplier.id);
+      setSuppliersMessage(response?.data?.message || 'Dodavatel byl smazán.');
+      await Promise.all([loadSuppliers(), loadWarrantyClaims(), loadAttachments(), loadCardHistory()]);
+    } catch (err) { setSuppliersError(err?.response?.data?.error?.message || 'Dodavatele se nepodařilo smazat.'); }
+  }
+
+  async function handleSaveWarrantyClaim(payload) {
+    if (!canEditVehicleDetails) return null;
+    setCreatingWarrantyClaim(true); setWarrantyClaimsError(''); setWarrantyClaimsMessage('');
+    try {
+      const response = payload?.id ? await updateVehicleWarrantyClaim(payload) : await createVehicleWarrantyClaim({ vehicleId: Number(vehicleId), ...payload });
+      setWarrantyClaimsMessage(response?.data?.message || 'Záruka nebo reklamace byla uložena.');
+      await Promise.all([loadWarrantyClaims(), loadCardHistory()]);
+      return response?.data?.item || { id: response?.data?.id };
+    } catch (err) {
+      setWarrantyClaimsError(err?.response?.data?.error?.message || 'Záruku nebo reklamaci se nepodařilo uložit.');
+      return null;
+    } finally { setCreatingWarrantyClaim(false); }
+  }
+
+  async function handleDeleteWarrantyClaim(record) {
+    if (!canEditVehicleDetails || !record?.id) return;
+    setWarrantyClaimsError('');
+    try {
+      const response = await deleteVehicleWarrantyClaim(record.id);
+      setWarrantyClaimsMessage(response?.data?.message || 'Záznam záruky nebo reklamace byl smazán.');
+      await Promise.all([loadWarrantyClaims(), loadAttachments(), loadCardHistory()]);
+    } catch (err) { setWarrantyClaimsError(err?.response?.data?.error?.message || 'Záznam se nepodařilo smazat.'); }
+  }
+
   function handleManageModule(moduleId) {
     setActiveModule(moduleId);
   }
 
   function handleCloseModule() {
     setActiveModule(null);
+    if (requestedTab) {
+      const nextSearch = new URLSearchParams(location.search);
+      nextSearch.delete('tab');
+      navigate({ pathname: location.pathname, search: nextSearch.toString() ? `?${nextSearch.toString()}` : '' }, { replace: true });
+    }
   }
 
   // Auto-open module from URL parameter on first render
   useEffect(() => {
-    if (requestedTab && !activeModule) {
+    if (requestedTab && requestedTab !== appliedRequestedTab && !activeModule) {
       setActiveModule(requestedTab);
+      setAppliedRequestedTab(requestedTab);
     }
-  }, [requestedTab, activeModule]);
+  }, [requestedTab, appliedRequestedTab, activeModule]);
 
   if (error) {
     return (
@@ -1105,6 +1209,20 @@ export default function VehicleDetailPage() {
           creatingFunding={creatingFunding}
           onCreateFunding={handleCreateFunding}
           onDeleteFunding={handleDeleteFunding}
+          suppliers={suppliers}
+          suppliersLoading={suppliersLoading}
+          suppliersError={suppliersError}
+          suppliersMessage={suppliersMessage}
+          creatingSupplier={creatingSupplier}
+          onSaveSupplier={handleSaveSupplier}
+          onDeleteSupplier={handleDeleteSupplier}
+          warrantyClaims={warrantyClaims}
+          warrantyClaimsLoading={warrantyClaimsLoading}
+          warrantyClaimsError={warrantyClaimsError}
+          warrantyClaimsMessage={warrantyClaimsMessage}
+          creatingWarrantyClaim={creatingWarrantyClaim}
+          onSaveWarrantyClaim={handleSaveWarrantyClaim}
+          onDeleteWarrantyClaim={handleDeleteWarrantyClaim}
           lookupByCategory={lookupByCategory}
           validationErrors={validationErrors}
           editingBasic={editingBasic}
