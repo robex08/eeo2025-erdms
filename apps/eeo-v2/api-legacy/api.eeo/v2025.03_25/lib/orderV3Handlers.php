@@ -1827,6 +1827,9 @@ function handle_order_v3_list($input, $config, $queries) {
         } else {
             error_log("[OrderV3] Period filter: {$period} -> no date restriction");
         }
+
+        $base_filter_count = count($where_conditions);
+        $base_filter_param_count = count($where_params);
         
         // Dynamické filtry
         if (!empty($filters['cislo_objednavky'])) {
@@ -2485,7 +2488,8 @@ function handle_order_v3_list($input, $config, $queries) {
         
         // 🔍 Zapamatovat si počet podmínek PŘED permissions (pro stats)
         $business_filter_count = count($where_conditions);
-        $business_filter_params = $where_params; // Shallow copy parametrů
+        $business_filter_params = array_slice($where_params, $base_filter_param_count);
+        $has_business_filters = $business_filter_count > $base_filter_count;
         
         $is_admin_v2 = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params, $access_context);
 
@@ -2626,7 +2630,7 @@ function handle_order_v3_list($input, $config, $queries) {
         $stats = null;
         $unfilteredStats = null;
         
-        $should_calculate_stats = ($page === 1) || ($business_filter_count > 2);
+        $should_calculate_stats = ($page === 1) || $has_business_filters;
 
         if ($should_calculate_stats) {
             // 🎯 unfilteredStats - Bez business filtrů, ale SE permissions!
@@ -2635,9 +2639,9 @@ function handle_order_v3_list($input, $config, $queries) {
             
             // 🔍 Pokud jsou aktivní business filtry, načíst i filtrované stats
             // Extrahujeme jen business podmínky BEZ permissions (ty přidá stats funkce sama)
-            if ($business_filter_count > 2) { // > 2 protože máme aktivni=1 a id!=1
+            if ($has_business_filters) {
                 // Sestavit business WHERE bez permissions
-                $business_where_conditions = array_slice($where_conditions, 0, $business_filter_count);
+                $business_where_conditions = array_slice($where_conditions, $base_filter_count, $business_filter_count - $base_filter_count);
                 $business_where_sql = implode(' AND ', $business_where_conditions);
                 
                 error_log("[OrderV3] Filtered stats - business filters: " . $business_filter_count);
@@ -3713,12 +3717,6 @@ function getOrderStatsWithPeriod($db, $period, $user_id = 0, $filtered_where_sql
     // 3. ✅ CRITICAL: User permissions - STEJNÁ LOGIKA JAKO handle_order_v3_list!
     // Používáme jednotnou funkci applyOrderV3UserPermissions pro konzistenci
     $is_admin = applyOrderV3UserPermissions($user_id, $db, $where_conditions, $where_params);
-    
-    // ⚠️ Vyloučit zrušené, zamítnuté a smazané objednávky (vždy při výpočtu statistik)
-    $where_conditions[] = "JSON_UNQUOTE(JSON_EXTRACT(o.stav_workflow_kod, CONCAT('$[', JSON_LENGTH(o.stav_workflow_kod) - 1, ']'))) NOT IN (?, ?, ?)";
-    $where_params[] = 'ZRUSENA';
-    $where_params[] = 'ZAMITNUTA';
-    $where_params[] = 'SMAZANA';
     
     // 4. Dodatečné filtry (pokud jsou předané z hlavní query)
     if ($filtered_where_sql !== null && trim($filtered_where_sql) !== '') {

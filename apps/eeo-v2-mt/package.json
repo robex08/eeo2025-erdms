@@ -1,7 +1,7 @@
 {
   "name": "eeo-v2-mt",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.65.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
