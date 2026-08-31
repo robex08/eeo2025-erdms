@@ -1,8 +1,9 @@
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useCallback, useEffect, useState } from 'react';
 import AppIcon from '../components/ui/AppIcon';
 import WdBadge from '../components/vehicles/detail/modules/WdBadge';
 import {
+  createStationAddress,
   fetchStationAddresses,
   fetchVehicleAttachments,
   fetchVehicleCardHistory,
@@ -39,6 +40,7 @@ import {
 } from '../services/apiClient';
 import VehicleTechnicalFormCard from '../components/vehicles/detail/VehicleTechnicalFormCard';
 import { useAuth } from '../auth/AuthContext';
+import { usePersistentDialog } from '../components/ui/PersistentDialog';
 
 function parseServiceContext(rawValue) {
   if (!rawValue) {
@@ -57,8 +59,19 @@ function parseServiceContext(rawValue) {
   }
 }
 
+function formatCcsExpiration(value) {
+  const raw = String(value || '').trim();
+  if (!raw) {
+    return '-';
+  }
+
+  const date = new Date(raw);
+  return Number.isNaN(date.getTime()) ? raw : date.toLocaleDateString('cs-CZ');
+}
+
 export default function VehicleDetailPage() {
   const { user } = useAuth();
+  const { confirm } = usePersistentDialog();
   const { vehicleId } = useParams();
   const location = useLocation();
   const [item, setItem] = useState(null);
@@ -75,6 +88,7 @@ export default function VehicleDetailPage() {
   const [attachmentsError, setAttachmentsError] = useState('');
   const [attachmentMessage, setAttachmentMessage] = useState('');
   const [uploadingAttachment, setUploadingAttachment] = useState(false);
+  const [attachmentUploadProgress, setAttachmentUploadProgress] = useState(null);
   const [serviceRecords, setServiceRecords] = useState([]);
   const [serviceRecordsLoading, setServiceRecordsLoading] = useState(false);
   const [serviceRecordsError, setServiceRecordsError] = useState('');
@@ -133,6 +147,31 @@ export default function VehicleDetailPage() {
   const currentRole = String(user?.role || '').toLowerCase();
   const canEditVehicleDetails = ['superadmin', 'administrator', 'fleet_manager'].includes(currentRole);
   const requestedTab = new URLSearchParams(location.search).get('tab') || null;
+  const navigate = useNavigate();
+
+  const handleBackToPreviousView = useCallback(() => {
+    const returnTo = location.state && typeof location.state === 'object' ? location.state.returnTo : null;
+
+    if (typeof returnTo === 'string' && returnTo.trim() !== '') {
+      navigate(returnTo);
+      return;
+    }
+
+    if (returnTo && typeof returnTo === 'object') {
+      const pathname = typeof returnTo.pathname === 'string' ? returnTo.pathname : '/vehicles';
+      const search = typeof returnTo.search === 'string' ? returnTo.search : '';
+      const hash = typeof returnTo.hash === 'string' ? returnTo.hash : '';
+      navigate(`${pathname}${search}${hash}`);
+      return;
+    }
+
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+
+    navigate('/vehicles');
+  }, [location.state, navigate]);
 
   useEffect(() => {
     let active = true;
@@ -393,7 +432,7 @@ export default function VehicleDetailPage() {
     setCardHistoryLoading(true);
     setCardHistoryError('');
     try {
-      const response = await fetchVehicleCardHistory(vehicleId, { limit: 200 });
+      const response = await fetchVehicleCardHistory(vehicleId, { limit: 500 });
       setCardHistory(Array.isArray(response?.data?.items) ? response.data.items : []);
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
@@ -507,33 +546,54 @@ export default function VehicleDetailPage() {
 
   const isDirty = Boolean(savedForm && JSON.stringify(savedForm) !== JSON.stringify(form));
 
-  function resetForm() {
-    if (!savedForm || !window.confirm('Zahodit všechny neuložené změny?')) return;
+  async function resetForm() {
+    if (!savedForm || !(await confirm({ title: 'Zahodit změny', message: 'Opravdu zahodit všechny neuložené změny?', confirmLabel: 'Zahodit', danger: true }))) return;
     setForm({ ...savedForm });
     setSaveMessage('Neuložené změny byly zahozeny.');
     setError('');
   }
 
-  async function handleUploadAttachment({ file, classKey, note }) {
-    if (!file || !canEditVehicleDetails) return;
+  async function handleUploadAttachment({ file, classKey, note, contextModule = 'vehicle', contextRecordId = null }) {
+    if (!file) {
+      throw new Error('Nebyl vybrán soubor přílohy.');
+    }
+    if (!canEditVehicleDetails) {
+      const permissionMessage = 'Nemáte oprávnění nahrávat přílohy k tomuto vozidlu.';
+      setAttachmentsError(permissionMessage);
+      throw new Error(permissionMessage);
+    }
     setUploadingAttachment(true);
+    setAttachmentUploadProgress(0);
     setAttachmentMessage('');
     setAttachmentsError('');
     try {
       const payload = new FormData();
       payload.append('vehicleId', String(vehicleId));
       payload.append('document_type_code', classKey);
+      payload.append('context_module', contextModule);
+      if (contextRecordId) payload.append('context_record_id', String(contextRecordId));
       payload.append('note', note || '');
       payload.append('file', file);
-      const response = await uploadVehicleAttachment(payload);
+      const response = await uploadVehicleAttachment(payload, {
+        onUploadProgress: (event) => {
+          const total = Number(event?.total || file.size || 0);
+          const loaded = Number(event?.loaded || 0);
+          if (total > 0) {
+            const next = Math.min(100, Math.max(0, Math.round((loaded / total) * 100)));
+            setAttachmentUploadProgress(next);
+          }
+        },
+      });
       setAttachmentMessage(response?.data?.message || 'Příloha byla uložena.');
       await loadAttachments();
       await loadCardHistory();
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setAttachmentsError(apiMessage || 'Přílohu se nepodařilo uložit.');
+      throw err;
     } finally {
       setUploadingAttachment(false);
+      setAttachmentUploadProgress(null);
     }
   }
 
@@ -555,7 +615,7 @@ export default function VehicleDetailPage() {
   }
 
   async function handleDeleteAttachment(attachment) {
-    if (!canEditVehicleDetails || !window.confirm(`Opravdu smazat přílohu ${attachment.original_filename}?`)) {
+    if (!canEditVehicleDetails) {
       return;
     }
 
@@ -583,6 +643,7 @@ export default function VehicleDetailPage() {
       setServiceRecordMessage(response?.data?.message || (payload?.id ? 'Servisní záznam byl upraven.' : 'Servisní záznam byl uložen.'));
       await loadServiceRecords();
       await loadCardHistory();
+      return response?.data?.item || { id: response?.data?.id };
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setServiceRecordsError(apiMessage || 'Servisní záznam se nepodařilo uložit.');
@@ -591,8 +652,18 @@ export default function VehicleDetailPage() {
     }
   }
 
+  async function handleCreateServiceStation(payload) {
+    const response = await createStationAddress({ ...payload, typ: 'Servis' });
+    const station = response?.data?.item;
+    if (!station) {
+      throw new Error('Nový servis se nepodařilo načíst.');
+    }
+    setServiceStations((previous) => [...previous, station]);
+    return station;
+  }
+
   async function handleDeleteServiceRecord(record) {
-    if (!canEditVehicleDetails || !record?.id || !window.confirm('Opravdu smazat servisní záznam?')) return;
+    if (!canEditVehicleDetails || !record?.id) return;
     setServiceRecordsError('');
     try {
       const response = await deleteVehicleServiceRecord(record.id);
@@ -617,6 +688,7 @@ export default function VehicleDetailPage() {
       setEquipmentMessage(response?.data?.message || (payload?.id ? 'Vybavení bylo upraveno.' : 'Vybavení bylo uloženo.'));
       await loadEquipment();
       await loadCardHistory();
+      return response?.data?.item || { id: response?.data?.id };
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setEquipmentError(apiMessage || 'Vybavení se nepodařilo uložit.');
@@ -626,7 +698,7 @@ export default function VehicleDetailPage() {
   }
 
   async function handleDeleteEquipment(equipment) {
-    if (!canEditVehicleDetails || !equipment?.id || !window.confirm('Opravdu smazat vybavení?')) return;
+    if (!canEditVehicleDetails || !equipment?.id) return;
     setEquipmentError('');
     try {
       const response = await deleteVehicleEquipment(equipment.id);
@@ -651,6 +723,7 @@ export default function VehicleDetailPage() {
       setInsuranceMessage(response?.data?.message || (payload?.id ? 'Pojistná smlouva byla upravena.' : 'Pojistná smlouva byla uložena.'));
       await loadInsuranceData();
       await loadCardHistory();
+      return response?.data?.item || { id: response?.data?.id };
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setInsuranceError(apiMessage || 'Pojistnou smlouvu se nepodařilo uložit.');
@@ -660,7 +733,7 @@ export default function VehicleDetailPage() {
   }
 
   async function handleDeleteInsurancePolicy(policy) {
-    if (!canEditVehicleDetails || !policy?.id || !window.confirm('Opravdu smazat pojistnou smlouvu?')) return;
+    if (!canEditVehicleDetails || !policy?.id) return;
     setInsuranceError('');
     try {
       const response = await deleteVehicleInsurancePolicy(policy.id);
@@ -685,6 +758,7 @@ export default function VehicleDetailPage() {
       setInsuranceMessage(response?.data?.message || (payload?.id ? 'Škodní událost byla upravena.' : 'Škodní událost byla uložena.'));
       await loadInsuranceData();
       await loadCardHistory();
+      return response?.data?.item || { id: response?.data?.id };
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setInsuranceError(apiMessage || 'Škodní událost se nepodařilo uložit.');
@@ -694,7 +768,7 @@ export default function VehicleDetailPage() {
   }
 
   async function handleDeleteClaim(claim) {
-    if (!canEditVehicleDetails || !claim?.id || !window.confirm('Opravdu smazat škodní událost?')) return;
+    if (!canEditVehicleDetails || !claim?.id) return;
     setInsuranceError('');
     try {
       const response = await deleteVehicleClaim(claim.id);
@@ -719,6 +793,7 @@ export default function VehicleDetailPage() {
       setTiresMessage(response?.data?.message || (payload?.id ? 'Sada pneumatik byla upravena.' : 'Sada pneumatik byla uložena.'));
       await loadTires();
       await loadCardHistory();
+      return response?.data?.item || { id: response?.data?.id };
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setTiresError(apiMessage || 'Sadu pneumatik se nepodařilo uložit.');
@@ -728,7 +803,7 @@ export default function VehicleDetailPage() {
   }
 
   async function handleDeleteTires(tire) {
-    if (!canEditVehicleDetails || !tire?.id || !window.confirm('Opravdu smazat sadu pneumatik?')) return;
+    if (!canEditVehicleDetails || !tire?.id) return;
     setTiresError('');
     try {
       const response = await deleteVehicleTires(tire.id);
@@ -753,6 +828,7 @@ export default function VehicleDetailPage() {
       setFundingMessage(response?.data?.message || (payload?.id ? 'Financování bylo upraveno.' : 'Financování bylo uloženo.'));
       await loadFunding();
       await loadCardHistory();
+      return response?.data?.item || { id: response?.data?.id };
     } catch (err) {
       const apiMessage = err?.response?.data?.error?.message;
       setFundingError(apiMessage || 'Financování se nepodařilo uložit.');
@@ -762,7 +838,7 @@ export default function VehicleDetailPage() {
   }
 
   async function handleDeleteFunding(fundingItem) {
-    if (!canEditVehicleDetails || !fundingItem?.id || !window.confirm('Opravdu smazat záznam financování?')) return;
+    if (!canEditVehicleDetails || !fundingItem?.id) return;
     setFundingError('');
     try {
       const response = await deleteVehicleFunding(fundingItem.id);
@@ -795,9 +871,9 @@ export default function VehicleDetailPage() {
       <section>
         <h2>Detail vozidla</h2>
         <div className="error-box">{error}</div>
-        <Link className="btn btn-ghost btn-back-icon" to="/vehicles" title="Zpět na přehled">
+        <button type="button" className="btn btn-ghost btn-back-icon" onClick={handleBackToPreviousView} title="Zpět na přehled" aria-label="Zpět na přehled">
           <AppIcon name="arrowLeft" size={20} weight="regular" />
-        </Link>
+        </button>
       </section>
     );
   }
@@ -817,7 +893,9 @@ export default function VehicleDetailPage() {
         <div>
           <h2>
             {item.w_tovarni_znacka || 'Neznámý'} {item.w_model_vozu || 'model'}
-            <span className="vehicle-detail-registration">{item.spz || '-'}</span>
+            <span className="vehicle-detail-registration">
+              , SPZ: {item.spz || '-'}{item.w_popis ? ` (${item.w_popis})` : ''}
+            </span>
             <sup className="vehicle-detail-id">#{item.id}</sup>
             <span className="vehicle-status-badge" data-status={item.status?.toLowerCase()}>
               {item.status || 'Neznámý'}
@@ -847,15 +925,18 @@ export default function VehicleDetailPage() {
             <AppIcon name="pencilSimple" size={16} />
           </button>
         )}
-        <Link className="btn btn-ghost btn-back-icon" to="/vehicles" title="Zpět na přehled">
+        <button type="button" className="btn btn-ghost btn-back-icon" onClick={handleBackToPreviousView} title="Zpět na přehled" aria-label="Zpět na přehled">
           <AppIcon name="arrowLeft" size={20} weight="regular" />
-        </Link>
+        </button>
 
         <div className="vehicle-detail-data-grid">
           <div className="vehicle-banner-item">
-            <AppIcon name="chatCircleText" size={18} weight="duotone" />
+            <div className="vehicle-banner-icon-stack">
+              <AppIcon name="chatCircleText" size={18} weight="duotone" />
+              <WdBadge />
+            </div>
             <div>
-              <span className="vehicle-banner-label">Volací znak <WdBadge /></span>
+              <span className="vehicle-banner-label">Volací znak</span>
               <span className="vehicle-banner-value">{item.w_popis || '-'}</span>
             </div>
           </div>
@@ -871,23 +952,32 @@ export default function VehicleDetailPage() {
             </div>
           </div>
           <div className="vehicle-banner-item">
-            <AppIcon name="drop" size={18} weight="duotone" />
+            <div className="vehicle-banner-icon-stack">
+              <AppIcon name="drop" size={18} weight="duotone" />
+              <WdBadge />
+            </div>
             <div>
-              <span className="vehicle-banner-label">Palivo <WdBadge /></span>
+              <span className="vehicle-banner-label">Palivo</span>
               <span className="vehicle-banner-value">{item.w_typ_phm || '-'}</span>
             </div>
           </div>
           <div className="vehicle-banner-item">
-            <AppIcon name="mapPin" size={18} weight="duotone" />
+            <div className="vehicle-banner-icon-stack">
+              <AppIcon name="mapPin" size={18} weight="duotone" />
+              <WdBadge />
+            </div>
             <div>
-              <span className="vehicle-banner-label">Stanoviště <WdBadge /></span>
+              <span className="vehicle-banner-label">Stanoviště</span>
               <span className="vehicle-banner-value">{item.w_stanoviste || '-'}</span>
             </div>
           </div>
           <div className="vehicle-banner-item">
-            <AppIcon name="calendarBlank" size={18} weight="duotone" />
+            <div className="vehicle-banner-icon-stack">
+              <AppIcon name="calendarBlank" size={18} weight="duotone" />
+              <WdBadge />
+            </div>
             <div>
-              <span className="vehicle-banner-label">Datum zařazení <WdBadge /></span>
+              <span className="vehicle-banner-label">Datum zařazení</span>
               <span className="vehicle-banner-value">
                 {item.datum_zarazeni
                   ? new Date(item.datum_zarazeni).toLocaleDateString('cs-CZ')
@@ -896,9 +986,12 @@ export default function VehicleDetailPage() {
             </div>
           </div>
           <div className="vehicle-banner-item">
-            <AppIcon name="gauge" size={18} weight="duotone" />
+            <div className="vehicle-banner-icon-stack">
+              <AppIcon name="gauge" size={18} weight="duotone" />
+              <WdBadge />
+            </div>
             <div>
-              <span className="vehicle-banner-label">Nájezd KM <WdBadge /></span>
+              <span className="vehicle-banner-label">Nájezd KM</span>
               <span className="vehicle-banner-value">
                 {item.najeto_km !== null && item.najeto_km !== undefined
                   ? `${Number(item.najeto_km).toLocaleString('cs-CZ')} km`
@@ -918,6 +1011,26 @@ export default function VehicleDetailPage() {
             <div>
               <span className="vehicle-banner-label">VIN</span>
               <span className="vehicle-banner-value">{item.vin || '-'}</span>
+            </div>
+          </div>
+          <div className="vehicle-banner-item">
+            <div className="vehicle-banner-icon-stack">
+              <AppIcon name="ccsCard" size={18} weight="duotone" />
+              <WdBadge />
+            </div>
+            <div>
+              <span className="vehicle-banner-label">Číslo CCS karty</span>
+              <span className="vehicle-banner-value">{item.ccs_card_number || '-'}</span>
+            </div>
+          </div>
+          <div className="vehicle-banner-item">
+            <div className="vehicle-banner-icon-stack">
+              <AppIcon name="calendarBlank" size={18} weight="duotone" />
+              <WdBadge />
+            </div>
+            <div>
+              <span className="vehicle-banner-label">Platnost CCS karty</span>
+              <span className="vehicle-banner-value">{formatCcsExpiration(item.ccs_card_expiration)}</span>
             </div>
           </div>
         </div>
@@ -948,6 +1061,7 @@ export default function VehicleDetailPage() {
           attachmentsError={attachmentsError}
           attachmentMessage={attachmentMessage}
           uploadingAttachment={uploadingAttachment}
+          attachmentUploadProgress={attachmentUploadProgress}
           onUploadAttachment={handleUploadAttachment}
           onDownloadAttachment={handleDownloadAttachment}
           onDeleteAttachment={handleDeleteAttachment}
@@ -957,6 +1071,7 @@ export default function VehicleDetailPage() {
           serviceRecordMessage={serviceRecordMessage}
           creatingServiceRecord={creatingServiceRecord}
           onCreateServiceRecord={handleCreateServiceRecord}
+          onCreateServiceStation={handleCreateServiceStation}
           onDeleteServiceRecord={handleDeleteServiceRecord}
           vehicleEquipment={vehicleEquipment}
           equipmentLoading={equipmentLoading}

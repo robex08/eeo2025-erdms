@@ -1,4 +1,4 @@
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useEffect, useMemo, useState } from 'react';
 import AppIcon from '../components/ui/AppIcon';
 import SyncGate from '../components/vehicles/SyncGate';
@@ -242,6 +242,8 @@ function renderDriverVehicleMetricLines(vehicleItems, rawMap, monthKey, hasMonth
 }
 
 export default function DriversActivePage() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -751,7 +753,7 @@ export default function DriversActivePage() {
             title="Skrýt"
             onClick={() => setSyncMessageVisible(false)}
           >
-            ×
+            <AppIcon name="close" size={15} weight="bold" />
           </button>
         </div>
       ) : null}
@@ -884,17 +886,6 @@ export default function DriversActivePage() {
                           const rowKey = `${String(item?.id || item?.legacy_driverid || 'driver')}-vehicle-${index}-${String(vehicle?.id || '')}`;
                           const label = printableValue(vehicle?.label, '-');
                           const carId = printableValue(vehicle?.carId, '');
-                          const vehicleId = Number(vehicle?.id || 0);
-                          const canLink = vehicleId > 0;
-
-                          if (canLink) {
-                            return (
-                              <Link key={rowKey} className="drivers-vehicle-link" to={`/vehicles/${vehicleId}`}>
-                                <span>{label}</span>
-                                {carId !== '' ? <sup className="drivers-vehicle-carid">#{carId}</sup> : null}
-                              </Link>
-                            );
-                          }
 
                           return (
                             <span key={rowKey} className="drivers-vehicle-line">
@@ -927,24 +918,68 @@ export default function DriversActivePage() {
                     <td className="table-cell-actions">
                       <div className="table-action-icons">
                         {hasVehicleLink ? (
-                          <Link
-                            className="table-icon-btn"
-                            to={`/vehicles/${Number(item.vehicle_id)}`}
-                            title="Detail vozidla"
-                            aria-label="Detail vozidla"
-                          >
-                            <AppIcon name="detail" size={14} weight="duotone" />
-                          </Link>
+                          <>
+                            <button
+                              type="button"
+                              className="table-icon-btn"
+                              onClick={() => {
+                                navigate('/vehicles', {
+                                  state: {
+                                    vehiclePreviewId: Number(item.vehicle_id),
+                                    returnTo: {
+                                      pathname: location.pathname,
+                                      search: location.search,
+                                      hash: location.hash,
+                                    },
+                                  },
+                                });
+                              }}
+                              title="Detail vozidla"
+                              aria-label="Detail vozidla"
+                            >
+                              <AppIcon name="detail" size={14} weight="duotone" />
+                            </button>
+
+                            <Link
+                              className="table-icon-btn table-icon-btn-primary"
+                              to={{
+                                pathname: `/vehicles/${Number(item.vehicle_id)}`,
+                                hash: '#karta',
+                                state: {
+                                  returnTo: {
+                                    pathname: location.pathname,
+                                    search: location.search,
+                                    hash: location.hash,
+                                  },
+                                },
+                              }}
+                              title="Evidenční karta vozidla"
+                              aria-label="Evidenční karta vozidla"
+                            >
+                              <AppIcon name="edit" size={14} weight="duotone" />
+                            </Link>
+                          </>
                         ) : (
-                          <button
-                            type="button"
-                            className="table-icon-btn table-icon-btn-disabled"
-                            disabled
-                            title="Detail vozidla není dostupný"
-                            aria-label="Detail vozidla není dostupný"
-                          >
-                            <AppIcon name="detail" size={14} weight="duotone" />
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              className="table-icon-btn table-icon-btn-disabled"
+                              disabled
+                              title="Detail vozidla není dostupný"
+                              aria-label="Detail vozidla není dostupný"
+                            >
+                              <AppIcon name="detail" size={14} weight="duotone" />
+                            </button>
+                            <button
+                              type="button"
+                              className="table-icon-btn table-icon-btn-disabled"
+                              disabled
+                              title="Evidenční karta vozidla není dostupná"
+                              aria-label="Evidenční karta vozidla není dostupná"
+                            >
+                              <AppIcon name="edit" size={14} weight="duotone" />
+                            </button>
+                          </>
                         )}
                       </div>
                     </td>
