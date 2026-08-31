@@ -92,6 +92,10 @@ final class VehicleService
             }
             $payload[$field] = $value;
         }
+        $payload['category_name'] = mb_substr(trim((string) ($payload['category_name'] ?? '')), 0, 190);
+        if ($payload['category_name'] === '') {
+            $payload['category_name'] = $payload['category'];
+        }
         $payload['item_name'] = mb_substr(trim((string) ($payload['item_name'] ?? '')), 0, 190);
         if ($payload['item_name'] === '') {
             throw new RuntimeException('Název položky číselníku je povinný.');
@@ -227,14 +231,11 @@ final class VehicleService
      */
     public function syncDriversKmForVehicle(int $vehicleId, int $year, int $month, int $actorUserId, bool $actorHasAllVehicles): array
     {
-        $logFile = '/tmp/vehicles-sync-debug.log';
         $kmMonth = sprintf('%04d-%02d', $year, $month);
-        file_put_contents($logFile, sprintf("[%s] syncDriversKmForVehicle START: vehicleId=%d, year=%d, month=%d, actorUserId=%d\n", date('Y-m-d H:i:s'), $vehicleId, $year, $month, $actorUserId), FILE_APPEND);
 
         try {
             // Ověření přístupu k vozidlu
             $vehicle = $this->getVehicleDetail($vehicleId, $actorUserId, $actorHasAllVehicles);
-            file_put_contents($logFile, sprintf("[%s] getVehicleDetail result: %s\n", date('Y-m-d H:i:s'), $vehicle ? 'found' : 'null'), FILE_APPEND);
 
             if ($vehicle === null) {
                 throw new \RuntimeException('Vozidlo nebylo nalezeno nebo k němu nemáte přístup.');
@@ -243,7 +244,6 @@ final class VehicleService
             $carId = (int) ($vehicle['legacy_carid'] ?? 0);
             $vehicleSpz = (string) ($vehicle['spz'] ?? '');
             $vehicleName = $this->formatVehicleName($vehicle);
-            file_put_contents($logFile, sprintf("[%s] carId=%d\n", date('Y-m-d H:i:s'), $carId), FILE_APPEND);
 
             // Vozidlo bez WebDispečink ID: nemá smysl volat WD.
             if ($carId <= 0) {
@@ -400,8 +400,6 @@ final class VehicleService
                 'message' => $message,
             ];
         } catch (\Throwable $e) {
-            file_put_contents($logFile, sprintf("[%s] EXCEPTION: %s in %s:%d\n", date('Y-m-d H:i:s'), $e->getMessage(), $e->getFile(), $e->getLine()), FILE_APPEND);
-            file_put_contents($logFile, sprintf("[%s] TRACE: %s\n", date('Y-m-d H:i:s'), $e->getTraceAsString()), FILE_APPEND);
             throw $e;
         }
     }
@@ -626,6 +624,11 @@ final class VehicleService
         return $this->vehicles->getVehicleDetailById($vehicleId, $actorUserId, $actorHasAllVehicles);
     }
 
+    public function getVehicleModuleSummary(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): ?array
+    {
+        return $this->vehicles->getVehicleModuleSummary($vehicleId, $actorUserId, $actorHasAllVehicles);
+    }
+
     public function getVehicleManualEvents(
         int $vehicleId,
         string $query = '',
@@ -646,6 +649,11 @@ final class VehicleService
         return $this->vehicles->listVehicleCardAudit($vehicleId, $fieldName, $limit, $actorUserId, $actorHasAllVehicles);
     }
 
+    public function getVehicleEeoServiceHistory(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        return $this->vehicles->listVehicleEeoServiceHistory($vehicleId, $actorUserId, $actorHasAllVehicles);
+    }
+
     public function getVehicleAttachments(
         int $vehicleId,
         string $documentTypeCode = '',
@@ -660,37 +668,117 @@ final class VehicleService
         return $this->vehicles->listVehicleServiceRecords($vehicleId, $actorUserId, $actorHasAllVehicles);
     }
 
-    public function createVehicleServiceRecord(int $vehicleId, array $payload, int $actorUserId): int
+    private function resolveServiceStationSnapshot(array $payload): array
     {
-        $codes = ['service_type_code', 'service_kind_code', 'status_code', 'service_station_code'];
-        foreach ($codes as $field) {
-            if (($payload[$field] ?? '') !== '' && !preg_match('/^[a-z0-9_]{2,64}$/', (string) $payload[$field])) {
-                throw new RuntimeException('Neplatný kód servisního údaje: ' . $field);
+        $station = is_array($payload['service_station'] ?? null) ? $payload['service_station'] : [];
+        $selectedStationId = (int) ($payload['service_station_id'] ?? 0);
+        $organization = $this->normalizeShortText((string) ($station['organization'] ?? '')) ?: null;
+        $name = $this->normalizeShortText((string) ($station['name'] ?? '')) ?: null;
+        $city = $this->normalizeShortText((string) ($station['city'] ?? '')) ?: null;
+        $street = $this->normalizeShortText((string) ($station['street'] ?? '')) ?: null;
+        $postalCode = $this->normalizeShortText((string) ($station['postal_code'] ?? '')) ?: null;
+        $register = filter_var($payload['register_service_station'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+        if ($selectedStationId > 0) {
+            foreach ($this->vehicles->listStationAddresses() as $candidate) {
+                if ((int) ($candidate['id'] ?? 0) !== $selectedStationId) {
+                    continue;
+                }
+                if (strcasecmp(trim((string) ($candidate['typ'] ?? '')), 'Servis') !== 0) {
+                    throw new RuntimeException('Vybrané stanoviště není servis.');
+                }
+
+                return [
+                    'service_organization' => $this->normalizeShortText((string) ($candidate['organizace'] ?? '')) ?: null,
+                    'service_station_name' => $this->normalizeShortText((string) ($candidate['nazev_stanoviste'] ?? $candidate['mesto'] ?? '')) ?: null,
+                    'service_city' => $this->normalizeShortText((string) ($candidate['mesto'] ?? '')) ?: null,
+                    'service_street' => $this->normalizeShortText((string) ($candidate['ulice'] ?? '')) ?: null,
+                    'service_postal_code' => $this->normalizeShortText((string) ($candidate['psc'] ?? '')) ?: null,
+                ];
+            }
+
+            throw new RuntimeException('Vybraný servis nebyl nalezen.');
+        }
+
+        if (!$register) {
+            if ($name === null && $organization === null && $city === null) {
+                throw new RuntimeException('Vyberte servis ze seznamu nebo zadejte nový servis.');
+            }
+            return [
+                'service_organization' => $organization,
+                'service_station_name' => $name,
+                'service_city' => $city,
+                'service_street' => $street,
+                'service_postal_code' => $postalCode,
+            ];
+        }
+
+        if ($organization === null || $name === null || $city === null) {
+            throw new RuntimeException('Pro nový servis vyplňte organizaci, název a město.');
+        }
+
+        $existing = null;
+        foreach ($this->vehicles->listStationAddresses() as $candidate) {
+            if (strcasecmp(trim((string) ($candidate['organizace'] ?? '')), $organization) === 0
+                && strcasecmp(trim((string) ($candidate['nazev_stanoviste'] ?? '')), $name) === 0
+                && strcasecmp(trim((string) ($candidate['mesto'] ?? '')), $city) === 0
+                && strcasecmp(trim((string) ($candidate['ulice'] ?? '')), (string) ($street ?? '')) === 0
+                && strcasecmp(trim((string) ($candidate['typ'] ?? '')), 'Servis') === 0) {
+                $existing = $candidate;
+                break;
             }
         }
 
-        $statusCode = strtolower(trim((string) ($payload['status_code'] ?? 'planned')));
-        if ($statusCode === '') {
-            $statusCode = 'planned';
+        if ($existing === null) {
+            $this->vehicles->createStationAddress([
+                'organizace' => $organization,
+                'nazev_stanoviste' => $name,
+                'mesto' => $city,
+                'ulice' => $street ?? '',
+                'psc' => $postalCode ?? '',
+                'typ' => 'Servis',
+            ]);
         }
-        $cost = $payload['cost_amount'] ?? null;
-        if ($cost !== null && $cost !== '' && !is_numeric(str_replace(',', '.', (string) $cost))) {
-            throw new RuntimeException('Cena opravy musí být číslo.');
-        }
+
+        return [
+            'service_organization' => $organization,
+            'service_station_name' => $name,
+            'service_city' => $city,
+            'service_street' => $street,
+            'service_postal_code' => $postalCode,
+        ];
+    }
+
+    public function createVehicleServiceRecord(int $vehicleId, array $payload, int $actorUserId): int
+    {
+        $serviceType = $this->requireActiveLookupCode('service_type', $payload['service_type_code'] ?? null, 'Typ servisu');
+        $serviceKind = $this->optionalActiveLookupCode('service_kind', $payload['service_kind_code'] ?? null, 'Druh servisního úkonu');
+        $statusCode = $this->requireActiveLookupCode('service_status', $payload['status_code'] ?? 'planned', 'Stav servisu');
+        $station = $this->resolveServiceStationSnapshot($payload);
+        $serviceDate = $this->normalizeDate((string) ($payload['service_date'] ?? ''));
+        $plannedDate = $this->normalizeDate((string) ($payload['planned_date'] ?? ''));
+        $completedDate = $this->normalizeDate((string) ($payload['completed_date'] ?? ''));
+        $this->assertDateOrder($plannedDate, $completedDate, 'Datum dokončení nemůže být před plánovaným datem.');
+        $this->assertDateOrder($serviceDate, $completedDate, 'Datum dokončení nemůže být před datem servisu.');
 
         return $this->vehicles->createVehicleServiceRecord([
             'vehicle_id' => $vehicleId,
-            'service_type_code' => strtolower(trim((string) ($payload['service_type_code'] ?? ''))),
-            'service_kind_code' => strtolower(trim((string) ($payload['service_kind_code'] ?? ''))) ?: null,
+            'service_type_code' => $serviceType,
+            'service_kind_code' => $serviceKind,
             'status_code' => $statusCode,
-            'service_station_code' => strtolower(trim((string) ($payload['service_station_code'] ?? ''))) ?: null,
-            'supplier_name' => $this->normalizeShortText((string) ($payload['supplier_name'] ?? '')) ?: null,
-            'service_date' => $this->normalizeDate((string) ($payload['service_date'] ?? '')),
-            'planned_date' => $this->normalizeDate((string) ($payload['planned_date'] ?? '')),
-            'completed_date' => $this->normalizeDate((string) ($payload['completed_date'] ?? '')),
-            'description' => $this->normalizeShortText((string) ($payload['description'] ?? '')) ?: null,
-            'parts_description' => $this->normalizeShortText((string) ($payload['parts_description'] ?? '')) ?: null,
-            'cost_amount' => $cost === null || $cost === '' ? null : (float) str_replace(',', '.', (string) $cost),
+            'service_station_code' => null,
+            'service_organization' => $station['service_organization'],
+            'service_station_name' => $station['service_station_name'],
+            'service_city' => $station['service_city'],
+            'service_street' => $station['service_street'],
+            'service_postal_code' => $station['service_postal_code'],
+            'supplier_name' => $station['service_station_name'] ?: $this->normalizeShortText((string) ($payload['supplier_name'] ?? '')) ?: null,
+            'service_date' => $serviceDate,
+            'planned_date' => $plannedDate,
+            'completed_date' => $completedDate,
+            'description' => $this->normalizeLongText((string) ($payload['description'] ?? '')) ?: null,
+            'parts_description' => $this->normalizeLongText((string) ($payload['parts_description'] ?? '')) ?: null,
+            'cost_amount' => $this->normalizeNullableDecimal($payload['cost_amount'] ?? null, 0, 999999999999.99),
             'cost_currency' => 'CZK',
             'source' => 'v2',
             'external_reference' => $this->normalizeShortText((string) ($payload['external_reference'] ?? '')) ?: null,
@@ -702,23 +790,31 @@ final class VehicleService
 
     public function updateVehicleServiceRecord(int $recordId, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
     {
-        $codes = ['service_type_code', 'service_kind_code', 'status_code', 'service_station_code'];
-        foreach ($codes as $field) {
-            if (($payload[$field] ?? '') !== '' && !preg_match('/^[a-z0-9_]{2,64}$/', (string) $payload[$field])) {
-                throw new RuntimeException('Neplatný kód servisního údaje: ' . $field);
-            }
-        }
+        $serviceType = $this->requireActiveLookupCode('service_type', $payload['service_type_code'] ?? null, 'Typ servisu');
+        $serviceKind = $this->optionalActiveLookupCode('service_kind', $payload['service_kind_code'] ?? null, 'Druh servisního úkonu');
+        $statusCode = $this->requireActiveLookupCode('service_status', $payload['status_code'] ?? 'planned', 'Stav servisu');
+        $station = $this->resolveServiceStationSnapshot($payload);
+        $serviceDate = $this->normalizeDate((string) ($payload['service_date'] ?? ''));
+        $plannedDate = $this->normalizeDate((string) ($payload['planned_date'] ?? ''));
+        $completedDate = $this->normalizeDate((string) ($payload['completed_date'] ?? ''));
+        $this->assertDateOrder($plannedDate, $completedDate, 'Datum dokončení nemůže být před plánovaným datem.');
+        $this->assertDateOrder($serviceDate, $completedDate, 'Datum dokončení nemůže být před datem servisu.');
         return $this->vehicles->updateVehicleServiceRecord($recordId, [
-            'service_type_code' => strtolower(trim((string) ($payload['service_type_code'] ?? ''))),
-            'service_kind_code' => strtolower(trim((string) ($payload['service_kind_code'] ?? ''))) ?: null,
-            'status_code' => strtolower(trim((string) ($payload['status_code'] ?? 'planned'))),
-            'service_station_code' => strtolower(trim((string) ($payload['service_station_code'] ?? ''))) ?: null,
-            'supplier_name' => $this->normalizeShortText((string) ($payload['supplier_name'] ?? '')) ?: null,
-            'service_date' => $this->normalizeDate((string) ($payload['service_date'] ?? '')),
-            'planned_date' => $this->normalizeDate((string) ($payload['planned_date'] ?? '')),
-            'completed_date' => $this->normalizeDate((string) ($payload['completed_date'] ?? '')),
-            'description' => $this->normalizeShortText((string) ($payload['description'] ?? '')) ?: null,
-            'parts_description' => $this->normalizeShortText((string) ($payload['parts_description'] ?? '')) ?: null,
+            'service_type_code' => $serviceType,
+            'service_kind_code' => $serviceKind,
+            'status_code' => $statusCode,
+            'service_station_code' => null,
+            'service_organization' => $station['service_organization'],
+            'service_station_name' => $station['service_station_name'],
+            'service_city' => $station['service_city'],
+            'service_street' => $station['service_street'],
+            'service_postal_code' => $station['service_postal_code'],
+            'supplier_name' => $station['service_station_name'] ?: $this->normalizeShortText((string) ($payload['supplier_name'] ?? '')) ?: null,
+            'service_date' => $serviceDate,
+            'planned_date' => $plannedDate,
+            'completed_date' => $completedDate,
+            'description' => $this->normalizeLongText((string) ($payload['description'] ?? '')) ?: null,
+            'parts_description' => $this->normalizeLongText((string) ($payload['parts_description'] ?? '')) ?: null,
             'cost_amount' => $this->normalizeNullableDecimal($payload['cost_amount'] ?? null, 0, 999999999999.99),
             'cost_currency' => 'CZK',
             'external_reference' => $this->normalizeShortText((string) ($payload['external_reference'] ?? '')) ?: null,
@@ -727,8 +823,56 @@ final class VehicleService
         ], $actorUserId, $actorHasAllVehicles);
     }
 
+    private function deleteAttachmentFile(string $storageKey): bool
+    {
+        $storageKey = trim((string) $storageKey);
+        if ($storageKey === '') {
+            return false;
+        }
+
+        $root = rtrim($this->getAttachmentStorageRoot(), '/\\');
+        $rootReal = realpath($root);
+        if ($rootReal === false) {
+            return false;
+        }
+        $normalized = str_replace(['\\', '/'], DIRECTORY_SEPARATOR, $storageKey);
+        $candidates = [
+            $root . DIRECTORY_SEPARATOR . ltrim($normalized, DIRECTORY_SEPARATOR),
+            $root . DIRECTORY_SEPARATOR . ltrim($normalized, '/\\'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if ($candidate === '' || !is_file($candidate)) {
+                continue;
+            }
+
+            $realCandidate = realpath($candidate);
+            if ($realCandidate !== false && is_file($realCandidate) && str_starts_with($realCandidate, $rootReal . DIRECTORY_SEPARATOR)) {
+                return @unlink($realCandidate);
+            }
+        }
+
+        return false;
+    }
+
+    private function deleteAttachmentsForContext(int $vehicleId, string $contextModule, int $contextRecordId, int $actorUserId): int
+    {
+        $attachments = $this->vehicles->listVehicleAttachmentsForContext($vehicleId, $contextModule, $contextRecordId, $actorUserId, true);
+        foreach ($attachments as $attachment) {
+            $this->deleteAttachmentFile((string) ($attachment['storage_key'] ?? ''));
+        }
+
+        return $this->vehicles->softDeleteVehicleAttachmentsForContext($vehicleId, $contextModule, $contextRecordId, $actorUserId);
+    }
+
     public function deleteVehicleServiceRecord(int $recordId, int $actorUserId, bool $actorHasAllVehicles = true): bool
     {
+        $existing = $this->vehicles->findVehicleServiceRecordById($recordId, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) {
+            return false;
+        }
+
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'service', $recordId, $actorUserId);
         return $this->vehicles->softDeleteVehicleServiceRecord($recordId, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -739,15 +883,12 @@ final class VehicleService
 
     public function createVehicleEquipment(int $vehicleId, array $payload, int $actorUserId): int
     {
-        foreach (['equipment_type_code', 'status_code'] as $field) {
-            if (!preg_match('/^[a-z0-9_]{2,64}$/', strtolower(trim((string) ($payload[$field] ?? ''))))) {
-                throw new RuntimeException('Neplatný kód vybavení: ' . $field);
-            }
-        }
+        $equipmentType = $this->requireActiveLookupCode('equipment_type', $payload['equipment_type_code'] ?? null, 'Typ vybavení');
+        $statusCode = $this->requireActiveLookupCode('equipment_status', $payload['status_code'] ?? null, 'Stav vybavení');
         return $this->vehicles->createVehicleEquipment([
             'vehicle_id' => $vehicleId,
-            'equipment_type_code' => strtolower(trim((string) $payload['equipment_type_code'])),
-            'status_code' => strtolower(trim((string) $payload['status_code'])),
+            'equipment_type_code' => $equipmentType,
+            'status_code' => $statusCode,
             'equipment_name' => $this->normalizeShortText((string) ($payload['equipment_name'] ?? '')) ?: null,
             'manufacturer' => $this->normalizeShortText((string) ($payload['manufacturer'] ?? '')) ?: null,
             'model' => $this->normalizeShortText((string) ($payload['model'] ?? '')) ?: null,
@@ -759,7 +900,7 @@ final class VehicleService
             'revision_valid_to' => $this->normalizeDate((string) ($payload['revision_valid_to'] ?? '')),
             'cost_amount' => $this->normalizeNullableDecimal($payload['cost_amount'] ?? null, 0, 999999999999.99),
             'cost_currency' => 'CZK',
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'source' => 'v2',
             'created_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
@@ -769,14 +910,11 @@ final class VehicleService
 
     public function updateVehicleEquipment(int $equipmentId, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
     {
-        foreach (['equipment_type_code', 'status_code'] as $field) {
-            if (!preg_match('/^[a-z0-9_]{2,64}$/', strtolower(trim((string) ($payload[$field] ?? ''))))) {
-                throw new RuntimeException('Neplatný kód vybavení: ' . $field);
-            }
-        }
+        $equipmentType = $this->requireActiveLookupCode('equipment_type', $payload['equipment_type_code'] ?? null, 'Typ vybavení');
+        $statusCode = $this->requireActiveLookupCode('equipment_status', $payload['status_code'] ?? null, 'Stav vybavení');
         return $this->vehicles->updateVehicleEquipment($equipmentId, [
-            'equipment_type_code' => strtolower(trim((string) $payload['equipment_type_code'])),
-            'status_code' => strtolower(trim((string) $payload['status_code'])),
+            'equipment_type_code' => $equipmentType,
+            'status_code' => $statusCode,
             'equipment_name' => $this->normalizeShortText((string) ($payload['equipment_name'] ?? '')) ?: null,
             'manufacturer' => $this->normalizeShortText((string) ($payload['manufacturer'] ?? '')) ?: null,
             'model' => $this->normalizeShortText((string) ($payload['model'] ?? '')) ?: null,
@@ -788,7 +926,7 @@ final class VehicleService
             'revision_valid_to' => $this->normalizeDate((string) ($payload['revision_valid_to'] ?? '')),
             'cost_amount' => $this->normalizeNullableDecimal($payload['cost_amount'] ?? null, 0, 999999999999.99),
             'cost_currency' => 'CZK',
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'metadata_json' => null,
         ], $actorUserId, $actorHasAllVehicles);
@@ -796,6 +934,12 @@ final class VehicleService
 
     public function deleteVehicleEquipment(int $equipmentId, int $actorUserId, bool $actorHasAllVehicles = true): bool
     {
+        $existing = $this->vehicles->findVehicleEquipmentById($equipmentId, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) {
+            return false;
+        }
+
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'equipment', $equipmentId, $actorUserId);
         return $this->vehicles->softDeleteVehicleEquipment($equipmentId, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -806,18 +950,22 @@ final class VehicleService
 
     public function createVehicleInsurancePolicy(int $vehicleId, array $payload, int $actorUserId): int
     {
+        $validFrom = $this->normalizeDate((string) ($payload['valid_from'] ?? ''));
+        $validTo = $this->normalizeDate((string) ($payload['valid_to'] ?? ''));
+        $this->assertDateOrder($validFrom, $validTo, 'Platnost od nemůže být po platnosti do.');
+
         return $this->vehicles->createVehicleInsurancePolicy([
             'vehicle_id' => $vehicleId,
-            'policy_type_code' => strtolower(trim((string) ($payload['policy_type_code'] ?? ''))),
+            'policy_type_code' => $this->requireActiveLookupCode('insurance_policy_type', $payload['policy_type_code'] ?? null, 'Typ pojištění'),
             'policy_number' => $this->normalizeShortText((string) ($payload['policy_number'] ?? '')) ?: null,
             'insurer_name' => $this->normalizeShortText((string) ($payload['insurer_name'] ?? '')) ?: null,
-            'valid_from' => $this->normalizeDate((string) ($payload['valid_from'] ?? '')),
-            'valid_to' => $this->normalizeDate((string) ($payload['valid_to'] ?? '')),
+            'valid_from' => $validFrom,
+            'valid_to' => $validTo,
             'premium_amount' => $this->normalizeNullableDecimal($payload['premium_amount'] ?? null, 0, 999999999999.99),
             'premium_currency' => 'CZK',
             'deductible_amount' => $this->normalizeNullableDecimal($payload['deductible_amount'] ?? null, 0, 999999999999.99),
             'deductible_currency' => 'CZK',
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'source' => 'v2',
             'created_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
@@ -827,17 +975,21 @@ final class VehicleService
 
     public function updateVehicleInsurancePolicy(int $policyId, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
     {
+        $validFrom = $this->normalizeDate((string) ($payload['valid_from'] ?? ''));
+        $validTo = $this->normalizeDate((string) ($payload['valid_to'] ?? ''));
+        $this->assertDateOrder($validFrom, $validTo, 'Platnost od nemůže být po platnosti do.');
+
         return $this->vehicles->updateVehicleInsurancePolicy($policyId, [
-            'policy_type_code' => strtolower(trim((string) ($payload['policy_type_code'] ?? ''))),
+            'policy_type_code' => $this->requireActiveLookupCode('insurance_policy_type', $payload['policy_type_code'] ?? null, 'Typ pojištění'),
             'policy_number' => $this->normalizeShortText((string) ($payload['policy_number'] ?? '')) ?: null,
             'insurer_name' => $this->normalizeShortText((string) ($payload['insurer_name'] ?? '')) ?: null,
-            'valid_from' => $this->normalizeDate((string) ($payload['valid_from'] ?? '')),
-            'valid_to' => $this->normalizeDate((string) ($payload['valid_to'] ?? '')),
+            'valid_from' => $validFrom,
+            'valid_to' => $validTo,
             'premium_amount' => $this->normalizeNullableDecimal($payload['premium_amount'] ?? null, 0, 999999999999.99),
             'premium_currency' => 'CZK',
             'deductible_amount' => $this->normalizeNullableDecimal($payload['deductible_amount'] ?? null, 0, 999999999999.99),
             'deductible_currency' => 'CZK',
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'metadata_json' => null,
         ], $actorUserId, $actorHasAllVehicles);
@@ -845,6 +997,12 @@ final class VehicleService
 
     public function deleteVehicleInsurancePolicy(int $policyId, int $actorUserId, bool $actorHasAllVehicles = true): bool
     {
+        $existing = $this->vehicles->findVehicleInsurancePolicyById($policyId, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) {
+            return false;
+        }
+
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'insurance_policy', $policyId, $actorUserId);
         return $this->vehicles->softDeleteVehicleInsurancePolicy($policyId, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -855,14 +1013,18 @@ final class VehicleService
 
     public function createVehicleClaim(int $vehicleId, array $payload, int $actorUserId): int
     {
+        $claimDate = $this->normalizeDate((string) ($payload['claim_date'] ?? ''));
+        $settledDate = $this->normalizeDate((string) ($payload['settled_date'] ?? ''));
+        $this->assertDateOrder($claimDate, $settledDate, 'Datum uzavření nemůže být před datem události.');
+
         return $this->vehicles->createVehicleClaim([
             'vehicle_id' => $vehicleId,
-            'insurance_policy_id' => (int) ($payload['insurance_policy_id'] ?? 0) ?: null,
-            'claim_status_code' => strtolower(trim((string) ($payload['claim_status_code'] ?? 'open'))),
-            'claim_date' => $this->normalizeDate((string) ($payload['claim_date'] ?? '')),
-            'settled_date' => $this->normalizeDate((string) ($payload['settled_date'] ?? '')),
+            'insurance_policy_id' => $this->normalizeClaimPolicyId($payload['insurance_policy_id'] ?? null, $vehicleId, $actorUserId, true),
+            'claim_status_code' => $this->requireActiveLookupCode('claim_status', $payload['claim_status_code'] ?? 'open', 'Stav škodní události'),
+            'claim_date' => $claimDate,
+            'settled_date' => $settledDate,
             'title' => $this->normalizeShortText((string) ($payload['title'] ?? '')) ?: null,
-            'description' => $this->normalizeShortText((string) ($payload['description'] ?? '')) ?: null,
+            'description' => $this->normalizeLongText((string) ($payload['description'] ?? '')) ?: null,
             'payout_amount' => $this->normalizeNullableDecimal($payload['payout_amount'] ?? null, 0, 999999999999.99),
             'payout_currency' => 'CZK',
             'deductible_amount' => $this->normalizeNullableDecimal($payload['deductible_amount'] ?? null, 0, 999999999999.99),
@@ -877,13 +1039,21 @@ final class VehicleService
 
     public function updateVehicleClaim(int $claimId, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
     {
+        $existing = $this->vehicles->findVehicleClaimById($claimId, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) {
+            return null;
+        }
+        $claimDate = $this->normalizeDate((string) ($payload['claim_date'] ?? ''));
+        $settledDate = $this->normalizeDate((string) ($payload['settled_date'] ?? ''));
+        $this->assertDateOrder($claimDate, $settledDate, 'Datum uzavření nemůže být před datem události.');
+
         return $this->vehicles->updateVehicleClaim($claimId, [
-            'insurance_policy_id' => (int) ($payload['insurance_policy_id'] ?? 0) ?: null,
-            'claim_status_code' => strtolower(trim((string) ($payload['claim_status_code'] ?? 'open'))),
-            'claim_date' => $this->normalizeDate((string) ($payload['claim_date'] ?? '')),
-            'settled_date' => $this->normalizeDate((string) ($payload['settled_date'] ?? '')),
+            'insurance_policy_id' => $this->normalizeClaimPolicyId($payload['insurance_policy_id'] ?? null, (int) $existing['vehicle_id'], $actorUserId, $actorHasAllVehicles),
+            'claim_status_code' => $this->requireActiveLookupCode('claim_status', $payload['claim_status_code'] ?? 'open', 'Stav škodní události'),
+            'claim_date' => $claimDate,
+            'settled_date' => $settledDate,
             'title' => $this->normalizeShortText((string) ($payload['title'] ?? '')) ?: null,
-            'description' => $this->normalizeShortText((string) ($payload['description'] ?? '')) ?: null,
+            'description' => $this->normalizeLongText((string) ($payload['description'] ?? '')) ?: null,
             'payout_amount' => $this->normalizeNullableDecimal($payload['payout_amount'] ?? null, 0, 999999999999.99),
             'payout_currency' => 'CZK',
             'deductible_amount' => $this->normalizeNullableDecimal($payload['deductible_amount'] ?? null, 0, 999999999999.99),
@@ -896,6 +1066,12 @@ final class VehicleService
 
     public function deleteVehicleClaim(int $claimId, int $actorUserId, bool $actorHasAllVehicles = true): bool
     {
+        $existing = $this->vehicles->findVehicleClaimById($claimId, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) {
+            return false;
+        }
+
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'insurance_claim', $claimId, $actorUserId);
         return $this->vehicles->softDeleteVehicleClaim($claimId, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -906,29 +1082,31 @@ final class VehicleService
 
     public function createVehicleTires(int $vehicleId, array $payload, int $actorUserId): int
     {
-        foreach (['season_code', 'status_code'] as $field) {
-            if (!preg_match('/^[a-z0-9_]{2,64}$/', strtolower(trim((string) ($payload[$field] ?? ''))))) {
-                throw new RuntimeException('Neplatný kód pneumatik: ' . $field);
-            }
-        }
+        $seasonCode = $this->requireActiveLookupCode('tire_season', $payload['season_code'] ?? null, 'Sezóna pneumatik');
+        $statusCode = $this->requireActiveLookupCode('tire_status', $payload['status_code'] ?? null, 'Stav pneumatik');
+        $acquiredAt = $this->normalizeDate((string) ($payload['acquired_at'] ?? ''));
+        $installedAt = $this->normalizeDate((string) ($payload['installed_at'] ?? ''));
+        $removedAt = $this->normalizeDate((string) ($payload['removed_at'] ?? ''));
+        $this->assertDateOrder($acquiredAt, $installedAt, 'Datum nasazení nemůže být před datem pořízení.');
+        $this->assertDateOrder($installedAt, $removedAt, 'Datum sejmutí nemůže být před datem nasazení.');
         $quantity = (int) ($payload['quantity'] ?? 4);
         if ($quantity < 1 || $quantity > 20) throw new RuntimeException('Počet pneumatik musí být 1 až 20.');
         return $this->vehicles->createVehicleTires([
             'vehicle_id' => $vehicleId,
-            'season_code' => strtolower(trim((string) $payload['season_code'])),
-            'status_code' => strtolower(trim((string) $payload['status_code'])),
+            'season_code' => $seasonCode,
+            'status_code' => $statusCode,
             'tire_set_name' => $this->normalizeShortText((string) ($payload['tire_set_name'] ?? '')) ?: null,
             'dimension' => $this->normalizeShortText((string) ($payload['dimension'] ?? '')) ?: null,
             'quantity' => $quantity,
             'tread_depth_mm' => $this->normalizeNullableDecimal($payload['tread_depth_mm'] ?? null, 0, 99.99),
-            'acquired_at' => $this->normalizeDate((string) ($payload['acquired_at'] ?? '')),
-            'installed_at' => $this->normalizeDate((string) ($payload['installed_at'] ?? '')),
-            'removed_at' => $this->normalizeDate((string) ($payload['removed_at'] ?? '')),
+            'acquired_at' => $acquiredAt,
+            'installed_at' => $installedAt,
+            'removed_at' => $removedAt,
             'supplier_name' => $this->normalizeShortText((string) ($payload['supplier_name'] ?? '')) ?: null,
             'storage_location' => $this->normalizeShortText((string) ($payload['storage_location'] ?? '')) ?: null,
             'cost_amount' => $this->normalizeNullableDecimal($payload['cost_amount'] ?? null, 0, 999999999999.99),
             'cost_currency' => 'CZK',
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'source' => 'v2',
             'created_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
@@ -938,28 +1116,30 @@ final class VehicleService
 
     public function updateVehicleTires(int $tiresId, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
     {
-        foreach (['season_code', 'status_code'] as $field) {
-            if (!preg_match('/^[a-z0-9_]{2,64}$/', strtolower(trim((string) ($payload[$field] ?? ''))))) {
-                throw new RuntimeException('Neplatný kód pneumatik: ' . $field);
-            }
-        }
+        $seasonCode = $this->requireActiveLookupCode('tire_season', $payload['season_code'] ?? null, 'Sezóna pneumatik');
+        $statusCode = $this->requireActiveLookupCode('tire_status', $payload['status_code'] ?? null, 'Stav pneumatik');
+        $acquiredAt = $this->normalizeDate((string) ($payload['acquired_at'] ?? ''));
+        $installedAt = $this->normalizeDate((string) ($payload['installed_at'] ?? ''));
+        $removedAt = $this->normalizeDate((string) ($payload['removed_at'] ?? ''));
+        $this->assertDateOrder($acquiredAt, $installedAt, 'Datum nasazení nemůže být před datem pořízení.');
+        $this->assertDateOrder($installedAt, $removedAt, 'Datum sejmutí nemůže být před datem nasazení.');
         $quantity = (int) ($payload['quantity'] ?? 4);
         if ($quantity < 1 || $quantity > 20) throw new RuntimeException('Počet pneumatik musí být 1 až 20.');
         return $this->vehicles->updateVehicleTires($tiresId, [
-            'season_code' => strtolower(trim((string) $payload['season_code'])),
-            'status_code' => strtolower(trim((string) $payload['status_code'])),
+            'season_code' => $seasonCode,
+            'status_code' => $statusCode,
             'tire_set_name' => $this->normalizeShortText((string) ($payload['tire_set_name'] ?? '')) ?: null,
             'dimension' => $this->normalizeShortText((string) ($payload['dimension'] ?? '')) ?: null,
             'quantity' => $quantity,
             'tread_depth_mm' => $this->normalizeNullableDecimal($payload['tread_depth_mm'] ?? null, 0, 99.99),
-            'acquired_at' => $this->normalizeDate((string) ($payload['acquired_at'] ?? '')),
-            'installed_at' => $this->normalizeDate((string) ($payload['installed_at'] ?? '')),
-            'removed_at' => $this->normalizeDate((string) ($payload['removed_at'] ?? '')),
+            'acquired_at' => $acquiredAt,
+            'installed_at' => $installedAt,
+            'removed_at' => $removedAt,
             'supplier_name' => $this->normalizeShortText((string) ($payload['supplier_name'] ?? '')) ?: null,
             'storage_location' => $this->normalizeShortText((string) ($payload['storage_location'] ?? '')) ?: null,
             'cost_amount' => $this->normalizeNullableDecimal($payload['cost_amount'] ?? null, 0, 999999999999.99),
             'cost_currency' => 'CZK',
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'metadata_json' => null,
         ], $actorUserId, $actorHasAllVehicles);
@@ -967,6 +1147,12 @@ final class VehicleService
 
     public function deleteVehicleTires(int $tiresId, int $actorUserId, bool $actorHasAllVehicles = true): bool
     {
+        $existing = $this->vehicles->findVehicleTiresById($tiresId, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) {
+            return false;
+        }
+
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'tires', $tiresId, $actorUserId);
         return $this->vehicles->softDeleteVehicleTires($tiresId, $actorUserId, $actorHasAllVehicles);
     }
 
@@ -977,24 +1163,30 @@ final class VehicleService
 
     public function createVehicleFunding(int $vehicleId, array $payload, int $actorUserId): int
     {
-        foreach (['funding_status_code'] as $field) {
-            if (!preg_match('/^[a-z0-9_]{2,64}$/', strtolower(trim((string) ($payload[$field] ?? ''))))) throw new RuntimeException('Neplatný stav financování.');
-        }
+        $fundingStatus = $this->requireActiveLookupCode('funding_status', $payload['funding_status_code'] ?? null, 'Stav financování');
+        $grantTitle = $this->optionalActiveLookupCode('grant_title', $payload['grant_title_code'] ?? null, 'Dotační titul');
+        $sustainabilityFrom = $this->normalizeDate((string) ($payload['sustainability_from'] ?? ''));
+        $sustainabilityTo = $this->normalizeDate((string) ($payload['sustainability_to'] ?? ''));
+        $this->assertDateOrder($sustainabilityFrom, $sustainabilityTo, 'Udržitelnost od nemůže být po udržitelnosti do.');
+        $eligibleAmount = $this->normalizeNullableDecimal($payload['eligible_amount'] ?? null, 0, 999999999999.99);
+        $grantAmount = $this->normalizeNullableDecimal($payload['grant_amount'] ?? null, 0, 999999999999.99);
+        $ownShareAmount = $this->normalizeNullableDecimal($payload['own_share_amount'] ?? null, 0, 999999999999.99);
+        $this->assertFundingAmounts($eligibleAmount, $grantAmount, $ownShareAmount);
         return $this->vehicles->createVehicleFunding([
             'vehicle_id' => $vehicleId,
-            'funding_status_code' => strtolower(trim((string) $payload['funding_status_code'])),
-            'grant_title_code' => $this->normalizeShortText((string) ($payload['grant_title_code'] ?? '')) ?: null,
+            'funding_status_code' => $fundingStatus,
+            'grant_title_code' => $grantTitle,
             'call_code' => $this->normalizeShortText((string) ($payload['call_code'] ?? '')) ?: null,
             'provider_name' => $this->normalizeShortText((string) ($payload['provider_name'] ?? '')) ?: null,
             'reference_number' => $this->normalizeShortText((string) ($payload['reference_number'] ?? '')) ?: null,
             'award_date' => $this->normalizeDate((string) ($payload['award_date'] ?? '')),
-            'eligible_amount' => $this->normalizeNullableDecimal($payload['eligible_amount'] ?? null, 0, 999999999999.99),
-            'grant_amount' => $this->normalizeNullableDecimal($payload['grant_amount'] ?? null, 0, 999999999999.99),
-            'own_share_amount' => $this->normalizeNullableDecimal($payload['own_share_amount'] ?? null, 0, 999999999999.99),
+            'eligible_amount' => $eligibleAmount,
+            'grant_amount' => $grantAmount,
+            'own_share_amount' => $ownShareAmount,
             'amount_currency' => 'CZK',
-            'sustainability_from' => $this->normalizeDate((string) ($payload['sustainability_from'] ?? '')),
-            'sustainability_to' => $this->normalizeDate((string) ($payload['sustainability_to'] ?? '')),
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'sustainability_from' => $sustainabilityFrom,
+            'sustainability_to' => $sustainabilityTo,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'source' => 'v2',
             'created_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
@@ -1004,23 +1196,29 @@ final class VehicleService
 
     public function updateVehicleFunding(int $fundingId, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
     {
-        foreach (['funding_status_code'] as $field) {
-            if (!preg_match('/^[a-z0-9_]{2,64}$/', strtolower(trim((string) ($payload[$field] ?? ''))))) throw new RuntimeException('Neplatný stav financování.');
-        }
+        $fundingStatus = $this->requireActiveLookupCode('funding_status', $payload['funding_status_code'] ?? null, 'Stav financování');
+        $grantTitle = $this->optionalActiveLookupCode('grant_title', $payload['grant_title_code'] ?? null, 'Dotační titul');
+        $sustainabilityFrom = $this->normalizeDate((string) ($payload['sustainability_from'] ?? ''));
+        $sustainabilityTo = $this->normalizeDate((string) ($payload['sustainability_to'] ?? ''));
+        $this->assertDateOrder($sustainabilityFrom, $sustainabilityTo, 'Udržitelnost od nemůže být po udržitelnosti do.');
+        $eligibleAmount = $this->normalizeNullableDecimal($payload['eligible_amount'] ?? null, 0, 999999999999.99);
+        $grantAmount = $this->normalizeNullableDecimal($payload['grant_amount'] ?? null, 0, 999999999999.99);
+        $ownShareAmount = $this->normalizeNullableDecimal($payload['own_share_amount'] ?? null, 0, 999999999999.99);
+        $this->assertFundingAmounts($eligibleAmount, $grantAmount, $ownShareAmount);
         return $this->vehicles->updateVehicleFunding($fundingId, [
-            'funding_status_code' => strtolower(trim((string) $payload['funding_status_code'])),
-            'grant_title_code' => $this->normalizeShortText((string) ($payload['grant_title_code'] ?? '')) ?: null,
+            'funding_status_code' => $fundingStatus,
+            'grant_title_code' => $grantTitle,
             'call_code' => $this->normalizeShortText((string) ($payload['call_code'] ?? '')) ?: null,
             'provider_name' => $this->normalizeShortText((string) ($payload['provider_name'] ?? '')) ?: null,
             'reference_number' => $this->normalizeShortText((string) ($payload['reference_number'] ?? '')) ?: null,
             'award_date' => $this->normalizeDate((string) ($payload['award_date'] ?? '')),
-            'eligible_amount' => $this->normalizeNullableDecimal($payload['eligible_amount'] ?? null, 0, 999999999999.99),
-            'grant_amount' => $this->normalizeNullableDecimal($payload['grant_amount'] ?? null, 0, 999999999999.99),
-            'own_share_amount' => $this->normalizeNullableDecimal($payload['own_share_amount'] ?? null, 0, 999999999999.99),
+            'eligible_amount' => $eligibleAmount,
+            'grant_amount' => $grantAmount,
+            'own_share_amount' => $ownShareAmount,
             'amount_currency' => 'CZK',
-            'sustainability_from' => $this->normalizeDate((string) ($payload['sustainability_from'] ?? '')),
-            'sustainability_to' => $this->normalizeDate((string) ($payload['sustainability_to'] ?? '')),
-            'note' => $this->normalizeShortText((string) ($payload['note'] ?? '')) ?: null,
+            'sustainability_from' => $sustainabilityFrom,
+            'sustainability_to' => $sustainabilityTo,
+            'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null,
             'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
             'metadata_json' => null,
         ], $actorUserId, $actorHasAllVehicles);
@@ -1028,7 +1226,147 @@ final class VehicleService
 
     public function deleteVehicleFunding(int $fundingId, int $actorUserId, bool $actorHasAllVehicles = true): bool
     {
+        $existing = $this->vehicles->findVehicleFundingById($fundingId, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) {
+            return false;
+        }
+
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'funding', $fundingId, $actorUserId);
         return $this->vehicles->softDeleteVehicleFunding($fundingId, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function getVehicleSuppliers(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        return $this->vehicles->listVehicleSuppliers($vehicleId, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function createVehicleSupplier(int $vehicleId, array $payload, int $actorUserId): int
+    {
+        return $this->vehicles->createVehicleSupplier($this->normalizeSupplierPayload($vehicleId, $payload, $actorUserId, true));
+    }
+
+    public function updateVehicleSupplier(int $id, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
+    {
+        $existing = $this->vehicles->findVehicleSupplierById($id, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) return null;
+        return $this->vehicles->updateVehicleSupplier($id, $this->normalizeSupplierPayload((int) $existing['vehicle_id'], $payload, $actorUserId, false), $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function deleteVehicleSupplier(int $id, int $actorUserId, bool $actorHasAllVehicles = true): bool
+    {
+        $existing = $this->vehicles->findVehicleSupplierById($id, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) return false;
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'supplier', $id, $actorUserId);
+        return $this->vehicles->softDeleteVehicleSupplier($id, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function getVehicleWarrantyClaims(int $vehicleId, int $actorUserId = 0, bool $actorHasAllVehicles = true): array
+    {
+        return $this->vehicles->listVehicleWarrantyClaims($vehicleId, $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function createVehicleWarrantyClaim(int $vehicleId, array $payload, int $actorUserId): int
+    {
+        return $this->vehicles->createVehicleWarrantyClaim($this->normalizeWarrantyClaimPayload($vehicleId, $payload, $actorUserId, true));
+    }
+
+    public function updateVehicleWarrantyClaim(int $id, array $payload, int $actorUserId, bool $actorHasAllVehicles = true): ?array
+    {
+        $existing = $this->vehicles->findVehicleWarrantyClaimById($id, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) return null;
+        return $this->vehicles->updateVehicleWarrantyClaim($id, $this->normalizeWarrantyClaimPayload((int) $existing['vehicle_id'], $payload, $actorUserId, false), $actorUserId, $actorHasAllVehicles);
+    }
+
+    public function deleteVehicleWarrantyClaim(int $id, int $actorUserId, bool $actorHasAllVehicles = true): bool
+    {
+        $existing = $this->vehicles->findVehicleWarrantyClaimById($id, $actorUserId, $actorHasAllVehicles);
+        if ($existing === null) return false;
+        $this->deleteAttachmentsForContext((int) $existing['vehicle_id'], 'warranty_claim', $id, $actorUserId);
+        return $this->vehicles->softDeleteVehicleWarrantyClaim($id, $actorUserId, $actorHasAllVehicles);
+    }
+
+    private function normalizeSupplierPayload(int $vehicleId, array $payload, int $actorUserId, bool $isCreate): array
+    {
+        $role = $this->requireActiveLookupCode('supplier_role', $payload['supplier_role_code'] ?? null, 'Role dodavatele');
+        $name = $this->normalizeShortText((string) ($payload['supplier_name'] ?? ''));
+        if ($name === null) throw new RuntimeException('Název dodavatele je povinný.');
+        $data = ['supplier_role_code' => $role, 'supplier_name' => $name, 'company_id' => $this->normalizeShortText((string) ($payload['company_id'] ?? '')) ?: null, 'contact_person' => $this->normalizeShortText((string) ($payload['contact_person'] ?? '')) ?: null, 'phone' => $this->normalizeShortText((string) ($payload['phone'] ?? '')) ?: null, 'email' => $this->normalizeShortText((string) ($payload['email'] ?? '')) ?: null, 'address' => $this->normalizeLongText((string) ($payload['address'] ?? ''), 500) ?: null, 'contract_number' => $this->normalizeShortText((string) ($payload['contract_number'] ?? '')) ?: null, 'valid_from' => $this->normalizeDate((string) ($payload['valid_from'] ?? '')), 'valid_to' => $this->normalizeDate((string) ($payload['valid_to'] ?? '')), 'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null, 'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null, 'metadata_json' => null];
+        if ($data['valid_from'] && $data['valid_to'] && $data['valid_from'] > $data['valid_to']) throw new RuntimeException('Platnost od nemůže být po platnosti do.');
+        if ($isCreate) $data += ['vehicle_id' => $vehicleId, 'source' => 'v2', 'created_by_user_id' => $actorUserId > 0 ? $actorUserId : null];
+        return $data;
+    }
+
+    private function normalizeWarrantyClaimPayload(int $vehicleId, array $payload, int $actorUserId, bool $isCreate): array
+    {
+        $recordType = $this->requireActiveLookupCode('warranty_record_type', $payload['record_type_code'] ?? null, 'Typ záznamu');
+        $subjectType = $this->requireActiveLookupCode('warranty_subject_type', $payload['subject_type_code'] ?? null, 'Předmět');
+        $status = $this->requireActiveLookupCode('warranty_status', $payload['status_code'] ?? null, 'Stav');
+        $resolutionCode = $this->optionalActiveLookupCode('warranty_resolution', $payload['resolution_code'] ?? null, 'Způsob vyřízení');
+        $data = ['record_type_code' => $recordType, 'subject_type_code' => $subjectType, 'equipment_id' => (int) ($payload['equipment_id'] ?? 0) ?: null, 'supplier_id' => (int) ($payload['supplier_id'] ?? 0) ?: null, 'warranty_provider' => $this->normalizeShortText((string) ($payload['warranty_provider'] ?? '')) ?: null, 'warranty_from' => $this->normalizeDate((string) ($payload['warranty_from'] ?? '')), 'warranty_to' => $this->normalizeDate((string) ($payload['warranty_to'] ?? '')), 'external_reference' => $this->normalizeShortText((string) ($payload['external_reference'] ?? '')) ?: null, 'status_code' => $status, 'reported_at' => $this->normalizeDate((string) ($payload['reported_at'] ?? '')), 'resolved_at' => $this->normalizeDate((string) ($payload['resolved_at'] ?? '')), 'title' => $this->normalizeShortText((string) ($payload['title'] ?? '')) ?: null, 'description' => $this->normalizeLongText((string) ($payload['description'] ?? '')) ?: null, 'resolution_code' => $resolutionCode, 'cost_amount' => $this->normalizeNullableDecimal($payload['cost_amount'] ?? null, 0, 999999999999.99), 'cost_currency' => 'CZK', 'note' => $this->normalizeLongText((string) ($payload['note'] ?? '')) ?: null, 'updated_by_user_id' => $actorUserId > 0 ? $actorUserId : null, 'metadata_json' => null];
+        if ($data['warranty_from'] && $data['warranty_to'] && $data['warranty_from'] > $data['warranty_to']) throw new RuntimeException('Záruka od nemůže být po záruce do.');
+        $equipment = $data['equipment_id'] ? $this->vehicles->findVehicleEquipmentById($data['equipment_id'], $actorUserId, true) : null;
+        $supplier = $data['supplier_id'] ? $this->vehicles->findVehicleSupplierById($data['supplier_id'], $actorUserId, true) : null;
+        if ($data['equipment_id'] && (int) ($equipment['vehicle_id'] ?? 0) !== $vehicleId) throw new RuntimeException('Vybrané vybavení nepatří k vozidlu.');
+        if ($data['equipment_id'] && $data['subject_type_code'] !== 'equipment') throw new RuntimeException('Při výběru vybavení musí být předmět nastaven na Vybavení.');
+        if ($data['supplier_id'] && (int) ($supplier['vehicle_id'] ?? 0) !== $vehicleId) throw new RuntimeException('Vybraný dodavatel nepatří k vozidlu.');
+        if ($isCreate) $data += ['vehicle_id' => $vehicleId, 'source' => 'v2', 'created_by_user_id' => $actorUserId > 0 ? $actorUserId : null];
+        return $data;
+    }
+
+    private function requireActiveLookupCode(string $category, mixed $value, string $fieldLabel): string
+    {
+        $code = $this->normalizeLookupCode($value);
+        if ($code === null || !$this->vehicles->hasActiveLookupItem($category, $code)) {
+            throw new RuntimeException($fieldLabel . ' musí být platná aktivní hodnota číselníku.');
+        }
+        return $code;
+    }
+
+    private function optionalActiveLookupCode(string $category, mixed $value, string $fieldLabel): ?string
+    {
+        $code = $this->normalizeLookupCode($value);
+        if ($code !== null && !$this->vehicles->hasActiveLookupItem($category, $code)) {
+            throw new RuntimeException($fieldLabel . ' musí být platná aktivní hodnota číselníku.');
+        }
+        return $code;
+    }
+
+    private function normalizeClaimPolicyId(mixed $value, int $vehicleId, int $actorUserId, bool $actorHasAllVehicles): ?int
+    {
+        $policyId = (int) ($value ?? 0);
+        if ($policyId <= 0) {
+            return null;
+        }
+
+        $policy = $this->vehicles->findVehicleInsurancePolicyById($policyId, $actorUserId, $actorHasAllVehicles);
+        if ($policy === null || (int) ($policy['vehicle_id'] ?? 0) !== $vehicleId) {
+            throw new RuntimeException('Vybraná pojistná smlouva nepatří k tomuto vozidlu.');
+        }
+
+        return $policyId;
+    }
+
+    private function assertDateOrder(?string $from, ?string $to, string $message): void
+    {
+        if ($from !== null && $to !== null && $from > $to) {
+            throw new RuntimeException($message);
+        }
+    }
+
+    private function assertFundingAmounts(?float $eligibleAmount, ?float $grantAmount, ?float $ownShareAmount): void
+    {
+        if ($eligibleAmount === null) {
+            return;
+        }
+        if ($grantAmount !== null && $grantAmount > $eligibleAmount) {
+            throw new RuntimeException('Dotace nemůže být vyšší než způsobilé výdaje.');
+        }
+        if ($ownShareAmount !== null && $ownShareAmount > $eligibleAmount) {
+            throw new RuntimeException('Vlastní podíl nemůže být vyšší než způsobilé výdaje.');
+        }
+        if ($grantAmount !== null && $ownShareAmount !== null && ($grantAmount + $ownShareAmount) > ($eligibleAmount + 0.01)) {
+            throw new RuntimeException('Součet dotace a vlastního podílu nemůže být vyšší než způsobilé výdaje.');
+        }
     }
 
     public function uploadVehicleAttachment(int $vehicleId, array $file, array $payload, int $actorUserId): array
@@ -1038,8 +1376,9 @@ final class VehicleService
         }
 
         $size = (int) ($file['size'] ?? 0);
-        if ($size <= 0 || $size > 25 * 1024 * 1024) {
-            throw new RuntimeException('Příloha musí mít velikost od 1 B do 25 MB.');
+        $maxAttachmentBytes = (int) Env::requireValue('VEHICLES_V2_ATTACHMENT_MAX_BYTES');
+        if ($size <= 0 || $size > $maxAttachmentBytes) {
+            throw new RuntimeException('Příloha překračuje povolenou velikost.');
         }
 
         $tmpName = (string) ($file['tmp_name'] ?? '');
@@ -1049,15 +1388,7 @@ final class VehicleService
 
         $finfo = new finfo(FILEINFO_MIME_TYPE);
         $mimeType = (string) $finfo->file($tmpName);
-        $allowedMimeTypes = [
-            'application/pdf' => 'pdf',
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
-            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' => 'xlsx',
-            'application/vnd.oasis.opendocument.spreadsheet' => 'ods',
-            'text/plain' => 'txt',
-        ];
+        $allowedMimeTypes = $this->attachmentMimeExtensions();
         if (!array_key_exists($mimeType, $allowedMimeTypes)) {
             throw new RuntimeException('Typ souboru není pro přílohy vozidla povolen.');
         }
@@ -1066,10 +1397,18 @@ final class VehicleService
         if (!preg_match('/^[a-z0-9_]{2,64}$/', $documentTypeCode)) {
             throw new RuntimeException('Neplatný kód typu dokumentu.');
         }
+        $contextModule = strtolower(trim((string) ($payload['context_module'] ?? 'vehicle')));
+        $allowedContextModules = ['vehicle', 'service', 'equipment', 'insurance_policy', 'insurance_claim', 'tires', 'funding', 'supplier', 'warranty_claim'];
+        if (!in_array($contextModule, $allowedContextModules, true)) {
+            throw new RuntimeException('Neplatný zdrojový modul přílohy.');
+        }
+        $contextRecordId = (int) ($payload['context_record_id'] ?? 0);
+        if ($contextRecordId > 0 && !$this->vehicles->attachmentContextRecordBelongsToVehicle($contextModule, $contextRecordId, $vehicleId)) {
+            throw new RuntimeException('Navázaný záznam modulu nepatří k tomuto vozidlu.');
+        }
 
-        $originalFilename = trim(basename((string) ($file['name'] ?? 'priloha')));
-        $originalFilename = mb_substr($originalFilename !== '' ? $originalFilename : 'priloha', 0, 255);
-        $storageRoot = rtrim(Env::get('VEHICLES_V2_ATTACHMENT_ROOT', '/var/www/erdms-dev/data/vehicles-v2/attachments'), '/');
+        $originalFilename = $this->normalizeAttachmentOriginalFilename((string) ($file['name'] ?? ''));
+        $storageRoot = $this->getAttachmentStorageRoot();
         $relativeKey = $vehicleId . '/' . bin2hex(random_bytes(16)) . '.' . $allowedMimeTypes[$mimeType];
         $targetDirectory = $storageRoot . '/' . $vehicleId;
         $targetPath = $storageRoot . '/' . $relativeKey;
@@ -1080,18 +1419,33 @@ final class VehicleService
             throw new RuntimeException('Přílohu se nepodařilo uložit.');
         }
 
+        $attachmentSnapshot = [
+            'original_filename' => $originalFilename,
+            'context_module' => $contextModule,
+            'context_record_id' => $contextRecordId > 0 ? $contextRecordId : null,
+            'document_type_code' => $documentTypeCode,
+            'note' => $this->normalizeAttachmentText($payload['note'] ?? null),
+            'valid_from' => $this->normalizeDate((string) ($payload['valid_from'] ?? '')),
+            'valid_to' => $this->normalizeDate((string) ($payload['valid_to'] ?? '')),
+            'mime_type' => $mimeType,
+            'size_bytes' => $size,
+            'uploaded_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
+        ];
+
         try {
             $attachmentId = $this->vehicles->createVehicleAttachment([
                 'vehicle_id' => $vehicleId,
+                'context_module' => $contextModule,
+                'context_record_id' => $contextRecordId > 0 ? $contextRecordId : null,
                 'document_type_code' => $documentTypeCode,
                 'original_filename' => $originalFilename,
                 'storage_key' => $relativeKey,
                 'mime_type' => $mimeType,
                 'size_bytes' => $size,
                 'sha256' => hash_file('sha256', $targetPath),
-                'note' => $this->normalizeAttachmentText($payload['note'] ?? null),
-                'valid_from' => $this->normalizeDate((string) ($payload['valid_from'] ?? '')),
-                'valid_to' => $this->normalizeDate((string) ($payload['valid_to'] ?? '')),
+                'note' => $attachmentSnapshot['note'],
+                'valid_from' => $attachmentSnapshot['valid_from'],
+                'valid_to' => $attachmentSnapshot['valid_to'],
                 'uploaded_by_user_id' => $actorUserId > 0 ? $actorUserId : null,
                 'metadata_json' => null,
             ]);
@@ -1100,6 +1454,7 @@ final class VehicleService
                 'event_type' => 'attachment_uploaded',
                 'field_name' => 'attachment',
                 'new_value' => $originalFilename,
+                'new_value_json' => json_encode($attachmentSnapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'actor_user_id' => $actorUserId > 0 ? $actorUserId : null,
                 'actor_type' => $actorUserId > 0 ? 'user' : 'system',
                 'source' => 'v2_attachment',
@@ -1112,6 +1467,8 @@ final class VehicleService
         return [
             'id' => $attachmentId,
             'vehicle_id' => $vehicleId,
+            'context_module' => $contextModule,
+            'context_record_id' => $contextRecordId > 0 ? $contextRecordId : null,
             'document_type_code' => $documentTypeCode,
             'original_filename' => $originalFilename,
             'mime_type' => $mimeType,
@@ -1124,8 +1481,37 @@ final class VehicleService
         return $this->vehicles->findVehicleAttachmentById($attachmentId, $actorUserId, $actorHasAllVehicles);
     }
 
+    public function getAttachmentStorageRoot(): string
+    {
+        $storageRoot = rtrim(Env::requireValue('VEHICLES_V2_ATTACHMENT_ROOT'), '/\\');
+        if ($storageRoot === '' || !str_starts_with($storageRoot, DIRECTORY_SEPARATOR)) {
+            throw new RuntimeException('Konfigurace VEHICLES_V2_ATTACHMENT_ROOT musí obsahovat absolutní cestu.');
+        }
+
+        return $storageRoot;
+    }
+
     public function deleteVehicleAttachment(int $attachmentId, int $actorUserId, bool $actorHasAllVehicles = true): ?array
     {
+        $attachment = $this->vehicles->findVehicleAttachmentById($attachmentId, $actorUserId, $actorHasAllVehicles);
+        if ($attachment === null) {
+            return null;
+        }
+
+        $attachmentSnapshot = [
+            'original_filename' => (string) ($attachment['original_filename'] ?? ''),
+            'context_module' => (string) ($attachment['context_module'] ?? ''),
+            'context_record_id' => $attachment['context_record_id'] ?? null,
+            'document_type_code' => (string) ($attachment['document_type_code'] ?? ''),
+            'note' => (string) ($attachment['note'] ?? ''),
+            'valid_from' => $attachment['valid_from'] ?? null,
+            'valid_to' => $attachment['valid_to'] ?? null,
+            'mime_type' => (string) ($attachment['mime_type'] ?? ''),
+            'size_bytes' => $attachment['size_bytes'] ?? null,
+            'uploaded_by_user_id' => $attachment['uploaded_by_user_id'] ?? null,
+        ];
+
+        $this->deleteAttachmentFile((string) ($attachment['storage_key'] ?? ''));
         $attachment = $this->vehicles->softDeleteVehicleAttachment($attachmentId, $actorUserId, $actorHasAllVehicles);
         if ($attachment !== null) {
             $this->vehicles->appendVehicleAuditEvent([
@@ -1133,6 +1519,7 @@ final class VehicleService
                 'event_type' => 'attachment_deleted',
                 'field_name' => 'attachment',
                 'old_value' => $attachment['original_filename'],
+                'old_value_json' => json_encode($attachmentSnapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 'actor_user_id' => $actorUserId > 0 ? $actorUserId : null,
                 'actor_type' => $actorUserId > 0 ? 'user' : 'system',
                 'source' => 'v2_attachment',
@@ -1145,6 +1532,41 @@ final class VehicleService
     {
         $text = trim((string) ($value ?? ''));
         return $text === '' ? null : mb_substr($text, 0, 1000);
+    }
+
+    private function normalizeAttachmentOriginalFilename(string $filename): string
+    {
+        $filename = basename(str_replace('\\', '/', trim($filename)));
+        $filename = preg_replace('/[\x00-\x1F\x7F]/u', '', $filename) ?? '';
+        $filename = trim($filename);
+        if ($filename === '') {
+            return 'attachment';
+        }
+        if (!mb_check_encoding($filename, 'UTF-8')) {
+            throw new RuntimeException('Název přílohy není platný UTF-8 text.');
+        }
+
+        return mb_substr($filename, 0, 255);
+    }
+
+    private function attachmentMimeExtensions(): array
+    {
+        $mapping = [];
+        foreach (explode(',', Env::requireValue('VEHICLES_V2_ATTACHMENT_ALLOWED_MIME_TYPES')) as $entry) {
+            [$mimeType, $extension] = array_pad(explode('=', trim($entry), 2), 2, '');
+            $mimeType = trim($mimeType);
+            $extension = strtolower(trim($extension));
+            if (!preg_match('#^[a-z0-9.+-]+/[a-z0-9.+-]+$#', $mimeType) || !preg_match('/^[a-z0-9]{1,10}$/', $extension)) {
+                throw new RuntimeException('VEHICLES_V2_ATTACHMENT_ALLOWED_MIME_TYPES má neplatný formát.');
+            }
+            $mapping[$mimeType] = $extension;
+        }
+
+        if ($mapping === []) {
+            throw new RuntimeException('VEHICLES_V2_ATTACHMENT_ALLOWED_MIME_TYPES nesmí být prázdné.');
+        }
+
+        return $mapping;
     }
 
     public function getMonthlyBilling(
@@ -1308,16 +1730,16 @@ final class VehicleService
         $manualLocationState = $this->normalizeLocationState((string) ($payload['manual_location_state'] ?? ''));
         $serviceContextJson = $this->normalizeJsonFromMixed($payload['service_context_json'] ?? null);
         $normalized = [
-            'zzs_typ' => $this->normalizeShortText((string) ($payload['zzs_typ'] ?? '')),
-            'w_popis' => $this->normalizeShortText((string) ($payload['w_popis'] ?? '')),
-            'service_notes' => trim((string) ($payload['service_notes'] ?? '')),
+            'zzs_typ' => $this->normalizeShortText((string) ($payload['zzs_typ'] ?? ''), 100),
+            'w_popis' => $this->normalizeShortText((string) ($payload['w_popis'] ?? ''), 255),
+            'service_notes' => $this->normalizeLongText((string) ($payload['service_notes'] ?? '')),
             'equipment_json' => $this->normalizeJson((string) ($payload['equipment_json'] ?? '')),
-            'technical_notes' => trim((string) ($payload['technical_notes'] ?? '')),
-            'insurance_policy' => trim((string) ($payload['insurance_policy'] ?? '')),
+            'technical_notes' => $this->normalizeLongText((string) ($payload['technical_notes'] ?? '')),
+            'insurance_policy' => $this->normalizeLongText((string) ($payload['insurance_policy'] ?? '')),
             'stk_valid_to' => $this->normalizeDate((string) ($payload['stk_valid_to'] ?? '')),
             'emission_valid_to' => $this->normalizeDate((string) ($payload['emission_valid_to'] ?? '')),
             'evidencni_cislo_zzs' => $this->normalizeShortText((string) ($payload['evidencni_cislo_zzs'] ?? '')),
-            'vin' => $this->normalizeShortText((string) ($payload['vin'] ?? '')),
+            'vin' => $this->normalizeShortText((string) ($payload['vin'] ?? ''), 64),
             'acquisition_year' => $this->normalizeNullableInt($payload['acquisition_year'] ?? null, 1900, 2100),
             'acquisition_supplier' => $this->normalizeShortText((string) ($payload['acquisition_supplier'] ?? '')),
             'warranty_valid_to' => $this->normalizeDate((string) ($payload['warranty_valid_to'] ?? '')),
@@ -1485,7 +1907,11 @@ final class VehicleService
             return null;
         }
 
-        return preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) === 1 ? $value : null;
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $matches) !== 1 || !checkdate((int) $matches[2], (int) $matches[3], (int) $matches[1])) {
+            throw new RuntimeException('Datum musí být platné ve formátu RRRR-MM-DD.');
+        }
+
+        return $value;
     }
 
     private function normalizeJson(string $value): ?string
@@ -1525,14 +1951,19 @@ final class VehicleService
         return null;
     }
 
-    private function normalizeShortText(string $value): ?string
+    private function normalizeShortText(string $value, int $maxLength = 190): ?string
     {
         $value = trim($value);
         if ($value === '') {
             return null;
         }
 
-        return mb_substr($value, 0, 100);
+        return mb_substr($value, 0, $maxLength);
+    }
+
+    private function normalizeLongText(string $value, int $maxLength = 1000): ?string
+    {
+        return $this->normalizeShortText($value, $maxLength);
     }
 
     private function normalizeNullableInt(mixed $value, int $min, int $max): ?int

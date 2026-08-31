@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import {
   bulkUpdateVehicleLocationState,
   bulkUpdateVehicleStatus,
   fetchLookupItems,
   fetchDashboardMetrics,
   fetchVehicleDetail,
+  fetchVehicleEeoServiceHistory,
   fetchVehicleManualEvents,
+  fetchVehicleModuleSummary,
+  fetchVehicleAttachments,
+  fetchVehicleEquipment,
+  fetchVehicleInsurancePolicies,
+  fetchVehicleClaims,
+  fetchVehicleTires,
+  fetchVehicleFunding,
   fetchVehicles,
   fetchVehicleServiceRecords,
   triggerQuickSync,
@@ -15,6 +23,7 @@ import OverviewActionButtons from '../components/vehicles/OverviewActionButtons'
 import SyncGate from '../components/vehicles/SyncGate';
 import VehiclesTable from '../components/vehicles/VehiclesTable';
 import VehicleMonthlyBillingCard from '../components/vehicles/detail/VehicleMonthlyBillingCard';
+import { lookupLabel } from '../components/vehicles/detail/modules/moduleUtils';
 import AppIcon from '../components/ui/AppIcon';
 import useDebouncedValue from '../hooks/useDebouncedValue';
 import { useAuth } from '../auth/AuthContext';
@@ -83,6 +92,22 @@ const FALLBACK_STATUS_REASON_OPTIONS = [
   { code: 'k_vyrazeni', item_name: 'K vyřazení' },
   { code: 'jine', item_name: 'Jiný důvod' },
 ];
+const OVERVIEW_LOOKUP_CATEGORIES = [
+  'service_cancel_reason',
+  'vehicle_status_reason',
+  'service_type',
+  'service_kind',
+  'service_status',
+  'equipment_type',
+  'equipment_status',
+  'insurance_policy_type',
+  'claim_status',
+  'tire_season',
+  'tire_status',
+  'grant_title',
+  'funding_status',
+  'document_type',
+];
 
 function parseCsvValues(value) {
   return Array.from(
@@ -135,21 +160,18 @@ function formatDateTimeCs(value) {
   });
 }
 
-function parseServiceContext(rawValue) {
-  if (!rawValue) {
-    return {};
+function formatDateCs(value) {
+  if (!value) {
+    return '-';
   }
 
-  if (typeof rawValue === 'object') {
-    return rawValue;
+  const normalized = String(value).replace(' ', 'T');
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
   }
 
-  try {
-    const decoded = JSON.parse(String(rawValue));
-    return decoded && typeof decoded === 'object' ? decoded : {};
-  } catch {
-    return {};
-  }
+  return date.toLocaleDateString('cs-CZ');
 }
 
 function formatMoney(value) {
@@ -163,6 +185,12 @@ function formatMoney(value) {
 function printableValue(value, fallback = 'Nezadáno') {
   const normalized = String(value || '').trim();
   return normalized !== '' ? normalized : fallback;
+}
+
+function formatModuleCode(value, fallback = 'Nezadáno') {
+  const normalized = String(value || '').trim();
+  if (normalized === '') return fallback;
+  return normalized.replaceAll('_', ' ');
 }
 
 function normalizeText(value) {
@@ -336,6 +364,7 @@ function normalizeLocationStateSummary(summary, fallbackItems = []) {
 
 export default function VehiclesOverviewPage() {
   const { user } = useAuth();
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
   const [bulkModeEnabled, setBulkModeEnabled] = useState(false);
@@ -378,6 +407,12 @@ export default function VehiclesOverviewPage() {
   const [detailDrawerSummary, setDetailDrawerSummary] = useState(null);
   const [detailDrawerItem, setDetailDrawerItem] = useState(null);
   const [detailDrawerEvents, setDetailDrawerEvents] = useState([]);
+  const [detailDrawerEeoOrders, setDetailDrawerEeoOrders] = useState([]);
+  const [detailDrawerModuleSummary, setDetailDrawerModuleSummary] = useState(null);
+  const [detailDrawerModules, setDetailDrawerModules] = useState({});
+  const [detailDrawerModulesLoading, setDetailDrawerModulesLoading] = useState({});
+  const [detailDrawerModulesError, setDetailDrawerModulesError] = useState({});
+  const [detailDrawerModuleDialogId, setDetailDrawerModuleDialogId] = useState('');
   const [detailDrawerLoading, setDetailDrawerLoading] = useState(false);
   const [detailDrawerError, setDetailDrawerError] = useState('');
   const [locationStateCounts, setLocationStateCounts] = useState({
@@ -519,6 +554,134 @@ export default function VehiclesOverviewPage() {
   const perPage = PAGE_SIZE_OPTIONS.includes(perPageRaw) ? perPageRaw : 25;
   const currentRole = String(user?.role || '').toLowerCase();
   const canEditVehicles = ['superadmin', 'administrator', 'fleet_manager'].includes(currentRole);
+  const moduleContextLabels = {
+    service: 'Servis',
+    equipment: 'Výbava',
+    insurance: 'Pojištění',
+    insurance_policy: 'Pojistné smlouvy',
+    insurance_claim: 'Škodní události',
+    tires: 'Pneumatiky',
+    funding: 'Financování',
+    supplier: 'Dodavatelé',
+    warranty_claim: 'Záruka a reklamace',
+    vehicle: 'Vozidlo',
+  };
+  const moduleLookupText = (category, code, fallback = '-') => {
+    const normalizedCode = normalizeText(code);
+    if (normalizedCode === '') {
+      return fallback;
+    }
+    return lookupLabel(lookupByCategory, category, normalizedCode);
+  };
+  const detailDrawerModuleConfigs = [
+    {
+      id: 'service', title: 'Servisy a opravy', icon: 'service',
+      columns: ['Datum', 'Typ', 'Úkon', 'Stav', 'Stanice / dodavatel', 'Adresa', 'Cena', 'Popis'],
+      cells: (item) => [
+        formatDateCs(item.service_date || item.planned_date || item.completed_date),
+        moduleLookupText('service_type', item.service_type_code),
+        moduleLookupText('service_kind', item.service_kind_code),
+        moduleLookupText('service_status', item.status_code),
+        item.supplier_name || item.service_station_name || '-',
+        joinNonEmpty([item.service_city, item.service_street, item.service_postal_code], ', ') || '-',
+        formatMoney(item.cost_amount),
+        printableValue(item.description, '-'),
+      ],
+    },
+    {
+      id: 'equipment', title: 'Výbava a zařízení', icon: 'detail',
+      columns: ['Typ', 'Název', 'Výrobce', 'Model', 'Inventární číslo', 'Sériové číslo', 'Stav', 'Revize do', 'Cena', 'Poznámka'],
+      cells: (item) => [
+        moduleLookupText('equipment_type', item.equipment_type_code),
+        printableValue(item.equipment_name, '-'),
+        printableValue(item.manufacturer, '-'),
+        printableValue(item.model, '-'),
+        printableValue(item.inventory_number, '-'),
+        printableValue(item.serial_number, '-'),
+        moduleLookupText('equipment_status', item.status_code),
+        formatDateCs(item.revision_valid_to),
+        formatMoney(item.cost_amount),
+        printableValue(item.note, '-'),
+      ],
+    },
+    {
+      id: 'insurance', title: 'Pojištění a škody', icon: 'ccsCard',
+      columns: ['Záznam', 'Typ / stav', 'Název / číslo', 'Pojišťovna / vazba', 'Od', 'Do', 'Částka', 'Spoluúčast', 'Reference / poznámka'],
+      cells: (item) => item.claim_status_code
+        ? [
+          'Škodní událost',
+          moduleLookupText('claim_status', item.claim_status_code),
+          printableValue(item.title, '-'),
+          printableValue(item.insurance_policy_id ? `Smlouva #${item.insurance_policy_id}` : '-', '-'),
+          formatDateCs(item.claim_date),
+          formatDateCs(item.settled_date),
+          formatMoney(item.payout_amount),
+          formatMoney(item.deductible_amount),
+          joinNonEmpty([item.external_reference, item.description], ' • ') || '-',
+        ]
+        : [
+          'Pojistná smlouva',
+          moduleLookupText('insurance_policy_type', item.policy_type_code),
+          printableValue(item.policy_number, '-'),
+          printableValue(item.insurer_name, '-'),
+          formatDateCs(item.valid_from),
+          formatDateCs(item.valid_to),
+          formatMoney(item.premium_amount),
+          formatMoney(item.deductible_amount),
+          printableValue(item.note, '-'),
+        ],
+    },
+    {
+      id: 'tires', title: 'Pneumatiky', icon: 'wheel',
+      columns: ['Sezóna', 'Stav', 'Název sady', 'Rozměr', 'Počet', 'Dezén (mm)', 'Nasazeno', 'Cena', 'Poznámka'],
+      cells: (item) => [
+        moduleLookupText('tire_season', item.season_code),
+        moduleLookupText('tire_status', item.status_code),
+        printableValue(item.tire_set_name, '-'),
+        printableValue(item.dimension, '-'),
+        Number.isFinite(Number(item.quantity)) ? String(item.quantity) : '-',
+        Number.isFinite(Number(item.tread_depth_mm)) ? String(item.tread_depth_mm) : '-',
+        formatDateCs(item.installed_at),
+        formatMoney(item.cost_amount),
+        printableValue(item.note, '-'),
+      ],
+    },
+    {
+      id: 'funding', title: 'Dotace a financování', icon: 'money',
+      columns: ['Titul', 'Výzva', 'Poskytovatel', 'Reference', 'Stav', 'Přiznáno', 'Dotace', 'Způsobilé', 'Vlastní podíl', 'Udržitelnost od', 'Udržitelnost do', 'Poznámka'],
+      cells: (item) => [
+        moduleLookupText('grant_title', item.grant_title_code),
+        printableValue(item.call_code, '-'),
+        printableValue(item.provider_name, '-'),
+        printableValue(item.reference_number, '-'),
+        moduleLookupText('funding_status', item.funding_status_code),
+        formatDateCs(item.award_date),
+        formatMoney(item.grant_amount),
+        formatMoney(item.eligible_amount),
+        formatMoney(item.own_share_amount),
+        formatDateCs(item.sustainability_from),
+        formatDateCs(item.sustainability_to),
+        printableValue(item.note, '-'),
+      ],
+    },
+    {
+      id: 'attachments', title: 'Přílohy', icon: 'file',
+      columns: ['Typ dokumentu', 'Zdroj', 'Soubor', 'MIME', 'Velikost', 'Nahráno', 'Poznámka'],
+      cells: (item) => [
+        moduleLookupText('document_type', item.document_type_code),
+        moduleContextLabels[item.context_module] || printableValue(item.context_module, moduleContextLabels.vehicle),
+        item.original_filename || '-',
+        printableValue(item.mime_type, '-'),
+        item.size_bytes ? `${Math.ceil(Number(item.size_bytes) / 1024)} kB` : '-',
+        formatDateTimeCs(item.created_at),
+        printableValue(item.note, '-'),
+      ],
+    },
+  ];
+  const detailDrawerActiveModuleConfig = detailDrawerModuleConfigs.find((module) => module.id === detailDrawerModuleDialogId) || null;
+  const detailDrawerActiveModuleItems = detailDrawerActiveModuleConfig ? (detailDrawerModules[detailDrawerActiveModuleConfig.id] || []) : [];
+  const detailDrawerActiveModuleLoading = detailDrawerActiveModuleConfig ? Boolean(detailDrawerModulesLoading[detailDrawerActiveModuleConfig.id]) : false;
+  const detailDrawerActiveModuleError = detailDrawerActiveModuleConfig ? (detailDrawerModulesError[detailDrawerActiveModuleConfig.id] || '') : '';
 
   const serviceCancelReasonOptions = Array.isArray(lookupByCategory.service_cancel_reason) && lookupByCategory.service_cancel_reason.length > 0
     ? lookupByCategory.service_cancel_reason
@@ -533,7 +696,7 @@ export default function VehiclesOverviewPage() {
     async function loadLookupOptions() {
       try {
         const response = await fetchLookupItems({
-          categories: 'service_cancel_reason,vehicle_status_reason',
+          categories: OVERVIEW_LOOKUP_CATEGORIES.join(','),
         });
 
         if (cancelled) {
@@ -541,6 +704,10 @@ export default function VehiclesOverviewPage() {
         }
 
         const byCategory = response?.data?.byCategory || {};
+        const nextLookupByCategory = {};
+        OVERVIEW_LOOKUP_CATEGORIES.forEach((category) => {
+          nextLookupByCategory[category] = Array.isArray(byCategory[category]) ? byCategory[category] : [];
+        });
 
         const nextServiceOptions = Array.isArray(byCategory.service_cancel_reason) && byCategory.service_cancel_reason.length > 0
           ? byCategory.service_cancel_reason
@@ -550,12 +717,18 @@ export default function VehiclesOverviewPage() {
           : FALLBACK_STATUS_REASON_OPTIONS;
 
         setLookupByCategory({
+          ...nextLookupByCategory,
           service_cancel_reason: nextServiceOptions,
           vehicle_status_reason: nextStatusOptions,
         });
       } catch {
         if (!cancelled) {
+          const fallbackLookupByCategory = {};
+          OVERVIEW_LOOKUP_CATEGORIES.forEach((category) => {
+            fallbackLookupByCategory[category] = [];
+          });
           setLookupByCategory({
+            ...fallbackLookupByCategory,
             service_cancel_reason: FALLBACK_SERVICE_CANCEL_REASON_OPTIONS,
             vehicle_status_reason: FALLBACK_STATUS_REASON_OPTIONS,
           });
@@ -847,23 +1020,100 @@ export default function VehiclesOverviewPage() {
     return `${values.length} vybráno`;
   }
 
-  const hasAnyFilterActive =
-    query !== ''
-    || status !== 'all'
-    || selectedTypes.length > 0
-    || selectedCallSigns.length > 0
-    || selectedLocationStates.length > 0
-    || selectedCcsStates.length > 0
-    || ccsExpiryFilter !== ''
-    || selectedGroups.length > 0
-    || selectedStations.length > 0
-    || selectedModels.length > 0
-    || selectedManufacturers.length > 0
-    || selectedFuels.length > 0
-    || selectedYears.length > 0
-    || selectedMileageBands.length > 0
-    || chartCarIds.length > 0
-    || String(searchParams.get('mileageBand') || '').trim() !== '';
+  const activeFilterEntries = useMemo(() => {
+    const entries = [];
+
+    if (query.trim() !== '') {
+      entries.push(`Hledat: “${query.trim()}”`);
+    }
+
+    if (status !== 'all') {
+      const statusLabel = STATUS_OPTIONS.find((option) => option.value === status)?.label || status;
+      entries.push(`Stav: ${statusLabel}`);
+    }
+
+    if (selectedTypes.length > 0) {
+      entries.push(`Typ vozidla: ${selectedTypes.join(', ')}`);
+    }
+
+    if (selectedCallSigns.length > 0) {
+      entries.push(`Volací znak: ${selectedCallSigns.join(', ')}`);
+    }
+
+    if (selectedLocationStates.length > 0) {
+      entries.push(`Poloha: ${selectedLocationStates.map((value) => LOCATION_STATE_OPTIONS.find((option) => option.value === value)?.label || value).join(', ')}`);
+    }
+
+    if (selectedCcsStates.length > 0) {
+      entries.push(`CCS: ${selectedCcsStates.map((value) => CCS_STATE_OPTIONS.find((option) => option.value === value)?.label || value).join(', ')}`);
+    }
+
+    if (ccsExpiryFilter === 'expiring') {
+      entries.push('CCS: vozidla s kartou končící do 3 měsíců');
+    }
+
+    if (ccsExpiryFilter === 'expired') {
+      entries.push('CCS: vozidla s kartou po splatnosti');
+    }
+
+    if (selectedGroups.length > 0) {
+      entries.push(`Skupina: ${selectedGroups.join(', ')}`);
+    }
+
+    if (selectedStations.length > 0) {
+      entries.push(`Místo: ${selectedStations.join(', ')}`);
+    }
+
+    if (selectedModels.length > 0) {
+      entries.push(`Model: ${selectedModels.join(', ')}`);
+    }
+
+    if (selectedManufacturers.length > 0) {
+      entries.push(`Výrobce: ${selectedManufacturers.join(', ')}`);
+    }
+
+    if (selectedFuels.length > 0) {
+      entries.push(`Palivo: ${selectedFuels.join(', ')}`);
+    }
+
+    if (selectedYears.length > 0) {
+      entries.push(`Rok zařazení: ${selectedYears.join(', ')}`);
+    }
+
+    if (selectedMileageBands.length > 0) {
+      entries.push(`Nájezd: ${selectedMileageBands.map((value) => formatMileageBandLabel(value)).join(', ')}`);
+    }
+
+    const legacyMileageBand = String(searchParams.get('mileageBand') || '').trim().toUpperCase();
+    if (legacyMileageBand !== '' && !selectedMileageBands.includes(legacyMileageBand)) {
+      entries.push(`Nájezd: ${formatMileageBandLabel(legacyMileageBand)}`);
+    }
+
+    if (chartCarIds.length > 0) {
+      entries.push(`Výběr z grafu 250k: ${chartCarIds.length} vozidel`);
+    }
+
+    return entries;
+  }, [
+    ccsExpiryFilter,
+    chartCarIds,
+    query,
+    searchParams,
+    selectedCallSigns,
+    selectedCcsStates,
+    selectedFuels,
+    selectedGroups,
+    selectedLocationStates,
+    selectedManufacturers,
+    selectedMileageBands,
+    selectedModels,
+    selectedStations,
+    selectedTypes,
+    selectedYears,
+    status,
+  ]);
+
+  const hasAnyFilterActive = activeFilterEntries.length > 0;
 
   const serviceDialogTargetCount = serviceDialogVehicleIds.length > 0
     ? serviceDialogVehicleIds.length
@@ -1028,11 +1278,61 @@ export default function VehiclesOverviewPage() {
 
   function closeDetailDrawer() {
     setDetailDrawerOpen(false);
+    setDetailDrawerModuleDialogId('');
     setDetailDrawerVehicleId(null);
     setDetailDrawerSummary(null);
     setDetailDrawerItem(null);
     setDetailDrawerEvents([]);
+    setDetailDrawerEeoOrders([]);
+    setDetailDrawerModuleSummary(null);
+    setDetailDrawerModules({});
+    setDetailDrawerModulesLoading({});
+    setDetailDrawerModulesError({});
     setDetailDrawerError('');
+    setDetailDrawerModuleSummary(null);
+    setDetailDrawerModules({});
+    setDetailDrawerModulesLoading({});
+    setDetailDrawerModulesError({});
+  }
+
+  async function handleOpenVehicleDetailModuleDialog(moduleId) {
+    setDetailDrawerModuleDialogId(moduleId);
+    await handleLoadVehicleDetailModule(moduleId);
+  }
+
+  function handleCloseVehicleDetailModuleDialog() {
+    setDetailDrawerModuleDialogId('');
+  }
+
+  async function handleLoadVehicleDetailModule(moduleId) {
+    const vehicleId = Number(detailDrawerVehicleId || 0);
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0 || detailDrawerModulesLoading[moduleId] || detailDrawerModules[moduleId]) return;
+
+    const requestId = detailDrawerRequestRef.current;
+    setDetailDrawerModulesLoading((previous) => ({ ...previous, [moduleId]: true }));
+    setDetailDrawerModulesError((previous) => ({ ...previous, [moduleId]: '' }));
+    try {
+      const loaders = {
+        service: async () => (await fetchVehicleServiceRecords(vehicleId))?.data?.items,
+        equipment: async () => (await fetchVehicleEquipment(vehicleId))?.data?.items,
+        insurance: async () => {
+          const [policies, claims] = await Promise.all([fetchVehicleInsurancePolicies(vehicleId), fetchVehicleClaims(vehicleId)]);
+          return [...(policies?.data?.items || []), ...(claims?.data?.items || [])];
+        },
+        tires: async () => (await fetchVehicleTires(vehicleId))?.data?.items,
+        funding: async () => (await fetchVehicleFunding(vehicleId))?.data?.items,
+        attachments: async () => (await fetchVehicleAttachments(vehicleId))?.data?.items,
+      };
+      const items = await loaders[moduleId]?.();
+      if (detailDrawerRequestRef.current !== requestId) return;
+      setDetailDrawerModules((previous) => ({ ...previous, [moduleId]: Array.isArray(items) ? items : [] }));
+    } catch (error) {
+      if (detailDrawerRequestRef.current !== requestId) return;
+      const message = String(error?.response?.data?.error?.message || error?.message || '').trim();
+      setDetailDrawerModulesError((previous) => ({ ...previous, [moduleId]: message || 'Podrobná data modulu se nepodařilo načíst.' }));
+    } finally {
+      if (detailDrawerRequestRef.current === requestId) setDetailDrawerModulesLoading((previous) => ({ ...previous, [moduleId]: false }));
+    }
   }
 
   async function handleOpenVehicleDetailDrawer(item) {
@@ -1053,9 +1353,11 @@ export default function VehiclesOverviewPage() {
     setDetailDrawerError('');
 
     try {
-      const [detailResponse, eventsResponse] = await Promise.all([
+      const [detailResponse, eventsResponse, moduleSummaryResponse, eeoHistoryResponse] = await Promise.all([
         fetchVehicleDetail(vehicleId),
         fetchVehicleManualEvents(vehicleId, { limit: 40 }),
+        fetchVehicleModuleSummary(vehicleId),
+        fetchVehicleEeoServiceHistory(vehicleId),
       ]);
 
       if (detailDrawerRequestRef.current !== requestId) {
@@ -1064,6 +1366,8 @@ export default function VehiclesOverviewPage() {
 
       setDetailDrawerItem(detailResponse?.data?.item || null);
       setDetailDrawerEvents(Array.isArray(eventsResponse?.data?.items) ? eventsResponse.data.items : []);
+      setDetailDrawerModuleSummary(moduleSummaryResponse?.data?.summary || null);
+      setDetailDrawerEeoOrders(Array.isArray(eeoHistoryResponse?.data?.items) ? eeoHistoryResponse.data.items : []);
     } catch (error) {
       if (detailDrawerRequestRef.current !== requestId) {
         return;
@@ -1077,6 +1381,21 @@ export default function VehiclesOverviewPage() {
       }
     }
   }
+
+  useEffect(() => {
+    const previewVehicleId = Number(
+      location.state && typeof location.state === 'object'
+        ? (location.state.vehiclePreviewId ?? location.state.openVehicleDetailId ?? location.state.vehicleId ?? 0)
+        : 0
+    );
+
+    if (!Number.isFinite(previewVehicleId) || previewVehicleId <= 0) {
+      return;
+    }
+
+    const matchingRow = rows.find((row) => Number(row?.id) === previewVehicleId);
+    void handleOpenVehicleDetailDrawer(matchingRow || { id: previewVehicleId });
+  }, [location.state, rows]);
 
   async function handleShowEeoHistory(vehicle) {
     const spz = String(vehicle?.spz || '').trim();
@@ -1093,18 +1412,8 @@ export default function VehiclesOverviewPage() {
     setEeoHistoryOrders([]);
 
     try {
-      const response = await fetchVehicleServiceRecords(vehicle?.id);
-      const records = Array.isArray(response?.data?.items) ? response.data.items : [];
-      const orders = records.map((record) => ({
-        id: record.id,
-        cislo_objednavky: record.external_reference || `SERVIS-${record.id}`,
-        stav_objednavky: record.status_code,
-        predmet: record.description || record.service_kind_code || record.service_type_code,
-        dodavatel_nazev: record.supplier_name,
-        dt_dokonceni: record.completed_date,
-        dt_objednavky: record.service_date || record.planned_date,
-        polozky_celkem: record.cost_amount,
-      }));
+      const response = await fetchVehicleEeoServiceHistory(vehicle?.id);
+      const orders = Array.isArray(response?.data?.items) ? response.data.items : [];
       setEeoHistoryOrders(orders);
     } catch (error) {
       const message = String(error?.response?.data?.error || error?.message || '').trim();
@@ -1398,8 +1707,15 @@ export default function VehiclesOverviewPage() {
               <span>V akci ({locationStateCounts.v_akci})</span>
             </span>
             <span className="overview-location-legend-item">
-              <span className="overview-location-legend-strip overview-location-legend-strip-v-servisu" aria-hidden="true" />
-              <span>V servisu - <span title="Sr = manuální zadání">Sr</span>: {locationStateCounts.v_servisu_manual}, <span title="Sa = automatický stav">Sa</span>: {locationStateCounts.v_servisu_auto}</span>
+              <span>V servisu (aktivní) - </span>
+              <span className="overview-location-legend-service-state" title="Sr = manuálně vyvolaný servis">
+                <span className="overview-location-legend-strip overview-location-legend-strip-v-servisu-manual" aria-hidden="true" />
+                <span>Sr: {locationStateCounts.v_servisu_manual}</span>
+              </span>
+              <span className="overview-location-legend-service-state" title="Sa = automaticky rozpoznaný servis">
+                <span className="overview-location-legend-strip overview-location-legend-strip-v-servisu-automatic" aria-hidden="true" />
+                <span>Sa: {locationStateCounts.v_servisu_auto}</span>
+              </span>
             </span>
           </div>
 
@@ -1445,7 +1761,7 @@ export default function VehiclesOverviewPage() {
       </div>
 
       <div className="overview-filter-row" ref={filterRowRef}>
-        <label className="overview-filter-item" htmlFor="vehicles-status-filter">
+        <label className={`overview-filter-item${status !== 'all' ? ' is-active' : ''}`} htmlFor="vehicles-status-filter">
           Stav
           <select
             id="vehicles-status-filter"
@@ -1462,8 +1778,21 @@ export default function VehiclesOverviewPage() {
           </select>
         </label>
 
+        <button
+          type="button"
+          className={`overview-service-filter${selectedLocationStates.includes('v_servisu') ? ' is-active' : ''}`}
+          onClick={() => toggleMultiFilter('locationStates', selectedLocationStates, 'v_servisu')}
+          title={`Filtrovat vozidla v servisu. Ručně: ${locationStateCounts.v_servisu_manual}, automaticky: ${locationStateCounts.v_servisu_auto}`}
+          aria-pressed={selectedLocationStates.includes('v_servisu')}
+        >
+          <AppIcon name="service" size={16} weight="duotone" />
+          <span>V servisu</span>
+          <strong>{locationStateCounts.v_servisu}</strong>
+          <small>Sr {locationStateCounts.v_servisu_manual} / Sa {locationStateCounts.v_servisu_auto}</small>
+        </button>
+
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedLocationStates.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'locationStates'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'locationStates' : null)}
         >
@@ -1488,7 +1817,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedCcsStates.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'ccsStates'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'ccsStates' : null)}
         >
@@ -1513,7 +1842,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedTypes.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'types'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'types' : null)}
         >
@@ -1529,7 +1858,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedCallSigns.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'callSigns'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'callSigns' : null)}
         >
@@ -1545,7 +1874,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedManufacturers.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'manufacturers'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'manufacturers' : null)}
         >
@@ -1565,7 +1894,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedModels.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'models'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'models' : null)}
         >
@@ -1581,7 +1910,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedFuels.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'fuels'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'fuels' : null)}
         >
@@ -1597,7 +1926,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedStations.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'stations'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'stations' : null)}
         >
@@ -1613,7 +1942,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedGroups.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'groups'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'groups' : null)}
         >
@@ -1629,7 +1958,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedYears.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'years'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'years' : null)}
         >
@@ -1645,7 +1974,7 @@ export default function VehiclesOverviewPage() {
         </details>
 
         <details
-          className="overview-multifilter"
+          className={`overview-multifilter${selectedMileageBands.length > 0 ? ' is-active' : ''}`}
           open={openFilterKey === 'mileageBands'}
           onToggle={(event) => setOpenFilterKey(event.currentTarget.open ? 'mileageBands' : null)}
         >
@@ -1666,45 +1995,9 @@ export default function VehiclesOverviewPage() {
 
       </div>
 
-      {chartCarIds.length > 0 ? (
+      {activeFilterEntries.length > 0 ? (
         <div className="status-box">
-          Aktivní filtr z grafu 250k: {chartCarIds.length} vozidel.
-        </div>
-      ) : null}
-
-      {selectedMileageBands.length > 0 ? (
-        <div className="status-box">
-          Aktivní filtr nájezdu: {selectedMileageBands.map((value) => formatMileageBandLabel(value)).join(', ')}.
-        </div>
-      ) : null}
-
-      {selectedTypes.length > 0 ? (
-        <div className="status-box">
-          Aktivní filtr typu: {selectedTypes.join(', ')}.
-        </div>
-      ) : null}
-
-      {selectedLocationStates.length > 0 ? (
-        <div className="status-box">
-          Aktivní filtr polohy: {selectedLocationStates.map((value) => LOCATION_STATE_OPTIONS.find((option) => option.value === value)?.label || value).join(', ')}.
-        </div>
-      ) : null}
-
-      {selectedCcsStates.length > 0 ? (
-        <div className="status-box">
-          Aktivní filtr CCS: {selectedCcsStates.map((value) => CCS_STATE_OPTIONS.find((option) => option.value === value)?.label || value).join(', ')}.
-        </div>
-      ) : null}
-
-      {ccsExpiryFilter === 'expiring' ? (
-        <div className="status-box status-box-warning">
-          Aktivní filtr CCS: vozidla s kartou končící do 3 měsíců.
-        </div>
-      ) : null}
-
-      {ccsExpiryFilter === 'expired' ? (
-        <div className="status-box status-box-alert">
-          Aktivní filtr CCS: vozidla s kartou po splatnosti.
+          <strong>Aktivní filtry:</strong> {activeFilterEntries.join(' • ')}
         </div>
       ) : null}
 
@@ -1718,7 +2011,7 @@ export default function VehiclesOverviewPage() {
             aria-label="Skrýt informační hlášku"
             title="Skrýt"
           >
-            ×
+            <AppIcon name="close" size={15} weight="bold" />
           </button>
         </div>
       ) : null}
@@ -2153,28 +2446,43 @@ export default function VehiclesOverviewPage() {
                   </div>
                 </section>
 
-                <section className="vehicle-detail-drawer-block">
-                  <h4>
-                    <AppIcon name="edit" size={16} weight="duotone" />
-                    <span>Detail karty</span>
-                  </h4>
-                  {(() => {
-                    const detail = detailDrawerItem || {};
-                    const serviceContext = parseServiceContext(detail.service_context_json);
-                    return (
-                      <div className="vehicle-detail-drawer-grid">
-                        <p><strong>ZZS typ:</strong> {printableValue(detail.zzs_typ)}</p>
-                        <p><strong>Stanoviště:</strong> {printableValue(detailDrawerSummary?.w_stanoviste)}</p>
-                        <p><strong>Servis (název):</strong> {printableValue(serviceContext.name || serviceContext.service_name)}</p>
-                        <p><strong>Servis (adresa):</strong> {printableValue(serviceContext.address || serviceContext.service_address)}</p>
-                        <p><strong>Servis (kontakt):</strong> {printableValue(serviceContext.contact || serviceContext.service_contact)}</p>
-                        <p><strong>Manuální poloha:</strong> {formatLocationState(detail.manual_location_state)}</p>
-                        <p className="vehicle-detail-drawer-grid-full"><strong>Poznámka k opravě:</strong> {printableValue(detail.service_notes, 'Bez poznámky')}</p>
-                        <p><strong>Pojistka:</strong> {printableValue(detail.insurance_policy)}</p>
-                        <p><strong>STK do:</strong> {printableValue(detail.stk_valid_to)}</p>
-                      </div>
-                    );
-                  })()}
+                <section className="vehicle-detail-drawer-block vehicle-detail-modules-block">
+                  <div className="vehicle-detail-modules-head">
+                    <div>
+                      <h4>
+                        <AppIcon name="detail" size={16} weight="duotone" />
+                        <span>Moduly karty</span>
+                      </h4>
+                      <p className="muted">Servis, vybavení, pojištění, pneumatiky, financování a přílohy.</p>
+                    </div>
+                  </div>
+
+                  <div className="vehicle-detail-modules-grid">
+                    {detailDrawerModuleConfigs.map((module) => {
+                      const isLoaded = Array.isArray(detailDrawerModules[module.id]);
+                      const items = detailDrawerModules[module.id] || [];
+                      const isLoading = Boolean(detailDrawerModulesLoading[module.id]);
+                      const error = detailDrawerModulesError[module.id];
+                      const count = detailDrawerModuleSummary ? (detailDrawerModuleSummary[module.id] ?? 0) : '—';
+                      return (
+                        <article key={module.id} className={`vehicle-detail-module-card${isLoaded ? ' is-loaded' : ''}`}>
+                          <div className="vehicle-detail-module-card-head">
+                            <AppIcon name={module.icon} size={16} weight="duotone" />
+                            <strong>{module.title}</strong>
+                            <span>{count}</span>
+                          </div>
+                          <div className="vehicle-detail-module-card-pending">
+                            <p>{isLoaded ? `Načteno položek: ${items.length}` : 'Podrobnosti na vyžádání'}</p>
+                            <button type="button" className="btn btn-ghost btn-sm" onClick={() => void handleOpenVehicleDetailModuleDialog(module.id)} disabled={isLoading}>
+                              <AppIcon name="detail" size={14} weight="duotone" />
+                              {isLoading ? 'Načítám...' : 'Detail'}
+                            </button>
+                          </div>
+                          {error ? <p className="vehicle-detail-module-error">{error}</p> : null}
+                        </article>
+                      );
+                    })}
+                  </div>
                 </section>
 
                 <VehicleMonthlyBillingCard
@@ -2242,9 +2550,123 @@ export default function VehiclesOverviewPage() {
                       })}
                     </div>
                   )}
+                  {detailDrawerEeoOrders.length > 0 ? (
+                    <div className="vehicle-detail-events-list vehicle-detail-eeo-events-list">
+                      <div className="vehicle-detail-event-source-head">
+                        <p className="vehicle-detail-event-source-label">Stručný výpis oprav z EEO</p>
+                        <span className="vehicle-detail-event-source-summary">
+                          {detailDrawerEeoOrders.length} položek / {formatMoney(detailDrawerEeoOrders.reduce((sum, order) => {
+                            const price = Number(order?.faktura_celkem) > 0
+                              ? Number(order.faktura_celkem)
+                              : Number(order?.polozky_celkem || 0);
+                            return sum + price;
+                          }, 0))}
+                        </span>
+                      </div>
+                      {detailDrawerEeoOrders.slice(0, 5).map((order) => {
+                        const orderDate = order.dt_dokonceni || order.dt_akceptace || order.dt_odeslani || order.dt_objednavky;
+                        const orderPrice = Number(order.faktura_celkem) > 0 ? order.faktura_celkem : order.polozky_celkem;
+                        return (
+                          <article key={`eeo-event-${order.id}`} className="vehicle-detail-event-item vehicle-detail-eeo-event-item">
+                            <div className="vehicle-detail-event-head">
+                              <strong>{order.predmet || order.cislo_objednavky || 'Oprava'}</strong>
+                              <span>{formatDateTimeCs(orderDate)}</span>
+                            </div>
+                            <p className="vehicle-detail-event-meta">
+                              EEO: {order.cislo_objednavky || '-'} • Stav: {order.stav_objednavky || '-'}
+                              {orderPrice ? ` • Cena: ${formatMoney(orderPrice)}` : ''}
+                            </p>
+                            {order.dodavatel_nazev ? <p className="vehicle-detail-event-meta">Dodavatel: {order.dodavatel_nazev}</p> : null}
+                          </article>
+                        );
+                      })}
+                      <p className="vehicle-detail-eeo-more-row">
+                        Zobrazeno {Math.min(5, detailDrawerEeoOrders.length)} z {detailDrawerEeoOrders.length} oprav.
+                        <button
+                          type="button"
+                          className="vehicle-detail-eeo-more-link"
+                          onClick={() => {
+                            const vehicle = detailDrawerSummary;
+                            closeDetailDrawer();
+                            void handleShowEeoHistory(vehicle);
+                          }}
+                        >
+                          Zobrazit všechny opravy v EEO
+                        </button>
+                      </p>
+                    </div>
+                  ) : null}
                 </section>
               </div>
             ) : null}
+          </aside>
+        </div>
+      ) : null}
+
+      {detailDrawerModuleDialogId && detailDrawerActiveModuleConfig ? (
+        <div className="vehicle-module-popup-backdrop" role="presentation" onClick={handleCloseVehicleDetailModuleDialog}>
+          <aside
+            className="vehicle-module-popup"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`Detail modulu ${detailDrawerActiveModuleConfig.title}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="vehicle-module-popup-head">
+              <h3>
+                <AppIcon name={detailDrawerActiveModuleConfig.icon} size={18} weight="duotone" />
+                <span>{detailDrawerActiveModuleConfig.title}</span>
+              </h3>
+              <button
+                type="button"
+                className="station-edit-close vehicle-module-popup-close"
+                onClick={handleCloseVehicleDetailModuleDialog}
+                aria-label="Zavřít detail modulu"
+              >
+                ×
+              </button>
+            </div>
+
+            <p className="muted vehicle-module-popup-subline">
+              Vozidlo: <strong>
+                {[
+                  detailDrawerSummary?.w_tovarni_znacka,
+                  detailDrawerSummary?.w_model_vozu,
+                ].filter(Boolean).join(' ') || `ID ${detailDrawerVehicleId || '-'}`}
+                {detailDrawerSummary?.spz ? `, SPZ: ${detailDrawerSummary.spz}` : ''}
+                {detailDrawerSummary?.w_popis ? ` (${detailDrawerSummary.w_popis})` : ''}
+              </strong>
+              <span>•</span>
+              <span>Záznamů: <strong>{detailDrawerModuleSummary ? (detailDrawerModuleSummary[detailDrawerActiveModuleConfig.id] ?? detailDrawerActiveModuleItems.length) : detailDrawerActiveModuleItems.length}</strong></span>
+            </p>
+
+            {detailDrawerActiveModuleLoading ? <p className="muted">Načítám podrobnosti modulu...</p> : null}
+            {detailDrawerActiveModuleError ? <div className="status-box status-box-warning">{detailDrawerActiveModuleError}</div> : null}
+            {!detailDrawerActiveModuleLoading && !detailDrawerActiveModuleError && detailDrawerActiveModuleItems.length === 0 ? (
+              <p className="muted">Bez záznamů.</p>
+            ) : null}
+            {!detailDrawerActiveModuleLoading && !detailDrawerActiveModuleError && detailDrawerActiveModuleItems.length > 0 ? (
+              <div className="vehicle-module-popup-table-wrap">
+                <table className="vehicle-module-popup-table">
+                  <thead>
+                    <tr>{detailDrawerActiveModuleConfig.columns.map((column) => <th key={column}>{column}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {detailDrawerActiveModuleItems.map((item, index) => (
+                      <tr key={`${detailDrawerActiveModuleConfig.id}-${item.claim_status_code ? 'claim' : 'record'}-${item.id}-${index}`}>
+                        {detailDrawerActiveModuleConfig.cells(item).map((value, index) => <td key={index}>{value || '-'}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            <div className="vehicle-module-popup-actions">
+              <button type="button" className="btn btn-ghost" onClick={handleCloseVehicleDetailModuleDialog}>
+                Zavřít
+              </button>
+            </div>
           </aside>
         </div>
       ) : null}
@@ -2274,9 +2696,14 @@ export default function VehiclesOverviewPage() {
                     <span>Servisní historie z EEO</span>
                   </h3>
                   <p className="vehicle-detail-drawer-subline">
-                    <strong>{printableValue(eeoHistoryVehicle?.spz)}</strong>
-                    <span>•</span>
-                    <span>{printableValue(eeoHistoryVehicle?.w_popis, 'Bez volacího znaku')}</span>
+                    <strong>
+                      {joinNonEmpty([
+                        eeoHistoryVehicle?.w_tovarni_znacka,
+                        eeoHistoryVehicle?.w_model_vozu,
+                      ], ' ') || 'Neznámé vozidlo'}
+                      {eeoHistoryVehicle?.spz ? `, SPZ: ${eeoHistoryVehicle.spz}` : ''}
+                      {eeoHistoryVehicle?.w_popis ? ` (${eeoHistoryVehicle.w_popis})` : ''}
+                    </strong>
                   </p>
                 </div>
                 <div className="vehicle-detail-drawer-head-side">
