@@ -59,7 +59,11 @@ npm run build:dev:explicit
 ```
 Aplikace načte hash z <meta name="build-hash">
                 ↓
-Každých 5 minut kontroluje /dev/eeo-v2/version.json
+Po přihlášení zkontroluje /dev/eeo-v2/version.json okamžitě
+                ↓
+Po načtení libovolné stránky provede první kontrolu za 10 sekund
+                ↓
+Potom kontroluje každých 10 minut (leader tab)
                 ↓
 Porovná: currentHash vs serverHash
                 ↓

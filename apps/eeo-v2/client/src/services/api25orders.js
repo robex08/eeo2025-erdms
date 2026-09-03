@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars */
 import axios from 'axios';
+import { dispatchAuthErrorUnlessCached } from './authErrorHandler';
 
 /**
  * ORDERS25 API Service
@@ -62,27 +63,17 @@ const logDebug = (type, endpoint, data, response) => {
 // Response interceptor to handle token expiration
 api25orders.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     // 🔐 401 Unauthorized - token expired → logout
     if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
+      await dispatchAuthErrorUnlessCached('Vaše přihlášení vypršelo. Přihlaste se prosím znovu.');
     }
     // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, jen vrátit error
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';
     if (typeof responseText === 'string' && responseText.includes('<!doctype')) {
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
+      await dispatchAuthErrorUnlessCached('Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.');
     }
 
     return Promise.reject(error);

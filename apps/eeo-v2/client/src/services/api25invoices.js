@@ -1,5 +1,6 @@
 /* eslint-disable no-unused-vars */
 import axios from 'axios';
+import { dispatchAuthErrorUnlessCached } from './authErrorHandler';
 
 /**
  * INVOICES25 ATTACHMENTS API Service
@@ -50,7 +51,7 @@ const storeCachedInvoices25Response = (cacheKey, value) => {
 // Response interceptor to handle token expiration
 api25invoices.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     // 🚨 TEMPORARY FIX: Disable auto-logout for delete invoice endpoint
     // Důvod: BE může vrátit 403 pro permission check (není to auth issue)
     const isDeleteInvoice = (
@@ -65,24 +66,14 @@ api25invoices.interceptors.response.use(
 
     // 🔐 401 Unauthorized - token expired → logout
     if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
+      await dispatchAuthErrorUnlessCached('Vaše přihlášení vypršelo. Přihlaste se prosím znovu.');
     }
     // 🚫 403 Forbidden - permission error → NEODHLAŠOVAT, normalizeApi25InvoicesError to ošetří
 
     // Check for HTML response (login page instead of JSON)
     const responseText = error.response?.data || '';
     if (typeof responseText === 'string' && responseText.includes('<!doctype')) {
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
+      await dispatchAuthErrorUnlessCached('Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.');
     }
 
     return Promise.reject(error);

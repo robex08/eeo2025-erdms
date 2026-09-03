@@ -1,6 +1,7 @@
 import React from 'react';
 import { keyframes } from '@emotion/react';
 import styled from '@emotion/styled';
+import { APP_VERSION } from '../config/appVersion';
 
 // Animace pro spinner
 const spin = keyframes`
@@ -130,7 +131,7 @@ const SplashScreen = ({ message = 'Spouštění aplikace...' }) => {
 
       <LoadingText>{message}</LoadingText>
 
-      <VersionText>verze {process.env.REACT_APP_VERSION || '1.86.V2.08122025 (LP financování fix, DatePicker portal fix, UI cleanup)'}</VersionText>
+      <VersionText>verze {APP_VERSION}</VersionText>
     </SplashContainer>
   );
 };

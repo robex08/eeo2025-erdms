@@ -9,6 +9,7 @@ import { saveAuthData, loadAuthData } from './authStorageIncognito.js';
 
 // Konstanta pro dobu platnosti tokenu (musí být stejná jako v authStorage.js)
 const TOKEN_EXPIRY_HOURS = 12;
+const API_BASE_URL = process.env.REACT_APP_API2_BASE_URL || '/api.eeo/';
 
 // Refresh 10 minut před expirací
 const REFRESH_BEFORE_EXPIRY_MS = 10 * 60 * 1000; // 10 minut
@@ -91,8 +92,10 @@ class TokenRefreshService {
         throw new Error('Missing auth data for refresh');
       }
 
+      const tokenRefreshUrl = `${API_BASE_URL.replace(/\/+$/, '')}/token-refresh`;
+
       // Zavolej backend pro nový token
-      const response = await fetch('/api.eeo/token-refresh', {
+      const response = await fetch(tokenRefreshUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

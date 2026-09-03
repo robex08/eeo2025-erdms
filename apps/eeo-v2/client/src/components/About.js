@@ -1,5 +1,6 @@
 import React from 'react';
 import styled from '@emotion/styled';
+import { APP_VERSION } from '../config/appVersion';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEnvelope, faPhone, faHeadset, faUsers, faCode, faHeart } from '@fortawesome/free-solid-svg-icons';
 
@@ -260,7 +261,7 @@ const About = () => {
           <Subtitle>
             Systém správy a workflow objednávek
             <span style={{ marginLeft: '0.5rem', fontSize: '0.85em', opacity: 0.9 }}>
-              verze {process.env.REACT_APP_VERSION || 'N/A'}
+              verze {APP_VERSION}
             </span>
           </Subtitle>
         </Header>

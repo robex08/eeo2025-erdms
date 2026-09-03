@@ -17,6 +17,7 @@
  */
 
 import axios from 'axios';
+import { dispatchAuthErrorUnlessCached } from './authErrorHandler';
 
 // Axios instance pro Order V2 API
 const apiOrderV2 = axios.create({
@@ -27,29 +28,19 @@ const apiOrderV2 = axios.create({
 // Response interceptor pro error handling
 apiOrderV2.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     // Authentication errors
     // 🔥 DŮLEŽITÉ: 403 Forbidden NENÍ auth error - je to permission error
     // 401 Unauthorized = token vypršel nebo není validní → ODHLÁSIT
     // 403 Forbidden = uživatel nemá právo k resource → NEODHLAŠOVAT!
     if (error.response?.status === 401) {
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Přihlaste se prosím znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
+      await dispatchAuthErrorUnlessCached('Vaše přihlášení vypršelo. Přihlaste se prosím znovu.');
     }
 
     // HTML response instead of JSON (login page)
     const responseText = error.response?.data || '';
     if (typeof responseText === 'string' && responseText.includes('<!doctype')) {
-      if (typeof window !== 'undefined') {
-        const event = new CustomEvent('authError', {
-          detail: { message: 'Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.' }
-        });
-        window.dispatchEvent(event);
-      }
+      await dispatchAuthErrorUnlessCached('Vaše přihlášení vypršelo. Obnovte stránku a přihlaste se znovu.');
     }
 
     return Promise.reject(error);
