@@ -6,26 +6,29 @@
  * 
  * Features:
  * - Build hash based detection (spolehlivější než manuální verze)
- * - Grace period po načtení stránky (2 minuty)
- * - Kontrola při focus okna (debounced - max 1× za 10 minut)
+ * - Grace period po načtení stránky (10 sekund)
+ * - Okamžitá kontrola po přihlášení (triggeruje App.js přes force check)
+ * - Kontrola při focus okna (debounced - max 1× za 2 minuty)
  * - Periodická kontrola (každých 10 minut)
  * - Leader election (pouze jeden tab dělá polling)
  * - Komunikace mezi taby přes localStorage
  * - Silent fail při chybě síťe
  * 
- * OPTIMALIZACE 2026-06-23:
- * - Interval zvýšen z 5 na 10 minut (snížení traffic o 50%)
- * - Focus debounce (eliminace spamu při přepínání tabů)
+ * OPTIMALIZACE 2026-09-03:
+ * - Interval kontroly 10 minut
+ * - První kontrola 10 sekund po načtení stránky + okamžitě po loginu
+ * - Focus debounce 2 minuty (eliminace spamu při přepínání tabů)
  * - Leader election (jen 1 tab polling místo N tabů)
- * - Expected: snížení requestů z ~30k/den na ~200/den (99% úspora)
  */
+
+import { APP_VERSION } from '../config/appVersion';
 
 class VersionChecker {
   constructor(options = {}) {
     this.currentHash = this.getBuildHash();
-    this.checkInterval = options.checkInterval || 30 * 60 * 1000; // 30 minut (bylo 10 min)
-    this.gracePeriod = options.gracePeriod || 2 * 60 * 1000; // 2 minuty (bylo 60s)
-    this.focusDebounceInterval = 30 * 60 * 1000; // Focus check max 1× za 30 minut
+    this.checkInterval = options.checkInterval || 10 * 60 * 1000; // 10 minut
+    this.gracePeriod = options.gracePeriod || 10 * 1000; // 10 sekund
+    this.focusDebounceInterval = options.focusDebounceInterval || 2 * 60 * 1000; // Focus check max 1× za 2 minuty
     this.ignoreUntil = Date.now() + this.gracePeriod;
     this.lastFocusCheck = 0; // Timestamp poslední focus kontroly
     this.notificationShown = false;
@@ -71,9 +74,11 @@ class VersionChecker {
   /**
    * Kontrola nové verze na serveru
    */
-  async checkForUpdate() {
+  async checkForUpdate(options = {}) {
+    const { force = false } = options;
+
     // Grace period - nekontroluj hned po načtení
-    if (Date.now() < this.ignoreUntil) {
+    if (!force && Date.now() < this.ignoreUntil) {
       return;
     }
 
@@ -172,7 +177,7 @@ class VersionChecker {
       ? new Date(versionData.buildTime).toLocaleString('cs-CZ')
       : 'nedávno';
 
-    const displayVersion = versionData.version || process.env.REACT_APP_VERSION || 'N/A';
+    const displayVersion = versionData.version || APP_VERSION;
     const message = `Je dostupná nová verze aplikace ${displayVersion} (${buildTime}).\n\n` +
                     `Doporučujeme obnovit stránku pro zajištění správné funkčnosti.\n\n` +
                     `Obnovit nyní?`;
@@ -257,7 +262,7 @@ class VersionChecker {
     // Unikátní ID pro tento tab
     this.tabId = `tab_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-    // Kontrola při focus okna (DEBOUNCED - max 1× za 10 minut)
+    // Kontrola při focus okna (debounced)
     window.addEventListener('focus', () => {
       const now = Date.now();
       
@@ -297,7 +302,7 @@ class VersionChecker {
       }
     });
 
-    // První kontrola za grace period
+    // První kontrola krátce po načtení libovolné stránky aplikace
     setTimeout(() => {
       this.checkForUpdate();
     }, this.gracePeriod);

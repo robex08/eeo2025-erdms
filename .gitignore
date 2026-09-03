@@ -90,6 +90,7 @@ DEBUG_*.md
 
 # Backup a archivní složky
 backup/
+backups/dev-db/
 *backup*/
 *.backup
 archive/

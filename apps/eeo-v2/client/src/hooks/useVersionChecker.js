@@ -25,8 +25,8 @@ import VersionChecker from '../utils/versionChecker';
  * 
  * @param {Object} options - Konfigurace
  * @param {Function} options.onUpdate - Callback při detekci nové verze
- * @param {number} options.checkInterval - Interval kontroly (ms), výchozí 5 min
- * @param {number} options.gracePeriod - Grace period po načtení (ms), výchozí 60s
+ * @param {number} options.checkInterval - Interval kontroly (ms), výchozí 10 min
+ * @param {number} options.gracePeriod - Grace period po načtení (ms), výchozí 10s
  * @param {boolean} options.enabled - Zapnout/vypnout checker, výchozí true
  */
 const useVersionChecker = (options = {}) => {
@@ -64,7 +64,7 @@ const useVersionChecker = (options = {}) => {
 
   // Vrať API pro manuální kontrolu nebo reload
   return {
-    checkNow: () => checkerRef.current?.checkForUpdate(),
+    checkNow: (options) => checkerRef.current?.checkForUpdate(options),
     reload: () => checkerRef.current?.reloadApp(),
     reset: () => checkerRef.current?.reset()
   };

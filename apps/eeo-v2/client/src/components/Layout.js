@@ -33,6 +33,7 @@ import useActivityTracking from '../hooks/useActivityTracking'; // ✅ NOVÉ: Ac
 import { FloatingAlarmManager } from './FloatingAlarmPopup';
 import { translateToCz } from '../utils/translate';
 import ConfirmDialog from './ConfirmDialog';
+import { APP_VERSION, APP_VERSION_SHORT } from '../config/appVersion';
 import { useDebugPanel } from '../hooks/useDebugPanel';
 import { ASSETS } from '../config/assets';
 import FinancialCalculator from './FinancialCalculator';
@@ -4057,7 +4058,7 @@ const Layout = ({ children }) => {
                     )}
                   </span>
                 )}
-                {process.env.REACT_APP_VERSION?.match(/(\d+\.\d+[a-z]?)/)?.[1] || ''}
+                {APP_VERSION_SHORT}
                 {hierarchyInfo?.enabled && hierarchyInfo?.profileId && (
                   <span style={{ 
                     color: hierarchyInfo.isImmune ? '#9ca3af' : '#10b981', 
@@ -5606,7 +5607,7 @@ const Layout = ({ children }) => {
         </FooterLeft>
         <FooterCenter>
           <span style={{ display: 'block', textAlign: 'center', lineHeight: '1.5' }}>
-            © {process.env.REACT_APP_FOOTER_OWNER || '2025 ZZS SK, p.o., Robert Holovský'} | verze {process.env.REACT_APP_VERSION}
+            © {process.env.REACT_APP_FOOTER_OWNER || '2025 ZZS SK, p.o., Robert Holovský'} | verze {APP_VERSION}
             {' | '}
             <FontAwesomeIcon 
               icon={faPlug} 

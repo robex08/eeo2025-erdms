@@ -10,6 +10,7 @@ import reportWebVitals from './reportWebVitals';
 import { AuthProvider } from './context/AuthContext'; // Import AuthProvider
 import { DebugProvider } from './context/DebugContext'; // Import DebugProvider
 import { ProgressProvider } from './context/ProgressContext';
+import { APP_VERSION } from './config/appVersion';
 
 // Suppress ResizeObserver errors (benign browser timing issue)
 window.addEventListener('error', e => {
@@ -72,8 +73,27 @@ if (process.env.NODE_ENV === 'development') {
 
 // Aktualizuj verzi na splash screen z .env
 const versionText = document.getElementById('splash-version');
-if (versionText && process.env.REACT_APP_VERSION) {
-  versionText.textContent = `verze ${process.env.REACT_APP_VERSION}`;
+if (versionText) {
+  versionText.textContent = `verze ${APP_VERSION}`;
+}
+
+// Starší buildy mohly v prohlížeči zanechat service worker, který drží starý index.html.
+// Aktuální EEO v2 service worker nepoužívá, proto bezpečně rušíme jen scope této aplikace.
+if ('serviceWorker' in navigator) {
+  const appBasePath = (process.env.PUBLIC_URL || '/eeo-v2').replace(/\/$/, '');
+
+  navigator.serviceWorker.getRegistrations().then((registrations) => {
+    registrations.forEach((registration) => {
+      try {
+        const scopePath = new URL(registration.scope).pathname.replace(/\/$/, '');
+        if (scopePath === appBasePath || scopePath.startsWith(`${appBasePath}/`)) {
+          registration.unregister();
+        }
+      } catch (error) {
+        // Ignore malformed service worker scopes.
+      }
+    });
+  }).catch(() => {});
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

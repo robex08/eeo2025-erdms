@@ -2,7 +2,6 @@
  * 🔽 useExpandedRowsV3
  * 
  * Hook pro správu rozbalitelných řádků v Orders V3
- * 
  * Funkce:
  * - ✅ Sledování rozbalených řádků (expandedRows state)
  * - ✅ Persistence do localStorage (per user)
@@ -15,6 +14,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { getOrderDetailV3 } from '../../services/apiOrderV3';
+import { APP_VERSION } from '../../config/appVersion';
 
 const STORAGE_KEY_PREFIX = 'ordersV3_expandedRows_user_';
 const DETAILS_CACHE_KEY_PREFIX = 'ordersV3_detailsCache_user_';
@@ -38,7 +38,7 @@ export const useExpandedRowsV3 = ({ token, username, userId }) => {
     if (!userId) return;
 
     try {
-      const CURRENT_VERSION = process.env.REACT_APP_VERSION || '2.34-DEV';
+      const CURRENT_VERSION = APP_VERSION;
       const versionKey = `ordersV3_version_${userId}`;
       const savedVersion = localStorage.getItem(versionKey);
 

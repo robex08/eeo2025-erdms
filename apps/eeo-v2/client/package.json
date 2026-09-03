@@ -1,6 +1,6 @@
 {
   "name": "r-app-zzs-eeo",
-  "version": "2.65.0",
+  "version": "2.66.0",
   "private": true,
   "homepage": "/dev/eeo-v2",
   "dependencies": {
@@ -51,10 +51,10 @@
   },
   "scripts": {
     "start": "NODE_OPTIONS=--max_old_space_size=2048 react-app-rewired start",
-    "build": "NODE_OPTIONS=--max_old_space_size=8192 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
-    "build:dev": "NODE_ENV=development BUILD_PATH=build PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && ./scripts/generate-build-info.sh build",
-    "build:dev:explicit": "NODE_ENV=development CI=false REACT_APP_VERSION=2.65-DEV REACT_APP_DB_NAME=EEO-OSTRA-DEV REACT_APP_API_BASE_URL=/api REACT_APP_API2_BASE_URL=/dev/api.eeo/ REACT_APP_OLD_ATTACHMENTS_URL=/prilohy/ PUBLIC_URL=/dev/eeo-v2 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && REACT_APP_VERSION=2.65-DEV ./scripts/generate-build-info.sh build",
-    "build:prod": "NODE_ENV=production REACT_APP_VERSION=2.65 BUILD_PATH=build-prod PUBLIC_URL=/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && REACT_APP_VERSION=2.65 ./scripts/generate-build-info.sh build-prod",
+    "build": "bash ./scripts/preserve-stale-assets.sh before build && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.production | tail -n 1 | cut -d= -f2-) NODE_OPTIONS=--max_old_space_size=8192 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && bash ./scripts/preserve-stale-assets.sh after build && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.production | tail -n 1 | cut -d= -f2-) ./scripts/generate-build-info.sh build",
+    "build:dev": "bash ./scripts/preserve-stale-assets.sh before build && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.development | tail -n 1 | cut -d= -f2-) NODE_ENV=development BUILD_PATH=build PUBLIC_URL=/dev/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && bash ./scripts/preserve-stale-assets.sh after build && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.development | tail -n 1 | cut -d= -f2-) ./scripts/generate-build-info.sh build",
+    "build:dev:explicit": "bash ./scripts/preserve-stale-assets.sh before build && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.development | tail -n 1 | cut -d= -f2-) NODE_ENV=development CI=false REACT_APP_DB_NAME=EEO-OSTRA-DEV REACT_APP_API_BASE_URL=/api REACT_APP_API2_BASE_URL=/dev/api.eeo/ REACT_APP_OLD_ATTACHMENTS_URL=/prilohy/ PUBLIC_URL=/dev/eeo-v2 BUILD_PATH=build NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && bash ./scripts/preserve-stale-assets.sh after build && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.development | tail -n 1 | cut -d= -f2-) ./scripts/generate-build-info.sh build",
+    "build:prod": "bash ./scripts/preserve-stale-assets.sh before build-prod && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.production | tail -n 1 | cut -d= -f2-) NODE_ENV=production BUILD_PATH=build-prod PUBLIC_URL=/eeo-v2 NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build && bash ./scripts/preserve-stale-assets.sh after build-prod && REACT_APP_VERSION=$(grep -E '^REACT_APP_VERSION=' .env.production | tail -n 1 | cut -d= -f2-) ./scripts/generate-build-info.sh build-prod",
     "deploy-maintenance": "npm run deploy-maintenance:prepare && npm run deploy-maintenance:build && npm run deploy-maintenance:finalize",
     "deploy-maintenance:prepare": "shx rm -rf build && shx mkdir -p build && shx cp maintenance.html build/index.html",
     "deploy-maintenance:build": "cross-env BUILD_PATH=build_temp NODE_OPTIONS=--max_old_space_size=8192 react-app-rewired build",

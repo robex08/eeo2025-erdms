@@ -9,6 +9,39 @@ COMPONENT="all"
 DEPLOY="false"
 VERSION=$(date +%Y%m%d-%H%M%S)
 
+require_env_value() {
+    local file="$1"
+    local key="$2"
+    local expected="$3"
+    local actual
+
+    actual=$(grep -E "^${key}=" "$file" 2>/dev/null | tail -n 1 | cut -d'=' -f2-)
+
+    if [ "$actual" != "$expected" ]; then
+        echo "❌ CRITICAL ERROR: $file má neočekávanou hodnotu $key"
+        echo "   Expected: $expected"
+        echo "   Actual:   ${actual:-<missing>}"
+        exit 1
+    fi
+}
+
+validate_prod_api_legacy_env() {
+    local file="$1"
+
+    if [ ! -f "$file" ]; then
+        echo "❌ CRITICAL ERROR: Production API Legacy env chybí: $file"
+        exit 1
+    fi
+
+    require_env_value "$file" "APP_ENV" "production"
+    require_env_value "$file" "DB_NAME" "eeo2025"
+    require_env_value "$file" "UPLOAD_ROOT_PATH" "/var/www/erdms-platform/data/eeo-v2/prilohy/"
+    require_env_value "$file" "DOCX_TEMPLATES_PATH" "/var/www/erdms-platform/data/eeo-v2/sablony/"
+    require_env_value "$file" "MANUALS_PATH" "/var/www/erdms-platform/data/eeo-v2/manualy/"
+
+    echo "✅ Production API Legacy env validated: DB=eeo2025, paths=/var/www/erdms-platform/data/eeo-v2"
+}
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -223,8 +256,11 @@ if [ "$COMPONENT" = "backend" ] || [ "$COMPONENT" = "all" ]; then
         
         # Copy production .env for API Legacy
         echo "🔐 Copying production .env for API Legacy..."
-        cp /var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env.production \
-           /var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env
+        PROD_API_LEGACY_ENV="/var/www/erdms-dev/apps/eeo-v2/api-legacy/api.eeo/.env.production"
+        PROD_API_LEGACY_TARGET_ENV="/var/www/erdms-platform/apps/eeo-v2/api-legacy/api.eeo/.env"
+        validate_prod_api_legacy_env "$PROD_API_LEGACY_ENV"
+        cp "$PROD_API_LEGACY_ENV" "$PROD_API_LEGACY_TARGET_ENV"
+        validate_prod_api_legacy_env "$PROD_API_LEGACY_TARGET_ENV"
         
         # Set permissions for API Legacy
         chown -R www-data:www-data /var/www/erdms-platform/apps/eeo-v2/api-legacy/

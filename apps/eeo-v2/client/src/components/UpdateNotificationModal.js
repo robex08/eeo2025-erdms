@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import SystemUpdateAltIcon from '@mui/icons-material/SystemUpdateAlt';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import { APP_VERSION } from '../config/appVersion';
 
 const UpdateNotificationModal = ({ open, onClose, onUpdate, versionData }) => {
   const buildTime = versionData?.buildTime 
@@ -31,7 +32,7 @@ const UpdateNotificationModal = ({ open, onClose, onUpdate, versionData }) => {
     onUpdate();
   };
 
-  const newVersion = versionData?.version || process.env.REACT_APP_VERSION || 'N/A';
+  const newVersion = versionData?.version || APP_VERSION;
 
   return (
     <Dialog

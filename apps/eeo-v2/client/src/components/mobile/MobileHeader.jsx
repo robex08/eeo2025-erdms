@@ -2,6 +2,7 @@ import { useState, useContext, useEffect } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faClockRotateLeft } from '@fortawesome/free-solid-svg-icons';
+import { APP_VERSION_SHORT } from '../../config/appVersion';
 import './MobileHeader.css';
 
 const logoZZS = '/eeo-v2/logo-ZZS.png';
@@ -21,9 +22,7 @@ function MobileHeader({ title, onMenuClick, notificationCount = 0, showBackButto
   const { isLoggedIn, token, user } = useContext(AuthContext);
   const [hierarchyInfo, setHierarchyInfo] = useState(null);
   
-  // Ziskát verzi z ENV proměnné a extrahovat číslo verze
-  const fullVersion = process.env.REACT_APP_VERSION || '1.88';
-  const versionNumber = fullVersion.match(/(\d+\.\d+[a-z]?)/)?.[1] || fullVersion;
+  const versionNumber = APP_VERSION_SHORT;
   
   // Detekce dev prostředí
   const isDevEnv = typeof window !== 'undefined' && window.location.pathname.startsWith('/dev/');

@@ -11,6 +11,7 @@ import { ExchangeRatesProvider, useExchangeRates } from './context/ExchangeRates
 import { useBackgroundTasks } from './hooks/useBackgroundTasks';
 import { useUserActivity } from './hooks/useUserActivity';
 import useVersionChecker from './hooks/useVersionChecker';
+import { APP_VERSION } from './config/appVersion';
 import { createStandardTasks } from './services/backgroundTasks';
 import Layout from './components/Layout';
 import { setupEncryptionDebug } from './utils/encryptionUtils';
@@ -92,6 +93,116 @@ const RouteLoadingFallback = () => (
     `} />
   </div>
 );
+
+const isChunkLoadError = (error) => {
+  const reason = error?.reason || error;
+  const name = String(reason?.name || '');
+  const message = String(reason?.message || reason || '');
+
+  return name === 'ChunkLoadError' ||
+    /ChunkLoadError|Loading chunk \d+ failed|Failed to fetch dynamically imported module|Importing a module script failed/i.test(message);
+};
+
+const clearBuildHashAndReload = () => {
+  try {
+    localStorage.removeItem('app_build_hash');
+  } catch (error) {
+    // Ignore storage errors during recovery.
+  }
+  window.location.reload(true);
+};
+
+const AppReloadRequired = ({ error }) => {
+  const isChunkError = isChunkLoadError(error);
+
+  return (
+    <div css={css`
+      position: fixed;
+      inset: 0;
+      z-index: 2147483647;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f3f6fb;
+      padding: 2rem;
+    `}>
+      <div css={css`
+        width: min(520px, 100%);
+        background: #ffffff;
+        border: 1px solid #dbe3ef;
+        border-radius: 12px;
+        box-shadow: 0 16px 40px rgba(31, 42, 87, 0.16);
+        padding: 1.75rem;
+        color: #1f2a57;
+      `}>
+        <h1 css={css`
+          font-size: 1.35rem;
+          margin: 0 0 0.75rem 0;
+          color: #1f2a57;
+        `}>
+          {isChunkError ? 'Je dostupná nová verze aplikace' : 'Aplikaci je potřeba obnovit'}
+        </h1>
+        <p css={css`
+          margin: 0 0 1.25rem 0;
+          line-height: 1.5;
+          color: #4b587c;
+        `}>
+          {isChunkError
+            ? 'Aplikace byla mezitím aktualizována a aktuálně otevřená stránka už používá staré soubory. Obnovte stránku pro načtení nové verze.'
+            : 'Při načítání stránky došlo k chybě. Obnovení načte aktuální verzi aplikace.'}
+        </p>
+        <button
+          type="button"
+          onClick={clearBuildHashAndReload}
+          css={css`
+            border: 0;
+            border-radius: 8px;
+            background: #2563eb;
+            color: white;
+            font-weight: 700;
+            padding: 0.75rem 1.1rem;
+            cursor: pointer;
+
+            &:hover {
+              background: #1d4ed8;
+            }
+          `}
+        >
+          Obnovit stránku
+        </button>
+      </div>
+    </div>
+  );
+};
+
+class AppErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error) {
+    if (isChunkLoadError(error)) {
+      try {
+        localStorage.removeItem('app_build_hash');
+      } catch (storageError) {
+        // Ignore storage errors during recovery.
+      }
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return <AppReloadRequired error={this.state.error} />;
+    }
+
+    return this.props.children;
+  }
+}
 
 // 🔐 Logout redirect listener - sleduje změnu isLoggedIn a přesměrovává na login
 function LogoutRedirectListener({ isLoggedIn }) {
@@ -646,6 +757,7 @@ function App() {
   // �🔄 VERSION CHECKER: Automatická detekce nové verze aplikace
   const [updateAvailable, setUpdateAvailable] = React.useState(false);
   const [updateData, setUpdateData] = React.useState(null);
+  const [runtimeChunkError, setRuntimeChunkError] = React.useState(null);
   
   // ✅ useCallback pro stabilní referenci (zabránění re-creation checkeru)
   const handleVersionUpdate = React.useCallback((versionData) => {
@@ -654,29 +766,62 @@ function App() {
     
     // Optional: Toast notifikace
     if (showToast) {
-      showToast(`Je dostupná nová verze aplikace ${process.env.REACT_APP_VERSION || 'N/A'}`, { 
+      showToast(`Je dostupná nová verze aplikace ${versionData.version || APP_VERSION}`, {
         type: 'info',
         autoClose: 8000
       });
     }
   }, [showToast]);
   
-  useVersionChecker({
-    // Zakázat v development režimu (npm start), povolit jen v production buildech
-    enabled: process.env.NODE_ENV === 'production',
-    // ✅ OPRAVENO: 30 minut místo 5 (snížení traffic)
-    checkInterval: 30 * 60 * 1000, // 30 minut
-    gracePeriod: 2 * 60 * 1000, // 2 minuty po načtení
+  const versionChecker = useVersionChecker({
+    enabled: true,
+    checkInterval: 10 * 60 * 1000, // 10 minut
+    gracePeriod: 10 * 1000, // 10 sekund po načtení
     onUpdate: handleVersionUpdate // ✅ Stabilní reference
   });
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    versionChecker.checkNow({ force: true });
+  }, [isLoggedIn]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const handleRuntimeError = (event) => {
+      const error = event.reason || event.error || event.message;
+
+      if (!isChunkLoadError(error)) {
+        return;
+      }
+
+      if (typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+
+      try {
+        localStorage.removeItem('app_build_hash');
+      } catch (storageError) {
+        // Ignore storage errors during recovery.
+      }
+
+      setRuntimeChunkError(error);
+    };
+
+    window.addEventListener('unhandledrejection', handleRuntimeError);
+    window.addEventListener('error', handleRuntimeError);
+
+    return () => {
+      window.removeEventListener('unhandledrejection', handleRuntimeError);
+      window.removeEventListener('error', handleRuntimeError);
+    };
+  }, []);
 
   const handleCloseUpdateModal = () => {
     setUpdateAvailable(false);
   };
 
   const handleUpdateApp = () => {
-    // Hard reload
-    window.location.reload(true);
+    clearBuildHashAndReload();
   };
 
   // 🔐 ČERPÁNÍ: Přístupová matice + scope (all/own) pro jednotlivá ouška
@@ -1296,13 +1441,19 @@ function App() {
   if (isMobile) {
     return (
       <Router basename={process.env.PUBLIC_URL || ''}>
-        <Suspense fallback={<RouteLoadingFallback />}>
-          {!isLoggedIn ? (
-            <MobileLoginPage />
+        <AppErrorBoundary>
+          {runtimeChunkError ? (
+            <AppReloadRequired error={runtimeChunkError} />
           ) : (
-            <MobileDashboard />
+            <Suspense fallback={<RouteLoadingFallback />}>
+              {!isLoggedIn ? (
+                <MobileLoginPage />
+              ) : (
+                <MobileDashboard />
+              )}
+            </Suspense>
           )}
-        </Suspense>
+        </AppErrorBoundary>
       </Router>
     );
   }
@@ -1311,15 +1462,21 @@ function App() {
   return (
     <ActivityProvider triggerActivity={triggerActivity}>
       <Router basename={process.env.PUBLIC_URL || ''}>
-        <MaintenanceModeWrapper isLoggedIn={isLoggedIn} userDetail={userDetail}>
-          <AppShell>
-            <Layout>
-              {/* Logout redirect listener */}
-              <LogoutRedirectListener isLoggedIn={isLoggedIn} />
-              {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
-              <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} token={token} username={username} hasPermission={hasPermission} userDetail={userDetail} moduleSettings={moduleSettings} moduleSettingsLoaded={moduleSettingsLoaded} />
-              <Suspense fallback={<RouteLoadingFallback />}>
-                <Routes>
+        <AppErrorBoundary>
+          {runtimeChunkError ? (
+            <AppReloadRequired error={runtimeChunkError} />
+          ) : (
+            <>
+              <MaintenanceModeWrapper isLoggedIn={isLoggedIn} userDetail={userDetail}>
+                <AppShell>
+                  <Layout>
+                    {/* Logout redirect listener */}
+                    <LogoutRedirectListener isLoggedIn={isLoggedIn} />
+                    {/* Run restore after Layout mounts so it has a chance to persist the current location first */}
+                    <RestoreLastRoute isLoggedIn={isLoggedIn} userId={user_id} user={user} token={token} username={username} hasPermission={hasPermission} userDetail={userDetail} moduleSettings={moduleSettings} moduleSettingsLoaded={moduleSettingsLoaded} />
+                    <AppErrorBoundary>
+                      <Suspense fallback={<RouteLoadingFallback />}>
+                        <Routes>
                   {!isLoggedIn && <Route path="*" element={<NavigateToLoginWithQuery />} />}
                   <Route
                     path="/login"
@@ -1487,47 +1644,51 @@ function App() {
                   
                   {/* 404 - Catch-all pro neexistující routes */}
                   {isLoggedIn && <Route path="*" element={<NotFound />} />}
-                </Routes>
-              </Suspense>
-            </Layout>
-          </AppShell>
-        </MaintenanceModeWrapper>
-        
-        {/* 🔔 POST-LOGIN MODAL: Zobrazí se po přihlášení podle globální konfigurace */}
-        {postLoginModal.isOpen && postLoginModal.config && (
-          <PostLoginModal
-            isOpen={postLoginModal.isOpen}
-            onClose={handleClosePostLoginModal}
-            onDontShowAgain={handleDontShowAgainPostLoginModal}
-            title={postLoginModal.config.title}
-            htmlContent={postLoginModal.config.htmlContent}
-            validFrom={postLoginModal.config.validFrom}
-            validTo={postLoginModal.config.validTo}
-            modalGuid={postLoginModal.config.modalGuid}
-          />
-        )}
+                        </Routes>
+                      </Suspense>
+                    </AppErrorBoundary>
+                  </Layout>
+                </AppShell>
+              </MaintenanceModeWrapper>
 
-        {/* � HIGH PRIORITY NOTIFICATION: Popup modal pro urgent/high priority notifikace */}
-        {highPriorityNotif && (
-          <Suspense fallback={null}>
-            <HighPriorityNotificationModal
-              notification={highPriorityNotif}
-              onClose={handleCloseHighPriorityNotif}
-            />
-          </Suspense>
-        )}
+              {/* 🔔 POST-LOGIN MODAL: Zobrazí se po přihlášení podle globální konfigurace */}
+              {postLoginModal.isOpen && postLoginModal.config && (
+                <PostLoginModal
+                  isOpen={postLoginModal.isOpen}
+                  onClose={handleClosePostLoginModal}
+                  onDontShowAgain={handleDontShowAgainPostLoginModal}
+                  title={postLoginModal.config.title}
+                  htmlContent={postLoginModal.config.htmlContent}
+                  validFrom={postLoginModal.config.validFrom}
+                  validTo={postLoginModal.config.validTo}
+                  modalGuid={postLoginModal.config.modalGuid}
+                />
+              )}
 
-        {/* �🔄 UPDATE NOTIFICATION: Zobrazí se při detekci nové verze aplikace */}
-        {updateAvailable && updateData && (
-          <Suspense fallback={null}>
-            <UpdateNotificationModal
-              open={updateAvailable}
-              onClose={handleCloseUpdateModal}
-              onUpdate={handleUpdateApp}
-              versionData={updateData}
-            />
-          </Suspense>
-        )}
+              {/* � HIGH PRIORITY NOTIFICATION: Popup modal pro urgent/high priority notifikace */}
+              {highPriorityNotif && (
+                <Suspense fallback={null}>
+                  <HighPriorityNotificationModal
+                    notification={highPriorityNotif}
+                    onClose={handleCloseHighPriorityNotif}
+                  />
+                </Suspense>
+              )}
+
+              {/* �🔄 UPDATE NOTIFICATION: Zobrazí se při detekci nové verze aplikace */}
+              {updateAvailable && updateData && (
+                <Suspense fallback={null}>
+                  <UpdateNotificationModal
+                    open={updateAvailable}
+                    onClose={handleCloseUpdateModal}
+                    onUpdate={handleUpdateApp}
+                    versionData={updateData}
+                  />
+                </Suspense>
+              )}
+            </>
+          )}
+        </AppErrorBoundary>
       </Router>
     </ActivityProvider>
   );
