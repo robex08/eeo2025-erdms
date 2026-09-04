@@ -3314,7 +3314,7 @@ const VemaDenik = () => {
                 <strong>📋 Požadované soubory:</strong>
                 <ul>
                   <li><strong>firmyupl.xlsx</strong> - Seznam firem</li>
-                  <li><strong>fpazahl.xlsx</strong> - Seznam faktur</li>
+                  <li><strong>fpazahl.xlsx / fpprip.xlsx</strong> - Seznam faktur (lze nahrát kterýkoliv formát)</li>
                   <li><strong>smla.xlsx</strong> - Seznam smluv</li>
                 </ul>
                 <strong>⚠️ Poznámka:</strong> Všechny 3 soubory musí být nahrány současně.
