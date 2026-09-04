@@ -750,42 +750,59 @@ function handle_cashbook_entry_create_post($config, $input) {
             }
             
             // Varování jsou součástí response
-            
+
             // 🔧 Vygenerovat číslo dokladu a pořadové číslo
             require_once __DIR__ . '/../services/DocumentNumberService.php';
             $docNumberService = new DocumentNumberService($db);
-            $docNumberData = $docNumberService->generateDocumentNumber(
-                $input['book_id'],
-                $input['typ_dokladu'],
-                $input['datum_zapisu'],
-                $book['uzivatel_id']
-            );
-            
-            // 🔧 Vypočítat zůstatek po operaci
-            require_once __DIR__ . '/../services/BalanceCalculator.php';
-            $balanceCalculator = new BalanceCalculator($db);
-            // ✅ OPRAVA: Spočítat celkovou částku z detail_items (ne z frontendu)
-            $amount = array_sum(array_column($input['detail_items'], 'castka'));
-            $balance = $balanceCalculator->calculateNewEntryBalance(
-                $input['book_id'],
-                $amount,
-                $input['typ_dokladu'],
-                $input['datum_zapisu']
-            );
-            
-            // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id + přidat vše potřebné
-            $masterData = array_merge($input, [
-                'pokladni_kniha_id' => $input['book_id'],
-                'cislo_dokladu' => $docNumberData['cislo_dokladu'],
-                'cislo_poradi_v_roce' => $docNumberData['cislo_poradi_v_roce'],
-                'zustatek_po_operaci' => $balance,
-                'castka_prijem' => $input['typ_dokladu'] === 'prijem' ? $amount : null,
-                'castka_vydaj' => $input['typ_dokladu'] === 'vydaj' ? $amount : null
-            ]);
-            
-            // Vytvořit master + details (model má vlastní transakci)
-            $entryId = $entryModel->createEntryWithDetails($masterData, $input['detail_items'], $userData['id']);
-            
+
+            // 🔒 KRITICKÉ: Zamknout generování čísla dokladu pro tuto pokladnu/rok/typ,
+            // aby dva souběžné požadavky nedostaly stejné MAX()+1 (duplicitní číslo dokladu)
+            $lockName = $docNumberService->acquireNumberLock($input['book_id'], $input['typ_dokladu']);
+            try {
+                $docNumberData = $docNumberService->generateDocumentNumber(
+                    $input['book_id'],
+                    $input['typ_dokladu'],
+                    $input['datum_zapisu'],
+                    $book['uzivatel_id']
+                );
+
+                // 🔧 Vypočítat zůstatek po operaci
+                require_once __DIR__ . '/../services/BalanceCalculator.php';
+                $balanceCalculator = new BalanceCalculator($db);
+                // ✅ OPRAVA: Spočítat celkovou částku z detail_items (ne z frontendu)
+                $amount = array_sum(array_column($input['detail_items'], 'castka'));
+                $balance = $balanceCalculator->calculateNewEntryBalance(
+                    $input['book_id'],
+                    $amount,
+                    $input['typ_dokladu'],
+                    $input['datum_zapisu']
+                );
+
+                // 🔧 OPRAVA: Mapovat book_id → pokladni_kniha_id + přidat vše potřebné
+                $masterData = array_merge($input, [
+                    'pokladni_kniha_id' => $input['book_id'],
+                    'cislo_dokladu' => $docNumberData['cislo_dokladu'],
+                    'cislo_poradi_v_roce' => $docNumberData['cislo_poradi_v_roce'],
+                    'zustatek_po_operaci' => $balance,
+                    'castka_prijem' => $input['typ_dokladu'] === 'prijem' ? $amount : null,
+                    'castka_vydaj' => $input['typ_dokladu'] === 'vydaj' ? $amount : null
+                ]);
+
+                // Vytvořit master + details (model má vlastní transakci)
+                $entryId = $entryModel->createEntryWithDetails($masterData, $input['detail_items'], $userData['id']);
+            } finally {
+                // Zámek uvolnit až PO INSERTu, ne po vygenerování čísla
+                $docNumberService->releaseNumberLock($lockName);
+            }
+
+            // 🆕 KRITICKÉ (OPRAVA): Přečíslovat celou pokladnu, stejně jako to dělá
+            // "původní" flow v CashbookService::createEntry(). Bez tohoto volání
+            // se u dokladů s rozpadem na LP kódy (detail_items) neopravovaly drobné
+            // nesrovnalosti v číslování (např. po souběhu požadavků nebo zápisu
+            // se zpětným datem) a číslování se postupně rozjíždělo, dokud ho někdo
+            // ručně neopravil přes "Přepočet" v nastavení pokladen.
+            $docNumberService->renumberBookDocuments($input['book_id']);
+
         } else {
             // PŮVODNÍ FLOW (zpětná kompatibilita) - služba má vlastní transakci
             $validator = new EntryValidator();
