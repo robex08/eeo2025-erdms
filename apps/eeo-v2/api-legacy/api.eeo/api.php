@@ -2504,6 +2504,10 @@ switch ($endpoint) {
         handle_vema_faktury_propojeni_eeo($input, $config);
         break;
 
+    case 'vema-objednavky/faktury-list':
+        handle_vema_objednavky_faktury_list($input, $config);
+        break;
+
     // === NOVÉ OBJEDNÁVKY API (25a_*) ===
     case 'orders25/list':
         if ($request_method === 'POST') {

@@ -27,9 +27,9 @@ import {
   createColumnHelper
 } from '@tanstack/react-table';
 import AuthContext from '../context/AuthContext';
-import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, loadEeoFakturyBezVema, formatExcelDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
+import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, loadEeoFakturyBezVema, formatExcelDate, excelSerialToDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
 import VemaKontrolaCell from '../components/VemaKontrolaCell';
-import { getVemaFakturaPropojeni } from '../services/apiVemaPropojeni';
+import { getVemaFakturaPropojeni, getVemaObjednavkyFaktury } from '../services/apiVemaPropojeni';
 import { fetchLimitovanePrisliby } from '../services/api2auth';
 import { KONTROLA_STATUS, KONTROLA_STATUS_LABELS, KONTROLA_STATUS_COLORS, normalizeKontrolaStatus } from '../services/apiVemaKontrola';
 
@@ -232,6 +232,391 @@ const BetaBadgeSmall = styled.span`
   flex-shrink: 0;
 `;
 
+// ============================================================================
+// KONTROLA OBJ BETA - Seskupený pohled (vazební skupiny)
+// ============================================================================
+
+// Barvy verdiktu shody kandidátů - pojmově oddělené od KONTROLA_STATUS_COLORS
+// (shoda faktura/objednávka není totéž jako stav ruční kontroly), i když sdílí paletu appky.
+const VERDICT_COLORS = {
+  good: { bg: '#dcfce7', border: '#22c55e', text: '#166534' },
+  warn: { bg: '#fef3c7', border: '#f59e0b', text: '#92400e' },
+  bad: { bg: '#fee2e2', border: '#ef4444', text: '#991b1b' },
+};
+
+const TICK_COLORS = {
+  ok: '#22c55e',
+  no: '#ef4444',
+  unk: '#94a3b8',
+};
+
+const ViewModeToggleBar = styled.div`
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: #f1f5f9;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  padding: 3px;
+  margin-bottom: 1rem;
+`;
+
+const ViewModeButton = styled.button`
+  border: 0;
+  background: ${props => props.$active ? '#ffffff' : 'transparent'};
+  color: ${props => props.$active ? '#202d65' : '#64748b'};
+  box-shadow: ${props => props.$active ? '0 1px 2px rgba(27,36,48,0.1)' : 'none'};
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 0.5rem 0.875rem;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+
+  &:hover {
+    color: #202d65;
+  }
+`;
+
+const VazebniSkupinaCard = styled.div`
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+`;
+
+const GroupsSectionLabel = styled.h4`
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #94a3b8;
+  margin: 0 0 0.5rem 0;
+`;
+
+const MatrixGroupsStack = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+`;
+
+// Jednoznačné 1:1/1:N páry nepotřebují celou šířku obrazovky - dlaždice
+// vedle sebe se lépe čtou a nenechávají zbytečně prázdné místo.
+const SimpleTileGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 0.75rem;
+`;
+
+const VazebniSkupinaStripe = styled.div`
+  height: 4px;
+  width: 100%;
+  background: ${props => {
+    if (props.$verdict === 'good') return VERDICT_COLORS.good.border;
+    if (props.$verdict === 'bad') return VERDICT_COLORS.bad.border;
+    if (props.$verdict === 'warn') return VERDICT_COLORS.warn.border;
+    return `repeating-linear-gradient(90deg, ${VERDICT_COLORS.good.border} 0 24px, ${VERDICT_COLORS.warn.border} 24px 48px, ${VERDICT_COLORS.bad.border} 48px 72px)`;
+  }};
+`;
+
+const VazebniSkupinaBody = styled.div`
+  padding: 1rem 1.25rem 1.25rem;
+`;
+
+const VazebniSkupinaHead = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.875rem;
+`;
+
+const VazebniSkupinaTitle = styled.h3`
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0 0 0.2rem 0;
+`;
+
+const VazebniSkupinaSub = styled.p`
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0;
+  max-width: 60ch;
+  line-height: 1.5;
+`;
+
+const SkupinaPill = styled.span`
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  background: ${props => VERDICT_COLORS[props.$tone]?.bg || '#e5e7eb'};
+  color: ${props => VERDICT_COLORS[props.$tone]?.text || '#374151'};
+  border: 1px solid ${props => VERDICT_COLORS[props.$tone]?.border || '#cbd5e1'};
+`;
+
+const MatchMatrixWrap = styled.div`
+  overflow-x: auto;
+`;
+
+const MatchMatrixGrid = styled.div`
+  display: grid;
+  gap: 8px;
+  min-width: 560px;
+`;
+
+const MatrixCorner = styled.div`
+  font-size: 0.68rem;
+  color: #94a3b8;
+  align-self: end;
+  padding-bottom: 6px;
+`;
+
+const MatrixColHead = styled.div`
+  font-family: 'source-code-pro', Menlo, Monaco, Consolas, monospace;
+  font-size: 0.72rem;
+  color: #334155;
+  text-align: center;
+  padding: 6px 4px;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 2px solid #cbd5e1;
+  border-radius: 4px 4px 0 0;
+
+  .n { display: block; font-weight: 700; font-size: 0.76rem; }
+  .m {
+    display: block;
+    color: #94a3b8;
+    font-size: 0.62rem;
+    margin-top: 2px;
+    font-family: 'Roboto', sans-serif;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+`;
+
+const MatrixRowHead = styled.div`
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font-size: 0.72rem;
+  padding-right: 8px;
+  border-right: 1px solid #e2e8f0;
+  max-width: 220px;
+
+  .n { font-family: 'source-code-pro', Menlo, Monaco, Consolas, monospace; font-weight: 700; color: #1e293b; font-size: 0.76rem; }
+  .m {
+    color: #94a3b8;
+    font-size: 0.62rem;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+`;
+
+const MatrixCell = styled.div`
+  border-radius: 6px;
+  border: 1px solid ${props => VERDICT_COLORS[props.$verdict]?.border || '#cbd5e1'};
+  background: ${props => VERDICT_COLORS[props.$verdict]?.bg || '#f8fafc'};
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 190px;
+`;
+
+const MatrixCellVerdict = styled.span`
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: ${props => VERDICT_COLORS[props.$verdict]?.text || '#64748b'};
+`;
+
+const CondRow = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+`;
+
+const Cond = styled.div`
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.64rem;
+  line-height: 1.35;
+  color: #475569;
+
+  .label {
+    flex-shrink: 0;
+    font-weight: 700;
+    color: #64748b;
+  }
+  .detail {
+    font-family: 'source-code-pro', Menlo, Monaco, Consolas, monospace;
+    color: #334155;
+    word-break: break-word;
+  }
+
+  &::before {
+    content: '';
+    margin-top: 3px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: ${props => TICK_COLORS[props.$tick] || TICK_COLORS.unk};
+    flex-shrink: 0;
+  }
+`;
+
+const SimplePairCard = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex-wrap: wrap;
+`;
+
+const SkupinaNode = styled.div`
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 190px;
+
+  .n { font-family: 'source-code-pro', Menlo, Monaco, Consolas, monospace; font-weight: 700; font-size: 0.78rem; color: #1e293b; }
+  .m { font-size: 0.7rem; color: #64748b; }
+`;
+
+const SkupinaWire = styled.div`
+  flex: 1;
+  align-self: center;
+  min-width: 24px;
+  height: 1px;
+  background: ${props => VERDICT_COLORS[props.$verdict]?.border || VERDICT_COLORS.good.border};
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: ${props => VERDICT_COLORS[props.$verdict]?.border || VERDICT_COLORS.good.border};
+    box-shadow: 0 0 0 3px ${props => VERDICT_COLORS[props.$verdict]?.bg || VERDICT_COLORS.good.bg};
+  }
+`;
+
+const SkupinaLoadingCard = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #f8fafc;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  color: #94a3b8;
+  font-size: 0.78rem;
+  margin-bottom: 1rem;
+`;
+
+// Panel "syrových" identifikačních čísel VEMA vs. EEO - i když backend pár
+// uzná, VS/doklad/částka se mohly na jedné straně přepsat špatně. Barva
+// rámečku napovídá, jestli je něco k prověření (žlutá/červená), nebo je
+// vše čisté (zelená).
+const IdentPanel = styled.div`
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid ${props => (props.$hasMismatch ? VERDICT_COLORS.bad.border : VERDICT_COLORS.good.border)};
+  background: ${props => (props.$hasMismatch ? VERDICT_COLORS.bad.bg : VERDICT_COLORS.good.bg)};
+`;
+
+const IdentPanelTitle = styled.div`
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #64748b;
+  margin-bottom: 3px;
+`;
+
+const IdentRow = styled.div`
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-size: 0.66rem;
+  line-height: 1.4;
+
+  .label { flex-shrink: 0; font-weight: 700; color: #64748b; min-width: 46px; }
+  .vals { font-family: 'source-code-pro', Menlo, Monaco, Consolas, monospace; color: #334155; word-break: break-word; }
+  .vals b { color: inherit; }
+
+  &::before {
+    content: '';
+    margin-top: 4px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: ${props => TICK_COLORS[props.$tick] || TICK_COLORS.unk};
+    flex-shrink: 0;
+  }
+`;
+
+// Panel se skutečnými EEO fakturami dané objednávky (z nového, čistě
+// přídavného endpointu vema-objednavky/faktury-list - bez fuzzy hledání).
+// Vždy ukazuje reálná čísla, i když fuzzy hledání použité pro "vazba EEO"
+// tik danou fakturu nedohledá.
+const EeoFakturyBox = styled.div`
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 0.6rem 0.75rem;
+  flex: 1 1 200px;
+  min-width: 180px;
+`;
+
+const EeoFakturyBoxTitle = styled.div`
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #64748b;
+  margin-bottom: 6px;
+`;
+
+const EeoFakturaRow = styled.div`
+  padding: 5px 7px;
+  border-radius: 5px;
+  background: ${props => (props.$highlight ? VERDICT_COLORS.good.bg : '#ffffff')};
+  border: 1px solid ${props => (props.$highlight ? VERDICT_COLORS.good.border : '#e2e8f0')};
+  margin-bottom: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+
+  &:last-child { margin-bottom: 0; }
+`;
+
+const EeoFakturaHighlightTag = styled.div`
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: ${VERDICT_COLORS.good.text};
+  margin-bottom: 1px;
+`;
+
 const FAKTURY_SUB_SECTIONS = [
   { id: 'tabulka', label: 'Veškeré doklady' },
   { id: 'kontrola-obj', label: 'Kontrola OBJ' },
@@ -259,6 +644,7 @@ const VEMA_MAIN_TABS = ['faktury', 'smlouvy', 'firmy'];
 const VEMA_SORTING_LS_KEY = 'eeo_vs_vema_sorting';
 const VEMA_OBJ_SORTING_LS_KEY = 'eeo_vs_vema_obj_sorting';
 const VEMA_BETA_SORTING_LS_KEY = 'eeo_vs_vema_beta_sorting';
+const VEMA_BETA_VIEW_MODE_LS_KEY = 'eeo_vs_vema_beta_view_mode';
 const VEMA_BADGE_FILTER_LS_KEY = 'eeo_vs_vema_badge_filter';
 const VEMA_WARNING_FILTER_LS_KEY = 'eeo_vs_vema_warning_filter';
 const VEMA_KONTROLA_FILTER_LS_KEY = 'eeo_vs_vema_kontrola_filter';
@@ -931,6 +1317,753 @@ const CloseButton = styled.button`
 `;
 
 // ============================================================================
+// KONTROLA OBJ BETA - Seskupený pohled: čisté utility funkce (bez state)
+// ============================================================================
+
+// Spouští async worker nad polem s max. `limit` souběžnými "lanes" - v codebase
+// není žádná knihovna na limitování souběžnosti, a loadPropojeni sám interně
+// fanuje Promise.all pro _groupedKontrola řádky, takže hromadný Promise.all
+// nad celou stránkou by mohl vyvolat stovky souběžných requestů.
+async function runWithConcurrencyLimit(items, workerFn, limit = 6) {
+  let cursor = 0;
+  const lanes = new Array(Math.min(limit, items.length)).fill(null).map(async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      try {
+        await workerFn(items[idx], idx);
+      } catch (e) {
+        // Chyba jednotlivého fetch je zpracovaná uvnitř workerFn (loadPropojeni),
+        // zde jen zabráníme přerušení ostatních lanes.
+      }
+    }
+  });
+  await Promise.all(lanes);
+}
+
+// Union-find nad vazbami faktura<->kandidátní objednávka pro aktuální stránku
+// BETA tabu. Faktury sdílející aspoň jednu kandidátní objednávku skončí ve
+// stejné "vazební skupině". Čistá funkce - nečte ani nemění žádný state.
+function buildVazebniSkupiny(pageRows, propojenData) {
+  const parent = new Map();
+  const find = (key) => {
+    if (!parent.has(key)) parent.set(key, key);
+    let root = key;
+    while (parent.get(root) !== root) root = parent.get(root);
+    let cur = key;
+    while (parent.get(cur) !== root) {
+      const next = parent.get(cur);
+      parent.set(cur, root);
+      cur = next;
+    }
+    return root;
+  };
+  const union = (a, b) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  const invoiceCandidates = new Map(); // rowId -> [candidate objednavka, ...]
+  const invoiceMatchedFaktury = new Map(); // rowId -> [EEO faktura už spárovaná s nějakou objednávkou, ...]
+  const invoiceLoaded = new Map(); // rowId -> byla propojeni už načtena?
+
+  pageRows.forEach((row) => {
+    const invKey = `inv:${row.id}`;
+    find(invKey);
+    const propojeni = propojenData[row.id];
+    invoiceLoaded.set(row.id, !!propojeni);
+    const candidates = propojeni?.objednavky || [];
+    invoiceCandidates.set(row.id, candidates);
+    // EEO faktury nalezené přes VS/doklad/částku - každá už MÁ (přes objednavka_id)
+    // konkrétní objednávku přiřazenou v EEO. Tohle je silnější signál než
+    // odhad z částky/data objednávky - EEO to už jednou spároval ručně.
+    invoiceMatchedFaktury.set(row.id, propojeni?.faktury || []);
+    candidates.forEach((cand) => {
+      if (cand?.id === undefined || cand?.id === null) return;
+      const objKey = `obj:${cand.id}`;
+      find(objKey);
+      union(invKey, objKey);
+    });
+  });
+
+  const rootToInvoiceRows = new Map();
+  const rootToCandidates = new Map();
+
+  pageRows.forEach((row) => {
+    const root = find(`inv:${row.id}`);
+    if (!rootToInvoiceRows.has(root)) rootToInvoiceRows.set(root, []);
+    rootToInvoiceRows.get(root).push(row);
+
+    const candidates = invoiceCandidates.get(row.id) || [];
+    if (!rootToCandidates.has(root)) rootToCandidates.set(root, new Map());
+    const candMap = rootToCandidates.get(root);
+    candidates.forEach((cand) => {
+      if (cand?.id === undefined || cand?.id === null) return;
+      if (!candMap.has(cand.id)) candMap.set(cand.id, cand);
+    });
+  });
+
+  return Array.from(rootToInvoiceRows.entries()).map(([root, invoiceRows]) => {
+    const candidateIdsByRowId = {};
+    const isLoadedByRowId = {};
+    const matchedFakturyByRowId = {};
+    invoiceRows.forEach((row) => {
+      candidateIdsByRowId[row.id] = (invoiceCandidates.get(row.id) || []).map((c) => c.id);
+      isLoadedByRowId[row.id] = !!invoiceLoaded.get(row.id);
+      matchedFakturyByRowId[row.id] = invoiceMatchedFaktury.get(row.id) || [];
+    });
+    return {
+      groupId: root,
+      invoiceRows,
+      candidates: Array.from((rootToCandidates.get(root) || new Map()).values()),
+      candidateIdsByRowId,
+      isLoadedByRowId,
+      matchedFakturyByRowId,
+    };
+  });
+}
+
+// Nejstarší rozumný rok pro datum v EEO/VEMA datech - cokoli starší je skoro
+// jistě chybný/sentinelový záznam (typicky Excel serial 0/prázdná buňka
+// naparsovaná jako new Date(0) => 1.1.1970), ne skutečné datum k porovnání.
+const DATE_SANITY_MIN_YEAR = 2000;
+
+// VEMA import (25v_fpazahl.dof/datpri) ukládá datum jako Excel sériové číslo,
+// stejně jako všechny ostatní datumové sloupce v této appce (viz stejný
+// number-check vzor u sloupců dof/datpri/spl výše, cell: info => ...).
+// EEO vlastní data (např. objednavka.dt_objednavky) jsou normální DB datum/string.
+// Tahle funkce zvládne oba tvary a zahodí zjevně chybné/sentinelové hodnoty.
+function parseFlexibleDate(val) {
+  if (val === null || val === undefined || val === '') return null;
+  let date = null;
+  if (typeof val === 'number') {
+    date = excelSerialToDate(val);
+  } else {
+    const parsed = new Date(val);
+    date = Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  if (!date || Number.isNaN(date.getTime())) return null;
+  if (date.getFullYear() < DATE_SANITY_MIN_YEAR) return null;
+  return date;
+}
+
+const formatKc = (n) => `${Number(n).toLocaleString('cs-CZ')} Kč`;
+const formatDateShort = (date) => date.toLocaleDateString('cs-CZ');
+
+// Párové porovnání faktury a kandidátní objednávky jen na polích, která API
+// reálně vrací (objednávka NEMÁ platnost_od/do, jen dt_objednavky). Vrací i
+// čitelný "detail" text s porovnávanými hodnotami, aby šlo verdikt v UI ověřit,
+// ne mu jen věřit.
+//
+// matchedEeoFaktury = EEO faktury (25a_objednavky_faktury) nalezené pro tuhle
+// VEMA fakturu přes VS/číslo dokladu/částku (viz propojeni.faktury) - každá
+// taková EEO faktura už MÁ přes objednavka_id přiřazenou konkrétní objednávku,
+// protože ji tak někdo v EEO ručně založil. To je silnější a přímější signál
+// než odhad z částky/data objednávky, který je jen dopočítaný z agregátů.
+function computeConditionTicks(invoiceRow, candidate, matchedEeoFaktury) {
+  // EEO vazba: má EEO už tuhle fakturu spárovanou s PRÁVĚ touto objednávkou?
+  // Zdroj pravdy: propojeni.faktury (fuzzy dohledání přes VS/doklad/částku).
+  // Tenhle fuzzy match ale může minout reálně existující fakturu, když se
+  // fa_cislo_vema v EEO neshoduje přesně s VEMA vsymb (běžná datová
+  // nekonzistence). Proto NIKDY netvrdíme "objednávka nemá fakturu" jen
+  // proto, že fuzzy match nic nenašel - objednávka.pocet_faktur/zaplaceno
+  // (přímý COUNT/SUM podle objednavka_id, bez fuzzy matchování) řekne, jestli
+  // tam faktury skutečně jsou, i když se tu konkrétní nepodařilo dohledat.
+  let eeoVazba = 'unk';
+  let eeoVazbaDetail = 'objednávka v EEO nemá zatím žádnou evidovanou fakturu';
+  const candObjCislo = String(candidate?.cislo_objednavky || '').trim();
+  const faktury = Array.isArray(matchedEeoFaktury) ? matchedEeoFaktury : [];
+  const pocetFakturNaObj = Number(candidate?.pocet_faktur);
+  const zaplacenoNaObj = Number(candidate?.zaplaceno);
+
+  if (faktury.length > 0) {
+    const shodnaFaktura = candObjCislo && faktury.find((f) => String(f?.cislo_objednavky || '').trim() === candObjCislo);
+    const jinaObjFaktura = faktury.find((f) => String(f?.cislo_objednavky || '').trim() !== '');
+    if (shodnaFaktura) {
+      eeoVazba = 'ok';
+      eeoVazbaDetail = 'EEO už má tuto fakturu spárovanou s touto objednávkou';
+    } else if (jinaObjFaktura) {
+      eeoVazba = 'no';
+      eeoVazbaDetail = `EEO má tuto fakturu spárovanou s jinou objednávkou (${jinaObjFaktura.cislo_objednavky})`;
+    } else {
+      eeoVazba = 'unk';
+      eeoVazbaDetail = 'EEO fakturu zná (VS/doklad/částka sedí), ale zatím bez vazby na objednávku';
+    }
+  } else if (Number.isFinite(pocetFakturNaObj) && pocetFakturNaObj > 0) {
+    eeoVazba = 'unk';
+    eeoVazbaDetail = `objednávka už má v EEO evidováno ${pocetFakturNaObj} ${pocetFakturNaObj === 1 ? 'fakturu' : 'faktury'}${Number.isFinite(zaplacenoNaObj) && zaplacenoNaObj > 0 ? ` (${formatKc(zaplacenoNaObj)})` : ''}, ale přes VS/doklad/částku se k ní tahle konkrétní faktura nedohledala - zkontrolujte ručně`;
+  }
+
+  // Částka: invoiceRow.celkem vs. součet položek objednávky vč. DPH (castka_detail
+  // = SUM(pol.cena_s_dph) - to je skutečná hodnota objednávky). castka_max
+  // (max_cena_s_dph) je jen schválený strop a použije se pouze jako náhrada,
+  // když objednávka nemá žádné položky zapsané.
+  let castka = 'unk';
+  let castkaDetail = 'objednávka nemá položky ani strop k porovnání';
+  const soucetPolozek = Number(candidate?.castka_detail);
+  const stropObjednavky = Number(candidate?.castka_max);
+
+  let referencniCastka = null;
+  let referenceLabel = '';
+  if (Number.isFinite(soucetPolozek) && soucetPolozek > 0) {
+    referencniCastka = soucetPolozek;
+    referenceLabel = 'položky obj.';
+  } else if (Number.isFinite(stropObjednavky) && stropObjednavky > 0) {
+    referencniCastka = stropObjednavky;
+    referenceLabel = 'max obj. (bez položek)';
+  }
+
+  const fakturaCastka = Number(invoiceRow?.celkem);
+  if (referencniCastka !== null && Number.isFinite(fakturaCastka)) {
+    const tolerance = Math.max(referencniCastka * 0.01, 1);
+    castka = fakturaCastka <= referencniCastka + tolerance ? 'ok' : 'no';
+    castkaDetail = `${formatKc(fakturaCastka)} · ${referenceLabel} ${formatKc(referencniCastka)}`;
+  }
+
+  // Datum: objednávka musí logicky vzniknout dřív než faktura - faktura by
+  // tedy neměla být datovaná dřív než objednávka (s tolerancí pár dní na
+  // administrativní zpoždění). Preferujeme datum vystavení faktury (dof),
+  // při jeho absenci datum přijetí (datpri) - a v detailu vždy uvedeme,
+  // které z nich to bylo, aby šlo ověřit, co se vlastně porovnává.
+  let datum = 'unk';
+  let datumDetail = 'datum faktury nebo objednávky chybí / je neplatné';
+  const fakturaDatumVystaveni = parseFlexibleDate(invoiceRow?.dof);
+  const fakturaDatumPrijeti = parseFlexibleDate(invoiceRow?.datpri);
+  const fakturaDatum = fakturaDatumVystaveni || fakturaDatumPrijeti;
+  const fakturaDatumLabel = fakturaDatumVystaveni ? 'vystavení' : 'přijetí';
+  const objednavkaDatum = parseFlexibleDate(candidate?.dt_objednavky);
+  if (fakturaDatum && objednavkaDatum) {
+    const toleranceMs = 3 * 24 * 60 * 60 * 1000;
+    datum = fakturaDatum.getTime() >= objednavkaDatum.getTime() - toleranceMs ? 'ok' : 'no';
+    datumDetail = `fa. ${fakturaDatumLabel} ${formatDateShort(fakturaDatum)} · objednáno ${formatDateShort(objednavkaDatum)}`;
+  }
+
+  return { castka, castkaDetail, datum, datumDetail, eeoVazba, eeoVazbaDetail };
+}
+
+// Backend hledá EEO fakturu podle VS NEBO podle dokladu (fa_vema_kod) -
+// stačí, aby sedělo jedno z nich (viz priority v propojeni-eeo), takže i
+// "nalezená a přijatá" EEO faktura může mít VS nebo doklad jinak, než má
+// VEMA. To je záměrně tolerantní párovací pravidlo (nemáme ho měnit), ale
+// takový rozdíl skoro vždy znamená překlep na jedné nebo druhé straně -
+// proto se surová čísla porovnávají zvlášť a zobrazují se transparentně,
+// nezávisle na tom, jestli backend pár nakonec uznal nebo ne.
+function compareVemaEeoIdentifikace(invoiceRow, matchedFaktura) {
+  const norm = (v) => String(v ?? '').trim();
+
+  const vsVema = norm(invoiceRow?.vsymb);
+  const vsEeo = norm(matchedFaktura?.cislo_faktury);
+  const vs = (vsVema && vsEeo) ? (vsVema === vsEeo ? 'ok' : 'no') : 'unk';
+
+  const dokladVema = norm(invoiceRow?.cdok);
+  const dokladEeo = norm(matchedFaktura?.fa_vema_kod);
+  const doklad = (dokladVema && dokladEeo) ? (dokladVema === dokladEeo ? 'ok' : 'no') : 'unk';
+
+  const castkaVema = Number(invoiceRow?.celkem);
+  const castkaEeo = Number(matchedFaktura?.castka);
+  const castka = (Number.isFinite(castkaVema) && Number.isFinite(castkaEeo))
+    ? (Math.abs(castkaVema - castkaEeo) < 0.01 ? 'ok' : 'no')
+    : 'unk';
+
+  return {
+    objednavka: matchedFaktura?.cislo_objednavky || null,
+    vs, vsVema, vsEeo,
+    doklad, dokladVema, dokladEeo,
+    castka, castkaVema, castkaEeo,
+  };
+}
+
+// Doplňuje skupinu o verdikty jednotlivých párů (faktura x kandidát) a tlumí
+// tik "datum" na 'unk', pokud pár není strukturálně jednoznačný - víc faktur
+// u sebe (nebo víc objednávek u sebe) automaticky neznamená potvrzenou shodu,
+// systém prostě nemá podklad rozhodnout, která faktura patří ke které objednávce.
+function deriveGroupVerdicts(group) {
+  const { invoiceRows, candidates, candidateIdsByRowId, matchedFakturyByRowId } = group;
+
+  const candidateCountByInvoice = new Map();
+  const invoiceCountByCandidate = new Map();
+
+  // Pro každou fakturu její reálné kandidátní ID (z propojenData, viz
+  // candidateIdsByRowId sestavené v buildVazebniSkupiny), a naopak pro
+  // každého kandidáta počet faktur, které ho nárokují.
+  invoiceRows.forEach((row) => {
+    const ids = candidateIdsByRowId[row.id] || [];
+    candidateCountByInvoice.set(row.id, ids.length);
+    ids.forEach((id) => {
+      invoiceCountByCandidate.set(id, (invoiceCountByCandidate.get(id) || 0) + 1);
+    });
+  });
+
+  const pairVerdicts = {};
+
+  invoiceRows.forEach((row) => {
+    const ids = candidateIdsByRowId[row.id] || [];
+    ids.forEach((candId) => {
+      const candidate = candidates.find((c) => c.id === candId);
+      if (!candidate) return;
+
+      const matchedFaktury = matchedFakturyByRowId[row.id] || [];
+      const ticks = computeConditionTicks(row.original, candidate, matchedFaktury);
+
+      const jednoznacne = (candidateCountByInvoice.get(row.id) === 1) && (invoiceCountByCandidate.get(candId) === 1);
+      if (ticks.datum === 'ok' && !jednoznacne) {
+        ticks.datum = 'unk';
+        ticks.datumDetail = `${ticks.datumDetail} — nejednoznačné (víc kandidátů ve skupině), nelze potvrdit automaticky`;
+      }
+
+      // eeoVazba (přímá vazba EEO faktura -> objednávka) má přednost před
+      // odhadem z částky/data - je to skutečná vazba, ne dopočítaná shoda.
+      let verdict = 'warn';
+      if (ticks.eeoVazba === 'ok') verdict = 'good';
+      else if (ticks.eeoVazba === 'no') verdict = 'bad';
+      else if (ticks.castka === 'no' || ticks.datum === 'no') verdict = 'bad';
+      else if (ticks.castka === 'ok' && ticks.datum === 'ok') verdict = 'warn'; // shoda je jen odhad, ne potvrzená vazba v EEO
+
+      pairVerdicts[`${row.id}__${candId}`] = { ...ticks, verdict };
+    });
+  });
+
+  return { ...group, pairVerdicts };
+}
+
+// ============================================================================
+// KONTROLA OBJ BETA - Seskupený pohled: render komponenta
+// ============================================================================
+
+const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData }) => {
+  if (!groups || groups.length === 0) {
+    return (
+      <SkupinaLoadingCard>
+        <span>Načítám propojení pro seskupený pohled…</span>
+      </SkupinaLoadingCard>
+    );
+  }
+
+  const kontrolaCellFor = (row) => {
+    const vemaId = row.original._masterCfak || row.original.cfak;
+    if (!vemaId) return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>;
+    return (
+      <VemaKontrolaCell
+        typZaznamu="faktura"
+        vemaId={vemaId}
+        vemaIdSecondary={row.original.firma}
+        token={token}
+        username={username}
+      />
+    );
+  };
+
+  // Zobrazí syrové porovnání VS/doklad/částka pro každou EEO fakturu, kterou
+  // backend k této VEMA faktuře našel - nezávisle na tom, jestli pár nakonec
+  // uznal jako "eeoVazba ok" nebo ne. I přijatý pár může mít VS nebo doklad
+  // jinak (párovací pravidlo je záměrně tolerantní - stačí shoda jednoho),
+  // a to skoro vždy znamená překlep na jedné nebo druhé straně.
+  const identifikacePanelyFor = (invoiceRow, matchedFaktury) => {
+    if (!Array.isArray(matchedFaktury) || matchedFaktury.length === 0) return null;
+    return matchedFaktury.map((mf, idx) => {
+      const cmp = compareVemaEeoIdentifikace(invoiceRow, mf);
+      const hasMismatch = cmp.vs === 'no' || cmp.doklad === 'no' || cmp.castka === 'no';
+      return (
+        <IdentPanel key={mf?.id ?? idx} $hasMismatch={hasMismatch}>
+          <IdentPanelTitle>EEO faktura {cmp.objednavka ? `→ ${cmp.objednavka}` : '(bez vazby na objednávku)'}</IdentPanelTitle>
+          <IdentRow $tick={cmp.vs}>
+            <span className="label">VS</span>
+            <span className="vals">{cmp.vsVema || '—'} <b>{cmp.vs === 'ok' ? '=' : '≠'}</b> {cmp.vsEeo || '—'}</span>
+          </IdentRow>
+          <IdentRow $tick={cmp.doklad}>
+            <span className="label">Doklad</span>
+            <span className="vals">{cmp.dokladVema || '—'} <b>{cmp.doklad === 'ok' ? '=' : '≠'}</b> {cmp.dokladEeo || '—'}</span>
+          </IdentRow>
+          <IdentRow $tick={cmp.castka}>
+            <span className="label">Částka</span>
+            <span className="vals">
+              {Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'} <b>{cmp.castka === 'ok' ? '=' : '≠'}</b> {Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}
+            </span>
+          </IdentRow>
+        </IdentPanel>
+      );
+    });
+  };
+
+  // Panel se všemi skutečnými EEO fakturami na kandidátní objednávce (zdroj:
+  // nový endpoint podle objednavka_id, ne fuzzy hledání) - ukazuje se v
+  // prázdném prostoru u kandidáta, aby šlo VEMA/EEO čísla porovnat vizuálně,
+  // i když je fuzzy hledání ("vazba EEO" tik) k dané faktuře nedohledá.
+  // Porovná KAŽDOU skutečnou EEO fakturu na kandidátní objednávce (zdroj:
+  // nový endpoint podle objednavka_id, ne fuzzy hledání) proti VEMA faktuře,
+  // pole po poli - "VS: vema hodnota / eeo hodnota" na řádek, ne jen výpis
+  // EEO čísel bez kontextu.
+  const eeoFakturyPanelFor = (candidate, invoiceRow) => {
+    if (!candidate) return null;
+    const list = objednavkaFakturyData[String(candidate.id)];
+
+    if (list === undefined) {
+      return (
+        <EeoFakturyBox>
+          <EeoFakturyBoxTitle>EEO faktury na objednávce</EeoFakturyBoxTitle>
+          <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Načítám…</span>
+        </EeoFakturyBox>
+      );
+    }
+    if (list.length === 0) {
+      return (
+        <EeoFakturyBox>
+          <EeoFakturyBoxTitle>EEO faktury na objednávce</EeoFakturyBoxTitle>
+          <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Objednávka zatím v EEO nemá žádnou fakturu.</span>
+        </EeoFakturyBox>
+      );
+    }
+
+    return (
+      <EeoFakturyBox>
+        <EeoFakturyBoxTitle>VEMA / EEO — faktury na objednávce ({list.length})</EeoFakturyBoxTitle>
+        {list.map((f) => {
+          const cmp = compareVemaEeoIdentifikace(invoiceRow, f);
+          const highlight = cmp.vs === 'ok' || cmp.castka === 'ok';
+          const datum = parseFlexibleDate(f?.datum_vystaveni);
+
+          return (
+            <EeoFakturaRow key={f.id} $highlight={highlight}>
+              {highlight && <EeoFakturaHighlightTag>↳ nejspíš tahle faktura</EeoFakturaHighlightTag>}
+              <IdentRow $tick={cmp.vs}>
+                <span className="label">VS</span>
+                <span className="vals">{cmp.vsVema || '—'} / {cmp.vsEeo || '—'}</span>
+              </IdentRow>
+              <IdentRow $tick={cmp.doklad}>
+                <span className="label">Doklad</span>
+                <span className="vals">{cmp.dokladVema || '—'} / {cmp.dokladEeo || '—'}</span>
+              </IdentRow>
+              <IdentRow $tick={cmp.castka}>
+                <span className="label">Částka</span>
+                <span className="vals">
+                  {Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'} / {Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}
+                </span>
+              </IdentRow>
+              {datum && (
+                <IdentRow $tick="unk">
+                  <span className="label">Vystaveno</span>
+                  <span className="vals">{formatDateShort(datum)}</span>
+                </IdentRow>
+              )}
+            </EeoFakturaRow>
+          );
+        })}
+      </EeoFakturyBox>
+    );
+  };
+
+  // Jeden řádek "faktura <-> kandidátní objednávka" - sdílené mezi jednoduchou
+  // 1:1 kartou a "fan" kartou (víc faktur, jedna sdílená objednávka), aby
+  // obě vypadaly stejně a používaly stejný CSS.
+  const renderPairRow = (row, candidate, pv, matchedFaktury) => {
+    const tone = candidate ? (pv ? pv.verdict : 'warn') : 'warn';
+    const fakturaDatumVystaveni = parseFlexibleDate(row.original.dof);
+    const fakturaDatumPrijeti = parseFlexibleDate(row.original.datpri);
+    const fakturaSplatnost = parseFlexibleDate(row.original.spl);
+
+    return (
+      <SimplePairCard key={row.id}>
+        <SkupinaNode>
+          <span className="n">{row.original.cfak}</span>
+          <span className="m">{row.original.firma_nazev}</span>
+          {row.original.nazevfak && <span className="m" title={row.original.nazevfak}>{row.original.nazevfak}</span>}
+          <span className="m">
+            {fakturaDatumVystaveni && `vystavení ${formatDateShort(fakturaDatumVystaveni)}`}
+            {!fakturaDatumVystaveni && fakturaDatumPrijeti && `přijetí ${formatDateShort(fakturaDatumPrijeti)}`}
+            {fakturaSplatnost && ` · splatnost ${formatDateShort(fakturaSplatnost)}`}
+          </span>
+          {/* Bez kandidáta nemáme objednávku, ke které natáhnout skutečné EEO
+              faktury - jediné, co nabídnout, je stará fuzzy shoda. */}
+          {!candidate && identifikacePanelyFor(row.original, matchedFaktury)}
+          <div style={{ marginTop: 4 }}>{kontrolaCellFor(row)}</div>
+        </SkupinaNode>
+        {candidate && (
+          <>
+            <SkupinaWire $verdict={tone} />
+            <SkupinaNode>
+              <span className="n">{candidate.cislo_objednavky}</span>
+              <span className="m">{candidate.dodavatel}</span>
+              {candidate.nazev && <span className="m" title={candidate.nazev}>{candidate.nazev}</span>}
+              {(() => {
+                const d = parseFlexibleDate(candidate.dt_objednavky);
+                return d ? <span className="m">objednáno {formatDateShort(d)}</span> : null;
+              })()}
+              {pv && (
+                <CondRow style={{ marginTop: 4 }}>
+                  <Cond $tick={pv.eeoVazba} title={pv.eeoVazbaDetail}>
+                    <span className="label">vazba EEO</span>
+                    <span className="detail">{pv.eeoVazbaDetail}</span>
+                  </Cond>
+                  <Cond $tick={pv.castka} title={pv.castkaDetail}>
+                    <span className="label">částka</span>
+                    <span className="detail">{pv.castkaDetail}</span>
+                  </Cond>
+                  <Cond $tick={pv.datum} title={pv.datumDetail}>
+                    <span className="label">datum</span>
+                    <span className="detail">{pv.datumDetail}</span>
+                  </Cond>
+                </CondRow>
+              )}
+            </SkupinaNode>
+            {eeoFakturyPanelFor(candidate, row.original)}
+          </>
+        )}
+      </SimplePairCard>
+    );
+  };
+
+  const renderSimpleCard = (group) => {
+    const { groupId, invoiceRows, candidates, pairVerdicts, matchedFakturyByRowId } = group;
+    const row = invoiceRows[0];
+    const candidate = candidates[0];
+    const pv = candidate ? pairVerdicts[`${row.id}__${candidate.id}`] : null;
+    // Chybějící kandidát není "shoda" - je to prázdný výsledek, který si taky
+    // zaslouží pozornost, ne tichý zelený pruh.
+    const tone = candidate ? (pv ? pv.verdict : 'warn') : 'warn';
+
+    return (
+      <VazebniSkupinaCard key={groupId}>
+        <VazebniSkupinaStripe $verdict={tone} />
+        <VazebniSkupinaBody>
+          <VazebniSkupinaHead>
+            <div>
+              <VazebniSkupinaTitle>{row.original.cfak || '—'}</VazebniSkupinaTitle>
+              <VazebniSkupinaSub>{row.original.firma_nazev} · {formatKc(row.original.celkem || 0)}</VazebniSkupinaSub>
+            </div>
+            <SkupinaPill $tone={tone}>
+              {!candidate ? 'bez kandidáta' : (tone === 'good' ? 'potvrzeno v EEO' : tone === 'bad' ? 'nesedí' : 'odhad, ověřit')}
+            </SkupinaPill>
+          </VazebniSkupinaHead>
+          {renderPairRow(row, candidate, pv, matchedFakturyByRowId[row.id])}
+        </VazebniSkupinaBody>
+      </VazebniSkupinaCard>
+    );
+  };
+
+  // Víc faktur sdílejících jednu jedinou kandidátní objednávku - typicky
+  // sourozenecké podpoložky přes stejný prefix čísla objednávky. Zobrazí se
+  // jako jedna karta s objednávkou v záhlaví a jedním řádkem "faktura <->
+  // objednávka + EEO faktury" na fakturu, takže vypadá stejně jako 1:1 karta,
+  // jen se opakuje.
+  const renderFanCard = (group) => {
+    const { groupId, invoiceRows, candidates, pairVerdicts } = group;
+    const candidate = candidates[0];
+    const rowVerdicts = invoiceRows.map((row) => pairVerdicts[`${row.id}__${candidate.id}`]).filter(Boolean);
+    const toReviewCount = rowVerdicts.filter((pv) => pv.verdict === 'warn').length;
+    const groupTone = rowVerdicts.length > 0 && rowVerdicts.every((pv) => pv.verdict === 'good') ? 'good' : 'mixed';
+
+    return (
+      <VazebniSkupinaCard key={groupId}>
+        <VazebniSkupinaStripe $verdict={groupTone} />
+        <VazebniSkupinaBody>
+          <VazebniSkupinaHead>
+            <div>
+              <VazebniSkupinaTitle>{candidate.cislo_objednavky}</VazebniSkupinaTitle>
+              <VazebniSkupinaSub>
+                {candidate.dodavatel}{candidate.nazev ? ` · ${candidate.nazev}` : ''} — {invoiceRows.length} kandidátních faktur ke stejné objednávce
+              </VazebniSkupinaSub>
+            </div>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
+              {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} ke kontrole</SkupinaPill>}
+            </div>
+          </VazebniSkupinaHead>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {invoiceRows.map((row, idx) => {
+              const pv = pairVerdicts[`${row.id}__${candidate.id}`];
+              return (
+                <div key={row.id} style={idx > 0 ? { paddingTop: '0.6rem', borderTop: '1px solid #e2e8f0' } : undefined}>
+                  {renderPairRow(row, candidate, pv, [])}
+                </div>
+              );
+            })}
+          </div>
+        </VazebniSkupinaBody>
+      </VazebniSkupinaCard>
+    );
+  };
+
+  const renderMatrixCard = (group) => {
+    const { groupId, invoiceRows, candidates, pairVerdicts, matchedFakturyByRowId } = group;
+    const verdictsInGroup = Object.values(pairVerdicts).map((pv) => pv.verdict);
+    const toReviewCount = verdictsInGroup.filter((v) => v === 'warn').length;
+    const groupTone = verdictsInGroup.length > 0 && verdictsInGroup.every((v) => v === 'good') ? 'good' : 'mixed';
+
+    return (
+      <VazebniSkupinaCard key={groupId}>
+        <VazebniSkupinaStripe $verdict={groupTone} />
+        <VazebniSkupinaBody>
+          <VazebniSkupinaHead>
+            <div>
+              <VazebniSkupinaTitle>Vazební skupina ({invoiceRows.length} faktur × {candidates.length} objednávek)</VazebniSkupinaTitle>
+              <VazebniSkupinaSub>
+                Faktury sdílejí prefix čísla objednávky, takže vzniká víc kandidátních párů. Zeleně je pár, který už má EEO samo spárovanou fakturu s touto objednávkou; jinak se barva odvozuje jen odhadem z částky a data.
+              </VazebniSkupinaSub>
+            </div>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
+              <SkupinaPill $tone="warn">{candidates.length} objednávek</SkupinaPill>
+              {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} párů ke kontrole</SkupinaPill>}
+            </div>
+          </VazebniSkupinaHead>
+
+          <MatchMatrixWrap>
+            <MatchMatrixGrid style={{ gridTemplateColumns: `230px repeat(${candidates.length}, minmax(190px, 1fr))` }}>
+              <MatrixCorner>faktura ↓ / objednávka →</MatrixCorner>
+              {candidates.map((cand) => {
+                const objDatum = parseFlexibleDate(cand.dt_objednavky);
+                return (
+                  <MatrixColHead key={cand.id}>
+                    <span className="n">{cand.cislo_objednavky}</span>
+                    <span className="m">{cand.dodavatel}</span>
+                    {cand.nazev && <span className="m" title={cand.nazev}>{cand.nazev}</span>}
+                    {objDatum && <span className="m">objednáno {formatDateShort(objDatum)}</span>}
+                    <div style={{ marginTop: 4, textAlign: 'left' }}>{eeoFakturyPanelFor(cand, null)}</div>
+                  </MatrixColHead>
+                );
+              })}
+
+              {invoiceRows.map((row) => (
+                <React.Fragment key={row.id}>
+                  <MatrixRowHead>
+                    <span className="n">{row.original.cfak}</span>
+                    <span className="m">{formatKc(row.original.celkem || 0)}</span>
+                    {row.original.nazevfak && <span className="m" title={row.original.nazevfak}>{row.original.nazevfak}</span>}
+                    <span className="m">
+                      {(() => {
+                        const dV = parseFlexibleDate(row.original.dof);
+                        const dP = parseFlexibleDate(row.original.datpri);
+                        if (dV) return `vystavení ${formatDateShort(dV)}`;
+                        if (dP) return `přijetí ${formatDateShort(dP)}`;
+                        return '';
+                      })()}
+                    </span>
+                    {identifikacePanelyFor(row.original, matchedFakturyByRowId[row.id])}
+                    <div style={{ marginTop: 4 }}>{kontrolaCellFor(row)}</div>
+                  </MatrixRowHead>
+                  {candidates.map((cand) => {
+                    const pv = pairVerdicts[`${row.id}__${cand.id}`];
+                    if (!pv) {
+                      return (
+                        <MatrixCell key={cand.id} $verdict="bad">
+                          <MatrixCellVerdict $verdict="bad">Nesedí</MatrixCellVerdict>
+                        </MatrixCell>
+                      );
+                    }
+                    const verdictLabel = pv.verdict === 'good' ? 'Potvrzeno v EEO' : pv.verdict === 'bad' ? 'Nesedí' : 'Odhad, ověřit';
+                    return (
+                      <MatrixCell key={cand.id} $verdict={pv.verdict}>
+                        <MatrixCellVerdict $verdict={pv.verdict}>{verdictLabel}</MatrixCellVerdict>
+                        <CondRow>
+                          <Cond $tick={pv.eeoVazba} title={pv.eeoVazbaDetail}>
+                            <span className="label">vazba EEO</span>
+                            <span className="detail">{pv.eeoVazbaDetail}</span>
+                          </Cond>
+                          <Cond $tick={pv.castka} title={pv.castkaDetail}>
+                            <span className="label">částka</span>
+                            <span className="detail">{pv.castkaDetail}</span>
+                          </Cond>
+                          <Cond $tick={pv.datum} title={pv.datumDetail}>
+                            <span className="label">datum</span>
+                            <span className="detail">{pv.datumDetail}</span>
+                          </Cond>
+                        </CondRow>
+                      </MatrixCell>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </MatchMatrixGrid>
+          </MatchMatrixWrap>
+        </VazebniSkupinaBody>
+      </VazebniSkupinaCard>
+    );
+  };
+
+  // Skupiny rozdělíme na 3 sady, aby se dala řešit priorita pozornosti a
+  // aby jednoznačné (malé) páry nemusely zbytečně zabírat celou šířku
+  // obrazovky jako plnohodnotný řádek - jdou vedle sebe jako dlaždice.
+  // Do dlaždicové sekce (potvrzeno) patří JEN 1:1 páry, kde verdikt vyšel
+  // 'good' - strukturální jednoznačnost (přesně 1 kandidát) není totéž co
+  // potvrzená shoda. Chybějící kandidát nebo verdikt 'bad'/'warn' u 1:1 páru
+  // je pořád něco, co vyžaduje pozornost, i když je "jen jeden".
+  const loadingGroups = [];
+  const attentionItems = []; // { groupId, node } - matice i 1:1 páry co nesedí/nejde ověřit
+  const confirmedGroups = [];
+
+  groups.forEach((group) => {
+    const stillLoading = group.invoiceRows.some((row) => !group.isLoadedByRowId[row.id]);
+    if (stillLoading) {
+      loadingGroups.push(group);
+      return;
+    }
+
+    const isSimpleShape = group.invoiceRows.length === 1 && group.candidates.length <= 1;
+    // Víc faktur, ale jen jedna kandidátní objednávka - to není opravdový
+    // N x M shluk (matice s 1 sloupcem vypadá blbě), radši to poskládat jako
+    // opakované řádky "faktura <-> objednávka" pod jednu hlavičku objednávky.
+    const isFanShape = group.invoiceRows.length > 1 && group.candidates.length === 1;
+    if (isFanShape) {
+      attentionItems.push({ groupId: group.groupId, node: renderFanCard(group) });
+      return;
+    }
+    if (!isSimpleShape) {
+      attentionItems.push({ groupId: group.groupId, node: renderMatrixCard(group) });
+      return;
+    }
+
+    const row = group.invoiceRows[0];
+    const candidate = group.candidates[0];
+    const pv = candidate ? group.pairVerdicts[`${row.id}__${candidate.id}`] : null;
+    const isConfirmedGood = !!candidate && pv && pv.verdict === 'good';
+
+    if (isConfirmedGood) {
+      confirmedGroups.push(group);
+    } else {
+      attentionItems.push({ groupId: group.groupId, node: renderSimpleCard(group) });
+    }
+  });
+
+  return (
+    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {loadingGroups.length > 0 && (
+        <MatrixGroupsStack>
+          {loadingGroups.map((group) => (
+            <SkupinaLoadingCard key={group.groupId}>
+              <span>Načítám propojení ({group.invoiceRows.map((r) => r.original.cfak).join(', ')})…</span>
+            </SkupinaLoadingCard>
+          ))}
+        </MatrixGroupsStack>
+      )}
+
+      {attentionItems.length > 0 && (
+        <div>
+          {(loadingGroups.length > 0 || confirmedGroups.length > 0) && (
+            <GroupsSectionLabel>Vyžaduje pozornost ({attentionItems.length})</GroupsSectionLabel>
+          )}
+          <MatrixGroupsStack>
+            {attentionItems.map((item) => (
+              <React.Fragment key={item.groupId}>{item.node}</React.Fragment>
+            ))}
+          </MatrixGroupsStack>
+        </div>
+      )}
+
+      {confirmedGroups.length > 0 && (
+        <div>
+          {(loadingGroups.length > 0 || attentionItems.length > 0) && (
+            <GroupsSectionLabel>Potvrzená shoda ({confirmedGroups.length})</GroupsSectionLabel>
+          )}
+          <SimpleTileGrid>
+            {confirmedGroups.map((group) => renderSimpleCard(group))}
+          </SimpleTileGrid>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -953,6 +2086,11 @@ const VemaDenik = () => {
   const [betaPageIndex, setBetaPageIndex] = useState(0);
   const [betaPageSize, setBetaPageSize] = useState(50);
   const [betaSorting, setBetaSorting] = useState(() => getStoredJSON(VEMA_BETA_SORTING_LS_KEY, []));
+  // Seskupený pohled BETA - 'flat' (dnešní tabulka) | 'grouped' (vazební skupiny)
+  const [betaViewMode, setBetaViewMode] = useState(() => getStoredString(VEMA_BETA_VIEW_MODE_LS_KEY, 'flat'));
+  // Reálné EEO faktury podle objednavka_id (bez fuzzy hledání) - klíč je String(objednavka.id)
+  const [objednavkaFakturyData, setObjednavkaFakturyData] = useState({});
+  const [objednavkaFakturyLoading, setObjednavkaFakturyLoading] = useState(false);
 
   // Data
   const [firmyData, setFirmyData] = useState([]);
@@ -1035,6 +2173,7 @@ const VemaDenik = () => {
   useEffect(() => { setStoredJSON(VEMA_SORTING_LS_KEY, sorting); }, [sorting]);
   useEffect(() => { setStoredJSON(VEMA_OBJ_SORTING_LS_KEY, objSorting); }, [objSorting]);
   useEffect(() => { setStoredJSON(VEMA_BETA_SORTING_LS_KEY, betaSorting); }, [betaSorting]);
+  useEffect(() => { setStoredString(VEMA_BETA_VIEW_MODE_LS_KEY, betaViewMode); }, [betaViewMode]);
   useEffect(() => { setStoredString(VEMA_BADGE_FILTER_LS_KEY, badgeFilter); }, [badgeFilter]);
   useEffect(() => { setStoredJSON(VEMA_WARNING_FILTER_LS_KEY, warningOnlyFilter); }, [warningOnlyFilter]);
   useEffect(() => {
@@ -2497,6 +3636,68 @@ const VemaDenik = () => {
   const paginatedData = allSortedRows.slice(start, end);
 
   // ============================================================================
+  // KONTROLA OBJ BETA - Seskupený pohled: eager-fetch propojení + klastrování
+  // ============================================================================
+
+  // V seskupeném pohledu potřebujeme propojeni (kandidátní objednávky) pro
+  // KAŽDÝ řádek aktuální stránky, ne jen pro ten, co uživatel ručně rozklikne.
+  // Používáme stejný loadPropojeni/propojenData mechanismus jako flat pohled
+  // (žádná změna endpointu) - jen ho spouštíme aktivně, s omezenou souběžností.
+  const betaGroupedPageRowIds = paginatedData.map(r => r.id).join('|');
+  useEffect(() => {
+    if (fakturySubTab !== 'kontrola-obj-beta' || betaViewMode !== 'grouped') return;
+    const rowsNeedingFetch = paginatedData.filter(row => !propojenData[row.id] && !loadingPropojeni[row.id]);
+    if (rowsNeedingFetch.length === 0) return;
+    runWithConcurrencyLimit(rowsNeedingFetch, (row) => loadPropojeni(row), 6);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fakturySubTab, betaViewMode, betaGroupedPageRowIds, propojenData, loadingPropojeni]);
+
+  const vazebniSkupiny = useMemo(() => {
+    if (fakturySubTab !== 'kontrola-obj-beta' || betaViewMode !== 'grouped') return [];
+    return buildVazebniSkupiny(paginatedData, propojenData).map(deriveGroupVerdicts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fakturySubTab, betaViewMode, betaGroupedPageRowIds, propojenData]);
+
+  // Reálné EEO faktury pro kandidátní objednávky viditelné na stránce -
+  // přímo podle objednavka_id, bez fuzzy VS/doklad hledání (viz nový
+  // endpoint vema-objednavky/faktury-list). Doplňuje identifikacePanely
+  // i tam, kde stávající fuzzy hledání reálně existující fakturu mine.
+  useEffect(() => {
+    if (fakturySubTab !== 'kontrola-obj-beta' || betaViewMode !== 'grouped') return;
+    if (objednavkaFakturyLoading) return;
+
+    const allIds = new Set();
+    vazebniSkupiny.forEach((group) => {
+      group.candidates.forEach((cand) => {
+        if (cand?.id !== undefined && cand?.id !== null) allIds.add(cand.id);
+      });
+    });
+    const missingIds = Array.from(allIds).filter((id) => !(String(id) in objednavkaFakturyData));
+    if (missingIds.length === 0) return;
+
+    setObjednavkaFakturyLoading(true);
+    getVemaObjednavkyFaktury(missingIds, token, username)
+      .then((data) => {
+        const byObj = data?.faktury_by_objednavka || {};
+        setObjednavkaFakturyData((prev) => {
+          const next = { ...prev };
+          missingIds.forEach((id) => { next[String(id)] = byObj[String(id)] || []; });
+          return next;
+        });
+      })
+      .catch((e) => {
+        console.warn('Nepodařilo se načíst EEO faktury objednávek:', e);
+        setObjednavkaFakturyData((prev) => {
+          const next = { ...prev };
+          missingIds.forEach((id) => { next[String(id)] = []; });
+          return next;
+        });
+      })
+      .finally(() => setObjednavkaFakturyLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fakturySubTab, betaViewMode, vazebniSkupiny, objednavkaFakturyData, objednavkaFakturyLoading, token, username]);
+
+  // ============================================================================
   // HANDLERS
   // ============================================================================
 
@@ -3227,6 +4428,29 @@ const VemaDenik = () => {
               </FakturySubTab>
             ))}
           </FakturySubTabs>
+
+          {fakturySubTab === 'kontrola-obj-beta' && (
+            <ViewModeToggleBar>
+              <ViewModeButton
+                type="button"
+                $active={betaViewMode === 'flat'}
+                onClick={() => setBetaViewMode('flat')}
+              >
+                Plochý pohled (dnes)
+              </ViewModeButton>
+              <ViewModeButton
+                type="button"
+                $active={betaViewMode === 'grouped'}
+                onClick={() => {
+                  setBetaViewMode('grouped');
+                  setBetaPageIndex(0);
+                  if (betaPageSize > 50) setBetaPageSize(50);
+                }}
+              >
+                Seskupený pohled (BETA)
+              </ViewModeButton>
+            </ViewModeToggleBar>
+          )}
         </>
       )}
 
@@ -3476,6 +4700,43 @@ const VemaDenik = () => {
             <LoadingSpinner />
             <span>Načítám data…</span>
           </LoadingInline>
+        ) : fakturySubTab === 'kontrola-obj-beta' && betaViewMode === 'grouped' ? (
+          <>
+            <GroupedKontrolaObjView groups={vazebniSkupiny} token={token} username={username} objednavkaFakturyData={objednavkaFakturyData} />
+
+            {/* Pagination */}
+            <PaginationContainer>
+              <PaginationInfo>
+                Zobrazeno {totalRows > 0 ? start + 1 : 0}–{Math.min(end, totalRows)} z {totalRows}
+              </PaginationInfo>
+
+              <PaginationControls>
+                <PageButton onClick={goToFirstPage} disabled={getCurrentPageIndex() === 0}>
+                  <FontAwesomeIcon icon={faAnglesLeft} />
+                </PageButton>
+                <PageButton onClick={goToPreviousPage} disabled={getCurrentPageIndex() === 0}>
+                  <FontAwesomeIcon icon={faChevronLeft} />
+                </PageButton>
+
+                <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0.5rem' }}>
+                  Stránka {getCurrentPageIndex() + 1} z {totalPages}
+                </span>
+
+                <PageButton onClick={goToNextPage} disabled={getCurrentPageIndex() >= totalPages - 1}>
+                  <FontAwesomeIcon icon={faChevronRight} />
+                </PageButton>
+                <PageButton onClick={goToLastPage} disabled={getCurrentPageIndex() >= totalPages - 1}>
+                  <FontAwesomeIcon icon={faAnglesRight} />
+                </PageButton>
+
+                <PageSizeSelector value={getCurrentPageSize()} onChange={(e) => { setCurrentPageSize(Number(e.target.value)); setCurrentPageIndex(0); }}>
+                  <option value={25}>25 / stránku</option>
+                  <option value={50}>50 / stránku</option>
+                  <option value={100}>100 / stránku</option>
+                </PageSizeSelector>
+              </PaginationControls>
+            </PaginationContainer>
+          </>
         ) : (
           <>
             <Table>
@@ -3561,21 +4822,21 @@ const VemaDenik = () => {
               </PaginationInfo>
 
               <PaginationControls>
-                <PageButton onClick={goToFirstPage} disabled={pageIndex === 0}>
+                <PageButton onClick={goToFirstPage} disabled={getCurrentPageIndex() === 0}>
                   <FontAwesomeIcon icon={faAnglesLeft} />
                 </PageButton>
-                <PageButton onClick={goToPreviousPage} disabled={pageIndex === 0}>
+                <PageButton onClick={goToPreviousPage} disabled={getCurrentPageIndex() === 0}>
                   <FontAwesomeIcon icon={faChevronLeft} />
                 </PageButton>
 
                 <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0.5rem' }}>
-                  Stránka {pageIndex + 1} z {totalPages}
+                  Stránka {getCurrentPageIndex() + 1} z {totalPages}
                 </span>
 
-                <PageButton onClick={goToNextPage} disabled={pageIndex >= totalPages - 1}>
+                <PageButton onClick={goToNextPage} disabled={getCurrentPageIndex() >= totalPages - 1}>
                   <FontAwesomeIcon icon={faChevronRight} />
                 </PageButton>
-                <PageButton onClick={goToLastPage} disabled={pageIndex >= totalPages - 1}>
+                <PageButton onClick={goToLastPage} disabled={getCurrentPageIndex() >= totalPages - 1}>
                   <FontAwesomeIcon icon={faAnglesRight} />
                 </PageButton>
 
