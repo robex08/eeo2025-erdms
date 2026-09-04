@@ -7962,7 +7962,7 @@ function InvoiceStatsWidget({ stats, navigate }) {
     { key: 'zkontrolovano', label: 'Kontrola', sub: 'Zkontrolováno', value: stats.zkontrolovano, color: '#0891b2', bg: '#e0f2fe', filter: 'kontrolovano' },
     { key: 's_poznamkou', label: 'S poznámkou', sub: 'Faktury s poznámkou', value: stats.s_poznamkou, color: '#ea580c', bg: '#fff7ed', filter: 'with_note' },
     { key: 'moje_faktury', label: 'Moje faktury', sub: 'Zaevidoval / Předáno / Potvrdil', value: stats.moje_faktury, color: '#6366f1', bg: '#eef2ff', filter: 'my_invoices' },
-    { key: 'moje_nezkontrolovane', label: 'Bez věcné (na mě)', sub: 'Předané na mě, bez věcné', value: stats.moje_nezkontrolovane, color: '#f59e0b', bg: '#fef3c7', filter: 'my_unchecked_invoices' }
+    { key: 'moje_nezkontrolovane', label: 'Mě nezkontrolované', sub: 'Předáno k věcné, ještě nepotvrzeno (na mě)', value: stats.moje_nezkontrolovane, color: '#f59e0b', bg: '#fef3c7', filter: 'my_unchecked_invoices' }
   ];
 
   return (

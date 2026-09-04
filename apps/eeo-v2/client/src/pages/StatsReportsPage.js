@@ -133,7 +133,9 @@ const SECTION_BLOCKS = {
     { key: 'ordersInvoicesWithoutAttachments', label: 'Objednávky s fakturami bez příloh' },
     { key: 'invoicesWithoutAttachments', label: 'Faktury bez přílohy' },
     { key: 'overdueInvoices', label: 'Faktury po splatnosti 14+ dní' },
-    { key: 'cancelledOrders', label: 'Zrušené a zamítnuté objednávky' }
+    { key: 'cancelledOrders', label: 'Zrušené a zamítnuté objednávky' },
+    { key: 'vecnouPotvrdilaUcetni', label: 'Věcnou kontrolu potvrdil zaevidující nebo účetní' },
+    { key: 'dokoncenaBezVecneKontroly', label: 'Dokončená FA bez potvrzené věcné kontroly' }
   ],
   spend: [
     { key: 'spendByFinancingUsek', label: 'Čerpání s rozpadem po úsecích' },
@@ -2441,8 +2443,11 @@ const normalizeInvoice = (invoice) => ({
   fa_poznamka: invoice.fa_poznamka || null,
   potvrdil_vecnou_spravnost_zkracene: invoice.potvrdil_vecnou_spravnost_zkracene || null,
   potvrdil_vecnou_spravnost_id: invoice.potvrdil_vecnou_spravnost_id || null,
+  potvrdil_vecnou_spravnost_role_kody: invoice.potvrdil_vecnou_spravnost_role_kody || null,
   dt_potvrzeni_vecne_spravnosti: invoice.dt_potvrzeni_vecne_spravnosti || null,
   vecna_spravnost_poznamka: invoice.vecna_spravnost_poznamka || null,
+  vecna_spravnost_potvrzeno: invoice.vecna_spravnost_potvrzeno != null ? parseInt(invoice.vecna_spravnost_potvrzeno, 10) : null,
+  vytvoril_uzivatel_id: invoice.vytvoril_uzivatel_id || null,
   lp_cerpani_count: parseInt(invoice.lp_cerpani_count || 0, 10),
   lp_cerpani: Array.isArray(invoice.lp_cerpani) ? invoice.lp_cerpani : (Array.isArray(invoice.lp_rozklad) ? invoice.lp_rozklad : []),  // ✅ PŘIDÁNO: LP rozklad
 });
@@ -5879,13 +5884,38 @@ export default function StatsReportsPage() {
       return statusRaw.includes('STORNO') || statusRaw.includes('SMAZ') || statusRaw.includes('ZRUS') || statusRaw.includes('ZAMIT');
     });
 
+    // Věcnou kontrolu potvrdil sám zaevidující, nebo ji potvrdil uživatel s rolí Účetní
+    // (porušení segregace rolí — věcnou by neměla potvrzovat účetní/stejná osoba, která fakturu zaevidovala)
+    const vecnouPotvrdilaUcetni = filteredInvoices.filter(inv => {
+      const invStatusRaw = String(inv.stav || inv.fa_stav || '').toUpperCase();
+      if (invStatusRaw.includes('STORNO') || invStatusRaw.includes('SMAZ')) return false;
+      if (inv.vecna_spravnost_potvrzeno !== 1) return false;
+      if (!inv.potvrdil_vecnou_spravnost_id) return false;
+      const sameUser = inv.vytvoril_uzivatel_id && String(inv.vytvoril_uzivatel_id) === String(inv.potvrdil_vecnou_spravnost_id);
+      const roleKody = String(inv.potvrdil_vecnou_spravnost_role_kody || '').toUpperCase().split(',').map(s => s.trim());
+      const confirmedByUcetni = roleKody.includes('UCETNI');
+      return sameUser || confirmedByUcetni;
+    });
+
+    // Dokončená faktura bez potvrzené věcné kontroly (bez storna)
+    const dokoncenaBezVecneKontroly = filteredInvoices.filter(inv => {
+      const invStatusRaw = String(inv.stav || inv.fa_stav || '').toUpperCase();
+      if (invStatusRaw.includes('STORNO') || invStatusRaw.includes('SMAZ')) return false;
+      if (invStatusRaw !== 'DOKONCENA') return false;
+      const hasConfirmedBy = !!inv.potvrdil_vecnou_spravnost_id;
+      const isPotvrzeno = inv.vecna_spravnost_potvrzeno === 1;
+      return !hasConfirmedBy && !isPotvrzeno;
+    });
+
     return {
       ordersOverLimit,
       ordersAfterInvoice,
       ordersInvoicesWithoutAttachments,
       invoicesWithoutAttachments,
       overdueInvoices,
-      cancelledOrders
+      cancelledOrders,
+      vecnouPotvrdilaUcetni,
+      dokoncenaBezVecneKontroly
     };
   }, [filteredOrders, filteredInvoices, invoicesByOrderId, ordersById, getOrderStatusCode, getOrderStatusLabel, isInvoiceSettled]);
 
@@ -5901,7 +5931,11 @@ export default function StatsReportsPage() {
       sum + getInvoiceAmount(inv), 0);
     const overdueInvoicesFA = controlSections.overdueInvoices.reduce((sum, inv) =>
       sum + getInvoiceAmount(inv), 0);
-    return { ordersOverLimitFA, ordersAfterInvoiceFA, ordersInvoicesWithoutAttachmentsFA, invoicesWithoutAttachmentsFA, overdueInvoicesFA };
+    const vecnouPotvrdilaUcetniFA = controlSections.vecnouPotvrdilaUcetni.reduce((sum, inv) =>
+      sum + getInvoiceAmount(inv), 0);
+    const dokoncenaBezVecneKontrolyFA = controlSections.dokoncenaBezVecneKontroly.reduce((sum, inv) =>
+      sum + getInvoiceAmount(inv), 0);
+    return { ordersOverLimitFA, ordersAfterInvoiceFA, ordersInvoicesWithoutAttachmentsFA, invoicesWithoutAttachmentsFA, overdueInvoicesFA, vecnouPotvrdilaUcetniFA, dokoncenaBezVecneKontrolyFA };
   }, [controlSections, invoicesByOrderId, getInvoiceAmount]);
 
   // ─── Vzdělávání: sekce ───────────────────────────────────────────────────────
@@ -6357,6 +6391,56 @@ export default function StatsReportsPage() {
     };
     return getPagedItems(sortTableData(controlSections.cancelledOrders, 'cancelledOrders', acc), 'cancelledOrders');
   }, [controlSections.cancelledOrders, getPagedItems, sortTableData, getOrderDate, getOrderStatusLabel, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, invoicesByOrderId]);
+  const pagedVecnouPotvrdilaUcetni = useMemo(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`vecnouPotvrdilaUcetni_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const acc = {
+      fa_vs:        inv => inv.cislo_faktury || '',
+      fa_typ:       inv => inv.fa_typ || '',
+      dt_dorucena:  inv => inv.datum_doruceni || inv.datum_vystaveni || '',
+      evidoval:     inv => inv.vytvoril_uzivatel_zkracene || '',
+      vecnou:       inv => inv.potvrdil_vecnou_spravnost_zkracene || '',
+      stav_fa:      inv => getInvoiceStatusLabel(inv) || '',
+      ev_cislo:     inv => inv.cislo_objednavky || inv.smlouva_id || '',
+      castka:       inv => getInvoiceAmount(inv),
+      stav_obj:     inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderStatusLabel(o) : ''; },
+      usek:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrdererUsekCode(o) : (inv.usek_zkr || ''); },
+      financovani:  inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingLabel(o) : ''; },
+      detail_fin:   inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingRef(o) : ''; },
+      druh:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderTypeLabel(o) : ''; },
+      fk_stav:      inv => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`vecnouPotvrdilaUcetni_0_${inv.id}`]] || '0',
+    };
+    return getPagedItems(sortTableData(controlSections.vecnouPotvrdilaUcetni.filter(fkFilter), 'vecnouPotvrdilaUcetni', acc), 'vecnouPotvrdilaUcetni');
+  }, [controlSections.vecnouPotvrdilaUcetni, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode, getInvoiceAmount]);
+  const pagedDokoncenaBezVecneKontroly = useMemo(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`dokoncenaBezVecneKontroly_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const acc = {
+      fa_vs:        inv => inv.cislo_faktury || '',
+      fa_typ:       inv => inv.fa_typ || '',
+      dt_dorucena:  inv => inv.datum_doruceni || inv.datum_vystaveni || '',
+      evidoval:     inv => inv.vytvoril_uzivatel_zkracene || '',
+      predana:      inv => inv.fa_predana_zam_jmeno_cele || '',
+      stav_fa:      inv => getInvoiceStatusLabel(inv) || '',
+      ev_cislo:     inv => inv.cislo_objednavky || inv.smlouva_id || '',
+      castka:       inv => getInvoiceAmount(inv),
+      stav_obj:     inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderStatusLabel(o) : ''; },
+      usek:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrdererUsekCode(o) : (inv.usek_zkr || ''); },
+      financovani:  inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingLabel(o) : ''; },
+      detail_fin:   inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderFinancingRef(o) : ''; },
+      druh:         inv => { const o = ordersById.get(String(inv.objednavka_id)); return o ? getOrderTypeLabel(o) : ''; },
+      fk_stav:      inv => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`dokoncenaBezVecneKontroly_0_${inv.id}`]] || '0',
+    };
+    return getPagedItems(sortTableData(controlSections.dokoncenaBezVecneKontroly.filter(fkFilter), 'dokoncenaBezVecneKontroly', acc), 'dokoncenaBezVecneKontroly');
+  }, [controlSections.dokoncenaBezVecneKontroly, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getInvoiceStatusLabel, ordersById, getOrderStatusLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrdererUsekCode, getInvoiceAmount]);
   const pagedFinancingOptions = useMemo(
     () => getPagedItems(financingOptions, 'financingOptions'),
     [financingOptions, getPagedItems]
@@ -8027,6 +8111,80 @@ export default function StatsReportsPage() {
     downloadCsv(headers, rows, `zrusene-objednavky-${new Date().toISOString().slice(0,10)}.csv`);
   }, [controlSections.cancelledOrders, invoicesByOrderId, orderToCsvRow, downloadCsv, getSearchQuery, searchInVisibleColumns]);
 
+  // ─── Export: Věcnou kontrolu potvrdil zaevidující nebo účetní ───────────────
+  const handleExportCsv_vecnouPotvrdilaUcetni = useCallback(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`vecnouPotvrdilaUcetni_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('vecnouPotvrdilaUcetni');
+    const filtered = controlSections.vecnouPotvrdilaUcetni
+      .filter(fkFilter)
+      .filter(inv => !query || searchInVisibleColumns(inv, query, 'vecnouPotvrdilaUcetni'));
+    const headers = ['Fa VS','Typ FA','Doručena','Zaevidoval','Věcnou potvrdil','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Částka (Kč)'];
+    const rows = filtered.map(invoice => {
+      const order = ordersById.get(String(invoice.objednavka_id)) || null;
+      const faVs = invoice.cislo_faktury || '';
+      const faVema = invoice.fa_vema_kod || '';
+      const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+      return [
+        faDisplay,
+        getTypFakturyLabel(invoice.fa_typ),
+        formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
+        invoice.vytvoril_uzivatel_zkracene || '',
+        invoice.potvrdil_vecnou_spravnost_zkracene || '',
+        order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || ''),
+        order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || ''),
+        order ? getOrderFinancingLabel(order) : '',
+        order ? getOrderFinancingRef(order) : '',
+        order ? getOrderTypeLabel(order) : '',
+        order ? getOrderStatusLabel(order) : '',
+        getInvoiceStatusLabel(invoice),
+        getInvoiceAmount(invoice),
+      ];
+    });
+    downloadCsv(headers, rows, `vecnou-potvrdila-ucetni-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.vecnouPotvrdilaUcetni, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Dokončená FA bez potvrzené věcné kontroly ──────────────────────
+  const handleExportCsv_dokoncenaBezVecneKontroly = useCallback(() => {
+    const fkFilter = inv => {
+      const stav = fkStavMapRef.current[`dokoncenaBezVecneKontroly_0_${inv.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('dokoncenaBezVecneKontroly');
+    const filtered = controlSections.dokoncenaBezVecneKontroly
+      .filter(fkFilter)
+      .filter(inv => !query || searchInVisibleColumns(inv, query, 'dokoncenaBezVecneKontroly'));
+    const headers = ['Fa VS','Typ FA','Doručena','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Částka (Kč)'];
+    const rows = filtered.map(invoice => {
+      const order = ordersById.get(String(invoice.objednavka_id)) || null;
+      const faVs = invoice.cislo_faktury || '';
+      const faVema = invoice.fa_vema_kod || '';
+      const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+      return [
+        faDisplay,
+        getTypFakturyLabel(invoice.fa_typ),
+        formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni),
+        invoice.vytvoril_uzivatel_zkracene || '',
+        invoice.fa_predana_zam_jmeno_cele || '',
+        order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || ''),
+        order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || ''),
+        order ? getOrderFinancingLabel(order) : '',
+        order ? getOrderFinancingRef(order) : '',
+        order ? getOrderTypeLabel(order) : '',
+        order ? getOrderStatusLabel(order) : '',
+        getInvoiceStatusLabel(invoice),
+        getInvoiceAmount(invoice),
+      ];
+    });
+    downloadCsv(headers, rows, `dokoncena-bez-vecne-kontroly-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.dokoncenaBezVecneKontroly, ordersById, getOrdererUsekCode, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
   // ─── Export: Všechny sekce finanční kontroly do Excel ───────────────────────
   const handleExportAllToExcel = useCallback(async () => {
     try {
@@ -8153,6 +8311,56 @@ export default function StatsReportsPage() {
           return [r.ev_cislo, r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.financovani, r.detail_fin, r.druh, r.stav, pocetFaktur];
         });
         sheets.push({ name: 'Zrušené obj', headers, rows });
+      }
+
+      // 7. Věcnou kontrolu potvrdil zaevidující nebo účetní
+      const vecnouPotvrdilaUcetniData = getFkFilteredData(controlSections.vecnouPotvrdilaUcetni, 'vecnouPotvrdilaUcetni');
+      if (vecnouPotvrdilaUcetniData.length > 0) {
+        const headers = ['Fa VS','Typ FA','Doručena','Zaevidoval','Věcnou potvrdil','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Částka (Kč)'];
+        const rows = vecnouPotvrdilaUcetniData.map(invoice => {
+          const order = ordersById.get ? ordersById.get(String(invoice.objednavka_id)) : ordersById[String(invoice.objednavka_id)];
+          const faVs = invoice.cislo_faktury || '';
+          const faVema = invoice.fa_vema_kod || '';
+          const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+          const dorucena = formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni) || '';
+          const zaevidoval = invoice.vytvoril_uzivatel_zkracene || '';
+          const vecnouPotvrdil = invoice.potvrdil_vecnou_spravnost_zkracene || '';
+          const objednavkaSmlouva = order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || '');
+          const usek = order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || '');
+          const financovani = order ? (getOrderFinancingLabel(order) || '') : '';
+          const detailFin = order ? (getOrderFinancingRef(order) || '') : '';
+          const druh = order ? (getOrderTypeLabel(order) || '') : '';
+          const stavObj = order ? (getOrderStatusLabel(order) || '') : '';
+          const stavFa = getInvoiceStatusLabel(invoice) || '';
+          const castka = getInvoiceAmount(invoice) || '';
+          return [faDisplay, getTypFakturyLabel(invoice.fa_typ) || '', dorucena, zaevidoval, vecnouPotvrdil, objednavkaSmlouva, usek, financovani, detailFin, druh, stavObj, stavFa, castka];
+        });
+        sheets.push({ name: 'Věcná - ÚČT', headers, rows });
+      }
+
+      // 8. Dokončená FA bez potvrzené věcné kontroly
+      const dokoncenaBezVecneKontrolyData = getFkFilteredData(controlSections.dokoncenaBezVecneKontroly, 'dokoncenaBezVecneKontroly');
+      if (dokoncenaBezVecneKontrolyData.length > 0) {
+        const headers = ['Fa VS','Typ FA','Doručena','Zaevidoval','Předána','Objednávka/Smlouva','Úsek','Financování','Detail fin.','Druh','Stav obj.','Stav FA','Částka (Kč)'];
+        const rows = dokoncenaBezVecneKontrolyData.map(invoice => {
+          const order = ordersById.get ? ordersById.get(String(invoice.objednavka_id)) : ordersById[String(invoice.objednavka_id)];
+          const faVs = invoice.cislo_faktury || '';
+          const faVema = invoice.fa_vema_kod || '';
+          const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+          const dorucena = formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni) || '';
+          const zaevidoval = invoice.vytvoril_uzivatel_zkracene || '';
+          const predana = invoice.fa_predana_zam_jmeno_cele || '';
+          const objednavkaSmlouva = order ? (order.ev_cislo || order.cislo_objednavky || '') : (invoice.cislo_smlouvy || '');
+          const usek = order ? (getOrdererUsekCode(order) || '') : (invoice.usek_zkr || '');
+          const financovani = order ? (getOrderFinancingLabel(order) || '') : '';
+          const detailFin = order ? (getOrderFinancingRef(order) || '') : '';
+          const druh = order ? (getOrderTypeLabel(order) || '') : '';
+          const stavObj = order ? (getOrderStatusLabel(order) || '') : '';
+          const stavFa = getInvoiceStatusLabel(invoice) || '';
+          const castka = getInvoiceAmount(invoice) || '';
+          return [faDisplay, getTypFakturyLabel(invoice.fa_typ) || '', dorucena, zaevidoval, predana, objednavkaSmlouva, usek, financovani, detailFin, druh, stavObj, stavFa, castka];
+        });
+        sheets.push({ name: 'Dokončená bez věcné', headers, rows });
       }
 
       // Export do Excel
@@ -11456,6 +11664,234 @@ export default function StatsReportsPage() {
                         </Table>
                       </TableWrapper>
                       {renderPagination('cancelledOrders', pagedCancelledOrders)}
+                    </>
+                  )}
+                  </SectionCard>
+                )}
+
+                {isBlockVisible('control', 'vecnouPotvrdilaUcetni') && (
+                  <SectionCard id="section-vecnouPotvrdilaUcetni">
+                  <SectionHeader>
+                    <SectionTitle>Věcnou kontrolu potvrdil zaevidující nebo účetní</SectionTitle>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <SectionBadge $tone="danger">{pagedVecnouPotvrdilaUcetni.total}</SectionBadge>
+                      <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.vecnouPotvrdilaUcetniFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_vecnouPotvrdilaUcetni} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
+                    </div>
+                  </SectionHeader>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazených datech..."
+                        value={getSearchQuery('vecnouPotvrdilaUcetni')}
+                        onChange={(e) => setSearchQuery('vecnouPotvrdilaUcetni', e.target.value)}
+                      />
+                      {getSearchQuery('vecnouPotvrdilaUcetni') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('vecnouPotvrdilaUcetni', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
+                  </SearchBox>
+                  {pagedVecnouPotvrdilaUcetni.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedVecnouPotvrdilaUcetni.total} z {pagedVecnouPotvrdilaUcetni.originalTotal} záznamů
+                    </div>
+                  )}
+                  {pagedVecnouPotvrdilaUcetni.isFiltered && pagedVecnouPotvrdilaUcetni.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper style={{ margin: 0 }}>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'fa_vs')}>Fa VS{sortIcon('vecnouPotvrdilaUcetni', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'fa_typ')}>Typ FA{sortIcon('vecnouPotvrdilaUcetni', 'fa_typ')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'dt_dorucena')}>Doručena{sortIcon('vecnouPotvrdilaUcetni', 'dt_dorucena')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'evidoval')}>Zaevidoval{sortIcon('vecnouPotvrdilaUcetni', 'evidoval')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'vecnou')}>Věcnou potvrdil{sortIcon('vecnouPotvrdilaUcetni', 'vecnou')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'ev_cislo')}>Objednávka/Smlouva{sortIcon('vecnouPotvrdilaUcetni', 'ev_cislo')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'usek')}>Úsek{sortIcon('vecnouPotvrdilaUcetni', 'usek')}</ThSort>
+                              <ThNarrowSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'financovani')}>Financování{sortIcon('vecnouPotvrdilaUcetni', 'financovani')}</ThNarrowSort>
+                              <ThNarrowSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'detail_fin')}>Detail fin.{sortIcon('vecnouPotvrdilaUcetni', 'detail_fin')}</ThNarrowSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'druh')}>Druh{sortIcon('vecnouPotvrdilaUcetni', 'druh')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'stav_obj')}>Stav obj.{sortIcon('vecnouPotvrdilaUcetni', 'stav_obj')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'stav_fa')}>Stav FA{sortIcon('vecnouPotvrdilaUcetni', 'stav_fa')}</ThSort>
+                              <ThRSort onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'castka')}>Částka{sortIcon('vecnouPotvrdilaUcetni', 'castka')}</ThRSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('vecnouPotvrdilaUcetni', 'fk_stav')}>Kontrola{sortIcon('vecnouPotvrdilaUcetni', 'fk_stav')}</ThSort>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedVecnouPotvrdilaUcetni.items.map(invoice => {
+                              const order = ordersById.get(String(invoice.objednavka_id)) || null;
+                              const roleKody = String(invoice.potvrdil_vecnou_spravnost_role_kody || '').toUpperCase().split(',').map(s => s.trim());
+                              const isUcetni = roleKody.includes('UCETNI');
+                              const isSameUser = invoice.vytvoril_uzivatel_id && String(invoice.vytvoril_uzivatel_id) === String(invoice.potvrdil_vecnou_spravnost_id);
+                              return (
+                                <Tr key={invoice.id}>
+                                  <Td style={{ width: '240px', maxWidth: '240px', overflow: 'hidden' }}>
+                                    {renderInvoiceLink(invoice, 'vecnouPotvrdilaUcetni')}
+                                  </Td>
+                                  <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(invoice.fa_typ, invoice.fa_typ_nazev)}</Td>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'vecnouPotvrdilaUcetni')}</Td>
+                                  <Td>
+                                    {invoice.vytvoril_uzivatel_zkracene ? highlightText(invoice.vytvoril_uzivatel_zkracene, 'vecnouPotvrdilaUcetni') : '-'}
+                                    {invoice.dt_vytvoreni && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{formatDateCz(invoice.dt_vytvoreni)}</div>}
+                                  </Td>
+                                  <Td>
+                                    {invoice.potvrdil_vecnou_spravnost_zkracene ? highlightText(invoice.potvrdil_vecnou_spravnost_zkracene, 'vecnouPotvrdilaUcetni') : '-'}
+                                    <div style={{ display: 'flex', gap: '0.3rem', marginTop: '0.2em', flexWrap: 'wrap' }}>
+                                      {isSameUser && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#b91c1c', background: '#fee2e2', borderRadius: '4px', padding: '0.05rem 0.4rem' }}>SHODNÁ OSOBA</span>}
+                                      {isUcetni && <span style={{ fontSize: '0.7rem', fontWeight: 700, color: '#b45309', background: '#fef3c7', borderRadius: '4px', padding: '0.05rem 0.4rem' }}>ÚČETNÍ</span>}
+                                    </div>
+                                  </Td>
+                                  <Td>{order ? renderOrderLink(order, 'vecnouPotvrdilaUcetni') : highlightText(invoice.cislo_smlouvy || invoice.smlouva_id || '-', 'vecnouPotvrdilaUcetni')}</Td>
+                                  <Td>{order ? highlightText(getOrdererUsekCode(order) || '-', 'vecnouPotvrdilaUcetni') : '-'}</Td>
+                                  <Td>{order ? renderFinancingLabelCell(order, 'vecnouPotvrdilaUcetni') : '-'}</Td>
+                                  <TdNarrow>{order ? renderFinancingRefCell(order, 'vecnouPotvrdilaUcetni') : '-'}</TdNarrow>
+                                  <Td>{order ? highlightText(getOrderTypeLabel(order), 'vecnouPotvrdilaUcetni') : '-'}</Td>
+                                  <Td>{order ? highlightText(getOrderStatusLabel(order), 'vecnouPotvrdilaUcetni') : '-'}</Td>
+                                  <Td>{highlightText(getInvoiceStatusLabel(invoice), 'vecnouPotvrdilaUcetni')}</Td>
+                                  <TdR>{highlightText(fmtCurrency(getInvoiceAmount(invoice)), 'vecnouPotvrdilaUcetni')}</TdR>
+                                  <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={0} fakturaId={invoice.id} entityType="FA" sectionKey="vecnouPotvrdilaUcetni" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('vecnouPotvrdilaUcetni', pagedVecnouPotvrdilaUcetni)}
+                    </>
+                  )}
+                  </SectionCard>
+                )}
+
+                {isBlockVisible('control', 'dokoncenaBezVecneKontroly') && (
+                  <SectionCard id="section-dokoncenaBezVecneKontroly">
+                  <SectionHeader>
+                    <SectionTitle>Dokončená FA bez potvrzené věcné kontroly</SectionTitle>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <SectionBadge $tone="danger">{pagedDokoncenaBezVecneKontroly.total}</SectionBadge>
+                      <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.dokoncenaBezVecneKontrolyFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_dokoncenaBezVecneKontroly} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
+                    </div>
+                  </SectionHeader>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazených datech..."
+                        value={getSearchQuery('dokoncenaBezVecneKontroly')}
+                        onChange={(e) => setSearchQuery('dokoncenaBezVecneKontroly', e.target.value)}
+                      />
+                      {getSearchQuery('dokoncenaBezVecneKontroly') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('dokoncenaBezVecneKontroly', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
+                  </SearchBox>
+                  {pagedDokoncenaBezVecneKontroly.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedDokoncenaBezVecneKontroly.total} z {pagedDokoncenaBezVecneKontroly.originalTotal} záznamů
+                    </div>
+                  )}
+                  {pagedDokoncenaBezVecneKontroly.isFiltered && pagedDokoncenaBezVecneKontroly.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper style={{ margin: 0 }}>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'fa_vs')}>Fa VS{sortIcon('dokoncenaBezVecneKontroly', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'fa_typ')}>Typ FA{sortIcon('dokoncenaBezVecneKontroly', 'fa_typ')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'dt_dorucena')}>Doručena{sortIcon('dokoncenaBezVecneKontroly', 'dt_dorucena')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'evidoval')}>Zaevidoval{sortIcon('dokoncenaBezVecneKontroly', 'evidoval')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'predana')}>Předána{sortIcon('dokoncenaBezVecneKontroly', 'predana')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'ev_cislo')}>Objednávka/Smlouva{sortIcon('dokoncenaBezVecneKontroly', 'ev_cislo')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'usek')}>Úsek{sortIcon('dokoncenaBezVecneKontroly', 'usek')}</ThSort>
+                              <ThNarrowSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'financovani')}>Financování{sortIcon('dokoncenaBezVecneKontroly', 'financovani')}</ThNarrowSort>
+                              <ThNarrowSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'detail_fin')}>Detail fin.{sortIcon('dokoncenaBezVecneKontroly', 'detail_fin')}</ThNarrowSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'druh')}>Druh{sortIcon('dokoncenaBezVecneKontroly', 'druh')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'stav_obj')}>Stav obj.{sortIcon('dokoncenaBezVecneKontroly', 'stav_obj')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'stav_fa')}>Stav FA{sortIcon('dokoncenaBezVecneKontroly', 'stav_fa')}</ThSort>
+                              <ThRSort onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'castka')}>Částka{sortIcon('dokoncenaBezVecneKontroly', 'castka')}</ThRSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('dokoncenaBezVecneKontroly', 'fk_stav')}>Kontrola{sortIcon('dokoncenaBezVecneKontroly', 'fk_stav')}</ThSort>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedDokoncenaBezVecneKontroly.items.map(invoice => {
+                              const order = ordersById.get(String(invoice.objednavka_id)) || null;
+                              return (
+                                <Tr key={invoice.id}>
+                                  <Td style={{ width: '240px', maxWidth: '240px', overflow: 'hidden' }}>
+                                    {renderInvoiceLink(invoice, 'dokoncenaBezVecneKontroly')}
+                                  </Td>
+                                  <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(invoice.fa_typ, invoice.fa_typ_nazev)}</Td>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_doruceni || invoice.datum_vystaveni), 'dokoncenaBezVecneKontroly')}</Td>
+                                  <Td>
+                                    {invoice.vytvoril_uzivatel_zkracene ? highlightText(invoice.vytvoril_uzivatel_zkracene, 'dokoncenaBezVecneKontroly') : '-'}
+                                    {invoice.dt_vytvoreni && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{formatDateCz(invoice.dt_vytvoreni)}</div>}
+                                  </Td>
+                                  <Td>
+                                    {invoice.fa_predana_zam_jmeno_cele ? highlightText(invoice.fa_predana_zam_jmeno_cele, 'dokoncenaBezVecneKontroly') : '-'}
+                                    {invoice.fa_datum_predani_zam && <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{formatDateCz(invoice.fa_datum_predani_zam)}</div>}
+                                  </Td>
+                                  <Td>{order ? renderOrderLink(order, 'dokoncenaBezVecneKontroly') : highlightText(invoice.cislo_smlouvy || invoice.smlouva_id || '-', 'dokoncenaBezVecneKontroly')}</Td>
+                                  <Td>{order ? highlightText(getOrdererUsekCode(order) || '-', 'dokoncenaBezVecneKontroly') : '-'}</Td>
+                                  <Td>{order ? renderFinancingLabelCell(order, 'dokoncenaBezVecneKontroly') : '-'}</Td>
+                                  <TdNarrow>{order ? renderFinancingRefCell(order, 'dokoncenaBezVecneKontroly') : '-'}</TdNarrow>
+                                  <Td>{order ? highlightText(getOrderTypeLabel(order), 'dokoncenaBezVecneKontroly') : '-'}</Td>
+                                  <Td>{order ? highlightText(getOrderStatusLabel(order), 'dokoncenaBezVecneKontroly') : '-'}</Td>
+                                  <Td>{highlightText(getInvoiceStatusLabel(invoice), 'dokoncenaBezVecneKontroly')}</Td>
+                                  <TdR>{highlightText(fmtCurrency(getInvoiceAmount(invoice)), 'dokoncenaBezVecneKontroly')}</TdR>
+                                  <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={0} fakturaId={invoice.id} entityType="FA" sectionKey="dokoncenaBezVecneKontroly" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('dokoncenaBezVecneKontroly', pagedDokoncenaBezVecneKontroly)}
                     </>
                   )}
                   </SectionCard>

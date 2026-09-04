@@ -2677,9 +2677,19 @@ function handle_invoices25_list($input, $config, $queries) {
                     break;
                     
                 case 'my_unchecked_invoices':
-                    // Moje nezkontrolované faktury (předané na mě, ale ještě bez věcné kontroly)
-                    $where_conditions[] = '(f.fa_predana_zam_id = ? AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) AND f.stav != "STORNO")';
+                    // Moje nezkontrolované faktury: předáno mně (fa_predana_zam_id) a zároveň
+                    // věcná správnost ještě nepotvrzena, bez ohledu na aktuální workflow stav
+                    // (Storno vyloučeno). Pozn.: stav "VECNA_SPRAVNOST" NENÍ vhodný filtr - v datech
+                    // se nastavuje až PO potvrzení věcné, reálně nepotvrzené faktury mají zpravidla
+                    // stav ZAEVIDOVANA.
+                    $where_conditions[] = '(f.fa_predana_zam_id = ? AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0) AND f.stav != "STORNO")';
                     $params[] = $user_id;
+                    break;
+
+                case 'vecna_nepotvrzeno_vsechny':
+                    // Všechny faktury, kde ještě není potvrzena věcná správnost (bez ohledu na
+                    // uživatele - pro uživatele, kteří vidí všechny faktury, ne jen svoje; Storno vyloučeno)
+                    $where_conditions[] = '((f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0) AND f.stav != "STORNO")';
                     break;
                     
                 case 'with_contract':
@@ -2787,8 +2797,10 @@ function handle_invoices25_list($input, $config, $queries) {
             COALESCE(SUM(CASE WHEN f.vecna_spravnost_potvrzeno = 2 THEN f.fa_castka ELSE 0 END), 0) as celkem_vecna_spravnost_zamitnuty,
             COUNT(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN 1 END) as pocet_moje_faktury,
             COALESCE(SUM(CASE WHEN f.vytvoril_uzivatel_id = $user_id OR f.fa_predana_zam_id = $user_id OR f.potvrdil_vecnou_spravnost_id = $user_id THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_faktury,
-            COUNT(CASE WHEN f.fa_predana_zam_id = $user_id AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) AND f.stav != 'STORNO' THEN 1 END) as pocet_moje_nezkontrolovane,
-            COALESCE(SUM(CASE WHEN f.fa_predana_zam_id = $user_id AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) AND f.stav != 'STORNO' THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_nezkontrolovane,
+            COUNT(CASE WHEN f.fa_predana_zam_id = $user_id AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0) AND f.stav != 'STORNO' THEN 1 END) as pocet_moje_nezkontrolovane,
+            COALESCE(SUM(CASE WHEN f.fa_predana_zam_id = $user_id AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0) AND f.stav != 'STORNO' THEN f.fa_castka ELSE 0 END), 0) as celkem_moje_nezkontrolovane,
+            COUNT(CASE WHEN (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0) AND f.stav != 'STORNO' THEN 1 END) as pocet_vecna_nepotvrzeno_vsechny,
+            COALESCE(SUM(CASE WHEN (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0) AND f.stav != 'STORNO' THEN f.fa_castka ELSE 0 END), 0) as celkem_vecna_nepotvrzeno_vsechny,
             COUNT(CASE WHEN f.smlouva_id IS NOT NULL THEN 1 END) as pocet_s_smlouvou,
             COUNT(CASE WHEN f.objednavka_id IS NOT NULL THEN 1 END) as pocet_s_objednavkou,
             COUNT(CASE WHEN olp.lp_id IS NOT NULL THEN 1 END) as pocet_s_lp,
@@ -2836,6 +2848,8 @@ function handle_invoices25_list($input, $config, $queries) {
             'celkem_moje_faktury' => (float)$stats['celkem_moje_faktury'],
             'pocet_moje_nezkontrolovane' => (int)$stats['pocet_moje_nezkontrolovane'],
             'celkem_moje_nezkontrolovane' => (float)$stats['celkem_moje_nezkontrolovane'],
+            'pocet_vecna_nepotvrzeno_vsechny' => (int)$stats['pocet_vecna_nepotvrzeno_vsechny'],
+            'celkem_vecna_nepotvrzeno_vsechny' => (float)$stats['celkem_vecna_nepotvrzeno_vsechny'],
             'pocet_s_smlouvou' => (int)$stats['pocet_s_smlouvou'],
             'pocet_s_objednavkou' => (int)$stats['pocet_s_objednavkou'],
             'pocet_s_lp' => (int)$stats['pocet_s_lp'],
@@ -2881,6 +2895,10 @@ function handle_invoices25_list($input, $config, $queries) {
             u_vecna.titul_pred AS potvrdil_vecnou_spravnost_titul_pred,
             u_vecna.titul_za AS potvrdil_vecnou_spravnost_titul_za,
             u_vecna.email AS potvrdil_vecnou_spravnost_email,
+            (SELECT GROUP_CONCAT(r_vs.kod_role SEPARATOR ',')
+             FROM `25_uzivatele_role` ur_vs
+             JOIN `25_role` r_vs ON ur_vs.role_id = r_vs.id
+             WHERE ur_vs.uzivatel_id = f.potvrdil_vecnou_spravnost_id) AS potvrdil_vecnou_spravnost_role_kody,
             u_predana.jmeno AS fa_predana_zam_jmeno,
             u_predana.prijmeni AS fa_predana_zam_prijmeni,
             u_predana.titul_pred AS fa_predana_zam_titul_pred,
