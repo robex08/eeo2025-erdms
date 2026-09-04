@@ -1461,6 +1461,9 @@ function _dashboard_get_my_stats($db, $user_id) {
         $stats['objednavky_k_vyrizeni'] = (int)$stmt->fetchColumn();
 
         // 2. Faktury k potvrzení (kde jsem zodpovědný za věcnou správnost)
+        // Věcná ještě nepotvrzena, bez ohledu na aktuální workflow stav (Storno vyloučeno).
+        // Pozn.: stav 'VECNA_SPRAVNOST' NENÍ vhodný filtr - v datech se nastavuje až PO potvrzení věcné,
+        // reálně nepotvrzené faktury mají zpravidla stav ZAEVIDOVANA.
         $stmt = $db->prepare("
             SELECT COUNT(*) as cnt
             FROM `" . TBL_FAKTURY . "` f
@@ -2068,7 +2071,7 @@ function _dashboard_get_invoice_stats($db, $user_id, $is_admin, $has_invoice_man
             SUM(CASE WHEN JSON_UNQUOTE(JSON_EXTRACT(f.rozsirujici_data, '$.kontrola_radku.kontrolovano')) = 'true' THEN 1 ELSE 0 END) as zkontrolovano,
             SUM(CASE WHEN f.fa_poznamka IS NOT NULL AND TRIM(f.fa_poznamka) <> '' THEN 1 ELSE 0 END) as s_poznamkou,
             SUM(CASE WHEN f.vytvoril_uzivatel_id = {$uid} OR f.fa_predana_zam_id = {$uid} OR f.potvrdil_vecnou_spravnost_id = {$uid} THEN 1 ELSE 0 END) as moje_faktury,
-            SUM(CASE WHEN f.fa_predana_zam_id = {$uid} AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0) AND f.stav != 'STORNO' THEN 1 ELSE 0 END) as moje_nezkontrolovane,
+            SUM(CASE WHEN f.fa_predana_zam_id = {$uid} AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0) AND f.stav != 'STORNO' THEN 1 ELSE 0 END) as moje_nezkontrolovane,
             COALESCE(SUM(CASE WHEN f.stav IN ('ZAPLACENO', 'DOKONCENA') THEN f.fa_castka ELSE 0 END), 0) as castka_zaplaceno,
             COALESCE(SUM(CASE WHEN (f.fa_zaplacena = 0 OR f.fa_zaplacena IS NULL) AND f.stav NOT IN ('ZAPLACENO', 'DOKONCENA', 'STORNO') AND f.fa_datum_splatnosti IS NOT NULL AND f.fa_datum_splatnosti < CURDATE() THEN f.fa_castka ELSE 0 END), 0) as castka_po_splatnosti
         FROM `" . TBL_FAKTURY . "` f
@@ -2105,7 +2108,7 @@ function _dashboard_get_my_unchecked_invoices_count($db, $user_id) {
                             AND (f.smlouva_id IS NULL OR sm.aktivni = 1)
                     )
           AND f.fa_predana_zam_id = :user_id
-          AND (f.potvrdil_vecnou_spravnost_id IS NULL OR f.potvrdil_vecnou_spravnost_id = 0)
+          AND (f.vecna_spravnost_potvrzeno IS NULL OR f.vecna_spravnost_potvrzeno = 0)
     ";
     $stmt = $db->prepare($sql);
     $stmt->execute([':user_id' => $uid]);

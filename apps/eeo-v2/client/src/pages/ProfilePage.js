@@ -1715,6 +1715,10 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       individualni_schvaleni: false, // individuální schválení
       individualni_poznamka: false, // poznámka k individuálnímu schválení
       financovani_raw: false, // raw JSON financovani pole z DB
+      stav_odeslano: false,
+      potvrzeno_dodavatelem: false,
+      zpusob_potvrzeni: false,
+      zpusob_platby: false,
       
       // Odpovědné osoby (enriched z JOINů)
       uzivatel: true, // objednatel (uzivatel_id)
@@ -1761,7 +1765,8 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       polozky_budova_kod: false,
       polozky_mistnost_kod: false,
       polozky_poznamka: false,
-      
+      polozky_poznamka_umisteni: false,
+
       // Přílohy (z 25a_objednavky_prilohy)
       prilohy_count: false,
       prilohy_guid: false,
@@ -1770,22 +1775,26 @@ const getDefaultSettings = (hasPermission, userDetail) => {
       prilohy_velikosti: false,
       prilohy_nahrano_uzivatel: false,
       prilohy_dt_vytvoreni: false,
-      
+
       // Faktury (z 25a_objednavky_faktury)
       faktury_count: false,
       faktury_celkova_castka_s_dph: false,
+      faktury_castky: false,
       faktury_cisla_vema: false,
       faktury_stav: false,
       faktury_datum_vystaveni: false,
       faktury_datum_splatnosti: false,
       faktury_datum_doruceni: false,
       faktury_strediska_kod: false,
+      faktury_strediska: false,
       faktury_poznamka: false,
+      faktury_pocet_priloh: false,
       faktury_dorucena: false,
       faktury_zaplacena: false,
-      
+
       // Registr smluv
       zverejnit: false, // DB: zverejnit (tinytext)
+      zverejnit_registr_smluv: false,
       registr_iddt: false,
       zverejnil_uzivatel: false, // (zverejnil_id)
       

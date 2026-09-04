@@ -2479,6 +2479,7 @@ const Invoices25List = () => {
     withoutOrder: 0,    // Faktury bez přiřazení (bez obj. ANI smlouvy)
     myInvoices: 0,      // Moje faktury (jen pro admin/invoice_manage)
     myUncheckedInvoices: 0, // Moje nezkontrolované faktury (předané na mě, bez věcné kontroly)
+    vecnaNepotvrzenoVsechny: 0, // Nepotvrzená věcná - všechny faktury (ne jen moje)
     kontrolovano: 0,    // Zkontrolované faktury (kontrola_radku)
     withNote: 0,        // Faktury s poznámkou
     withLP: 0           // Faktury s LP (limitovanými přísliby)
@@ -2954,7 +2955,9 @@ const Invoices25List = () => {
   const handleDashboardCardClick = useCallback((filterType) => {
     // ✅ Backend API podporuje filter_status (commit 0783884)
     // Možné hodnoty: 'paid', 'unpaid', 'overdue', 'without_order', 'my_invoices'
-    
+    const specialFilterTypes = ['my_unchecked_invoices', 'vecna_nepotvrzeno_vsechny'];
+    const wasSpecialActive = specialFilterTypes.includes(activeFilterStatus);
+
     // Toggle logika - klik na aktivní dlazdici zruší filtr
     if (activeFilterStatus === filterType) {
       setActiveFilterStatus(null);
@@ -2962,17 +2965,34 @@ const Invoices25List = () => {
         ...prev,
         filter_status: ''
       }));
+      // 🎯 Zrušit i viditelné filtry v záhlaví (Stav, Potvrzení), které dlaždice nastavila
+      if (wasSpecialActive) {
+        setColumnFilters(prev => ({ ...prev, stav: [], vecna_kontrola: '' }));
+        setDebouncedColumnFilters(prev => ({ ...prev, stav: [], vecna_kontrola: '' }));
+      }
       setCurrentPage(1);
       return;
     }
-    
+
     // Aktivace nového filtru
     setActiveFilterStatus(filterType);
     setFilters(prev => ({
       ...prev,
       filter_status: filterType === 'all' ? '' : filterType
     }));
-    
+
+    // 🎯 Dlaždice "Mě nezkontrolované" / "Nepotvrzená věcná" - zároveň aktivovat i viditelné
+    // filtry v záhlaví tabulky: Stav (vše kromě Storno) a Potvrzení věcné správnosti (Nepotvrzeno)
+    if (specialFilterTypes.includes(filterType)) {
+      const allStatusesExceptStorno = ['ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI', 'ZAPLACENO', 'DOKONCENA'];
+      setColumnFilters(prev => ({ ...prev, stav: allStatusesExceptStorno, vecna_kontrola: '0' }));
+      setDebouncedColumnFilters(prev => ({ ...prev, stav: allStatusesExceptStorno, vecna_kontrola: '0' }));
+    } else if (wasSpecialActive) {
+      // Přepnutí z "Mě nezkontrolované"/"Nepotvrzená věcná" na jinou dlaždici - zrušit zbylé filtry v záhlaví
+      setColumnFilters(prev => ({ ...prev, stav: [], vecna_kontrola: '' }));
+      setDebouncedColumnFilters(prev => ({ ...prev, stav: [], vecna_kontrola: '' }));
+    }
+
     // Reset na první stránku při změně filtru
     setCurrentPage(1);
   }, [activeFilterStatus]);
@@ -3502,6 +3522,7 @@ const Invoices25List = () => {
           vecnaSpravnostAmount: parseFloat(response.statistiky.celkem_vecna_spravnost) || 0,
           myInvoices: response.statistiky.pocet_moje_faktury || 0,
           myUncheckedInvoices: response.statistiky.pocet_moje_nezkontrolovane || 0,
+          vecnaNepotvrzenoVsechny: response.statistiky.pocet_vecna_nepotvrzeno_vsechny || 0,
           // ✅ Nové statistiky z BE
           withOrder: response.statistiky.pocet_s_objednavkou || 0,
           withContract: response.statistiky.pocet_s_smlouvou || 0,
@@ -3559,9 +3580,14 @@ const Invoices25List = () => {
             acc.myInvoices++;
           }
 
-          // Moje nezkontrolované faktury (předané na mě, bez věcné kontroly)
-          if (user_id && inv.aktivni && inv.stav !== 'STORNO' && inv.fa_predana_zam_id === user_id && !inv.potvrdil_vecnou_spravnost_id) {
+          // Moje nezkontrolované faktury (předáno k věcné, ještě nepotvrzeno)
+          if (user_id && inv.aktivni && inv.stav === 'VECNA_SPRAVNOST' && inv.fa_predana_zam_id === user_id && !inv.potvrdil_vecnou_spravnost_id) {
             acc.myUncheckedInvoices++;
+          }
+
+          // Nepotvrzená věcná - všechny faktury (předáno k věcné, ještě nepotvrzeno, bez ohledu na uživatele)
+          if (inv.aktivni && inv.stav === 'VECNA_SPRAVNOST' && !inv.potvrdil_vecnou_spravnost_id) {
+            acc.vecnaNepotvrzenoVsechny++;
           }
 
           // S poznámkou
@@ -3570,7 +3596,7 @@ const Invoices25List = () => {
           }
           
           return acc;
-        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, myUncheckedInvoices: 0, withOrder: 0, withContract: 0, withLP: 0, fromSpisovka: 0, withNote: 0 });
+        }, { total: 0, paid: 0, unpaid: 0, overdue: 0, totalAmount: 0, paidAmount: 0, unpaidAmount: 0, overdueAmount: 0, withoutOrder: 0, myInvoices: 0, myUncheckedInvoices: 0, vecnaNepotvrzenoVsechny: 0, withOrder: 0, withContract: 0, withLP: 0, fromSpisovka: 0, withNote: 0 });
         
         localStats.total = response.pagination?.total || transformedInvoices.length;
         setStats(localStats);
@@ -3623,6 +3649,15 @@ const Invoices25List = () => {
       setColumnFilters({});
       setDebouncedColumnFilters({});
       setGlobalSearchTerm('');
+    }
+
+    // 🎯 Dlaždice "Mě nezkontrolované" / "Nepotvrzená věcná" filtrují faktury předané
+    // k věcné a zároveň ještě nepotvrzené - zároveň aktivovat i viditelné filtry v záhlaví
+    // tabulky: Stav (vše kromě Storno) a Potvrzení věcné správnosti (Nepotvrzeno)
+    if (dashboardFilter === 'my_unchecked_invoices' || dashboardFilter === 'vecna_nepotvrzeno_vsechny') {
+      const allStatusesExceptStorno = ['ZAEVIDOVANA', 'VECNA_SPRAVNOST', 'V_RESENI', 'PREDANA_PO', 'K_ZAPLACENI', 'ZAPLACENO', 'DOKONCENA'];
+      setColumnFilters(prev => ({ ...prev, stav: allStatusesExceptStorno, vecna_kontrola: '0' }));
+      setDebouncedColumnFilters(prev => ({ ...prev, stav: allStatusesExceptStorno, vecna_kontrola: '0' }));
     }
 
     // Vyčistit state, aby se filtr neaplikoval znovu při refreshi
@@ -3756,10 +3791,10 @@ const Invoices25List = () => {
   ], []);
   
   const vecnaKontrolaOptions = useMemo(() => [
-    { value: '', label: 'Vše' },
-    { value: '1', label: 'Potvrzena' },
-    { value: '2', label: 'Zamítnuto' },
-    { value: '0', label: 'Nepotvrzeno' },
+    { id: 'vecna-vse', value: '', label: 'Vše' },
+    { id: 'vecna-potvrzena', value: '1', label: 'Potvrzena' },
+    { id: 'vecna-zamitnuto', value: '2', label: 'Zamítnuto' },
+    { id: 'vecna-nepotvrzeno', value: '0', label: 'Nepotvrzeno' },
   ], []);
 
   // Reset na první stránku při změně filtrů
@@ -5551,6 +5586,25 @@ const Invoices25List = () => {
                 </StatHeader>
                 <StatValue>{stats.myInvoices}</StatValue>
                 <StatLabel>Zaevidoval / Předáno / Potvrdil</StatLabel>
+              </DashboardCard>
+            )}
+
+            {/* Nepotvrzená věcná - všechny faktury (ne jen moje) */}
+            {canViewAllInvoices && (
+              <DashboardCard
+                onClick={() => handleDashboardCardClick('vecna_nepotvrzeno_vsechny')}
+                $isActive={activeFilterStatus === 'vecna_nepotvrzeno_vsechny'}
+                $color="#be123c"
+                title="Předáno k věcné a zároveň ještě nepotvrzeno (bez Storna, bez ohledu na uživatele)"
+              >
+                <StatHeader>
+                  <StatLabel>Nepotvrzená věcná</StatLabel>
+                  <StatIcon $color="#be123c">
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                  </StatIcon>
+                </StatHeader>
+                <StatValue>{stats.vecnaNepotvrzenoVsechny}</StatValue>
+                <StatLabel>Předáno k věcné, nepotvrzeno (vše)</StatLabel>
               </DashboardCard>
             )}
 
