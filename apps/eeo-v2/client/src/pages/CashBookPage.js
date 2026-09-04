@@ -1239,7 +1239,9 @@ const CashBookPage = () => {
           
           // 2. 🎯 Selector states
           localStorage.removeItem('cashbook_selector_period');
+          // Smazat obě verze: starou globální (fallback) a novou user-specific
           localStorage.removeItem('cashbook_selector_cashbox');
+          localStorage.removeItem(`cashbook_selector_cashbox_${userDetail?.id}`);
           
         } catch (error) {
           console.error('❌ CashBookPage unmount: Chyba při čištění:', error);
@@ -2094,8 +2096,11 @@ const CashBookPage = () => {
         let selectedAssignment = null;
 
         // 🆕 Zkusit localStorage (pro všechny uživatele včetně adminů)
+        // 🔐 BEZPEČNOST: klíč obsahuje userDetail.id aby jeden uživatel neovlivnil druhého
+        // na stejném PC (když se změní přihlášený uživatel, localStorage pro něj je oddělený)
         try {
-          const saved = localStorage.getItem('cashbook_selector_cashbox');
+          const userStorageKey = `cashbook_selector_cashbox_${userDetail?.id}`;
+          const saved = localStorage.getItem(userStorageKey);
           if (saved) {
             const savedData = JSON.parse(saved);
             selectedAssignment = allAvailableAssignments.find(a => a.id === savedData.id);
@@ -2107,10 +2112,10 @@ const CashBookPage = () => {
                 a => String(a.cislo_pokladny) === String(savedData.cislo_pokladny)
               );
             }
-            
+
             // 🔥 FIX: Pokud cached pokladna není v dostupných assignments, vyčistit cache
             if (!selectedAssignment) {
-              localStorage.removeItem('cashbook_selector_cashbox');
+              localStorage.removeItem(userStorageKey);
             }
           }
         } catch (err) {
@@ -2754,13 +2759,15 @@ const CashBookPage = () => {
     setMainAssignment(newAssignment);
 
     // 4️⃣ ULOŽIT VÝBĚR DO CACHE
+    // 🔐 BEZPEČNOST: klíč obsahuje userDetail.id aby jeden uživatel neovlivnil druhého
     try {
       const saveData = {
         id: newAssignment.id,
         cislo_pokladny: newAssignment.cislo_pokladny,
         uzivatel_id: newAssignment.uzivatel_id
       };
-      localStorage.setItem('cashbook_selector_cashbox', JSON.stringify(saveData));
+      const userStorageKey = `cashbook_selector_cashbox_${userDetail?.id}`;
+      localStorage.setItem(userStorageKey, JSON.stringify(saveData));
     } catch (err) {
       console.error('❌ Chyba při ukládání selector cache:', err);
     }
