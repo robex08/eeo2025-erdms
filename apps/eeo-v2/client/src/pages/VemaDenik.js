@@ -1236,7 +1236,7 @@ const VemaDenik = () => {
       size: 100,
       minSize: 100,
       maxSize: 100,
-      enableSorting: false,
+      enableSorting: true,
       cell: info => (
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <VemaKontrolaCell
@@ -1861,7 +1861,7 @@ const VemaDenik = () => {
       size: 100,
       minSize: 100,
       maxSize: 100,
-      enableSorting: false,
+      enableSorting: true,
       cell: info => {
         if (info.row.original._groupedKontrola) {
           const kontrolaVemaId = info.row.original._masterCfak || null;
@@ -2041,7 +2041,7 @@ const VemaDenik = () => {
       size: 100,
       minSize: 100,
       maxSize: 100,
-      enableSorting: false,
+      enableSorting: true,
       cell: info => (
         <div style={{ display: 'flex', justifyContent: 'center' }}>
           <VemaKontrolaCell
