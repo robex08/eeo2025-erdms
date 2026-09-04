@@ -5303,6 +5303,16 @@ export default function InvoiceEvidencePage() {
           errors.fa_datum_vraceni_zam = 'Datum vrácení nemůže být dřívější než datum předání';
         }
       }
+
+      // Křížová validace Datum předání <-> Předáno zaměstnanci
+      // Obě pole jsou jednotlivě nepovinná, ale pokud je vyplněné jen jedno z nich,
+      // notifikace o věcné správnosti se neodešle (viz triggerNotification níže) -> vyžadovat obě
+      if (formData.fa_datum_predani_zam && !formData.fa_predana_zam_id) {
+        errors.fa_predana_zam_id = 'Vyberte zaměstnance, pokud je vyplněno datum předání';
+      }
+      if (formData.fa_predana_zam_id && !formData.fa_datum_predani_zam) {
+        errors.fa_datum_predani_zam = 'Vyplňte datum předání, pokud je vybrán zaměstnanec';
+      }
     }
 
     // 🔥 SPECIÁLNÍ VALIDACE PRO READONLY UŽIVATELE (věcná správnost)
@@ -8087,16 +8097,31 @@ export default function InvoiceEvidencePage() {
             <FieldRow $columns="1fr 1fr">
               <FieldGroup>
                 <FieldLabel>
-                  Datum předání
+                  Datum předání {formData.fa_predana_zam_id && <RequiredStar>*</RequiredStar>}
                 </FieldLabel>
                 <DatePicker
                   fieldName="fa_datum_predani_zam"
                   value={formData.fa_datum_predani_zam}
-                  onChange={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
+                  onChange={(date) => {
+                    setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }));
+                    setFieldErrors(prev => {
+                      const updated = { ...prev };
+                      delete updated.fa_datum_predani_zam;
+                      delete updated.fa_predana_zam_id;
+                      return updated;
+                    });
+                  }}
                   onBlur={(date) => setFormData(prev => ({ ...prev, fa_datum_predani_zam: date }))}
                   disabled={!isInvoiceEditable || loading}
                   placeholder={(isInvoiceEditable && !loading) ? "dd.mm.rrrr" : ""}
+                  hasError={!!fieldErrors.fa_datum_predani_zam}
                 />
+                {fieldErrors.fa_datum_predani_zam && (
+                  <FieldError>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                    {fieldErrors.fa_datum_predani_zam}
+                  </FieldError>
+                )}
               </FieldGroup>
 
               <FieldGroup>
@@ -8125,7 +8150,7 @@ export default function InvoiceEvidencePage() {
             <FieldRow $columns="1fr">
               <FieldGroup>
                 <FieldLabel style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <span>Předáno zaměstnanci</span>
+                  <span>Předáno zaměstnanci {formData.fa_datum_predani_zam && <RequiredStar>*</RequiredStar>}</span>
                   {formData.fa_predana_zam_id && (
                     <button
                       type="button"
@@ -8160,13 +8185,22 @@ export default function InvoiceEvidencePage() {
                 </FieldLabel>
                 <CustomSelect
                   value={formData.fa_predana_zam_id}
-                  onChange={(e) => setFormData(prev => ({ 
-                    ...prev, 
-                    fa_predana_zam_id: e.target.value ? parseInt(e.target.value) : null 
-                  }))}
+                  onChange={(e) => {
+                    setFormData(prev => ({
+                      ...prev,
+                      fa_predana_zam_id: e.target.value ? parseInt(e.target.value) : null
+                    }));
+                    setFieldErrors(prev => {
+                      const updated = { ...prev };
+                      delete updated.fa_datum_predani_zam;
+                      delete updated.fa_predana_zam_id;
+                      return updated;
+                    });
+                  }}
                   options={zamestnanci}
                   placeholder={zamestnanciLoading ? "Načítám zaměstnance..." : "-- Nevybráno --"}
                   disabled={!isInvoiceEditable || loading || zamestnanciLoading}
+                  hasError={!!fieldErrors.fa_predana_zam_id}
                   field="fa_predana_zam_id"
                   selectStates={selectStates}
                   setSelectStates={setSelectStates}
@@ -8188,6 +8222,12 @@ export default function InvoiceEvidencePage() {
                   }}
                   allowEmpty={true}
                 />
+                {fieldErrors.fa_predana_zam_id && (
+                  <FieldError>
+                    <FontAwesomeIcon icon={faExclamationTriangle} />
+                    {fieldErrors.fa_predana_zam_id}
+                  </FieldError>
+                )}
                 {zamestnanciLoading && (
                   <div style={{ fontSize: '0.85rem', color: '#6b7280', marginTop: '0.5rem' }}>
                     <FontAwesomeIcon icon={faSpinner} spin /> Načítám zaměstnance...

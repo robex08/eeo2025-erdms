@@ -86,12 +86,19 @@ export const isValidConcept = (draftData) => {
   // Kontrola polí z Fáze 1 - Info a Schválení PO
   // Validní koncept = uživatel vyplnil jakékoliv pole z Fáze 1 a došlo k auto save
   // IGNORUJE systémová pole: jmeno, telefon, email, uzivatel_id, objednatel_id
+  // ⭐ Zahrnuje i dodavatele a položky - jinak se draft s vyplněným dodavatelem/položkami
+  // ale bez Fáze 1 polí považoval za "prázdný" a tichince se natáhl do nové objednávky
   const hasContent = (formData.predmet && String(formData.predmet).trim()) ||
                     formData.garant_uzivatel_id ||
                     formData.prikazce_id ||
                     (formData.strediska_kod && Array.isArray(formData.strediska_kod) && formData.strediska_kod.length > 0) ||
                     (formData.max_cena_s_dph && parseFloat(formData.max_cena_s_dph) > 0) ||
-                    (formData.popis_pozadavku && String(formData.popis_pozadavku).trim());
+                    (formData.popis_pozadavku && String(formData.popis_pozadavku).trim()) ||
+                    (formData.dodavatel_nazev && String(formData.dodavatel_nazev).trim()) ||
+                    (formData.dodavatel_ico && String(formData.dodavatel_ico).trim()) ||
+                    (formData.dodavatel_adresa && String(formData.dodavatel_adresa).trim()) ||
+                    (Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) ||
+                    (Array.isArray(formData.faktury) && formData.faktury.length > 0);
 
   // Debug log odstraněn - způsoboval opakovaný výpis
   return hasContent;
@@ -118,7 +125,12 @@ export const hasDraftChanges = (draftData) => {
                     formData.prikazce_id ||
                     (formData.strediska_kod && Array.isArray(formData.strediska_kod) && formData.strediska_kod.length > 0) ||
                     (formData.max_cena_s_dph && parseFloat(formData.max_cena_s_dph) > 0) ||
-                    (formData.popis_pozadavku && String(formData.popis_pozadavku).trim());
+                    (formData.popis_pozadavku && String(formData.popis_pozadavku).trim()) ||
+                    (formData.dodavatel_nazev && String(formData.dodavatel_nazev).trim()) ||
+                    (formData.dodavatel_ico && String(formData.dodavatel_ico).trim()) ||
+                    (formData.dodavatel_adresa && String(formData.dodavatel_adresa).trim()) ||
+                    (Array.isArray(formData.polozky_objednavky) && formData.polozky_objednavky.length > 0) ||
+                    (Array.isArray(formData.faktury) && formData.faktury.length > 0);
   return hasContent;
 };
 

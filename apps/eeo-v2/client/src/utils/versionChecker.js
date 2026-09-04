@@ -113,6 +113,14 @@ class VersionChecker {
         return;
       }
 
+      // ⚠️ Lokální `npm start` (bez buildu) nemá version.json vůbec k dispozici -
+      // dev server vrátí historyApiFallback (index.html) s status 200 a Content-Type text/html.
+      // To NENÍ chyba, jen chybějící build artefakt - tichý návrat bez varování v konzoli.
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('json')) {
+        return;
+      }
+
       const data = await response.json();
 
       // Debug info
