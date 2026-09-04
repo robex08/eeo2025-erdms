@@ -95,14 +95,14 @@ function handle_vema_firmy_list($input, $config, $queries) {
         $params = array();
 
         // Výchozí chování: vracet pouze aktivní záznamy.
-        $where[] = "stav_zaznamu = 'aktivni'";
+        $where[] = "f.stav_zaznamu = 'aktivni'";
 
         if ($search !== '') {
             // Fulltext search přes klíčové sloupce firem
-            $where[] = "(nazev LIKE ? OR ico LIKE ? OR email LIKE ? 
-                        OR regcisph LIKE ? OR ulice LIKE ? OR obec LIKE ? 
-                        OR telefon LIKE ? OR mobil LIKE ? OR web LIKE ? 
-                        OR dnazev LIKE ? OR dic LIKE ?)";
+            $where[] = "(f.nazev LIKE ? OR f.ico LIKE ? OR f.email LIKE ?
+                        OR f.regcisph LIKE ? OR f.ulice LIKE ? OR f.obec LIKE ?
+                        OR f.telefon LIKE ? OR f.mobil LIKE ? OR f.web LIKE ?
+                        OR f.dnazev LIKE ? OR f.dic LIKE ?)";
             $search_param = '%' . $search . '%';
             $params[] = $search_param; // nazev
             $params[] = $search_param; // ico
@@ -119,7 +119,7 @@ function handle_vema_firmy_list($input, $config, $queries) {
 
         if ($stav !== '') {
             // Parametr stav mapujeme na interní stav lifecycle (stav_zaznamu).
-            $where[] = "stav_zaznamu = ?";
+            $where[] = "f.stav_zaznamu = ?";
             $params[] = $stav;
         }
 
@@ -144,7 +144,7 @@ function handle_vema_firmy_list($input, $config, $queries) {
                 FROM `" . TBL_VEMA_FIRMYUPL . "` f
                     LEFT JOIN `25v_kontrola_metadata` k
                          ON k.typ_zaznamu = 'firma'
-                        AND k.vema_id = f.firma
+                        AND k.vema_id COLLATE utf8mb4_unicode_ci = f.firma
                 " . $where_sql . "
                 ORDER BY f.nazev ASC
                 LIMIT $limit OFFSET $offset";
@@ -348,8 +348,8 @@ function handle_vema_faktury_list($input, $config, $queries) {
                         AND smlouvy.stav_zaznamu = 'aktivni'
                     LEFT JOIN `25v_kontrola_metadata` k
                          ON k.typ_zaznamu = 'faktura'
-                        AND k.vema_id = f.cfak
-                        AND (k.vema_id_secondary = f.firma OR k.vema_id_secondary = '')
+                        AND k.vema_id COLLATE utf8mb4_unicode_ci = f.cfak
+                        AND (k.vema_id_secondary COLLATE utf8mb4_unicode_ci = f.firma OR k.vema_id_secondary = '')
                 " . $where_sql . "
                 ORDER BY f.datpri DESC, f.cfak DESC
                 LIMIT $limit OFFSET $offset";
@@ -573,7 +573,7 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
                         AND firmy.stav_zaznamu = 'aktivni'
                     LEFT JOIN `25v_kontrola_metadata` k
                          ON k.typ_zaznamu = 'smlouva'
-                        AND k.vema_id = s.csml
+                        AND k.vema_id COLLATE utf8mb4_unicode_ci = s.csml
                 " . $where_sql . "
                 ORDER BY s.datuzavr DESC, s.csml DESC
                 LIMIT $limit OFFSET $offset";
