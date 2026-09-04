@@ -191,6 +191,9 @@ const FakturySubTab = styled.button`
   font-weight: 600;
   cursor: pointer;
   transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 
   &:hover {
     border-color: #202d65;
@@ -198,14 +201,39 @@ const FakturySubTab = styled.button`
   }
 `;
 
+const BetaBadgeSmall = styled.span`
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.35rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: ${props => props.$active ? 'rgba(255, 255, 255, 0.3)' : 'rgba(234, 179, 8, 0.2)'};
+  color: ${props => props.$active ? 'rgba(255, 255, 255, 0.95)' : '#b45309'};
+  border-radius: 3px;
+  border: 1px solid ${props => props.$active ? 'rgba(255, 255, 255, 0.4)' : 'rgba(234, 179, 8, 0.4)'};
+  flex-shrink: 0;
+`;
+
 const FAKTURY_SUB_SECTIONS = [
   { id: 'tabulka', label: 'Veškeré doklady' },
   { id: 'kontrola-obj', label: 'Kontrola OBJ' },
+  { id: 'kontrola-obj-beta', label: 'Kontrola OBJ BETA', isBeta: true, requiredRoles: ['SUPERADMIN', 'administrator'] },
   { id: 'kontrola-sml', label: 'Kontrola SML' },
   { id: 'kontrola-rp', label: 'Kontrola ročních poplatků' },
   { id: 'vema-bez-eeo', label: 'VEMA doklady bez EEO dokladů' },
   { id: 'eeo-bez-vema', label: 'Faktury EEO bez VEMA dokladů' }
 ];
+
+// Helper: Kontrola, zda má uživatel právo vidět danou sekci
+const canAccessSection = (section, userDetail) => {
+  if (!section.requiredRoles) return true;
+  if (!userDetail?.roles) return false;
+  return section.requiredRoles.some(role =>
+    userDetail.roles.some(r => r.kod_role === role)
+  );
+};
 
 const VEMA_ACTIVE_TAB_LS_KEY = 'eeo_vs_vema_active_tab';
 const VEMA_FAKTURY_SUBTAB_LS_KEY = 'eeo_vs_vema_faktury_subtab';
@@ -383,6 +411,46 @@ const Badge = styled.span`
     if (props.$type === 'neaktivni') return '#6b7280';
     return '#374151';
   }};
+`;
+
+// Dashboard Kontroly
+const DashboardContainer = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  margin-top: 1rem;
+`;
+
+const DashboardCard = styled.div`
+  background: white;
+  border-radius: 8px;
+  padding: 1.25rem;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid ${props => props.$color || '#cbd5e1'};
+  transition: all 0.2s;
+
+  &:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+  }
+`;
+
+const DashboardValue = styled.div`
+  font-size: 2rem;
+  font-weight: 700;
+  color: ${props => props.$color || '#1e293b'};
+  margin-bottom: 0.5rem;
+  font-variant-numeric: tabular-nums;
+`;
+
+const DashboardLabel = styled.div`
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 `;
 
 // Import Modal
@@ -815,6 +883,13 @@ const VemaDenik = () => {
   const [searchInput, setSearchInput] = useState(''); // Pro okamžitou aktualizaci inputu
   const [badgeFilter, setBadgeFilter] = useState('all'); // all | 0 | 1 | 2 | 3plus
   const [warningOnlyFilter, setWarningOnlyFilter] = useState(false);
+
+  // BETA Kontrola OBJ - nezávislé filtry a stav
+  const [betaPageIndex, setBetaPageIndex] = useState(0);
+  const [betaPageSize, setBetaPageSize] = useState(50);
+  const [betaSorting, setBetaSorting] = useState([]);
+  const [betaBadgeFilter, setBetaBadgeFilter] = useState('all');
+  const [betaWarningOnlyFilter, setBetaWarningOnlyFilter] = useState(false);
 
   // Data
   const [firmyData, setFirmyData] = useState([]);
@@ -2093,20 +2168,22 @@ const VemaDenik = () => {
     };
 
     const applyBadgeFilter = (items) => {
-      if (badgeFilter === 'all') return items;
+      // Použij správné filtry podle toho, která sekce je aktivní
+      const currentBadgeFilter = fakturySubTab === 'kontrola-obj-beta' ? betaBadgeFilter : badgeFilter;
+      if (currentBadgeFilter === 'all') return items;
 
       return items.filter((item) => {
         const count = getBadgeCount(item);
-        if (badgeFilter === '0') return count === 0;
-        if (badgeFilter === '1') return count === 1;
-        if (badgeFilter === '2') return count === 2;
-        if (badgeFilter === '3plus') return count >= 3;
+        if (currentBadgeFilter === '0') return count === 0;
+        if (currentBadgeFilter === '1') return count === 1;
+        if (currentBadgeFilter === '2') return count === 2;
+        if (currentBadgeFilter === '3plus') return count >= 3;
         return true;
       });
     };
 
     const hasWarningIssue = (item) => {
-      const useObjRules = fakturySubTab === 'kontrola-obj';
+      const useObjRules = ['kontrola-obj', 'kontrola-obj-beta'].includes(fakturySubTab);
       const useSmlRules = fakturySubTab === 'kontrola-sml';
 
       if (item?._groupedKontrola) {
@@ -2124,7 +2201,9 @@ const VemaDenik = () => {
     };
 
     const applyWarningFilter = (items) => {
-      if (!warningOnlyFilter) return items;
+      // Použij správné filtry podle toho, která sekce je aktivní
+      const currentWarningFilter = fakturySubTab === 'kontrola-obj-beta' ? betaWarningOnlyFilter : warningOnlyFilter;
+      if (!currentWarningFilter) return items;
       return items.filter((item) => hasWarningIssue(item));
     };
 
@@ -2199,6 +2278,7 @@ const VemaDenik = () => {
 
     switch (fakturySubTab) {
       case 'kontrola-obj':
+      case 'kontrola-obj-beta':
         result = groupFakturyForKontrola(fakturyData.filter(item => {
           const hasObj = item.cobj && String(item.cobj).trim() !== '';
           const hasEvidencniSmlouva = item.smlouva_ecsml && String(item.smlouva_ecsml).trim() !== '';
@@ -2244,6 +2324,30 @@ const VemaDenik = () => {
     return [];
   }, [activeTab, firmyData, filteredFakturyData, smlouvyData]);
 
+  // Kontrola přístupu k aktuálnímu fakturySubTab - pokud uživatel nemá právo, přepnout na 'tabulka'
+  useEffect(() => {
+    if (activeTab !== 'faktury') return;
+    const currentSection = FAKTURY_SUB_SECTIONS.find(s => s.id === fakturySubTab);
+    if (currentSection && !canAccessSection(currentSection, userDetail)) {
+      setFakturySubTab('tabulka');
+      setPageIndex(0);
+      setBetaPageIndex(0);
+    }
+  }, [userDetail, activeTab, fakturySubTab]);
+
+  // Resetuj třídění když se změní sekce - aby měla každá sekce své vlastní třídění
+  useEffect(() => {
+    if (activeTab === 'faktury') {
+      if (fakturySubTab === 'kontrola-obj-beta') {
+        // BETA sekce: resetuj na betaSorting
+        setBetaSorting([]);
+      } else {
+        // Ostatní sekce: resetuj na normální sorting
+        setSorting([]);
+      }
+    }
+  }, [fakturySubTab, activeTab]);
+
   // TanStack Table
   const table = useReactTable({
     data,
@@ -2266,25 +2370,51 @@ const VemaDenik = () => {
     autoResetPageIndex: false,
     getRowCanExpand: () => activeTab === 'faktury', // Pouze faktury mají expandable rows
     state: {
-      sorting,
+      sorting: fakturySubTab === 'kontrola-obj-beta' ? betaSorting : sorting,
       expanded
     },
     onExpandedChange: setExpanded,
-    onSortingChange: setSorting,
+    onSortingChange: (updater) => {
+      if (fakturySubTab === 'kontrola-obj-beta') {
+        setBetaSorting(typeof updater === 'function' ? updater(betaSorting) : updater);
+      } else {
+        setSorting(typeof updater === 'function' ? updater(sorting) : updater);
+      }
+    },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getExpandedRowModel: getExpandedRowModel()
   });
+
+  // Helper: Vrátí správný state v závislosti na aktivní sekci
+  const getCurrentPageIndex = () => fakturySubTab === 'kontrola-obj-beta' ? betaPageIndex : pageIndex;
+  const getCurrentPageSize = () => fakturySubTab === 'kontrola-obj-beta' ? betaPageSize : pageSize;
+  const setCurrentPageIndex = (value) => {
+    if (fakturySubTab === 'kontrola-obj-beta') {
+      setBetaPageIndex(typeof value === 'function' ? value(betaPageIndex) : value);
+    } else {
+      setPageIndex(typeof value === 'function' ? value(pageIndex) : value);
+    }
+  };
+  const setCurrentPageSize = (value) => {
+    if (fakturySubTab === 'kontrola-obj-beta') {
+      setBetaPageSize(value);
+    } else {
+      setPageSize(value);
+    }
+  };
 
   // Paginated data - počítáno během renderu, ne v useMemo
   // Důvod: table.getSortedRowModel() je interně memoized TanStackem,
   // ale referenční stabilita `table` nezaručuje aktuální data
   const allSortedRows = table.getSortedRowModel().rows;
   const totalRows = allSortedRows.length;
-  const totalPages = Math.max(1, Math.ceil(totalRows / pageSize));
-  const safePageIndex = Math.min(pageIndex, totalPages - 1);
-  const start = safePageIndex * pageSize;
-  const end = start + pageSize;
+  const currentPageSize = getCurrentPageSize();
+  const totalPages = Math.max(1, Math.ceil(totalRows / currentPageSize));
+  const currentPageIndex = getCurrentPageIndex();
+  const safePageIndex = Math.min(currentPageIndex, totalPages - 1);
+  const start = safePageIndex * currentPageSize;
+  const end = start + currentPageSize;
   const paginatedData = allSortedRows.slice(start, end);
 
   // ============================================================================
@@ -2293,19 +2423,19 @@ const VemaDenik = () => {
 
   const handleSearchChange = (e) => {
     setSearchInput(e.target.value); // Okamžitá aktualizace inputu
-    setPageIndex(0); // Reset to first page on search
+    setCurrentPageIndex(0); // Reset to first page on search
   };
 
   const handleClearSearch = () => {
     setSearchInput('');
     setSearch('');
-    setPageIndex(0);
+    setCurrentPageIndex(0);
   };
 
-  const goToFirstPage = () => setPageIndex(0);
-  const goToPreviousPage = () => setPageIndex(prev => Math.max(0, prev - 1));
-  const goToNextPage = () => setPageIndex(prev => Math.min(totalPages - 1, prev + 1));
-  const goToLastPage = () => setPageIndex(totalPages - 1);
+  const goToFirstPage = () => setCurrentPageIndex(0);
+  const goToPreviousPage = () => setCurrentPageIndex(prev => Math.max(0, prev - 1));
+  const goToNextPage = () => setCurrentPageIndex(prev => Math.min(totalPages - 1, prev + 1));
+  const goToLastPage = () => setCurrentPageIndex(totalPages - 1);
 
   // ============================================================================
   // RENDER EXPANDED CONTENT - VEMA-EEO Propojení (TABULKOVÁ STRUKTURA)
@@ -2920,21 +3050,88 @@ const VemaDenik = () => {
         </SecondaryTabs>
       </TabsContainer>
 
+      {/* Dashboard s statistikami - viditelný pro VŠECHNY sekce Faktury */}
+      {activeTab === 'faktury' && dataLoaded.faktury && (
+        <DashboardContainer>
+          {(() => {
+            // Počítáme ze všech dat (zobrazovaných + skrytých filtrů)
+            let zkontrolovano = 0;
+            let vPoradi = 0;
+            let nezkontrolovano = 0;
+            let sVarovanim = 0;
+
+            // Používáme allSortedRows místo `data` abychom měli všechna data bez filtrů
+            allSortedRows.forEach(row => {
+              const fa = row.original;
+              const kontrola = fa.kontrola || 'nezkontrolovano';
+              if (kontrola === 'zkontrolovano') zkontrolovano++;
+              else if (kontrola === 'v_kontrole') vPoradi++;
+              else if (kontrola === 'nezkontrolovano') nezkontrolovano++;
+
+              // S varováním = má has_chyba_obj nebo has_chyba_sml
+              const hasChybaObj = Number(fa?.has_chyba_obj || 0) > 0;
+              const hasChybaSml = Number(fa?.has_chyba_sml || 0) > 0;
+              if (hasChybaObj || hasChybaSml) sVarovanim++;
+            });
+
+            return (
+              <>
+                <DashboardCard $color="#16a34a">
+                  <DashboardValue $color="#166534">{zkontrolovano}</DashboardValue>
+                  <DashboardLabel>
+                    <span>✓</span> Zkontrolováno
+                  </DashboardLabel>
+                </DashboardCard>
+
+                <DashboardCard $color="#2563eb">
+                  <DashboardValue $color="#1e40af">{vPoradi}</DashboardValue>
+                  <DashboardLabel>
+                    <span>⏳</span> V kontrole
+                  </DashboardLabel>
+                </DashboardCard>
+
+                <DashboardCard $color="#6366f1">
+                  <DashboardValue $color="#4f46e5">{nezkontrolovano}</DashboardValue>
+                  <DashboardLabel>
+                    <span>◯</span> Nezkontrolováno
+                  </DashboardLabel>
+                </DashboardCard>
+
+                <DashboardCard $color="#dc2626">
+                  <DashboardValue $color="#991b1b">{sVarovanim}</DashboardValue>
+                  <DashboardLabel>
+                    <span>⚠️</span> S varováním
+                  </DashboardLabel>
+                </DashboardCard>
+              </>
+            );
+          })()}
+        </DashboardContainer>
+      )}
+
       {activeTab === 'faktury' && (
-        <FakturySubTabs>
-          {FAKTURY_SUB_SECTIONS.map(section => (
-            <FakturySubTab
-              key={section.id}
-              $active={fakturySubTab === section.id}
-              onClick={() => {
-                setFakturySubTab(section.id);
-                setPageIndex(0);
-              }}
-            >
-              {section.label}
-            </FakturySubTab>
-          ))}
-        </FakturySubTabs>
+        <>
+          <FakturySubTabs>
+            {FAKTURY_SUB_SECTIONS.filter(section => canAccessSection(section, userDetail)).map(section => (
+              <FakturySubTab
+                key={section.id}
+                $active={fakturySubTab === section.id}
+                onClick={() => {
+                  setFakturySubTab(section.id);
+                  // Resetuj jen příslušné filtry pro danou sekci
+                  if (section.id === 'kontrola-obj-beta') {
+                    setBetaPageIndex(0);
+                  } else {
+                    setPageIndex(0);
+                  }
+                }}
+              >
+                {section.label}
+                {section.isBeta && <BetaBadgeSmall $active={fakturySubTab === section.id}>Beta</BetaBadgeSmall>}
+              </FakturySubTab>
+            ))}
+          </FakturySubTabs>
+        </>
       )}
 
       {/* Error */}
@@ -2962,54 +3159,111 @@ const VemaDenik = () => {
 
         {activeTab === 'faktury' && (
           <FilterToolsRight>
-            <select
-              value={badgeFilter}
-              onChange={(e) => {
-                setBadgeFilter(e.target.value);
-                setPageIndex(0);
-              }}
-              style={{
-                border: '1px solid #cbd5e1',
-                borderRadius: '6px',
-                height: '40px',
-                padding: '0 0.5rem',
-                fontSize: '0.78rem',
-                color: '#1e293b',
-                background: '#fff',
-                width: '96px',
-                minWidth: '96px'
-              }}
-              title="Filtrovat podle počtu dokladů v badge"
-            >
-              <option value="all">Vše</option>
-              <option value="0">Badge 0</option>
-              <option value="1">Badge 1</option>
-              <option value="2">Badge 2</option>
-              <option value="3plus">Badge 3+</option>
-            </select>
+            {/* BETA režim má vlastní filtry */}
+            {fakturySubTab === 'kontrola-obj-beta' ? (
+              <>
+                <select
+                  value={betaBadgeFilter}
+                  onChange={(e) => {
+                    setBetaBadgeFilter(e.target.value);
+                    setBetaPageIndex(0);
+                  }}
+                  style={{
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    height: '40px',
+                    padding: '0 0.5rem',
+                    fontSize: '0.78rem',
+                    color: '#1e293b',
+                    background: '#fff',
+                    width: '96px',
+                    minWidth: '96px'
+                  }}
+                  title="Filtrovat podle počtu dokladů v badge (BETA)"
+                >
+                  <option value="all">Vše</option>
+                  <option value="0">Badge 0</option>
+                  <option value="1">Badge 1</option>
+                  <option value="2">Badge 2</option>
+                  <option value="3plus">Badge 3+</option>
+                </select>
 
-            <button
-              onClick={() => {
-                setWarningOnlyFilter((prev) => !prev);
-                setPageIndex(0);
-              }}
-              title={warningOnlyFilter ? 'Filtr varování zapnut (pouze chybové položky)' : 'Zobrazit pouze položky s varováním'}
-              style={{
-                height: '40px',
-                width: '40px',
-                borderRadius: '6px',
-                border: `1px solid ${warningOnlyFilter ? '#ef4444' : '#cbd5e1'}`,
-                background: warningOnlyFilter ? '#fee2e2' : '#ffffff',
-                color: warningOnlyFilter ? '#dc2626' : '#64748b',
-                cursor: 'pointer',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '0.9rem'
-              }}
-            >
-              <FontAwesomeIcon icon={faBoltLightning} />
-            </button>
+                <button
+                  onClick={() => {
+                    setBetaWarningOnlyFilter((prev) => !prev);
+                    setBetaPageIndex(0);
+                  }}
+                  title={betaWarningOnlyFilter ? 'Filtr varování zapnut (pouze problematické)' : 'Zobrazit pouze problematické položky'}
+                  style={{
+                    height: '40px',
+                    width: '40px',
+                    borderRadius: '6px',
+                    border: `1px solid ${betaWarningOnlyFilter ? '#ef4444' : '#cbd5e1'}`,
+                    background: betaWarningOnlyFilter ? '#fee2e2' : '#ffffff',
+                    color: betaWarningOnlyFilter ? '#dc2626' : '#64748b',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faBoltLightning} />
+                </button>
+              </>
+            ) : (
+              /* Normální režim pro ostatní sekce */
+              <>
+                <select
+                  value={badgeFilter}
+                  onChange={(e) => {
+                    setBadgeFilter(e.target.value);
+                    setPageIndex(0);
+                  }}
+                  style={{
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '6px',
+                    height: '40px',
+                    padding: '0 0.5rem',
+                    fontSize: '0.78rem',
+                    color: '#1e293b',
+                    background: '#fff',
+                    width: '96px',
+                    minWidth: '96px'
+                  }}
+                  title="Filtrovat podle počtu dokladů v badge"
+                >
+                  <option value="all">Vše</option>
+                  <option value="0">Badge 0</option>
+                  <option value="1">Badge 1</option>
+                  <option value="2">Badge 2</option>
+                  <option value="3plus">Badge 3+</option>
+                </select>
+
+                <button
+                  onClick={() => {
+                    setWarningOnlyFilter((prev) => !prev);
+                    setPageIndex(0);
+                  }}
+                  title={warningOnlyFilter ? 'Filtr varování zapnut (pouze chybové položky)' : 'Zobrazit pouze položky s varováním'}
+                  style={{
+                    height: '40px',
+                    width: '40px',
+                    borderRadius: '6px',
+                    border: `1px solid ${warningOnlyFilter ? '#ef4444' : '#cbd5e1'}`,
+                    background: warningOnlyFilter ? '#fee2e2' : '#ffffff',
+                    color: warningOnlyFilter ? '#dc2626' : '#64748b',
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faBoltLightning} />
+                </button>
+              </>
+            )}
           </FilterToolsRight>
         )}
 
@@ -3283,7 +3537,7 @@ const VemaDenik = () => {
                   <FontAwesomeIcon icon={faAnglesRight} />
                 </PageButton>
 
-                <PageSizeSelector value={pageSize} onChange={(e) => { setPageSize(Number(e.target.value)); setPageIndex(0); }}>
+                <PageSizeSelector value={getCurrentPageSize()} onChange={(e) => { setCurrentPageSize(Number(e.target.value)); setCurrentPageIndex(0); }}>
                   <option value={25}>25 / stránku</option>
                   <option value={50}>50 / stránku</option>
                   <option value={100}>100 / stránku</option>
