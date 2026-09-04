@@ -6071,8 +6071,15 @@ function OrderForm25() {
               const draftOrderId = draftData.savedOrderId || draftData.formData.id;
               const currentOrderId = editOrderId || loadedData?.id;
 
-              // Při editaci lze použít jen draft se stejným ID. Koncept bez ID nesmí přepsat DB data.
-              if (currentOrderId && (!draftOrderId || String(draftOrderId) !== String(currentOrderId))) {
+              // Při editaci lze použít jen draft se stejným ID (koncept bez ID nesmí přepsat DB data).
+              // Při zakládání NOVÉ objednávky (currentOrderId prázdné) lze použít jen draft,
+              // který sám nepatří k žádné jiné uložené objednávce – jinak by se do nového
+              // formuláře tiše natáhla data z předchozí (jiné) objednávky.
+              const draftBelongsHere = currentOrderId
+                ? (!!draftOrderId && String(draftOrderId) === String(currentOrderId))
+                : !draftOrderId;
+
+              if (!draftBelongsHere) {
                 console.warn('⚠️ Draft nepatří k otevírané objednávce, ignoruji:', { draftOrderId, currentOrderId });
               } else {
                 // 💰 LP ČERPÁNÍ: Načíst pouze z draftu stejné objednávky nebo z konceptu nové objednávky
@@ -11513,9 +11520,11 @@ function OrderForm25() {
       addDebugLog('info', 'VECNA-SPRAVNOST', 'save-data', `Ukládám věcnou správnost: checkbox=${orderData.potvrzeni_vecne_spravnosti}, umisteni="${orderData.vecna_spravnost_umisteni_majetku}", poznamka="${orderData.vecna_spravnost_poznamka}", user_id=${orderData.potvrdil_vecnou_spravnost_id}, dt=${orderData.dt_potvrzeni_vecne_spravnosti}`);
 
       // Dodací a záruční podmínky
-      if (formData.dt_predpokladany_termin_dodani) orderData.dt_predpokladany_termin_dodani = formData.dt_predpokladany_termin_dodani;
-      if (formData.misto_dodani) orderData.misto_dodani = formData.misto_dodani;
-      if (formData.zaruka) orderData.zaruka = formData.zaruka;
+      // ⚠️ VŽDY posílat (i prázdné/null) - jinak vymazání pole uživatelem backend ignoruje
+      // a při partial update zůstane v DB stará hodnota
+      orderData.dt_predpokladany_termin_dodani = formData.dt_predpokladany_termin_dodani || null;
+      orderData.misto_dodani = formData.misto_dodani || '';
+      orderData.zaruka = formData.zaruka || '';
 
       // Informace o dodavateli
       orderData.dodavatel_id = formData.dodavatel_id || null;
@@ -11531,11 +11540,16 @@ function OrderForm25() {
       orderData.dodavatel_kontakt_telefon = formData.dodavatel_kontakt_telefon || '';
 
       // Kontaktní údaje objednatele
+      // ⚠️ NEODESÍLAT vždy: objednatel_jmeno/email/telefon jsou v DB jen odvozené
+      // JOIN sloupce z uživatelského účtu (u_objednatel.jmeno/email/telefon), tabulka
+      // objednávek žádný takový sloupec nemá - backend na ně spadne "Unknown column".
       if (formData.objednatel_jmeno) orderData.objednatel_jmeno = formData.objednatel_jmeno;
       if (formData.objednatel_email) orderData.objednatel_email = formData.objednatel_email;
       if (formData.objednatel_telefon) orderData.objednatel_telefon = formData.objednatel_telefon;
 
       // Popis a poznámky
+      // ⚠️ popis_pozadavku/poznamky nemají v order-v2/update odpovídající DB sloupec
+      // (nenalezeno nikde v backendu) - posílat jen když jsou vyplněné, jinak stejná chyba.
       if (formData.popis_pozadavku) orderData.popis_pozadavku = formData.popis_pozadavku;
       if (formData.poznamky) orderData.poznamky = formData.poznamky;
 
@@ -18495,9 +18509,13 @@ function OrderForm25() {
             localStorage.removeItem(`openOrderInConcept-${user_id}`);
             localStorage.removeItem(`order_form_savedOrderId_${user_id}`);
             localStorage.removeItem(`savedOrderId-${user_id}`);
-            
+
             // LP ČERPÁNÍ: Vyčistit fakturyLPCerpani z localStorage
             localStorage.removeItem(`order25_lpCerpani_${user_id}`);
+
+            // Nedokončený upload příloh - klíč pro NOVOU objednávku je sdílený ("draft"),
+            // musí se smazat i tady, jinak by zbyl pro příští otevírání formuláře
+            localStorage.removeItem(`unsaved_attachments_${formData.id || 'draft'}`);
           } catch (e) {
             // ignoruj chybu
           }
@@ -18648,6 +18666,10 @@ function OrderForm25() {
           
           // LP ČERPÁNÍ: Vyčistit fakturyLPCerpani z localStorage
           localStorage.removeItem(`order25_lpCerpani_${user_id}`);
+
+          // Nedokončený upload příloh - klíč pro NOVOU objednávku je sdílený ("draft"),
+          // musí se smazat i tady, jinak by zbyl pro příští otevírání formuláře
+          localStorage.removeItem(`unsaved_attachments_${formData.id || 'draft'}`);
         } catch (e) {
           // ignoruj chybu
         }

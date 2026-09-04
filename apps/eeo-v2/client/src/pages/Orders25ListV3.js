@@ -2981,9 +2981,9 @@ function Orders25ListV3() {
           cancelText="Zrušit"
           onCancel={() => setShowNewOrderConfirmDialog(false)}
         >
-          Máte rozpracovanou objednávku v Order formuláři.
+          Máte rozpracovanou objednávku v objednávkovém formuláři.
           <br />
-          Pokud budete pokračovat, rozpracovaná data se zavřou a otevře se nová objednávka.
+          Pokud budete pokračovat, můžete přijít o neuložená data a otevře se nová objednávka.
         </ConfirmDialog>,
         document.body
       )}
