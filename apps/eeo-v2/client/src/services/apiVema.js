@@ -250,7 +250,9 @@ export async function uploadVemaFiles({
     onProgress(30);
 
     // Parsování fpazahl.xlsx
-    const fpazahlData = await parseXLSXFile(fpazahlFile, XLSX);
+    let fpazahlData = await parseXLSXFile(fpazahlFile, XLSX);
+    // Normalizace chybějící hlavičky 'dof' (ve starších exportech z VEMA je prázdná)
+    fpazahlData = normalizeFpazahlColumns(fpazahlData);
     onProgress(50);
 
     // Parsování smla.xlsx
@@ -297,30 +299,55 @@ export async function uploadVemaFiles({
 async function parseXLSXFile(file, XLSX) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    
+
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array' });
-        
+
         // Předpokládáme že data jsou na prvním sheetu
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
-        
+
         // Převod na JSON (pole objektů)
         const jsonData = XLSX.utils.sheet_to_json(worksheet, {
           raw: true,  // Zachovat čísla (včetně Excel serial dates)
           defval: null // Prázdné buňky jako null
         });
-        
+
         resolve(jsonData);
       } catch (error) {
         reject(new Error('Chyba při parsování XLSX souboru: ' + error.message));
       }
     };
-    
+
     reader.onerror = () => reject(new Error('Chyba při čtení souboru'));
     reader.readAsArrayBuffer(file);
+  });
+}
+
+/**
+ * Normalizace sloupců fpazahl/fpprip souboru
+ * V nových VEMA exportech (fpprip.xlsx) má sloupec 'dof' prázdnou hlavičku (jen mezera)
+ * Tato funkce najde takový sloupec a přemapuje jeho data na klíč 'dof'
+ * U starších souborů (fpazahl.xlsx) se chová jako no-op
+ * @private
+ */
+function normalizeFpazahlColumns(data) {
+  return data.map(row => {
+    // Pokud sloupec 'dof' chybí, hledáme klíč s prázdnou/whitespace hlavičkou
+    if (row.dof === undefined) {
+      for (const key in row) {
+        if (key.trim() === '') {
+          // Přemapujeme hodnotu na sloupec 'dof'
+          row.dof = row[key];
+          // Odstraníme původní prázdný klíč
+          delete row[key];
+          break;
+        }
+      }
+    }
+    return row;
   });
 }
 
