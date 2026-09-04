@@ -1110,3 +1110,140 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
         ));
     }
 }
+
+/**
+ * Vrátí EEO faktury (25a_objednavky_faktury) přímo podle objednavka_id -
+ * BEZ fuzzy hledání přes VS/doklad/částku (na rozdíl od handle_vema_faktury_propojeni_eeo výše).
+ *
+ * Důvod existence: fuzzy hledání ve funkci výš má víc podmíněných větví
+ * (VS+doklad přesně, jen VS, jen doklad) a v některých kombinacích reálně
+ * existující fakturu minou (např. VEMA má vyplněný doklad, ale EEO fa_vema_kod
+ * je prázdné - větev "jen VS" se pak vůbec nespustí). Tahle funkce je proto
+ * čistě přídavná - nenahrazuje ani neupravuje fuzzy hledání používané pro
+ * Kontrola OBJ (ani BETA), jen dává BETA seskupenému pohledu možnost ukázat
+ * skutečná VS/doklad/částka čísla faktur, které EEO na dané objednávce eviduje,
+ * i když je fuzzy hledání nedohledá.
+ *
+ * @param array $input {token, username, objednavka_ids: int[]}
+ * @param array $config
+ */
+function handle_vema_objednavky_faktury_list($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        return;
+    }
+
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
+        return;
+    }
+
+    try {
+        $token_data = verify_token($token);
+        if (!$token_data) {
+            http_response_code(401);
+            echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+            return;
+        }
+
+        if ($token_data['username'] !== $username) {
+            http_response_code(401);
+            echo json_encode(array('status' => 'error', 'message' => 'Uživatelské jméno neodpovídá tokenu'));
+            return;
+        }
+
+        if (!has_permission($token_data['id'], 'VEMA_VIEW')) {
+            http_response_code(403);
+            echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k zobrazení Deníku VEMA'));
+            return;
+        }
+    } catch (Exception $e) {
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba autentizace: ' . $e->getMessage()));
+        return;
+    }
+
+    $objednavka_ids_raw = isset($input['objednavka_ids']) && is_array($input['objednavka_ids']) ? $input['objednavka_ids'] : array();
+    $objednavka_ids = array();
+    foreach ($objednavka_ids_raw as $val) {
+        $id = (int)$val;
+        if ($id > 0) $objednavka_ids[$id] = true;
+    }
+    $objednavka_ids = array_keys($objednavka_ids);
+
+    if (empty($objednavka_ids)) {
+        http_response_code(200);
+        echo json_encode(array('status' => 'success', 'data' => array('faktury_by_objednavka' => new stdClass())));
+        return;
+    }
+
+    // Bezpečnostní strop na počet ID v jednom dotazu (BETA stránkuje max 50 řádků
+    // v seskupeném pohledu, kandidátních objednávek na stránku bývá řádově méně).
+    $objednavka_ids = array_slice($objednavka_ids, 0, 200);
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $placeholders = implode(',', array_fill(0, count($objednavka_ids), '?'));
+        $sql = "SELECT
+                    f.id,
+                    f.objednavka_id,
+                    f.fa_cislo_vema,
+                    f.fa_vema_kod,
+                    f.fa_datum_vystaveni,
+                    f.fa_datum_splatnosti,
+                    f.fa_castka,
+                    f.stav
+                FROM `" . TBL_FAKTURY . "` f
+                WHERE f.objednavka_id IN ($placeholders)
+                  AND f.aktivni = 1
+                  AND f.stav != 'STORNO'
+                ORDER BY f.objednavka_id, f.fa_datum_vystaveni DESC";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($objednavka_ids);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $faktury_by_objednavka = array();
+        foreach ($rows as $row) {
+            $oid = (string)$row['objednavka_id'];
+            if (!isset($faktury_by_objednavka[$oid])) {
+                $faktury_by_objednavka[$oid] = array();
+            }
+            $faktury_by_objednavka[$oid][] = array(
+                'id' => (int)$row['id'],
+                'objednavka_id' => (int)$row['objednavka_id'],
+                'cislo_faktury' => $row['fa_cislo_vema'],
+                'fa_vema_kod' => $row['fa_vema_kod'],
+                'datum_vystaveni' => $row['fa_datum_vystaveni'],
+                'datum_splatnosti' => $row['fa_datum_splatnosti'],
+                'castka' => $row['fa_castka'] !== null ? (float)$row['fa_castka'] : null,
+                'stav' => $row['stav']
+            );
+        }
+
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => array('faktury_by_objednavka' => empty($faktury_by_objednavka) ? new stdClass() : $faktury_by_objednavka)
+        ));
+
+    } catch (Exception $e) {
+        error_log("❌ VEMA Objednávky Faktury Error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání faktur objednávky: ' . $e->getMessage()
+        ));
+    }
+}
