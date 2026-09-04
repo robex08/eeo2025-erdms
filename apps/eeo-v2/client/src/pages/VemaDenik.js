@@ -3335,7 +3335,7 @@ const VemaDenik = () => {
 
               <FileUploadSection>
                 <FileUploadLabel>
-                  2️⃣ Faktury (fpazahl.xlsx)
+                  2️⃣ Faktury (fpazahl.xlsx / fpprip.xlsx)
                 </FileUploadLabel>
                 <FileInput
                   type="file"
