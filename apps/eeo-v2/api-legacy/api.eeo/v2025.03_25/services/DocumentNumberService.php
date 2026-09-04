@@ -15,7 +15,68 @@ class DocumentNumberService {
         require_once __DIR__ . '/../models/GlobalSettingsModel.php';
         $this->settingsModel = new GlobalSettingsModel($db);
     }
-    
+
+    /**
+     * Zjistit pokladna_id a rok pro danou knihu (jeden dotaz, sdíleno napříč metodami)
+     * @param int $bookId
+     * @return array [pokladnaId, year]
+     * @throws Exception pokud kniha neexistuje
+     */
+    private function getPokladnaAndYear($bookId) {
+        $stmt = $this->db->prepare("
+            SELECT pokladna_id, rok FROM 25a_pokladni_knihy WHERE id = ?
+        ");
+        $stmt->execute(array($bookId));
+        $book = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$book) {
+            throw new Exception('Pokladní kniha nenalezena');
+        }
+
+        return array($book['pokladna_id'], $book['rok']);
+    }
+
+    /**
+     * Získat pojmenovaný MySQL zámek (GET_LOCK) pro generování čísla dokladu dané
+     * pokladny/roku/typu. Zabraňuje race condition, kdy dva souběžné požadavky
+     * přečtou stejné MAX(cislo_poradi_v_roce) a vloží doklad se STEJNÝM číslem
+     * (SELECT MAX()+1 sám o sobě není atomický vůči souběžnému INSERTu).
+     *
+     * Volající MUSÍ zámek uvolnit přes releaseNumberLock() (ideálně v try/finally),
+     * a to až PO dokončení INSERTu nové položky - ne hned po vygenerování čísla.
+     *
+     * @param int $bookId ID pokladní knihy, do které se vkládá doklad
+     * @param string $type 'prijem' nebo 'vydaj'
+     * @return string Jméno zámku (předat do releaseNumberLock)
+     * @throws Exception pokud se zámek nepodaří získat v časovém limitu
+     */
+    public function acquireNumberLock($bookId, $type) {
+        list($pokladnaId, $year) = $this->getPokladnaAndYear($bookId);
+        $lockName = sprintf('cashbook_docnum_%d_%d_%s', intval($pokladnaId), intval($year), $type);
+
+        $stmt = $this->db->prepare("SELECT GET_LOCK(?, 10) AS got");
+        $stmt->execute(array($lockName));
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row || intval($row['got']) !== 1) {
+            throw new Exception('Nepodařilo se získat zámek pro číslování dokladů (časový limit 10s), zkuste to prosím znovu.');
+        }
+
+        return $lockName;
+    }
+
+    /**
+     * Uvolnit zámek získaný přes acquireNumberLock()
+     * @param string $lockName
+     */
+    public function releaseNumberLock($lockName) {
+        if (!$lockName) {
+            return;
+        }
+        $stmt = $this->db->prepare("SELECT RELEASE_LOCK(?)");
+        $stmt->execute(array($lockName));
+    }
+
     /**
      * Vygenerovat nové číslo dokladu s kontinuálním číslováním
      * 
@@ -27,19 +88,8 @@ class DocumentNumberService {
      */
     public function generateDocumentNumber($bookId, $type, $entryDate, $userId) {
         try {
-            // Načíst knihu
-            $stmt = $this->db->prepare("
-                SELECT rok FROM 25a_pokladni_knihy k WHERE k.id = ?
-            ");
-            $stmt->execute(array($bookId));
-            $book = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if (!$book) {
-                throw new Exception('Pokladní kniha nenalezena');
-            }
-            
-            $year = $book['rok'];
-            
+            list($pokladnaIdUnused, $year) = $this->getPokladnaAndYear($bookId);
+
             // Určit prefix podle typu
             $letter = ($type === 'prijem') ? 'P' : 'V';
             
@@ -72,20 +122,8 @@ class DocumentNumberService {
      */
     private function getNextDocumentNumber($bookId, $year, $type) {
         // Zjistit ID pokladny
-        $stmt = $this->db->prepare("
-            SELECT pokladna_id 
-            FROM 25a_pokladni_knihy 
-            WHERE id = ?
-        ");
-        $stmt->execute(array($bookId));
-        $book = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$book) {
-            return 1;
-        }
-        
-        $pokladnaId = $book['pokladna_id'];
-        
+        list($pokladnaId, $yearUnused) = $this->getPokladnaAndYear($bookId);
+
         // Najít maximum napříč VŠEMI knihami se STEJNOU pokladnou
         $sql = "
             SELECT COALESCE(MAX(p.cislo_poradi_v_roce), 0) + 1 AS next_number

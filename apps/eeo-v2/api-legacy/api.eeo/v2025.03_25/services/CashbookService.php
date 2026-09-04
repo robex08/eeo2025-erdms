@@ -56,44 +56,52 @@ class CashbookService {
             // Určit typ
             $type = !empty($data['castka_prijem']) ? 'prijem' : 'vydaj';
             $amount = !empty($data['castka_prijem']) ? $data['castka_prijem'] : $data['castka_vydaj'];
-            
-            // Vygenerovat číslo dokladu (vrací array s cislo_dokladu a cislo_poradi_v_roce)
-            $docNumberData = $this->docNumberService->generateDocumentNumber(
-                $bookId, 
-                $type, 
-                $data['datum_zapisu'],
-                $book['uzivatel_id']
-            );
-            
-            // Vypočítat balance
-            $balance = $this->balanceCalculator->calculateNewEntryBalance(
-                $bookId,
-                $amount,
-                $type,
-                $data['datum_zapisu']
-            );
-            
-            // Připravit data pro insert
-            $entryData = array(
-                'pokladni_kniha_id' => $bookId,
-                'datum_zapisu' => $data['datum_zapisu'],
-                'cislo_dokladu' => $docNumberData['cislo_dokladu'],
-                'cislo_poradi_v_roce' => $docNumberData['cislo_poradi_v_roce'],
-                'typ_dokladu' => $type,
-                'obsah_zapisu' => $data['obsah_zapisu'],
-                'komu_od_koho' => isset($data['komu_od_koho']) ? $data['komu_od_koho'] : null,
-                'castka_prijem' => $type === 'prijem' ? $amount : null,
-                'castka_vydaj' => $type === 'vydaj' ? $amount : null,
-                'zustatek_po_operaci' => $balance,
-                'lp_kod' => isset($data['lp_kod']) ? $data['lp_kod'] : null,
-                'lp_popis' => isset($data['lp_popis']) ? $data['lp_popis'] : null,
-                'poznamka' => isset($data['poznamka']) ? $data['poznamka'] : null,
-                'poradi_radku' => isset($data['poradi_radku']) ? $data['poradi_radku'] : 0
-            );
-            
-            // Vložit položku
-            $entryId = $this->entryModel->createEntry($entryData, $userId);
-            
+
+            // 🔒 KRITICKÉ: Zamknout generování čísla dokladu pro tuto pokladnu/rok/typ,
+            // aby dva souběžné požadavky nedostaly stejné MAX()+1 (duplicitní číslo dokladu)
+            $lockName = $this->docNumberService->acquireNumberLock($bookId, $type);
+            try {
+                // Vygenerovat číslo dokladu (vrací array s cislo_dokladu a cislo_poradi_v_roce)
+                $docNumberData = $this->docNumberService->generateDocumentNumber(
+                    $bookId,
+                    $type,
+                    $data['datum_zapisu'],
+                    $book['uzivatel_id']
+                );
+
+                // Vypočítat balance
+                $balance = $this->balanceCalculator->calculateNewEntryBalance(
+                    $bookId,
+                    $amount,
+                    $type,
+                    $data['datum_zapisu']
+                );
+
+                // Připravit data pro insert
+                $entryData = array(
+                    'pokladni_kniha_id' => $bookId,
+                    'datum_zapisu' => $data['datum_zapisu'],
+                    'cislo_dokladu' => $docNumberData['cislo_dokladu'],
+                    'cislo_poradi_v_roce' => $docNumberData['cislo_poradi_v_roce'],
+                    'typ_dokladu' => $type,
+                    'obsah_zapisu' => $data['obsah_zapisu'],
+                    'komu_od_koho' => isset($data['komu_od_koho']) ? $data['komu_od_koho'] : null,
+                    'castka_prijem' => $type === 'prijem' ? $amount : null,
+                    'castka_vydaj' => $type === 'vydaj' ? $amount : null,
+                    'zustatek_po_operaci' => $balance,
+                    'lp_kod' => isset($data['lp_kod']) ? $data['lp_kod'] : null,
+                    'lp_popis' => isset($data['lp_popis']) ? $data['lp_popis'] : null,
+                    'poznamka' => isset($data['poznamka']) ? $data['poznamka'] : null,
+                    'poradi_radku' => isset($data['poradi_radku']) ? $data['poradi_radku'] : 0
+                );
+
+                // Vložit položku
+                $entryId = $this->entryModel->createEntry($entryData, $userId);
+            } finally {
+                // Zámek uvolnit až PO INSERTu, ne po vygenerování čísla
+                $this->docNumberService->releaseNumberLock($lockName);
+            }
+
             // 🆕 KRITICKÉ: Přepočítat CELOU knihu od začátku, ne jen od data!
             // Důvod: calculateNewEntryBalance() může mít neaktuální pocatecni_stav
             // nebo předchozí položky mohly mít špatné zůstatky
