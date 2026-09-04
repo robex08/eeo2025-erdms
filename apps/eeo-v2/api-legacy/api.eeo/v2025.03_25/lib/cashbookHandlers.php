@@ -803,6 +803,13 @@ function handle_cashbook_entry_create_post($config, $input) {
             // ručně neopravil přes "Přepočet" v nastavení pokladen.
             $docNumberService->renumberBookDocuments($input['book_id']);
 
+            // 🆕 KRITICKÉ (OPRAVA): Přepočítat všechny zůstatky v knihě, stejně jako
+            // to dělá "původní" flow v CashbookService::createEntry(). Multi-LP flow
+            // bez tohoto volání neaktualizuje koncovy_stav, celkove_prijmy/vydaje
+            // v hlavičce knihy a zustatek_po_operaci pozdějších položek, vede to
+            // k inkonsistenci zobrazovaných stavů vs. očekávaných sum.
+            $balanceCalculator->recalculateBookBalances($input['book_id']);
+
         } else {
             // PŮVODNÍ FLOW (zpětná kompatibilita) - služba má vlastní transakci
             $validator = new EntryValidator();
@@ -952,12 +959,21 @@ function handle_cashbook_entry_update_post($config, $input) {
             // Update master + details (model má vlastní transakci)
             $entryModel->updateEntryWithDetails($input['entry_id'], $masterData, $input['detail_items'], $userData['id']);
             $entryData = $entryModel->getEntryWithDetails($input['entry_id']);
-            
+
+            // 🆕 KRITICKÉ (OPRAVA): Přepočítat všechny zůstatky v knihě po updatu
+            // detail_items, stejně jako to dělá "původní" flow v
+            // CashbookService::updateEntry(). Bez tohoto volání by koncovy_stav
+            // a zustatek_po_operaci pozdějších položek zůstaly staré, a
+            // recalculateFollowingMonths() níže by pracoval se starým koncovym_stavem.
+            require_once __DIR__ . '/../services/BalanceCalculator.php';
+            $newBalanceCalculator = new BalanceCalculator($db);
+            $newBalanceCalculator->recalculateBookBalances($input['book_id']);
+
             // Transformovat do flat struktury
             $updatedEntry = array_merge($entryData['master'], [
                 'detail_items' => $entryData['details']
             ]);
-            
+
         } else {
             // PŮVODNÍ FLOW - služba má vlastní transakci
             $validator = new EntryValidator();
