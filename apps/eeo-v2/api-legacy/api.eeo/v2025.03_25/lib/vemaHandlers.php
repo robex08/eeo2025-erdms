@@ -131,18 +131,22 @@ function handle_vema_firmy_list($input, $config, $queries) {
         $count_stmt->execute($params);
         $total = $count_stmt->fetchColumn();
 
-        // Data
-        $sql = "SELECT 
-                    id, firma, nazev, ico, regcisph, 
-                    ulice, cp, obec, psc, 
-                    telefon, mobil, email, web,
-                    dnazev, dic,
-                    stav, import_batch_id, 
-                    dt_importu, dt_posledni_aktualizace,
-                    dt_vytvoreni
-                FROM `" . TBL_VEMA_FIRMYUPL . "`
+        // Data s JOINem na kontrolu
+        $sql = "SELECT
+                    f.id, f.firma, f.nazev, f.ico, f.regcisph,
+                    f.ulice, f.cp, f.obec, f.psc,
+                    f.telefon, f.mobil, f.email, f.web,
+                    f.dnazev, f.dic,
+                    f.stav, f.import_batch_id,
+                    f.dt_importu, f.dt_posledni_aktualizace,
+                    f.dt_vytvoreni,
+                    COALESCE(k.kontrola_status, 'nezkontrolovano') as kontrola
+                FROM `" . TBL_VEMA_FIRMYUPL . "` f
+                    LEFT JOIN `25v_kontrola_metadata` k
+                         ON k.typ_zaznamu = 'firma'
+                        AND k.vema_id = f.firma
                 " . $where_sql . "
-                ORDER BY nazev ASC
+                ORDER BY f.nazev ASC
                 LIMIT $limit OFFSET $offset";
 
         $stmt = $db->prepare($sql);
@@ -322,10 +326,10 @@ function handle_vema_faktury_list($input, $config, $queries) {
         $count_stmt->execute($params);
         $total = $count_stmt->fetchColumn();
 
-        // Data s JOINem na firmy a smlouvy
-        $sql = "SELECT 
-                    f.id, f.stav, f.firma, f.cfak, f.cdok, f.nazevfak, 
-                    f.typdok, f.ksymb, f.vsymb, 
+        // Data s JOINem na firmy, smlouvy a kontrolu
+        $sql = "SELECT
+                    f.id, f.stav, f.firma, f.cfak, f.cdok, f.nazevfak,
+                    f.typdok, f.ksymb, f.vsymb,
                     f.datpri, f.dof, f.spl,
                     f.csml, f.cobj, f.vlast,
                     f.celkem, f.cplatby, f.czbyva,
@@ -333,7 +337,8 @@ function handle_vema_faktury_list($input, $config, $queries) {
                     f.dt_importu, f.dt_posledni_aktualizace,
                     firmy.nazev as firma_nazev,
                     firmy.ico as firma_ico,
-                    smlouvy.ecsml as smlouva_ecsml
+                    smlouvy.ecsml as smlouva_ecsml,
+                    COALESCE(k.kontrola_status, 'nezkontrolovano') as kontrola
                 FROM `" . TBL_VEMA_FPAZAHL . "` f
                     LEFT JOIN `" . TBL_VEMA_FIRMYUPL . "` firmy
                          ON f.firma = firmy.firma
@@ -341,6 +346,10 @@ function handle_vema_faktury_list($input, $config, $queries) {
                     LEFT JOIN `" . TBL_VEMA_SMLA . "` smlouvy
                          ON f.csml = smlouvy.csml
                         AND smlouvy.stav_zaznamu = 'aktivni'
+                    LEFT JOIN `25v_kontrola_metadata` k
+                         ON k.typ_zaznamu = 'faktura'
+                        AND k.vema_id = f.cfak
+                        AND (k.vema_id_secondary = f.firma OR k.vema_id_secondary = '')
                 " . $where_sql . "
                 ORDER BY f.datpri DESC, f.cfak DESC
                 LIMIT $limit OFFSET $offset";
@@ -549,18 +558,22 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
         $count_stmt->execute($params);
         $total = $count_stmt->fetchColumn();
 
-        // Data s JOINem na firmy
-        $sql = "SELECT 
-                    s.id, s.typsml, s.csml, s.ecsml, s.nazsml, s.firma, 
-                    s.dnazsml, s.datuzavr, s.datumdo, 
+        // Data s JOINem na firmy a kontrolu
+        $sql = "SELECT
+                    s.id, s.typsml, s.csml, s.ecsml, s.nazsml, s.firma,
+                    s.dnazsml, s.datuzavr, s.datumdo,
                     s.hodnota, s.usek, s.prolsml, s.stavrs,
                     s.stav_zaznamu, s.import_batch_id,
                     s.dt_importu, s.dt_posledni_aktualizace,
-                    firmy.nazev as firma_nazev
+                    firmy.nazev as firma_nazev,
+                    COALESCE(k.kontrola_status, 'nezkontrolovano') as kontrola
                 FROM `" . TBL_VEMA_SMLA . "` s
                     LEFT JOIN `" . TBL_VEMA_FIRMYUPL . "` firmy
                          ON s.firma = firmy.firma
                         AND firmy.stav_zaznamu = 'aktivni'
+                    LEFT JOIN `25v_kontrola_metadata` k
+                         ON k.typ_zaznamu = 'smlouva'
+                        AND k.vema_id = s.csml
                 " . $where_sql . "
                 ORDER BY s.datuzavr DESC, s.csml DESC
                 LIMIT $limit OFFSET $offset";
