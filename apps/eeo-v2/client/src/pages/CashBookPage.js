@@ -1914,6 +1914,10 @@ const CashBookPage = () => {
 
   // 🆕 AUTO REFRESH: Automatický refresh při návratu do okna + periodický refresh
   useEffect(() => {
+    // 🆕 RACE CONDITION FIX: Zapamatovat si requestId pro tento konkrétní interval
+    // Pokud se mezitím změní měsíc (nový efekt), starý interval ignoruje svůj výsledek
+    const intervalRequestId = requestIdRef.current;
+
     // Funkce pro refresh dat z DB
     const refreshDataFromDB = async (showMessage = false) => {
       if (!currentBookId) return;
@@ -1921,6 +1925,12 @@ const CashBookPage = () => {
       try {
         // 1. Načíst fresh data z DB včetně book info (s force_recalc pro přepočet převodu)
         const bookData = await cashbookAPI.getBook(currentBookId, true);
+
+        // 🔐 RACE CONDITION GUARD: Pokud se mezitím měnil měsíc (requestIdRef se zvýšil),
+        // ignoruj tento výsledek - už je to starý request pro starý měsíc
+        if (requestIdRef.current !== intervalRequestId) {
+          return;
+        }
 
         if (bookData.status === 'ok') {
           // ✅ FIX: Aktualizovat carryOverAmount z DB (může se změnit při úpravě předchozího měsíce)
@@ -1933,11 +1943,11 @@ const CashBookPage = () => {
           // ✅ FIX: Aktualizovat bookStatus a metadata (jinak zmizí z UI při auto-refresh)
           if (book) {
             setBookStatus(book.stav_knihy || 'aktivni');
-            
+
             // Aktualizovat metadata o uzavření/zamčení
             const closedByName = book.uzivatel_jmeno_plne || `ID: ${book.uzivatel_id}`;
             const lockedByName = book.zamknul_spravce_jmeno_plne || null;
-            
+
             setBookStatusMetadata({
               closedDate: book.uzavrena_uzivatelem_kdy || null,
               closedBy: closedByName,
