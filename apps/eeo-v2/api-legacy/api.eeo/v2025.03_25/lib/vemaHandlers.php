@@ -126,7 +126,7 @@ function handle_vema_firmy_list($input, $config, $queries) {
         $where_sql = count($where) > 0 ? 'WHERE ' . implode(' AND ', $where) : '';
 
         // Celkový počet
-        $count_sql = "SELECT COUNT(*) as total FROM `" . TBL_VEMA_FIRMYUPL . "` " . $where_sql;
+        $count_sql = "SELECT COUNT(*) as total FROM `" . TBL_VEMA_FIRMYUPL . "` f " . $where_sql;
         $count_stmt = $db->prepare($count_sql);
         $count_stmt->execute($params);
         $total = $count_stmt->fetchColumn();
