@@ -146,7 +146,14 @@ function handle_vema_firmy_list($input, $config, $queries) {
                          ON k.typ_zaznamu = 'firma'
                         AND k.vema_id COLLATE utf8mb4_unicode_ci = f.firma
                 " . $where_sql . "
-                ORDER BY f.nazev ASC
+                ORDER BY CASE k.kontrola_status
+                    WHEN 'ma_problem' THEN 1
+                    WHEN 'pozastaveno' THEN 2
+                    WHEN 'v_kontrole' THEN 3
+                    WHEN 'nezkontrolovano' THEN 4
+                    WHEN 'zkontrolovano' THEN 5
+                    ELSE 6
+                END ASC, f.nazev ASC
                 LIMIT $limit OFFSET $offset";
 
         $stmt = $db->prepare($sql);
@@ -351,7 +358,14 @@ function handle_vema_faktury_list($input, $config, $queries) {
                         AND k.vema_id COLLATE utf8mb4_unicode_ci = f.cfak
                         AND (k.vema_id_secondary COLLATE utf8mb4_unicode_ci = f.firma OR k.vema_id_secondary = '')
                 " . $where_sql . "
-                ORDER BY f.datpri DESC, f.cfak DESC
+                ORDER BY CASE k.kontrola_status
+                    WHEN 'ma_problem' THEN 1
+                    WHEN 'pozastaveno' THEN 2
+                    WHEN 'v_kontrole' THEN 3
+                    WHEN 'nezkontrolovano' THEN 4
+                    WHEN 'zkontrolovano' THEN 5
+                    ELSE 6
+                END ASC, f.datpri DESC, f.cfak DESC
                 LIMIT $limit OFFSET $offset";
 
         $stmt = $db->prepare($sql);
@@ -575,7 +589,14 @@ function handle_vema_smlouvy_list($input, $config, $queries) {
                          ON k.typ_zaznamu = 'smlouva'
                         AND k.vema_id COLLATE utf8mb4_unicode_ci = s.csml
                 " . $where_sql . "
-                ORDER BY s.datuzavr DESC, s.csml DESC
+                ORDER BY CASE k.kontrola_status
+                    WHEN 'ma_problem' THEN 1
+                    WHEN 'pozastaveno' THEN 2
+                    WHEN 'v_kontrole' THEN 3
+                    WHEN 'nezkontrolovano' THEN 4
+                    WHEN 'zkontrolovano' THEN 5
+                    ELSE 6
+                END ASC, s.datuzavr DESC, s.csml DESC
                 LIMIT $limit OFFSET $offset";
 
         $stmt = $db->prepare($sql);
