@@ -1114,7 +1114,15 @@ const CashBookPage = () => {
 
   // 🆕 Flag pro zabránění nekonečné slučce při načítání dat
   const [isLoadingBook, setIsLoadingBook] = useState(false);
-  
+
+  // 🆕 Race condition fix: ID poslední spuštěného fetch requestu.
+  // Když změníme měsíc během probíhajícího fetchu, zvýší se toto ID,
+  // a starší fetch výsledek se zahodí místo zápisu do state.
+  // Toto předchází scénáři: klik→fetch N→klik→setState N+1 header
+  // ale pak se starý request N vrátí a přepíše state data na N, i když
+  // header už ukazuje N+1.
+  const requestIdRef = useRef(0);
+
   // 🆕 Flag pro zabránění race condition při ensureBookExists
   const ensureBookRef = useRef(false);
 
@@ -1578,14 +1586,13 @@ const CashBookPage = () => {
       return;
     }
 
-    // ✅ Zabránit nekonečné slučce - nepokračovat pokud už probíhá načítání
-    if (isLoadingBook) {
-      return;
-    }
+    // 🆕 Race condition fix: Spustit nový request ID, starý fetch bude zahozen
+    requestIdRef.current++;
+    const currentRequestId = requestIdRef.current;
 
     const loadDataFromDB = async () => {
       try {
-        setIsLoadingBook(true); // Nastavit flag před začátkem
+        setIsLoadingBook(true); // Nastavit flag pro UI (loading spinner)
         
         // Reset error state při úspěšném načtení
         setAccessError(null);
@@ -1598,11 +1605,12 @@ const CashBookPage = () => {
           // ❌ OPRAVA: NEPOUZIVAT localStorage fallback pri navigaci na novy mesiac
           // localStorage ma data z ineho mesiaca s nespravnym carry-over!
           console.warn('❌ DB operácia zlyhala - nezobrazujem localStorage data z iného mesiaca');
-          setCashBookEntries([]);
-          setCarryOverAmount(0); // Reset na bezpečnú hodnotu
-          setIsLoadingBook(false);
-          return;
-          setIsLoadingBook(false);
+          // Race condition guard: jen aktuální request zapíše state
+          if (requestIdRef.current === currentRequestId) {
+            setCashBookEntries([]);
+            setCarryOverAmount(0); // Reset na bezpečnú hodnotu
+            setIsLoadingBook(false);
+          }
           return;
         }
 
@@ -1611,11 +1619,19 @@ const CashBookPage = () => {
         // ✅ Kontrola, zda book není null
         if (!book) {
           console.warn('⚠️ Nepodařilo se načíst nebo vytvořit knihu');
-          setCashBookEntries([]);
-          // ❌ OPRAVA: Ak sa nepodarilo načítať knihu, nepoužívať localStorage fallback
-          // localStorage môže obsahovať dáta z iného mesiaca s nesprávnym carry-over
-          console.warn('📝 Nenastavujem carry-over z localStorage (kniha sa nepodarila načítať)');
-          setIsLoadingBook(false);
+          // Race condition guard: jen aktuální request zapíše state
+          if (requestIdRef.current === currentRequestId) {
+            setCashBookEntries([]);
+            // ❌ OPRAVA: Ak sa nepodarilo načítať knihu, nepoužívať localStorage fallback
+            // localStorage môže obsahovať dáta z iného mesiaca s nesprávnym carry-over
+            console.warn('📝 Nenastavujem carry-over z localStorage (kniha sa nepodarila načítať)');
+            setIsLoadingBook(false);
+          }
+          return;
+        }
+
+        // Race condition guard: jen aktuální request zapíše state
+        if (requestIdRef.current !== currentRequestId) {
           return;
         }
 
@@ -1744,17 +1760,22 @@ const CashBookPage = () => {
           // carryOverAmount už je nastaveno z DB výše
         }
 
-        // ✅ Nastavit loading flag na false po dokončení
-        setIsLoadingBook(false);
+        // ✅ Nastavit loading flag na false po dokončení (jen aktuální request)
+        if (requestIdRef.current === currentRequestId) {
+          setIsLoadingBook(false);
+        }
 
       } catch (error) {
         console.error('❌ Chyba při načítání z DB:', error);
         // ❌ OPRAVA: NEPOUZIVAT localStorage fallback pri DB chybe
         // Pri navigaci na novy mesiac by localStorage mal data z ineho mesiaca
         console.warn('❌ DB chyba - nezobrazujem localStorage data z iného mesiaca');
-        setCashBookEntries([]);
-        setCarryOverAmount(0); // Reset na bezpečnú hodnotu
-        setIsLoadingBook(false);
+        // Race condition guard: jen aktuální request zapíše state
+        if (requestIdRef.current === currentRequestId) {
+          setCashBookEntries([]);
+          setCarryOverAmount(0); // Reset na bezpečnú hodnotu
+          setIsLoadingBook(false);
+        }
       }
     };
 
@@ -4315,13 +4336,15 @@ const CashBookPage = () => {
           </h2>
         </MonthInfo>
         <MonthControls>
-          <MonthButton 
+          <MonthButton
             onClick={goToPreviousMonth}
-            disabled={!canGoToPreviousMonth}
+            disabled={!canGoToPreviousMonth || isLoadingBook}
             title={
-              canGoToPreviousMonth 
-                ? "Předchozí měsíc" 
-                : `Pokladna přiřazena od ${mainAssignment?.platne_od ? new Date(mainAssignment.platne_od).toLocaleDateString('cs-CZ') : ''}`
+              isLoadingBook
+                ? "Načítání dat..."
+                : !canGoToPreviousMonth
+                ? `Pokladna přiřazena od ${mainAssignment?.platne_od ? new Date(mainAssignment.platne_od).toLocaleDateString('cs-CZ') : ''}`
+                : "Předchozí měsíc"
             }
           >
             <FontAwesomeIcon icon={faChevronLeft} />
@@ -4329,9 +4352,11 @@ const CashBookPage = () => {
           </MonthButton>
           <MonthButton
             onClick={goToCurrentMonth}
-            disabled={currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear()}
+            disabled={(currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear()) || isLoadingBook}
             title={
-              currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear()
+              isLoadingBook
+                ? "Načítání dat..."
+                : currentMonth === new Date().getMonth() + 1 && currentYear === new Date().getFullYear()
                 ? "Už jste v aktuálním měsíci"
                 : "Přejít na aktuální měsíc"
             }
@@ -4341,9 +4366,11 @@ const CashBookPage = () => {
           </MonthButton>
           <MonthButton
             onClick={goToNextMonth}
-            disabled={currentMonth >= new Date().getMonth() + 1 && currentYear >= new Date().getFullYear()}
+            disabled={(currentMonth >= new Date().getMonth() + 1 && currentYear >= new Date().getFullYear()) || isLoadingBook}
             title={
-              currentMonth >= new Date().getMonth() + 1 && currentYear >= new Date().getFullYear()
+              isLoadingBook
+                ? "Načítání dat..."
+                : currentMonth >= new Date().getMonth() + 1 && currentYear >= new Date().getFullYear()
                 ? "Nelze přejít do budoucnosti"
                 : "Následující měsíc"
             }
