@@ -90,9 +90,17 @@ DEBUG_*.md
 
 # Backup a archivní složky
 backup/
+/backups/
 backups/dev-db/
 *backup*/
 *.backup
 archive/
 *.bak
 *.old
+
+# Velké deprecated zálohy (DB dumpy, tar.gz) - nikdy netrackovat
+docs/deprecated/backups/
+
+# Stale build cache
+.stale-build-assets/
+**/.stale-build-assets/
