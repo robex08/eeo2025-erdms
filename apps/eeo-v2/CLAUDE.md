@@ -35,6 +35,12 @@ Staré/dokončené debug, test a fix soubory (desítky `test_*.php`, `FIX_*.md`,
 
 Podrobný checklist a auto-detekce rizikových vzorů: skill `php-legacy-guardian` (aktivuje se při práci v `api-legacy/`).
 
+## Ignorování souborů (.gitignore)
+
+Claude Code nemá vlastní `.claudeignore` — pro procházení (Glob/Grep, obecné prohledávání kódu) respektuje `.gitignore`, takže `node_modules/`, `build/`, `build-prod/`, `.webpack-cache/`, `.stale-build-assets/` apod. se automaticky neprocházejí.
+
+To ale **neplatí pro explicitní čtení konkrétní cesty** — `.env` soubory (`api-legacy/api.eeo/.env`, `client/.env*`) jsou gitignored kvůli procházení, ale je v pořádku a někdy nutné je přímo přečíst (`Read` s konkrétní cestou), např. při kontrole DB configu nebo endpointů — viz skill `php-legacy-guardian`.
+
 ## Skilly v tomto projektu
 
 - `php-legacy-guardian` — produkční bezpečnost + konvence pro `api-legacy/*.php`
