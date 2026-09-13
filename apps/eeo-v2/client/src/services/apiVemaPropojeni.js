@@ -78,7 +78,68 @@ export const getVemaObjednavkyFaktury = async (objednavkaIds, token, username) =
   }
 };
 
+/**
+ * Kontrola OBJ BETA - seskupený pohled: hromadný BE endpoint, který pro CELÝ
+ * přefiltrovaný dataset (ne jen aktuální stránku) provede groupování,
+ * fuzzy-matchování na EEO a výpočet verdiktu páru, a vrátí už jen hotovou
+ * stránku vazebních skupin + počty podle vyhodnocení (pro filtrovací chipy).
+ * @param {object} params
+ * @param {string} params.token
+ * @param {string} params.username
+ * @param {string} [params.search]
+ * @param {'all'|'0'|'1'|'2'|'3plus'} [params.badgeFilter]
+ * @param {boolean} [params.warningOnlyFilter]
+ * @param {string[]} [params.kontrolaFilter] - multiselect, OR logika
+ * @param {string|null} [params.verdictFilter]
+ * @param {number} [params.page]
+ * @param {number} [params.perPage]
+ * @returns {Promise<{groups: object[], verdictCounts: object, pagination: object}>}
+ */
+export const getVemaBetaGroupedList = async ({
+  token,
+  username,
+  search = '',
+  badgeFilter = 'all',
+  warningOnlyFilter = false,
+  kontrolaFilter = [],
+  verdictFilter = null,
+  page = 1,
+  perPage = 50
+}) => {
+  try {
+    const response = await axios.post(
+      `${API_BASE_URL}/vema-faktury/kontrola-obj-beta/grouped-list`,
+      {
+        token,
+        username,
+        search,
+        badgeFilter,
+        warningOnlyFilter,
+        kontrolaFilter,
+        verdictFilter,
+        page,
+        perPage
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (response.data.status === 'success') {
+      return { ...response.data.data, pagination: response.data.pagination };
+    } else {
+      throw new Error(response.data.message || 'Chyba při načítání seskupeného pohledu');
+    }
+  } catch (error) {
+    console.error('Chyba při načítání seskupeného pohledu Kontrola OBJ BETA:', error);
+    throw error;
+  }
+};
+
 export default {
   getVemaFakturaPropojeni,
-  getVemaObjednavkyFaktury
+  getVemaObjednavkyFaktury,
+  getVemaBetaGroupedList
 };

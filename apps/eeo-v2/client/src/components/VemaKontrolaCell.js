@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
 import SmartTooltip from '../styles/SmartTooltip';
 import {
@@ -76,15 +76,24 @@ const NotePreviewWrap = styled.div`
 `;
 
 const NotePreviewText = styled.div`
-  display: block;
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
   width: 100%;
   font-size: 0.66rem;
+  font-style: italic;
   color: #64748b;
-  line-height: 1.2;
+  line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: help;
+
+  &::before {
+    content: '📝';
+    font-style: normal;
+    flex-shrink: 0;
+  }
 `;
 
 const PopoverOverlay = styled.div`
@@ -417,6 +426,9 @@ export default function VemaKontrolaCell({
 
   // Otevřít popover
   const handleOpen = useCallback(async () => {
+    // Skrýt, dokud se v layout efektu nespočítá správná pozice - ať se nejdřív
+    // "nevyrolluje" na výchozím místě a pak neškubne na tu správnou.
+    setPopoverStyle({ visibility: 'hidden' });
     setIsOpen(true);
     setError(null);
     // Vždy načíst aktuální data z DB při otevření
@@ -484,9 +496,13 @@ export default function VemaKontrolaCell({
   ]);
 
   // Pozicování popoveru
-  const [popoverStyle, setPopoverStyle] = useState({});
-  
-  useEffect(() => {
+  const [popoverStyle, setPopoverStyle] = useState({ visibility: 'hidden' });
+
+  // useLayoutEffect (ne useEffect) - proběhne synchronně po commitu DOM, ale
+  // PŘED tím, než prohlížeč cokoliv vykreslí. Díky tomu se první viditelný
+  // snímek popoveru už objeví na správné pozici, místo aby se nejdřív
+  // vykreslil na výchozím místě a hned poté "přeskočil" na tu spočítanou.
+  useLayoutEffect(() => {
     if (!isOpen || !btnRef.current) return;
 
     const updatePosition = () => {
@@ -561,7 +577,8 @@ export default function VemaKontrolaCell({
       setPopoverStyle({
         left: `${left}px`,
         top: `${top}px`,
-        maxHeight: `${availableHeight}px`
+        maxHeight: `${availableHeight}px`,
+        visibility: 'visible'
       });
     };
 
@@ -571,12 +588,26 @@ export default function VemaKontrolaCell({
     const timeout = setTimeout(updatePosition, 80);
     window.addEventListener('resize', updatePosition);
     window.addEventListener('orientationchange', updatePosition);
+    // Zachytit i scroll v tabulce/stránce - trigger tlačítka se může posunout mimo aktuálně změřenou pozici.
+    window.addEventListener('scroll', updatePosition, true);
+
+    // Obsah popoveru se dotahuje asynchronně (loadKontrola, historie změn) a v okamžiku
+    // prvního měření může být scrollHeight ještě podhodnocený - ResizeObserver zajistí
+    // přepočet pozice pokaždé, když se skutečná výška obsahu změní (data doběhnou, poznámka
+    // se rozroste, atd.), takže rozhodnutí nahoru/dolů se vždy dělá s aktuální výškou.
+    let resizeObserver;
+    if (typeof ResizeObserver !== 'undefined' && popoverRef.current) {
+      resizeObserver = new ResizeObserver(updatePosition);
+      resizeObserver.observe(popoverRef.current);
+    }
 
     return () => {
       cancelAnimationFrame(raf);
       clearTimeout(timeout);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('orientationchange', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      resizeObserver?.disconnect();
     };
   }, [isOpen]);
 

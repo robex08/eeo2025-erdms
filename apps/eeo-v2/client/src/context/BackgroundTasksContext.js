@@ -170,10 +170,19 @@ export const BackgroundTasksProvider = ({ children }) => {
 
   /**
    * Callback pro změnu počtu nepřečtených notifikací s informací o barvě badge
+   *
+   * `badgeColor` je volitelný: volající, kteří přesně neznají správnou barvu podle
+   * zbylých nepřečtených (např. lokální +1/-1 update z TODO alarmu), ho prostě
+   * nepředají - stávající barva se zachová místo tichého resetu na šedou. Šedá se
+   * vynutí jen když count skutečně klesne na 0 (žádné nepřečtené).
    */
-  const handleUnreadCountChange = useCallback((count, badgeColor = 'gray') => {
+  const handleUnreadCountChange = useCallback((count, badgeColor) => {
     setUnreadNotificationsCount(count);
-    setNotificationsBadgeColor(badgeColor);
+    setNotificationsBadgeColor(prevColor => {
+      if (count === 0) return 'gray';
+      if (badgeColor) return badgeColor;
+      return prevColor || 'orange';
+    });
 
     if (notificationsCallbackRef.current) {
       try {

@@ -130,6 +130,7 @@ const SECTION_BLOCKS = {
   control: [
     { key: 'ordersOverLimit', label: 'Faktury vyšší než schválená objednávka' },
     { key: 'ordersAfterInvoice', label: 'Objednávka vytvořená po doručení faktury' },
+    { key: 'invoiceOnContractInsteadOfOrder', label: 'Faktura na smlouvě místo na dílčí objednávce' },
     { key: 'ordersInvoicesWithoutAttachments', label: 'Objednávky s fakturami bez příloh' },
     { key: 'invoicesWithoutAttachments', label: 'Faktury bez přílohy' },
     { key: 'overdueInvoices', label: 'Faktury po splatnosti 14+ dní' },
@@ -5907,6 +5908,39 @@ export default function StatsReportsPage() {
       return !hasConfirmedBy && !isPotvrzeno;
     });
 
+    // Faktura evidovaná přímo na smlouvě, ačkoli objednávka (financovaná ze smlouvy) je bez faktury.
+    // Chyba: faktura má být přiřazena k dílčí objednávce, ne napřímo ke smlouvě — objednávka se pak nikdy nezavře.
+    const invoiceOnContractInsteadOfOrder = activeOrders.flatMap(order => {
+      const finTyp = String(parseFinancing(order?.financovani)?.typ || '').toUpperCase();
+      if (finTyp !== 'SMLOUVA') return [];
+
+      const hasActiveInvoiceOnOrder = (invoicesByOrderId[String(order.id)] || []).some(inv => {
+        const s = String(inv.stav || inv.fa_stav || '').toUpperCase();
+        return !s.includes('STORNO') && !s.includes('SMAZ');
+      });
+      if (hasActiveInvoiceOnOrder) return [];
+
+      const orderContractRef = getOrderFinancingRef(order) || (order?.smlouva_id ? String(order.smlouva_id) : '');
+      if (!orderContractRef) return [];
+      const orderContract = contractsByNumber.get(String(orderContractRef)) || (order?.smlouva_id ? contractsById.get(String(order.smlouva_id)) : null);
+      const orderContractKey = orderContract ? String(orderContract.id) : null;
+
+      const matchingInvoices = filteredInvoices.filter(inv => {
+        if (inv.objednavka_id) return false; // musí být přímo na smlouvě, ne přes OBJ
+        const s = String(inv.stav || inv.fa_stav || '').toUpperCase();
+        if (s.includes('STORNO')) return false; // kromě storno
+        const invContractId = inv.smlouva_id != null ? String(inv.smlouva_id) : '';
+        const invContractNumber = inv.cislo_smlouvy ? String(inv.cislo_smlouvy) : '';
+        if (!invContractId && !invContractNumber) return false;
+        const invContract = (invContractId && contractsById.get(invContractId)) || (invContractNumber && contractsByNumber.get(invContractNumber));
+        const invContractKey = invContract ? String(invContract.id) : null;
+        if (orderContractKey && invContractKey === orderContractKey) return true;
+        return invContractNumber === String(orderContractRef) || (!!invContractId && invContractId === String(orderContract?.id || ''));
+      });
+
+      return matchingInvoices.map(invoice => ({ order, invoice }));
+    });
+
     return {
       ordersOverLimit,
       ordersAfterInvoice,
@@ -5915,9 +5949,10 @@ export default function StatsReportsPage() {
       overdueInvoices,
       cancelledOrders,
       vecnouPotvrdilaUcetni,
-      dokoncenaBezVecneKontroly
+      dokoncenaBezVecneKontroly,
+      invoiceOnContractInsteadOfOrder
     };
-  }, [filteredOrders, filteredInvoices, invoicesByOrderId, ordersById, getOrderStatusCode, getOrderStatusLabel, isInvoiceSettled]);
+  }, [filteredOrders, filteredInvoices, invoicesByOrderId, ordersById, getOrderStatusCode, getOrderStatusLabel, isInvoiceSettled, contractsById, contractsByNumber, getOrderFinancingRef]);
 
   // ─── Fin. kontrola: součty FA částek ────────────────────────────────────────
   const fkTotals = useMemo(() => {
@@ -5935,7 +5970,9 @@ export default function StatsReportsPage() {
       sum + getInvoiceAmount(inv), 0);
     const dokoncenaBezVecneKontrolyFA = controlSections.dokoncenaBezVecneKontroly.reduce((sum, inv) =>
       sum + getInvoiceAmount(inv), 0);
-    return { ordersOverLimitFA, ordersAfterInvoiceFA, ordersInvoicesWithoutAttachmentsFA, invoicesWithoutAttachmentsFA, overdueInvoicesFA, vecnouPotvrdilaUcetniFA, dokoncenaBezVecneKontrolyFA };
+    const invoiceOnContractInsteadOfOrderFA = controlSections.invoiceOnContractInsteadOfOrder.reduce((sum, { invoice }) =>
+      sum + getInvoiceAmount(invoice), 0);
+    return { ordersOverLimitFA, ordersAfterInvoiceFA, ordersInvoicesWithoutAttachmentsFA, invoicesWithoutAttachmentsFA, overdueInvoicesFA, vecnouPotvrdilaUcetniFA, dokoncenaBezVecneKontrolyFA, invoiceOnContractInsteadOfOrderFA };
   }, [controlSections, invoicesByOrderId, getInvoiceAmount]);
 
   // ─── Vzdělávání: sekce ───────────────────────────────────────────────────────
@@ -6293,6 +6330,30 @@ export default function StatsReportsPage() {
     };
     return getPagedItems(sortTableData(controlSections.ordersAfterInvoice.filter(fkFilter), 'ordersAfterInvoice', acc), 'ordersAfterInvoice');
   }, [controlSections.ordersAfterInvoice, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingLabel, getOrderFinancingRef, getOrderTypeLabel, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount]);
+  const pagedInvoiceOnContractInsteadOfOrder = useMemo(() => {
+    const fkFilter = item => {
+      const stav = fkStavMapRef.current[`invoiceOnContractInsteadOfOrder_${item.order?.id}_${item.invoice?.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const acc = {
+      ev_cislo:       item => item.order?.ev_cislo || item.order?.cislo_objednavky || '',
+      detail_fin:     item => getOrderFinancingRef(item.order),
+      fa_vs:          item => item.invoice?.cislo_faktury || '',
+      fa_typ:         item => item.invoice?.fa_typ || '',
+      dt_fa:          item => item.invoice?.datum_vystaveni || item.invoice?.datum_doruceni || '',
+      dt_obj_created: item => getOrderDate(item.order) || '',
+      objednatel:     item => getOrdererName(item.order),
+      schvalovatel:   item => getSchvalovatelName(item.order),
+      usek:           item => getOrdererUsekLabel(item.order),
+      stav:           item => getOrderStatusLabel(item.order),
+      stav_fa:        item => getInvoiceStatusLabel(item.invoice) || '',
+      fa_castka:      item => getInvoiceAmount(item.invoice),
+      fk_stav:        item => ({OPEN:'4',IN_PROGRESS:'3',RESOLVED:'2',IGNORED:'1'})[fkStavMapRef.current[`invoiceOnContractInsteadOfOrder_${item.order?.id}_${item.invoice?.id}`]] || '0',
+    };
+    return getPagedItems(sortTableData(controlSections.invoiceOnContractInsteadOfOrder.filter(fkFilter), 'invoiceOnContractInsteadOfOrder', acc), 'invoiceOnContractInsteadOfOrder');
+  }, [controlSections.invoiceOnContractInsteadOfOrder, showFkIgnorovano, showFkVyreseno, fkStavVersion, getPagedItems, sortTableData, getOrderDate, getOrdererName, getSchvalovatelName, getOrdererUsekLabel, getOrderFinancingRef, getOrderStatusLabel, getInvoiceStatusLabel, getInvoiceAmount]);
   const pagedOrdersInvoicesWithoutAttachments = useMemo(() => {
     const fkFilter = o => {
       const stav = fkStavMapRef.current[`ordersInvoicesWithoutAttachments_${o.id}_0`];
@@ -7996,6 +8057,29 @@ export default function StatsReportsPage() {
     });
     downloadCsv(headers, rows, `objednavka-po-fakture-${new Date().toISOString().slice(0,10)}.csv`);
   }, [controlSections.ordersAfterInvoice, orderToCsvRow, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
+
+  // ─── Export: Faktura na smlouvě místo na dílčí objednávce ───────────────────
+  const handleExportCsv_invoiceOnContractInsteadOfOrder = useCallback(() => {
+    const fkFilter = item => {
+      const stav = fkStavMapRef.current[`invoiceOnContractInsteadOfOrder_${item.order?.id}_${item.invoice?.id}`];
+      if (!showFkIgnorovano && stav === 'IGNORED') return false;
+      if (!showFkVyreseno  && stav === 'RESOLVED') return false;
+      return true;
+    };
+    const query = getSearchQuery('invoiceOnContractInsteadOfOrder');
+    const filtered = controlSections.invoiceOnContractInsteadOfOrder
+      .filter(fkFilter)
+      .filter(item => !query || searchInVisibleColumns(item.order, query, 'invoiceOnContractInsteadOfOrder') || searchInVisibleColumns(item.invoice, query, 'invoiceOnContractInsteadOfOrder'));
+    const headers = ['Ev.číslo obj.','Číslo smlouvy','Fa VS','Typ FA','Fa vystavena','Obj vytvořena','Objednatel','Schvalovatel','Úsek','Stav obj.','Stav FA','FA částka (Kč)'];
+    const rows = filtered.map(({ order, invoice }) => {
+      const r = orderToCsvRow(order);
+      const faVs = invoice.cislo_faktury || '';
+      const faVema = invoice.fa_vema_kod || '';
+      const faDisplay = faVema ? `${faVs} / ${faVema}` : faVs;
+      return [r.ev_cislo, r.detail_fin, faDisplay, getTypFakturyLabel(invoice.fa_typ), formatDateCz(invoice.datum_vystaveni || invoice.datum_doruceni), r.dt_obj, r.objednatel, r.schvalovatel, r.usek, r.stav, getInvoiceStatusLabel(invoice), getInvoiceAmount(invoice)];
+    });
+    downloadCsv(headers, rows, `faktura-na-smlouve-bez-obj-${new Date().toISOString().slice(0,10)}.csv`);
+  }, [controlSections.invoiceOnContractInsteadOfOrder, orderToCsvRow, getInvoiceStatusLabel, getInvoiceAmount, getTypFakturyLabel, downloadCsv, showFkIgnorovano, showFkVyreseno, getSearchQuery, searchInVisibleColumns]);
 
   // ─── Export: Objednávky s fakturami bez příloh ───────────────────────────────
   const handleExportCsv_ordersInvoicesWithoutAttachments = useCallback(() => {
@@ -11151,6 +11235,112 @@ export default function StatsReportsPage() {
                         </Table>
                       </TableWrapper>
                       {renderPagination('ordersAfterInvoice', pagedOrdersAfterInvoice)}
+                    </>
+                  )}
+                  </SectionCard>
+                )}
+
+                {isBlockVisible('control', 'invoiceOnContractInsteadOfOrder') && (
+                  <SectionCard id="section-invoiceOnContractInsteadOfOrder">
+                  <SectionHeader>
+                    <SectionTitle>Faktura na smlouvě místo na dílčí objednávce</SectionTitle>
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <SectionBadge $tone="warn">{pagedInvoiceOnContractInsteadOfOrder.total}</SectionBadge>
+                      <SectionBadge $tone="neutral" style={{ fontFamily: 'monospace', fontSize: '0.8rem' }}>{fmtCurrency(fkTotals.invoiceOnContractInsteadOfOrderFA)}</SectionBadge>
+                      <button onClick={handleExportCsv_invoiceOnContractInsteadOfOrder} title="Exportovat do CSV" style={{ border: '1px solid #cbd5e1', background: '#f8fafc', color: '#334155', borderRadius: '8px', padding: '0.3rem 0.6rem', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '0.3rem' }}><FontAwesomeIcon icon={faDownload} />CSV</button>
+                    </div>
+                  </SectionHeader>
+                  <div style={{ padding: '0 0.9rem 0.5rem', fontSize: '0.8rem', color: '#64748b' }}>
+                    Objednávka je financovaná ze smlouvy a nemá žádnou fakturu, ale na dané smlouvě je evidovaná faktura přiřazená napřímo (mimo storno) — objednávka se tak nikdy nezavře. Faktura má být přiřazena k dílčí objednávce, ne napřímo ke smlouvě.
+                  </div>
+                  <SearchBox style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <SearchInputWrapper style={{ flex: 1 }}>
+                      <SearchInputIcon>
+                        <FontAwesomeIcon icon={faSearch} />
+                      </SearchInputIcon>
+                      <SearchInput
+                        type="text"
+                        placeholder="Fulltext vyhledávání ve všech zobrazených datech..."
+                        value={getSearchQuery('invoiceOnContractInsteadOfOrder')}
+                        onChange={(e) => setSearchQuery('invoiceOnContractInsteadOfOrder', e.target.value)}
+                      />
+                      {getSearchQuery('invoiceOnContractInsteadOfOrder') && (
+                        <SearchClearButton
+                          onClick={() => setSearchQuery('invoiceOnContractInsteadOfOrder', '')}
+                          title="Vymazat vyhledávání"
+                        >
+                          <FontAwesomeIcon icon={faXmark} />
+                        </SearchClearButton>
+                      )}
+                    </SearchInputWrapper>
+                    <span style={{ fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', fontWeight: 500 }}>Zobrazit:</span>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#64748b', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkIgnorovano} onChange={e => setShowFkIgnorovano(e.target.checked)} style={{ accentColor: '#94a3b8', cursor: 'pointer' }} />
+                      Ignorováno
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.82rem', color: '#16a34a', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                      <input type="checkbox" checked={showFkVyreseno} onChange={e => setShowFkVyreseno(e.target.checked)} style={{ accentColor: '#16a34a', cursor: 'pointer' }} />
+                      Vyřešeno
+                    </label>
+                  </SearchBox>
+                  {pagedInvoiceOnContractInsteadOfOrder.isFiltered && (
+                    <div style={{ padding: '0.5rem 0.75rem', fontSize: '0.875rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Nalezeno {pagedInvoiceOnContractInsteadOfOrder.total} z {pagedInvoiceOnContractInsteadOfOrder.originalTotal} záznamů
+                    </div>
+                  )}
+                  {pagedInvoiceOnContractInsteadOfOrder.isFiltered && pagedInvoiceOnContractInsteadOfOrder.total === 0 ? (
+                    <SearchEmptyState>
+                      <FontAwesomeIcon icon={faSearch} />
+                      <p>Nenalezeny žádné záznamy pro hledaný výraz</p>
+                    </SearchEmptyState>
+                  ) : (
+                    <>
+                      <TableWrapper style={{ margin: 0 }}>
+                        <Table>
+                          <thead>
+                            <tr>
+                              <ThSort style={{ minWidth: '250px', width: '250px' }} onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'ev_cislo')}>Ev.číslo obj.{sortIcon('invoiceOnContractInsteadOfOrder', 'ev_cislo')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'detail_fin')}>Číslo smlouvy{sortIcon('invoiceOnContractInsteadOfOrder', 'detail_fin')}</ThSort>
+                              <ThSort style={{ width: '240px', maxWidth: '240px' }} onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'fa_vs')}>Fa VS{sortIcon('invoiceOnContractInsteadOfOrder', 'fa_vs')}</ThSort>
+                              <ThSort style={{ width: '90px', maxWidth: '90px' }} onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'fa_typ')}>Typ FA{sortIcon('invoiceOnContractInsteadOfOrder', 'fa_typ')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'dt_fa')}>Fa vystavena{sortIcon('invoiceOnContractInsteadOfOrder', 'dt_fa')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'dt_obj_created')}>Obj vytvořena{sortIcon('invoiceOnContractInsteadOfOrder', 'dt_obj_created')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'objednatel')}>Objednatel{sortIcon('invoiceOnContractInsteadOfOrder', 'objednatel')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'schvalovatel')}>Schvalovatel{sortIcon('invoiceOnContractInsteadOfOrder', 'schvalovatel')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'usek')}>Úsek{sortIcon('invoiceOnContractInsteadOfOrder', 'usek')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'stav')}>Stav obj.{sortIcon('invoiceOnContractInsteadOfOrder', 'stav')}</ThSort>
+                              <ThSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'stav_fa')}>Stav FA{sortIcon('invoiceOnContractInsteadOfOrder', 'stav_fa')}</ThSort>
+                              <ThRSort onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'fa_castka')}>FA částka{sortIcon('invoiceOnContractInsteadOfOrder', 'fa_castka')}</ThRSort>
+                              <ThSort style={{ minWidth: '110px' }} onClick={() => handleTableSort('invoiceOnContractInsteadOfOrder', 'fk_stav')}>Kontrola{sortIcon('invoiceOnContractInsteadOfOrder', 'fk_stav')}</ThSort>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {pagedInvoiceOnContractInsteadOfOrder.items.map(({ order, invoice }) => {
+                              const rowKey = `invoice_on_contract_${order.id}_${invoice.id}`;
+                              return (
+                                <Tr key={rowKey}>
+                                  <Td>{renderOrderLinkWithSubject(order, 'invoiceOnContractInsteadOfOrder')}</Td>
+                                  <TdNarrow>{renderFinancingRefCell(order, 'invoiceOnContractInsteadOfOrder')}</TdNarrow>
+                                  <Td style={{ width: '240px', maxWidth: '240px', overflow: 'hidden' }}>
+                                    {renderInvoiceLink(invoice)}
+                                  </Td>
+                                  <Td style={{ width: '90px', maxWidth: '90px' }}>{renderFaTypBadge(invoice.fa_typ, invoice.fa_typ_nazev)}</Td>
+                                  <Td>{highlightText(formatDateCz(invoice.datum_vystaveni || invoice.datum_doruceni), 'invoiceOnContractInsteadOfOrder')}</Td>
+                                  <Td>{highlightText(formatDateCz(getOrderDate(order)), 'invoiceOnContractInsteadOfOrder')}</Td>
+                                  <Td>{renderOrdererStack(order)}</Td>
+                                  <Td>{renderApproverStack(order, getOrderStatusCode, getInvoiceApprovalDate)}</Td>
+                                  <Td>{highlightText(getOrdererUsekCode(order) || '-', 'invoiceOnContractInsteadOfOrder')}</Td>
+                                  <Td>{highlightText(getOrderStatusLabel(order), 'invoiceOnContractInsteadOfOrder')}</Td>
+                                  <Td>{highlightText(getInvoiceStatusLabel(invoice), 'invoiceOnContractInsteadOfOrder')}</Td>
+                                  <TdR>{fmtCurrency(getInvoiceAmount(invoice))}</TdR>
+                                  <Td style={{ minWidth: '110px', padding: '0.6rem 0.9rem' }}><FkInlineCell objednavkaId={order.id} fakturaId={invoice.id} entityType="OBJ_FA" sectionKey="invoiceOnContractInsteadOfOrder" token={token} username={username} onFkLoad={handleFkLoad} /></Td>
+                                </Tr>
+                              );
+                            })}
+                          </tbody>
+                        </Table>
+                      </TableWrapper>
+                      {renderPagination('invoiceOnContractInsteadOfOrder', pagedInvoiceOnContractInsteadOfOrder)}
                     </>
                   )}
                   </SectionCard>

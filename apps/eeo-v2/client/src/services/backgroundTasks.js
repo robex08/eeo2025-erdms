@@ -59,12 +59,22 @@ const getModuleSettingsSafe = () => {
 /**
  * Task handler pro kontrolu notifikací
  * Spouští se každých 90 sekund (byl 60s - optimalizace 2026-06-23)
- * 
+ *
  * OPTIMALIZACE 2026-06-23:
  * - Interval zvýšen z 60s na 90s (snížení traffic o 33%)
  * - Leader election implementována (pouze 1 tab polling místo N tabů)
  * - Expected: snížení requestů z ~1,553/den na ~200/den (87% úspora)
+ *
+ * OPRAVA 2026-09-06:
+ * - Leader election klíč je nyní namespaced podle prostředí (PUBLIC_URL),
+ *   protože DEV (/dev/eeo-v2) a PROD (/eeo-v2) běží na stejné doméně a bez
+ *   namespace sdílely localStorage - vyhrával leadership jen jeden z tabů
+ *   napříč prostředími a badge se v tom druhém nikdy neaktualizoval.
  */
+// Namespace odděluje leader election mezi prostředími se stejným originem (DEV/PROD na stejné doméně)
+const ENV_NAMESPACE = (process.env.PUBLIC_URL || 'local').replace(/[^a-zA-Z0-9]/g, '_') || 'local';
+const NOTIFICATION_LEADER_KEY = `notification_checker_leader_${ENV_NAMESPACE}`;
+
 export const createNotificationCheckTask = (onNewNotifications, onUnreadCountChange) => {
   // Leader election state (sdílený mezi všemi instancemi)
   let isLeader = false;
@@ -73,13 +83,13 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
   // Helper: Pokus o získání leadership
   const tryBecomeLeader = () => {
     try {
-      const leaderData = JSON.parse(localStorage.getItem('notification_checker_leader'));
+      const leaderData = JSON.parse(localStorage.getItem(NOTIFICATION_LEADER_KEY));
       const now = Date.now();
-      
+
       // Pokud žádný leader nebo starý (120s timeout), staň se leaderem
       if (!leaderData || (now - leaderData.timestamp) > 120000) {
         isLeader = true;
-        localStorage.setItem('notification_checker_leader', JSON.stringify({
+        localStorage.setItem(NOTIFICATION_LEADER_KEY, JSON.stringify({
           tabId: tabId,
           timestamp: now
         }));
@@ -87,7 +97,7 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
       } else if (leaderData.tabId === tabId) {
         // Jsme leader - update timestamp
         isLeader = true;
-        localStorage.setItem('notification_checker_leader', JSON.stringify({
+        localStorage.setItem(NOTIFICATION_LEADER_KEY, JSON.stringify({
           tabId: tabId,
           timestamp: now
         }));
@@ -103,6 +113,23 @@ export const createNotificationCheckTask = (onNewNotifications, onUnreadCountCha
       return true;
     }
   };
+
+  // Uvolnění leadershipu při odchodu ze stránky (F5 reload, zavření tabu, navigace pryč).
+  // Bez tohoto musí nová instance po reloadu čekat až 120s (timeout), než starý - už mrtvý -
+  // záznam v localStorage vyexpiruje: badge po reloadu na chvíli úplně zmizí (unreadCount
+  // zůstane na výchozí 0), i když leader byl ve skutečnosti tenhle samý tab.
+  const releaseLeadershipIfHeld = () => {
+    try {
+      if (!isLeader) return;
+      const leaderData = JSON.parse(localStorage.getItem(NOTIFICATION_LEADER_KEY));
+      if (leaderData?.tabId === tabId) {
+        localStorage.removeItem(NOTIFICATION_LEADER_KEY);
+      }
+    } catch (e) {
+      // Ignore
+    }
+  };
+  window.addEventListener('pagehide', releaseLeadershipIfHeld);
 
   // Return task configuration object
   return {

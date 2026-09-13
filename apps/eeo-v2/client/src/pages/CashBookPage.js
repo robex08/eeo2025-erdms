@@ -1123,8 +1123,10 @@ const CashBookPage = () => {
   // header už ukazuje N+1.
   const requestIdRef = useRef(0);
 
-  // 🆕 Flag pro zabránění race condition při ensureBookExists
-  const ensureBookRef = useRef(false);
+  // 🆕 Ref pro zabránění race condition při ensureBookExists
+  // Drží promise běžícího volání (ne jen boolean flag) - souběžné volání
+  // tak počká na stejný výsledek místo toho, aby dostalo null a smazalo položky knihy
+  const ensureBookPromiseRef = useRef(null);
 
   // 🆕 REF: Pro přístup k aktuálnímu stavu v intervalech (bez restart intervalu)
   const cashBookEntriesRef = useRef(cashBookEntries);
@@ -1359,16 +1361,15 @@ const CashBookPage = () => {
       return null;
     }
 
-    // ✅ RACE CONDITION PROTECTION - ak už prebieha ensureBookExists, vrátiť null
-    if (ensureBookRef.current) {
-
-      return null;
+    // ✅ RACE CONDITION PROTECTION - pokud už prebíhá ensureBookExists (např. souběžné
+    // překreslení po přepnutí uživatele/impersonaci), počkat na JEHO výsledek místo
+    // vrácení null - jinak volající (loadDataFromDB) vynuluje položky knihy, i když
+    // reálná data z první (stále běžící) DB fetch operace mezitím dorazí v pořádku.
+    if (ensureBookPromiseRef.current) {
+      return ensureBookPromiseRef.current;
     }
 
-    ensureBookRef.current = true;
-
-
-
+    const runEnsureBookExists = async () => {
     try {
       // ✅ NOVÁ LOGIKA: "jedna pokladna = jedna kniha pro všechny uživatele"
       const cisloPokladny = mainAssignment.cislo_pokladny;
@@ -1471,8 +1472,13 @@ const CashBookPage = () => {
       return null;
     } finally {
       // ✅ VŽDY resetovať flag
-      ensureBookRef.current = false;
+      ensureBookPromiseRef.current = null;
     }
+    };
+
+    const promise = runEnsureBookExists();
+    ensureBookPromiseRef.current = promise;
+    return promise;
   }, [mainAssignment, userDetail, currentYear, currentMonth, showToast, transformDBEntryToFrontend]);
 
   /**
@@ -4148,8 +4154,8 @@ const CashBookPage = () => {
 
             {isWorkingInSubstitution && (
               <SubstitutionInfoBanner>
-                Pracujete v režimu zastupování{(currentBookData?.uzivatel_jmeno_plne || mainAssignment?.uzivatel_cele_jmeno)
-                  ? ` za ${(currentBookData?.uzivatel_jmeno_plne || mainAssignment?.uzivatel_cele_jmeno)}.`
+                Pracujete v režimu zastupování{(mainAssignment?.uzivatel_cele_jmeno || currentBookData?.uzivatel_jmeno_plne)
+                  ? ` za ${(mainAssignment?.uzivatel_cele_jmeno || currentBookData?.uzivatel_jmeno_plne)}.`
                   : '.'} Změny ukládáte do pokladní knihy zastupovaného uživatele.
               </SubstitutionInfoBanner>
             )}
@@ -4157,16 +4163,19 @@ const CashBookPage = () => {
 
           <p className="subtitle">
             {(() => {
-              // ✅ Získat informace o vlastníkovi pokladny z book objektu (currentBookData)
-              // Backend vrací vše z JOIN: uzivatel_jmeno_plne, lokalita_nazev, usek_nazev
-              const userName = currentBookData?.uzivatel_jmeno_plne ||
-                              currentBookData?.uzivatel_cele_jmeno ||
-                              mainAssignment?.uzivatel_cele_jmeno ||
+              // ✅ Vlastník pokladny MUSÍ vycházet z aktuálního přiřazení (mainAssignment),
+              // NE z book objektu (currentBookData) - kniha jen zaznamenává, kdo ji naposledy
+              // vytvořil/upravil (může to být i admin, který ji dřív jen prohlížel/založil),
+              // což NENÍ totéž jako aktuální vlastník pokladny. currentBookData slouží jen
+              // jako fallback pro starší přiřazení bez vyplněných jmenných údajů.
+              const userName = mainAssignment?.uzivatel_cele_jmeno ||
                               (mainAssignment?.uzivatel_jmeno && mainAssignment?.uzivatel_prijmeni
                                 ? `${mainAssignment.uzivatel_jmeno} ${mainAssignment.uzivatel_prijmeni}`
-                                : null);
-              const lokalita = currentBookData?.lokalita_nazev || mainAssignment?.lokalita_nazev || mainAssignment?.lokalita_kod;
-              const usek = currentBookData?.usek_nazev || mainAssignment?.usek_nazev;
+                                : null) ||
+                              currentBookData?.uzivatel_jmeno_plne ||
+                              currentBookData?.uzivatel_cele_jmeno;
+              const lokalita = mainAssignment?.lokalita_nazev || mainAssignment?.lokalita_kod || currentBookData?.lokalita_nazev;
+              const usek = mainAssignment?.usek_nazev || currentBookData?.usek_nazev;
               const cashboxNum = organizationInfo.cashboxNumber;
               const vpd = organizationInfo.cashboxVpd;
               const ppd = organizationInfo.cashboxPpd;

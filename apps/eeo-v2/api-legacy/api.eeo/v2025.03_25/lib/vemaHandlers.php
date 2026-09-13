@@ -372,53 +372,9 @@ function handle_vema_faktury_list($input, $config, $queries) {
         $stmt->execute($params);
         $faktury = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Post-processing: formátování čísla objednávky
+        // Post-processing: formátování čísla objednávky (O-1234/2026 → O-1234/75030926/2026)
         foreach ($faktury as &$faktura) {
-            // Formátování čísla objednávky: O-1234/2026 → O-1234/75030926/2026
-            // POUZE pro čísla začínající O-, vložit KONSTANTU 75030926
-            if (!empty($faktura['cobj'])) {
-                $cobj = trim($faktura['cobj']); // Odstranit bílé znaky na začátku/konci
-                
-                // Odstranit mezery za O- (např. "O- 0176" → "O-0176")
-                $cobj = preg_replace('/^(O-)\s+/i', '$1', $cobj);
-                
-                // Kontrola, zda začíná O-
-                if (stripos($cobj, 'O-') === 0) {
-                    $ico_konstanta = '75030926'; // KONSTANTA, ne z firmy!
-                    
-                    // 1. Pokud má formát O-xxxx/ROK, vložit konstantu doprostřed
-                    if (preg_match('/^(O-\d+)\/(\d{4})$/i', $cobj, $matches)) {
-                        $prefix = $matches[1]; // např. O-1234
-                        $rok = $matches[2];    // např. 2026
-                        $faktura['cobj_formatovane'] = $prefix . '/' . $ico_konstanta . '/' . $rok;
-                    } 
-                    // 2. Pokud má formát O-xxxx-ROK, převést na /konstanta/ formát
-                    else if (preg_match('/^(O-\d+)-(\d{2,4})$/i', $cobj, $matches)) {
-                        $prefix = $matches[1]; // např. O-1234
-                        $rok = $matches[2];    // např. 2026 nebo 26
-                        // Rozšířit zkrácený rok 26 → 2026
-                        if (strlen($rok) == 2) {
-                            $rok = '20' . $rok;
-                        }
-                        $faktura['cobj_formatovane'] = $prefix . '/' . $ico_konstanta . '/' . $rok;
-                    }
-                    // 3. Pokud má formát O-xxxROK (bez oddělovače), např. O-01972026
-                    else if (preg_match('/^(O-\d+?)(20\d{2})$/i', $cobj, $matches)) {
-                        $prefix = $matches[1]; // např. O-0197
-                        $rok = $matches[2];    // např. 2026
-                        $faktura['cobj_formatovane'] = $prefix . '/' . $ico_konstanta . '/' . $rok;
-                    }
-                    // Jinak nechat původní
-                    else {
-                        $faktura['cobj_formatovane'] = $cobj;
-                    }
-                } else {
-                    // Není O-xxxx, nechat původní
-                    $faktura['cobj_formatovane'] = $cobj;
-                }
-            } else {
-                $faktura['cobj_formatovane'] = null;
-            }
+            $faktura['cobj_formatovane'] = format_vema_cislo_objednavky(isset($faktura['cobj']) ? $faktura['cobj'] : null);
         }
         unset($faktura); // Break reference
 

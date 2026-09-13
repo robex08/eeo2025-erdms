@@ -307,6 +307,7 @@ require_once __DIR__ . '/v2025.03_25/lib/odboryLpHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaKontrolaHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaPropojenHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/vemaBetaGroupedHandlers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
@@ -2506,6 +2507,10 @@ switch ($endpoint) {
 
     case 'vema-objednavky/faktury-list':
         handle_vema_objednavky_faktury_list($input, $config);
+        break;
+
+    case 'vema-faktury/kontrola-obj-beta/grouped-list':
+        handle_vema_beta_grouped_list($input, $config);
         break;
 
     // === NOVÉ OBJEDNÁVKY API (25a_*) ===

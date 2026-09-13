@@ -16,7 +16,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faBuilding, faFileInvoice, faFileContract, faSearch, faTimes, 
   faChevronLeft, faChevronRight, faAnglesLeft, faAnglesRight,
-  faChevronDown, faChevronUp, faUpload, faCheckCircle, faPlus, faMinus, faBoltLightning
+  faChevronDown, faChevronUp, faUpload, faCheckCircle, faPlus, faMinus, faBoltLightning, faFilterCircleXmark
 } from '@fortawesome/free-solid-svg-icons';
 import {
   useReactTable,
@@ -29,9 +29,11 @@ import {
 import AuthContext from '../context/AuthContext';
 import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, loadEeoFakturyBezVema, formatExcelDate, excelSerialToDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
 import VemaKontrolaCell from '../components/VemaKontrolaCell';
-import { getVemaFakturaPropojeni, getVemaObjednavkyFaktury } from '../services/apiVemaPropojeni';
+import { getVemaFakturaPropojeni, getVemaObjednavkyFaktury, getVemaBetaGroupedList } from '../services/apiVemaPropojeni';
 import { fetchLimitovanePrisliby } from '../services/api2auth';
 import { KONTROLA_STATUS, KONTROLA_STATUS_LABELS, KONTROLA_STATUS_COLORS, normalizeKontrolaStatus } from '../services/apiVemaKontrola';
+import { getStatusColor } from '../constants/orderStatusColors';
+import { getOrderSystemStatus } from '../utils/orderStatsUtils';
 
 // Priorita stavů kontroly pro třídění sloupce "Kontrola" (problémy první, hotovo poslední)
 const KONTROLA_STATUS_SORT_PRIORITY = {
@@ -250,6 +252,28 @@ const TICK_COLORS = {
   unk: '#94a3b8',
 };
 
+// Překlad stavů EEO faktury (25a_faktury.stav) do češtiny.
+const FAKTURA_STAV_LABELS = {
+  'ZAEVIDOVANA': 'Zaevidována',
+  'VECNA_SPRAVNOST': 'Věcná správnost',
+  'V_RESENI': 'V řešení',
+  'PREDANA_PO': 'Předána PO',
+  'K_ZAPLACENI': 'K zaplacení',
+  'ZAPLACENO': 'Zaplaceno',
+  'DOKONCENA': 'Dokončena',
+  'STORNO': 'Storno'
+};
+
+// Typ dokladu VEMA (25v_fpazahl.typdok, sloupec J v exportu) - číselník podle VEMA.
+const VEMA_TYPDOK_LABELS = {
+  1: 'Běžná FV',
+  2: 'Dobropis',
+  4: 'Zálohová faktura',
+  5: 'Zúčtovací faktura',
+  9: 'Vrácení peněz',
+};
+const VEMA_TYPDOK_ZALOHOVA = 4;
+
 const ViewModeToggleBar = styled.div`
   display: inline-flex;
   align-items: center;
@@ -286,6 +310,7 @@ const VazebniSkupinaCard = styled.div`
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  container-type: inline-size;
 `;
 
 const GroupsSectionLabel = styled.h4`
@@ -304,10 +329,13 @@ const MatrixGroupsStack = styled.div`
 `;
 
 // Jednoznačné 1:1/1:N páry nepotřebují celou šířku obrazovky - dlaždice
-// vedle sebe se lépe čtou a nenechávají zbytečně prázdné místo.
+// vedle sebe se lépe čtou a nenechávají zbytečně prázdné místo. Minimální
+// šířka sloupce musí stačit i na to, aby se VEMA a EEO strana uvnitř karty
+// (SimplePairCard) vešly na jeden řádek vedle sebe - jinak SimplePairCard
+// zalomí a VEMA/EEO skončí pod sebou místo vedle sebe.
 const SimpleTileGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(760px, 1fr));
   gap: 0.75rem;
 `;
 
@@ -350,6 +378,31 @@ const VazebniSkupinaSub = styled.p`
   line-height: 1.5;
 `;
 
+// Souhrn objednávky v záhlaví fan-karty (vytvořeno/objednáno/schváleno,
+// objednatel, schvalovatel...) - jako dvousloupcová mřížka, aby na širší
+// obrazovce nevznikal jeden dlouhý řádek textu odděleného tečkami.
+const ObjInfoGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 320px));
+  column-gap: 1.5rem;
+  row-gap: 2px;
+  margin-top: 5px;
+  width: fit-content;
+
+  @media (max-width: 640px) {
+    grid-template-columns: 1fr;
+  }
+
+  .item {
+    display: flex;
+    gap: 5px;
+    font-size: 0.72rem;
+    line-height: 1.4;
+  }
+  .item .label { color: #94a3b8; flex-shrink: 0; }
+  .item .value { color: #334155; font-weight: 600; }
+`;
+
 const SkupinaPill = styled.span`
   font-size: 0.68rem;
   font-weight: 700;
@@ -359,6 +412,45 @@ const SkupinaPill = styled.span`
   background: ${props => VERDICT_COLORS[props.$tone]?.bg || '#e5e7eb'};
   color: ${props => VERDICT_COLORS[props.$tone]?.text || '#374151'};
   border: 1px solid ${props => VERDICT_COLORS[props.$tone]?.border || '#cbd5e1'};
+`;
+
+// Filtr podle automatického vyhodnocení páru (ne podle manuální Kontroly) -
+// kategorie se vykreslí jen ty, které se v aktuálních datech skutečně
+// vyskytují (viz počty v GroupedKontrolaObjView), takže se lišta sama
+// přizpůsobí tomu, co se nad daty objeví.
+const VERDICT_CATEGORY_META = {
+  no_candidate: { label: 'Bez kandidáta', bg: '#f1f5f9', border: '#94a3b8', text: '#475569' },
+  bad: { label: 'Nesedí', bg: VERDICT_COLORS.bad.bg, border: VERDICT_COLORS.bad.border, text: VERDICT_COLORS.bad.text },
+  warn: { label: 'Odhad, ověřit', bg: VERDICT_COLORS.warn.bg, border: VERDICT_COLORS.warn.border, text: VERDICT_COLORS.warn.text },
+  fan: { label: 'Víc faktur na 1 objednávku', bg: '#dbeafe', border: '#3b82f6', text: '#1e40af' },
+  matrix: { label: 'Nejednoznačné (víc kandidátů)', bg: '#ede9fe', border: '#8b5cf6', text: '#5b21b6' },
+  good: { label: 'Potvrzeno v EEO', bg: VERDICT_COLORS.good.bg, border: VERDICT_COLORS.good.border, text: VERDICT_COLORS.good.text },
+};
+
+const VerdictFilterBar = styled.div`
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+`;
+
+const VerdictFilterChip = styled.button`
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  cursor: pointer;
+  background: ${props => (props.$active ? props.$border : props.$bg)};
+  color: ${props => (props.$active ? '#ffffff' : props.$text)};
+  border: 1px solid ${props => props.$border};
+  transition: all 0.15s ease;
+
+  &:hover {
+    filter: brightness(0.96);
+  }
 `;
 
 const MatchMatrixWrap = styled.div`
@@ -480,7 +572,14 @@ const SimplePairCard = styled.div`
   display: flex;
   align-items: flex-start;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+
+  /* Když je box (VazebniSkupinaCard) dost široký, drž VEMA/EEO stranu vedle
+     sebe v jednom řádku - jinak (užší okno / víc sloupců v dlaždicích) se
+     zalomí pod sebe, aby nic nepřetékalo. */
+  @container (max-width: 720px) {
+    flex-wrap: wrap;
+  }
 `;
 
 const SkupinaNode = styled.div`
@@ -499,7 +598,8 @@ const SkupinaNode = styled.div`
 
 const SkupinaWire = styled.div`
   flex: 1;
-  align-self: center;
+  align-self: flex-start;
+  margin-top: 15px;
   min-width: 24px;
   height: 1px;
   background: ${props => VERDICT_COLORS[props.$verdict]?.border || VERDICT_COLORS.good.border};
@@ -620,7 +720,7 @@ const EeoFakturaHighlightTag = styled.div`
 const FAKTURY_SUB_SECTIONS = [
   { id: 'tabulka', label: 'Veškeré doklady' },
   { id: 'kontrola-obj', label: 'Kontrola OBJ' },
-  { id: 'kontrola-obj-beta', label: 'Kontrola OBJ BETA', isBeta: true, requiredRoles: ['SUPERADMIN', 'administrator'] },
+  { id: 'kontrola-obj-beta', label: 'Kontrola OBJ BETA', isBeta: true, requiredRoles: ['SUPERADMIN', 'ADMINISTRATOR', 'ROZPOCTAR'] },
   { id: 'kontrola-sml', label: 'Kontrola SML' },
   { id: 'kontrola-rp', label: 'Kontrola ročních poplatků' },
   { id: 'vema-bez-eeo', label: 'VEMA doklady bez EEO dokladů' },
@@ -648,6 +748,14 @@ const VEMA_BETA_VIEW_MODE_LS_KEY = 'eeo_vs_vema_beta_view_mode';
 const VEMA_BADGE_FILTER_LS_KEY = 'eeo_vs_vema_badge_filter';
 const VEMA_WARNING_FILTER_LS_KEY = 'eeo_vs_vema_warning_filter';
 const VEMA_KONTROLA_FILTER_LS_KEY = 'eeo_vs_vema_kontrola_filter';
+const VEMA_BETA_VERDICT_FILTER_LS_KEY = 'eeo_vs_vema_beta_verdict_filter';
+
+// Počet záznamů na stránku - sjednocené možnosti napříč celým modulem
+// (plochý pohled, Kontrola OBJ BETA flat i seskupený pohled).
+const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
+const VEMA_PAGE_SIZE_LS_KEY = 'eeo_vs_vema_page_size';
+const VEMA_BETA_PAGE_SIZE_LS_KEY = 'eeo_vs_vema_beta_page_size';
+const VEMA_BETA_GROUPED_PAGE_SIZE_LS_KEY = 'eeo_vs_vema_beta_grouped_page_size';
 
 const getStoredJSON = (key, fallback) => {
   if (typeof window === 'undefined') return fallback;
@@ -684,6 +792,28 @@ const setStoredString = (key, value) => {
   } catch (error) {
     // localStorage může být nedostupný, ignorujeme
   }
+};
+
+// Počet záznamů na stránku, persistovaný per-uživatel (aby jeden uživatel na
+// sdíleném PC neovlivnil preferenci druhého - stejný vzor jako u
+// cashbook_selector_cashbox v CashBookPage.js). Dokud není znám userDetail.id,
+// hook běží jen s výchozí hodnotou v paměti a nic nečte/nezapisuje do LS.
+const useUserScopedPageSize = (baseKey, userDetail, defaultSize = 50) => {
+  const [size, setSize] = useState(defaultSize);
+  const storageKey = userDetail?.id ? `${baseKey}_${userDetail.id}` : null;
+
+  useEffect(() => {
+    if (!storageKey) return;
+    const stored = getStoredJSON(storageKey, null);
+    if (PAGE_SIZE_OPTIONS.includes(stored)) setSize(stored);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    setStoredJSON(storageKey, size);
+  }, [storageKey, size]);
+
+  return [size, setSize];
 };
 
 const getStoredMainTab = () => {
@@ -776,6 +906,69 @@ const FilterToolsRight = styled.div`
   align-items: center;
   gap: 0.45rem;
   flex: 0 0 auto;
+`;
+
+// Multiselect filtr stavu kontroly, vedle vyhledávacího řádku - stejná
+// hodnota (kontrolaFilter) sdílená s dlaždicemi dashboardu výše.
+const KontrolaFilterWrap = styled.div`
+  position: relative;
+  flex: 0 0 auto;
+`;
+
+const KontrolaFilterButton = styled.button`
+  height: 40px;
+  padding: 0 0.6rem;
+  border-radius: 6px;
+  border: 1px solid ${props => (props.$active ? '#3b82f6' : '#cbd5e1')};
+  background: ${props => (props.$active ? '#eff6ff' : '#ffffff')};
+  color: ${props => (props.$active ? '#1d4ed8' : '#475569')};
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  white-space: nowrap;
+`;
+
+const KontrolaFilterOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+`;
+
+const KontrolaFilterPanel = styled.div`
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 41;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.14);
+  padding: 0.4rem;
+  min-width: 200px;
+`;
+
+const KontrolaFilterOption = styled.label`
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.4rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #334155;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover { background: #f1f5f9; }
+
+  input { cursor: pointer; }
+`;
+
+const KontrolaFilterDivider = styled.div`
+  border-top: 1px solid #e2e8f0;
+  margin: 0.3rem 0;
 `;
 
 const FilterStats = styled.div`
@@ -1319,109 +1512,11 @@ const CloseButton = styled.button`
 // ============================================================================
 // KONTROLA OBJ BETA - Seskupený pohled: čisté utility funkce (bez state)
 // ============================================================================
-
-// Spouští async worker nad polem s max. `limit` souběžnými "lanes" - v codebase
-// není žádná knihovna na limitování souběžnosti, a loadPropojeni sám interně
-// fanuje Promise.all pro _groupedKontrola řádky, takže hromadný Promise.all
-// nad celou stránkou by mohl vyvolat stovky souběžných requestů.
-async function runWithConcurrencyLimit(items, workerFn, limit = 6) {
-  let cursor = 0;
-  const lanes = new Array(Math.min(limit, items.length)).fill(null).map(async () => {
-    while (cursor < items.length) {
-      const idx = cursor++;
-      try {
-        await workerFn(items[idx], idx);
-      } catch (e) {
-        // Chyba jednotlivého fetch je zpracovaná uvnitř workerFn (loadPropojeni),
-        // zde jen zabráníme přerušení ostatních lanes.
-      }
-    }
-  });
-  await Promise.all(lanes);
-}
-
-// Union-find nad vazbami faktura<->kandidátní objednávka pro aktuální stránku
-// BETA tabu. Faktury sdílející aspoň jednu kandidátní objednávku skončí ve
-// stejné "vazební skupině". Čistá funkce - nečte ani nemění žádný state.
-function buildVazebniSkupiny(pageRows, propojenData) {
-  const parent = new Map();
-  const find = (key) => {
-    if (!parent.has(key)) parent.set(key, key);
-    let root = key;
-    while (parent.get(root) !== root) root = parent.get(root);
-    let cur = key;
-    while (parent.get(cur) !== root) {
-      const next = parent.get(cur);
-      parent.set(cur, root);
-      cur = next;
-    }
-    return root;
-  };
-  const union = (a, b) => {
-    const ra = find(a);
-    const rb = find(b);
-    if (ra !== rb) parent.set(ra, rb);
-  };
-
-  const invoiceCandidates = new Map(); // rowId -> [candidate objednavka, ...]
-  const invoiceMatchedFaktury = new Map(); // rowId -> [EEO faktura už spárovaná s nějakou objednávkou, ...]
-  const invoiceLoaded = new Map(); // rowId -> byla propojeni už načtena?
-
-  pageRows.forEach((row) => {
-    const invKey = `inv:${row.id}`;
-    find(invKey);
-    const propojeni = propojenData[row.id];
-    invoiceLoaded.set(row.id, !!propojeni);
-    const candidates = propojeni?.objednavky || [];
-    invoiceCandidates.set(row.id, candidates);
-    // EEO faktury nalezené přes VS/doklad/částku - každá už MÁ (přes objednavka_id)
-    // konkrétní objednávku přiřazenou v EEO. Tohle je silnější signál než
-    // odhad z částky/data objednávky - EEO to už jednou spároval ručně.
-    invoiceMatchedFaktury.set(row.id, propojeni?.faktury || []);
-    candidates.forEach((cand) => {
-      if (cand?.id === undefined || cand?.id === null) return;
-      const objKey = `obj:${cand.id}`;
-      find(objKey);
-      union(invKey, objKey);
-    });
-  });
-
-  const rootToInvoiceRows = new Map();
-  const rootToCandidates = new Map();
-
-  pageRows.forEach((row) => {
-    const root = find(`inv:${row.id}`);
-    if (!rootToInvoiceRows.has(root)) rootToInvoiceRows.set(root, []);
-    rootToInvoiceRows.get(root).push(row);
-
-    const candidates = invoiceCandidates.get(row.id) || [];
-    if (!rootToCandidates.has(root)) rootToCandidates.set(root, new Map());
-    const candMap = rootToCandidates.get(root);
-    candidates.forEach((cand) => {
-      if (cand?.id === undefined || cand?.id === null) return;
-      if (!candMap.has(cand.id)) candMap.set(cand.id, cand);
-    });
-  });
-
-  return Array.from(rootToInvoiceRows.entries()).map(([root, invoiceRows]) => {
-    const candidateIdsByRowId = {};
-    const isLoadedByRowId = {};
-    const matchedFakturyByRowId = {};
-    invoiceRows.forEach((row) => {
-      candidateIdsByRowId[row.id] = (invoiceCandidates.get(row.id) || []).map((c) => c.id);
-      isLoadedByRowId[row.id] = !!invoiceLoaded.get(row.id);
-      matchedFakturyByRowId[row.id] = invoiceMatchedFaktury.get(row.id) || [];
-    });
-    return {
-      groupId: root,
-      invoiceRows,
-      candidates: Array.from((rootToCandidates.get(root) || new Map()).values()),
-      candidateIdsByRowId,
-      isLoadedByRowId,
-      matchedFakturyByRowId,
-    };
-  });
-}
+// Poznámka: groupování faktur (union-find), matchování na EEO a výpočet
+// verdiktu páru se od teď počítá na BE (viz vema-faktury/kontrola-obj-beta/
+// grouped-list, PHP handle_vema_beta_grouped_list) - tady zůstávají jen
+// funkce, které pořád používá vykreslení karet (parseFlexibleDate, formatKc,
+// compareVemaEeoIdentifikace).
 
 // Nejstarší rozumný rok pro datum v EEO/VEMA datech - cokoli starší je skoro
 // jistě chybný/sentinelový záznam (typicky Excel serial 0/prázdná buňka
@@ -1449,97 +1544,6 @@ function parseFlexibleDate(val) {
 
 const formatKc = (n) => `${Number(n).toLocaleString('cs-CZ')} Kč`;
 const formatDateShort = (date) => date.toLocaleDateString('cs-CZ');
-
-// Párové porovnání faktury a kandidátní objednávky jen na polích, která API
-// reálně vrací (objednávka NEMÁ platnost_od/do, jen dt_objednavky). Vrací i
-// čitelný "detail" text s porovnávanými hodnotami, aby šlo verdikt v UI ověřit,
-// ne mu jen věřit.
-//
-// matchedEeoFaktury = EEO faktury (25a_objednavky_faktury) nalezené pro tuhle
-// VEMA fakturu přes VS/číslo dokladu/částku (viz propojeni.faktury) - každá
-// taková EEO faktura už MÁ přes objednavka_id přiřazenou konkrétní objednávku,
-// protože ji tak někdo v EEO ručně založil. To je silnější a přímější signál
-// než odhad z částky/data objednávky, který je jen dopočítaný z agregátů.
-function computeConditionTicks(invoiceRow, candidate, matchedEeoFaktury) {
-  // EEO vazba: má EEO už tuhle fakturu spárovanou s PRÁVĚ touto objednávkou?
-  // Zdroj pravdy: propojeni.faktury (fuzzy dohledání přes VS/doklad/částku).
-  // Tenhle fuzzy match ale může minout reálně existující fakturu, když se
-  // fa_cislo_vema v EEO neshoduje přesně s VEMA vsymb (běžná datová
-  // nekonzistence). Proto NIKDY netvrdíme "objednávka nemá fakturu" jen
-  // proto, že fuzzy match nic nenašel - objednávka.pocet_faktur/zaplaceno
-  // (přímý COUNT/SUM podle objednavka_id, bez fuzzy matchování) řekne, jestli
-  // tam faktury skutečně jsou, i když se tu konkrétní nepodařilo dohledat.
-  let eeoVazba = 'unk';
-  let eeoVazbaDetail = 'objednávka v EEO nemá zatím žádnou evidovanou fakturu';
-  const candObjCislo = String(candidate?.cislo_objednavky || '').trim();
-  const faktury = Array.isArray(matchedEeoFaktury) ? matchedEeoFaktury : [];
-  const pocetFakturNaObj = Number(candidate?.pocet_faktur);
-  const zaplacenoNaObj = Number(candidate?.zaplaceno);
-
-  if (faktury.length > 0) {
-    const shodnaFaktura = candObjCislo && faktury.find((f) => String(f?.cislo_objednavky || '').trim() === candObjCislo);
-    const jinaObjFaktura = faktury.find((f) => String(f?.cislo_objednavky || '').trim() !== '');
-    if (shodnaFaktura) {
-      eeoVazba = 'ok';
-      eeoVazbaDetail = 'EEO už má tuto fakturu spárovanou s touto objednávkou';
-    } else if (jinaObjFaktura) {
-      eeoVazba = 'no';
-      eeoVazbaDetail = `EEO má tuto fakturu spárovanou s jinou objednávkou (${jinaObjFaktura.cislo_objednavky})`;
-    } else {
-      eeoVazba = 'unk';
-      eeoVazbaDetail = 'EEO fakturu zná (VS/doklad/částka sedí), ale zatím bez vazby na objednávku';
-    }
-  } else if (Number.isFinite(pocetFakturNaObj) && pocetFakturNaObj > 0) {
-    eeoVazba = 'unk';
-    eeoVazbaDetail = `objednávka už má v EEO evidováno ${pocetFakturNaObj} ${pocetFakturNaObj === 1 ? 'fakturu' : 'faktury'}${Number.isFinite(zaplacenoNaObj) && zaplacenoNaObj > 0 ? ` (${formatKc(zaplacenoNaObj)})` : ''}, ale přes VS/doklad/částku se k ní tahle konkrétní faktura nedohledala - zkontrolujte ručně`;
-  }
-
-  // Částka: invoiceRow.celkem vs. součet položek objednávky vč. DPH (castka_detail
-  // = SUM(pol.cena_s_dph) - to je skutečná hodnota objednávky). castka_max
-  // (max_cena_s_dph) je jen schválený strop a použije se pouze jako náhrada,
-  // když objednávka nemá žádné položky zapsané.
-  let castka = 'unk';
-  let castkaDetail = 'objednávka nemá položky ani strop k porovnání';
-  const soucetPolozek = Number(candidate?.castka_detail);
-  const stropObjednavky = Number(candidate?.castka_max);
-
-  let referencniCastka = null;
-  let referenceLabel = '';
-  if (Number.isFinite(soucetPolozek) && soucetPolozek > 0) {
-    referencniCastka = soucetPolozek;
-    referenceLabel = 'položky obj.';
-  } else if (Number.isFinite(stropObjednavky) && stropObjednavky > 0) {
-    referencniCastka = stropObjednavky;
-    referenceLabel = 'max obj. (bez položek)';
-  }
-
-  const fakturaCastka = Number(invoiceRow?.celkem);
-  if (referencniCastka !== null && Number.isFinite(fakturaCastka)) {
-    const tolerance = Math.max(referencniCastka * 0.01, 1);
-    castka = fakturaCastka <= referencniCastka + tolerance ? 'ok' : 'no';
-    castkaDetail = `${formatKc(fakturaCastka)} · ${referenceLabel} ${formatKc(referencniCastka)}`;
-  }
-
-  // Datum: objednávka musí logicky vzniknout dřív než faktura - faktura by
-  // tedy neměla být datovaná dřív než objednávka (s tolerancí pár dní na
-  // administrativní zpoždění). Preferujeme datum vystavení faktury (dof),
-  // při jeho absenci datum přijetí (datpri) - a v detailu vždy uvedeme,
-  // které z nich to bylo, aby šlo ověřit, co se vlastně porovnává.
-  let datum = 'unk';
-  let datumDetail = 'datum faktury nebo objednávky chybí / je neplatné';
-  const fakturaDatumVystaveni = parseFlexibleDate(invoiceRow?.dof);
-  const fakturaDatumPrijeti = parseFlexibleDate(invoiceRow?.datpri);
-  const fakturaDatum = fakturaDatumVystaveni || fakturaDatumPrijeti;
-  const fakturaDatumLabel = fakturaDatumVystaveni ? 'vystavení' : 'přijetí';
-  const objednavkaDatum = parseFlexibleDate(candidate?.dt_objednavky);
-  if (fakturaDatum && objednavkaDatum) {
-    const toleranceMs = 3 * 24 * 60 * 60 * 1000;
-    datum = fakturaDatum.getTime() >= objednavkaDatum.getTime() - toleranceMs ? 'ok' : 'no';
-    datumDetail = `fa. ${fakturaDatumLabel} ${formatDateShort(fakturaDatum)} · objednáno ${formatDateShort(objednavkaDatum)}`;
-  }
-
-  return { castka, castkaDetail, datum, datumDetail, eeoVazba, eeoVazbaDetail };
-}
 
 // Backend hledá EEO fakturu podle VS NEBO podle dokladu (fa_vema_kod) -
 // stačí, aby sedělo jedno z nich (viz priority v propojeni-eeo), takže i
@@ -1573,71 +1577,111 @@ function compareVemaEeoIdentifikace(invoiceRow, matchedFaktura) {
   };
 }
 
-// Doplňuje skupinu o verdikty jednotlivých párů (faktura x kandidát) a tlumí
-// tik "datum" na 'unk', pokud pár není strukturálně jednoznačný - víc faktur
-// u sebe (nebo víc objednávek u sebe) automaticky neznamená potvrzenou shodu,
-// systém prostě nemá podklad rozhodnout, která faktura patří ke které objednávce.
-function deriveGroupVerdicts(group) {
-  const { invoiceRows, candidates, candidateIdsByRowId, matchedFakturyByRowId } = group;
-
-  const candidateCountByInvoice = new Map();
-  const invoiceCountByCandidate = new Map();
-
-  // Pro každou fakturu její reálné kandidátní ID (z propojenData, viz
-  // candidateIdsByRowId sestavené v buildVazebniSkupiny), a naopak pro
-  // každého kandidáta počet faktur, které ho nárokují.
-  invoiceRows.forEach((row) => {
-    const ids = candidateIdsByRowId[row.id] || [];
-    candidateCountByInvoice.set(row.id, ids.length);
-    ids.forEach((id) => {
-      invoiceCountByCandidate.set(id, (invoiceCountByCandidate.get(id) || 0) + 1);
-    });
-  });
-
-  const pairVerdicts = {};
-
-  invoiceRows.forEach((row) => {
-    const ids = candidateIdsByRowId[row.id] || [];
-    ids.forEach((candId) => {
-      const candidate = candidates.find((c) => c.id === candId);
-      if (!candidate) return;
-
-      const matchedFaktury = matchedFakturyByRowId[row.id] || [];
-      const ticks = computeConditionTicks(row.original, candidate, matchedFaktury);
-
-      const jednoznacne = (candidateCountByInvoice.get(row.id) === 1) && (invoiceCountByCandidate.get(candId) === 1);
-      if (ticks.datum === 'ok' && !jednoznacne) {
-        ticks.datum = 'unk';
-        ticks.datumDetail = `${ticks.datumDetail} — nejednoznačné (víc kandidátů ve skupině), nelze potvrdit automaticky`;
-      }
-
-      // eeoVazba (přímá vazba EEO faktura -> objednávka) má přednost před
-      // odhadem z částky/data - je to skutečná vazba, ne dopočítaná shoda.
-      let verdict = 'warn';
-      if (ticks.eeoVazba === 'ok') verdict = 'good';
-      else if (ticks.eeoVazba === 'no') verdict = 'bad';
-      else if (ticks.castka === 'no' || ticks.datum === 'no') verdict = 'bad';
-      else if (ticks.castka === 'ok' && ticks.datum === 'ok') verdict = 'warn'; // shoda je jen odhad, ne potvrzená vazba v EEO
-
-      pairVerdicts[`${row.id}__${candId}`] = { ...ticks, verdict };
-    });
-  });
-
-  return { ...group, pairVerdicts };
-}
-
 // ============================================================================
 // KONTROLA OBJ BETA - Seskupený pohled: render komponenta
 // ============================================================================
 
-const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData }) => {
-  if (!groups || groups.length === 0) {
-    return (
-      <SkupinaLoadingCard>
-        <span>Načítám propojení pro seskupený pohled…</span>
-      </SkupinaLoadingCard>
-    );
-  }
+// Kontrola OBJ BETA - seskupený pohled je od teď plně BE-řízený: groupování
+// duplicitních VEMA řádků, fuzzy matchování na EEO, výpočet verdiktu páru i
+// počty pro filtrovací chipy počítá server pro CELÝ přefiltrovaný dataset
+// (viz vema-faktury/kontrola-obj-beta/grouped-list, PHP
+// handle_vema_beta_grouped_list) - komponenta si data i stránkování řídí
+// sama, nezávisle na plochém (flat) pohledu stejné záložky.
+const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilter, warningOnlyFilter, kontrolaFilter, lpSeznam = [] }) => {
+  const [verdictFilter, setVerdictFilter] = useState(() => getStoredString(VEMA_BETA_VERDICT_FILTER_LS_KEY, null));
+  const [page, setPage] = useState(1);
+  const [groupedPageSize, setGroupedPageSize] = useUserScopedPageSize(VEMA_BETA_GROUPED_PAGE_SIZE_LS_KEY, userDetail);
+  const [groupsResult, setGroupsResult] = useState({ groups: [], verdictCounts: {}, pagination: { page: 1, per_page: 50, total: 0, total_pages: 1 } });
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [groupsError, setGroupsError] = useState(null);
+  // Reálné EEO faktury pro kandidátní objednávky viditelné na aktuální
+  // stránce - přímo podle objednavka_id, bez fuzzy VS/doklad hledání (viz
+  // vema-objednavky/faktury-list). Doplňuje identifikacePanely i tam, kde
+  // fuzzy hledání reálně existující fakturu mine.
+  const [objednavkaFakturyData, setObjednavkaFakturyData] = useState({});
+  const [objednavkaFakturyLoading, setObjednavkaFakturyLoading] = useState(false);
+
+  useEffect(() => {
+    if (verdictFilter === null) {
+      try { localStorage.removeItem(VEMA_BETA_VERDICT_FILTER_LS_KEY); } catch (e) {}
+    } else {
+      setStoredString(VEMA_BETA_VERDICT_FILTER_LS_KEY, verdictFilter);
+    }
+  }, [verdictFilter]);
+
+  // Změna filtru (kromě stránky samotné) - vrátit se na stránku 1.
+  useEffect(() => {
+    setPage(1);
+  }, [search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, groupedPageSize]);
+
+  useEffect(() => {
+    if (!token || !username) return;
+    let cancelled = false;
+    setGroupsLoading(true);
+    setGroupsError(null);
+
+    getVemaBetaGroupedList({ token, username, search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, page, perPage: groupedPageSize })
+      .then((data) => {
+        if (cancelled) return;
+        setGroupsResult(data);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.error('Chyba při načítání seskupeného pohledu Kontrola OBJ BETA:', e);
+        setGroupsError(e.message || 'Chyba při načítání seskupeného pohledu');
+      })
+      .finally(() => {
+        if (!cancelled) setGroupsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [token, username, search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, page, groupedPageSize]);
+
+  const groups = useMemo(
+    () => (groupsResult.groups || []).map((g) => ({
+      ...g,
+      invoiceRows: g.invoiceRows.map((r) => ({ id: r.id, original: r })),
+    })),
+    [groupsResult.groups]
+  );
+  const verdictCounts = groupsResult.verdictCounts || {};
+  const pagination = groupsResult.pagination || { page: 1, per_page: 50, total: 0, total_pages: 1 };
+
+  // Reálné EEO faktury na kandidátních objednávkách aktuální stránky.
+  useEffect(() => {
+    if (!token || !username) return;
+    if (objednavkaFakturyLoading) return;
+
+    const allIds = new Set();
+    groups.forEach((group) => {
+      group.candidates.forEach((cand) => {
+        if (cand?.id !== undefined && cand?.id !== null) allIds.add(cand.id);
+      });
+    });
+    const missingIds = Array.from(allIds).filter((id) => !(String(id) in objednavkaFakturyData));
+    if (missingIds.length === 0) return;
+
+    setObjednavkaFakturyLoading(true);
+    getVemaObjednavkyFaktury(missingIds, token, username)
+      .then((data) => {
+        const byObj = data?.faktury_by_objednavka || {};
+        setObjednavkaFakturyData((prev) => {
+          const next = { ...prev };
+          missingIds.forEach((id) => { next[String(id)] = byObj[String(id)] || []; });
+          return next;
+        });
+      })
+      .catch((e) => {
+        console.warn('Nepodařilo se načíst EEO faktury objednávek:', e);
+        setObjednavkaFakturyData((prev) => {
+          const next = { ...prev };
+          missingIds.forEach((id) => { next[String(id)] = []; });
+          return next;
+        });
+      })
+      .finally(() => setObjednavkaFakturyLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, objednavkaFakturyData, objednavkaFakturyLoading, token, username]);
 
   const kontrolaCellFor = (row) => {
     const vemaId = row.original._masterCfak || row.original.cfak;
@@ -1672,12 +1716,12 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
           </IdentRow>
           <IdentRow $tick={cmp.doklad}>
             <span className="label">Doklad</span>
-            <span className="vals">{cmp.dokladVema || '—'} <b>{cmp.doklad === 'ok' ? '=' : '≠'}</b> {cmp.dokladEeo || '—'}</span>
+            <span className="vals"><b>{cmp.dokladVema || '—'}</b> {cmp.doklad === 'ok' ? '=' : '≠'} <b>{cmp.dokladEeo || '—'}</b></span>
           </IdentRow>
           <IdentRow $tick={cmp.castka}>
             <span className="label">Částka</span>
             <span className="vals">
-              {Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'} <b>{cmp.castka === 'ok' ? '=' : '≠'}</b> {Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}
+              <b>{Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'}</b> {cmp.castka === 'ok' ? '=' : '≠'} <b>{Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}</b>
             </span>
           </IdentRow>
         </IdentPanel>
@@ -1731,18 +1775,24 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
               </IdentRow>
               <IdentRow $tick={cmp.doklad}>
                 <span className="label">Doklad</span>
-                <span className="vals">{cmp.dokladVema || '—'} / {cmp.dokladEeo || '—'}</span>
+                <span className="vals"><b>{cmp.dokladVema || '—'}</b> / <b>{cmp.dokladEeo || '—'}</b></span>
               </IdentRow>
               <IdentRow $tick={cmp.castka}>
                 <span className="label">Částka</span>
                 <span className="vals">
-                  {Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'} / {Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}
+                  <b>{Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'}</b> / <b>{Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}</b>
                 </span>
               </IdentRow>
               {datum && (
                 <IdentRow $tick="unk">
                   <span className="label">Vystaveno</span>
-                  <span className="vals">{formatDateShort(datum)}</span>
+                  <span className="vals"><b>{formatDateShort(datum)}</b></span>
+                </IdentRow>
+              )}
+              {f.stav && (
+                <IdentRow $tick="unk">
+                  <span className="label">Stav</span>
+                  <span className="vals">{FAKTURA_STAV_LABELS[f.stav] || f.stav}</span>
                 </IdentRow>
               )}
             </EeoFakturaRow>
@@ -1752,10 +1802,49 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
     );
   };
 
+  // Rozparsuje `financovani` JSON objednávky (stejná pole jako sloupec
+  // Financování v tabulce objednávek na kandidátní objednávce níže) do
+  // {label, detail, bg, color} pro badge v záhlaví fan-karty.
+  const parseFinancovaniBadge = (financovani) => {
+    if (!financovani) return null;
+    try {
+      const data = typeof financovani === 'string' ? JSON.parse(financovani) : financovani;
+      const typ = data.TYP || data.typ;
+
+      if (typ === 'LP') {
+        const lpKody = data.LP_KODY || data.lp_kody || [];
+        let detail = '';
+        if (lpKody.length > 0 && lpSeznam.length > 0) {
+          detail = lpKody.map((lpId) => {
+            const lp = lpSeznam.find((l) => l.id === parseInt(lpId, 10));
+            if (!lp) return `LP ID ${lpId}`;
+            const cisloLp = lp.cislo_lp || `LP-${lpId}`;
+            return cisloLp.split('/')[0];
+          }).join(', ');
+        } else if (lpKody.length > 0) {
+          detail = lpKody.map((k) => `LP ID ${k}`).join(', ');
+        }
+        return { label: 'LP', detail, bg: '#fef3c7', color: '#92400e' };
+      }
+      if (typ === 'SMLOUVA') {
+        return { label: 'Smlouva', detail: data.cislo_smlouvy || data.CISLO_SMLOUVY || '', bg: '#f0f9ff', color: '#0369a1' };
+      }
+      if (typ === 'INDIVIDUALNI' || typ === 'INDIVIDUALNI_SCHVALENI') {
+        return { label: 'Individuální schválení', detail: data.individualni_schvaleni || '', bg: '#fce7f3', color: '#9f1239' };
+      }
+      if (typ === 'POJISTNA_UDALOST') {
+        return { label: 'Pojistná událost', detail: data.pojistna_udalost_cislo || '', bg: '#fef3c7', color: '#ea580c' };
+      }
+      return { label: typ || 'Jiné', detail: '', bg: '#f3f4f6', color: '#6b7280' };
+    } catch (e) {
+      return { label: String(financovani), detail: '', bg: '#f3f4f6', color: '#6b7280' };
+    }
+  };
+
   // Jeden řádek "faktura <-> kandidátní objednávka" - sdílené mezi jednoduchou
   // 1:1 kartou a "fan" kartou (víc faktur, jedna sdílená objednávka), aby
   // obě vypadaly stejně a používaly stejný CSS.
-  const renderPairRow = (row, candidate, pv, matchedFaktury) => {
+  const renderPairRow = (row, candidate, pv, matchedFaktury, hideCandidateNode = false) => {
     const tone = candidate ? (pv ? pv.verdict : 'warn') : 'warn';
     const fakturaDatumVystaveni = parseFlexibleDate(row.original.dof);
     const fakturaDatumPrijeti = parseFlexibleDate(row.original.datpri);
@@ -1772,39 +1861,69 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
             {!fakturaDatumVystaveni && fakturaDatumPrijeti && `přijetí ${formatDateShort(fakturaDatumPrijeti)}`}
             {fakturaSplatnost && ` · splatnost ${formatDateShort(fakturaSplatnost)}`}
           </span>
+          <span className="m">Číslo dokladu: <b>{row.original.cdok || '—'}</b></span>
+          <span className="m">Částka: <b>{formatKc(row.original.celkem || 0)}</b></span>
+          <span className="m">Datum vystavení: <b>{fakturaDatumVystaveni ? formatDateShort(fakturaDatumVystaveni) : '—'}</b></span>
+          {(row.original.typdok !== null && row.original.typdok !== undefined && row.original.typdok !== '') && (
+            <span
+              className="m"
+              style={Number(row.original.typdok) === VEMA_TYPDOK_ZALOHOVA ? { color: '#b45309', fontWeight: 700 } : undefined}
+            >
+              Typ dokladu: <b>{VEMA_TYPDOK_LABELS[Number(row.original.typdok)] || `kód ${row.original.typdok}`}</b>
+            </span>
+          )}
           {/* Bez kandidáta nemáme objednávku, ke které natáhnout skutečné EEO
               faktury - jediné, co nabídnout, je stará fuzzy shoda. */}
           {!candidate && identifikacePanelyFor(row.original, matchedFaktury)}
-          <div style={{ marginTop: 4 }}>{kontrolaCellFor(row)}</div>
+          <div style={{ marginTop: 6 }}>
+                  <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0 0 6px 0' }} />
+                  {kontrolaCellFor(row)}
+                </div>
         </SkupinaNode>
+        {!candidate && (
+          <>
+            <SkupinaWire $verdict="bad" />
+            <EeoFakturyBox style={{ borderColor: VERDICT_COLORS.bad.border, background: VERDICT_COLORS.bad.bg }}>
+              <EeoFakturyBoxTitle style={{ color: VERDICT_COLORS.bad.text }}>EEO — objednávka</EeoFakturyBoxTitle>
+              <span style={{ fontSize: '0.7rem', color: VERDICT_COLORS.bad.text }}>
+                Kandidát nenalezen. Oprava patří do VEMA / EEO u zdrojových dokladů, ne sem - poznámku k řešení zapište do dialogu Kontrola.
+              </span>
+            </EeoFakturyBox>
+          </>
+        )}
         {candidate && (
           <>
             <SkupinaWire $verdict={tone} />
-            <SkupinaNode>
-              <span className="n">{candidate.cislo_objednavky}</span>
-              <span className="m">{candidate.dodavatel}</span>
-              {candidate.nazev && <span className="m" title={candidate.nazev}>{candidate.nazev}</span>}
-              {(() => {
-                const d = parseFlexibleDate(candidate.dt_objednavky);
-                return d ? <span className="m">objednáno {formatDateShort(d)}</span> : null;
-              })()}
-              {pv && (
-                <CondRow style={{ marginTop: 4 }}>
-                  <Cond $tick={pv.eeoVazba} title={pv.eeoVazbaDetail}>
-                    <span className="label">vazba EEO</span>
-                    <span className="detail">{pv.eeoVazbaDetail}</span>
-                  </Cond>
-                  <Cond $tick={pv.castka} title={pv.castkaDetail}>
-                    <span className="label">částka</span>
-                    <span className="detail">{pv.castkaDetail}</span>
-                  </Cond>
-                  <Cond $tick={pv.datum} title={pv.datumDetail}>
-                    <span className="label">datum</span>
-                    <span className="detail">{pv.datumDetail}</span>
-                  </Cond>
-                </CondRow>
-              )}
-            </SkupinaNode>
+            {/* Ve "fan" kartě (víc faktur na jedné sdílené objednávce) je
+                objednávka už jednou vypsaná v záhlaví karty - opakovat ji
+                u každého řádku je zbytečná duplicita. */}
+            {!hideCandidateNode && (
+              <SkupinaNode>
+                <span className="n">{candidate.cislo_objednavky}</span>
+                <span className="m">{candidate.dodavatel}</span>
+                {candidate.nazev && <span className="m" title={candidate.nazev}>{candidate.nazev}</span>}
+                {(() => {
+                  const d = parseFlexibleDate(candidate.dt_objednavky);
+                  return d ? <span className="m">objednáno {formatDateShort(d)}</span> : null;
+                })()}
+                {pv && (
+                  <CondRow style={{ marginTop: 4 }}>
+                    <Cond $tick={pv.eeoVazba} title={pv.eeoVazbaDetail}>
+                      <span className="label">vazba EEO</span>
+                      <span className="detail">{pv.eeoVazbaDetail}</span>
+                    </Cond>
+                    <Cond $tick={pv.castka} title={pv.castkaDetail}>
+                      <span className="label">částka</span>
+                      <span className="detail">{pv.castkaDetail}</span>
+                    </Cond>
+                    <Cond $tick={pv.datum} title={pv.datumDetail}>
+                      <span className="label">datum</span>
+                      <span className="detail">{pv.datumDetail}</span>
+                    </Cond>
+                  </CondRow>
+                )}
+              </SkupinaNode>
+            )}
             {eeoFakturyPanelFor(candidate, row.original)}
           </>
         )}
@@ -1812,60 +1931,154 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
     );
   };
 
-  const renderSimpleCard = (group) => {
-    const { groupId, invoiceRows, candidates, pairVerdicts, matchedFakturyByRowId } = group;
-    const row = invoiceRows[0];
-    const candidate = candidates[0];
-    const pv = candidate ? pairVerdicts[`${row.id}__${candidate.id}`] : null;
-    // Chybějící kandidát není "shoda" - je to prázdný výsledek, který si taky
-    // zaslouží pozornost, ne tichý zelený pruh.
-    const tone = candidate ? (pv ? pv.verdict : 'warn') : 'warn';
-
-    return (
-      <VazebniSkupinaCard key={groupId}>
-        <VazebniSkupinaStripe $verdict={tone} />
-        <VazebniSkupinaBody>
-          <VazebniSkupinaHead>
-            <div>
-              <VazebniSkupinaTitle>{row.original.cfak || '—'}</VazebniSkupinaTitle>
-              <VazebniSkupinaSub>{row.original.firma_nazev} · {formatKc(row.original.celkem || 0)}</VazebniSkupinaSub>
-            </div>
-            <SkupinaPill $tone={tone}>
-              {!candidate ? 'bez kandidáta' : (tone === 'good' ? 'potvrzeno v EEO' : tone === 'bad' ? 'nesedí' : 'odhad, ověřit')}
-            </SkupinaPill>
-          </VazebniSkupinaHead>
-          {renderPairRow(row, candidate, pv, matchedFakturyByRowId[row.id])}
-        </VazebniSkupinaBody>
-      </VazebniSkupinaCard>
-    );
+  // Čeština má tři tvary počítaného podstatného jména - 1/2-4/5+.
+  const pluralKandidatnichFaktur = (n) => {
+    if (n === 1) return 'kandidátní faktura';
+    if (n >= 2 && n <= 4) return 'kandidátní faktury';
+    return 'kandidátních faktur';
   };
 
-  // Víc faktur sdílejících jednu jedinou kandidátní objednávku - typicky
-  // sourozenecké podpoložky přes stejný prefix čísla objednávky. Zobrazí se
-  // jako jedna karta s objednávkou v záhlaví a jedním řádkem "faktura <->
-  // objednávka + EEO faktury" na fakturu, takže vypadá stejně jako 1:1 karta,
-  // jen se opakuje.
-  const renderFanCard = (group) => {
-    const { groupId, invoiceRows, candidates, pairVerdicts } = group;
+  // Sjednocená karta pro 1:1 pár i "fan" (víc faktur sdílejících jednu
+  // kandidátní objednávku - typicky sourozenecké podpoložky přes stejný
+  // prefix čísla objednávky). Obojí má STEJNOU strukturu: OBJ v záhlaví
+  // (číslo, stav, financování, data/objednatel/schvalovatel) a pod ní jeden
+  // řádek "faktura <-> OBJ + EEO faktury" na fakturu - u 1:1 páru je ten
+  // řádek jen jeden. Bez kandidáta OBJ header nedává smysl (není co ukázat),
+  // proto je to samostatná, jednodušší větev.
+  const renderObjGroupCard = (group) => {
+    const { groupId, invoiceRows, candidates, pairVerdicts, matchedFakturyByRowId } = group;
     const candidate = candidates[0];
+
+    if (!candidate) {
+      const row = invoiceRows[0];
+      return (
+        <VazebniSkupinaCard key={groupId}>
+          <VazebniSkupinaStripe $verdict="warn" />
+          <VazebniSkupinaBody>
+            <VazebniSkupinaHead>
+              <div>
+                <VazebniSkupinaTitle>{row.original.cfak || '—'}</VazebniSkupinaTitle>
+                <VazebniSkupinaSub>{row.original.firma_nazev} · {formatKc(row.original.celkem || 0)}</VazebniSkupinaSub>
+              </div>
+              <SkupinaPill $tone="warn">bez kandidáta</SkupinaPill>
+            </VazebniSkupinaHead>
+            {renderPairRow(row, null, null, matchedFakturyByRowId[row.id])}
+          </VazebniSkupinaBody>
+        </VazebniSkupinaCard>
+      );
+    }
+
+    const isSingle = invoiceRows.length === 1;
     const rowVerdicts = invoiceRows.map((row) => pairVerdicts[`${row.id}__${candidate.id}`]).filter(Boolean);
     const toReviewCount = rowVerdicts.filter((pv) => pv.verdict === 'warn').length;
-    const groupTone = rowVerdicts.length > 0 && rowVerdicts.every((pv) => pv.verdict === 'good') ? 'good' : 'mixed';
+    // U 1:1 páru je "tone" verdikt toho jednoho páru (chybějící verdikt = 'warn',
+    // ne tichá zelená); u fan skupiny je to souhrn napříč všemi páry.
+    const groupTone = isSingle
+      ? (rowVerdicts[0] ? rowVerdicts[0].verdict : 'warn')
+      : (rowVerdicts.length > 0 && rowVerdicts.every((pv) => pv.verdict === 'good') ? 'good' : 'mixed');
 
     return (
       <VazebniSkupinaCard key={groupId}>
         <VazebniSkupinaStripe $verdict={groupTone} />
         <VazebniSkupinaBody>
-          <VazebniSkupinaHead>
-            <div>
-              <VazebniSkupinaTitle>{candidate.cislo_objednavky}</VazebniSkupinaTitle>
-              <VazebniSkupinaSub>
-                {candidate.dodavatel}{candidate.nazev ? ` · ${candidate.nazev}` : ''} — {invoiceRows.length} kandidátních faktur ke stejné objednávce
-              </VazebniSkupinaSub>
+          <VazebniSkupinaHead style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '1.5rem', flex: '1 1 auto', minWidth: 0 }}>
+              <div style={{ flex: '0 1 auto', minWidth: '220px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <VazebniSkupinaTitle style={{ margin: 0 }}>{candidate.cislo_objednavky}</VazebniSkupinaTitle>
+                  {candidate.stav && (() => {
+                    const statusColor = getStatusColor(getOrderSystemStatus({ stav_objednavky: candidate.stav }));
+                    return (
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: 4,
+                          whiteSpace: 'nowrap',
+                          background: statusColor.light,
+                          color: statusColor.dark,
+                        }}
+                      >
+                        {candidate.stav}
+                      </span>
+                    );
+                  })()}
+                  {(() => {
+                    const fin = parseFinancovaniBadge(candidate.financovani);
+                    if (!fin) return null;
+                    return (
+                      <span
+                        style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          padding: '0.2rem 0.55rem',
+                          borderRadius: 4,
+                          whiteSpace: 'nowrap',
+                          background: fin.bg,
+                          color: fin.color,
+                        }}
+                        title={fin.detail || undefined}
+                      >
+                        {fin.label}{fin.detail ? `: ${fin.detail}` : ''}
+                      </span>
+                    );
+                  })()}
+                </div>
+                <VazebniSkupinaSub>
+                  {candidate.dodavatel}{candidate.nazev ? ` · ${candidate.nazev}` : ''} — {invoiceRows.length} {pluralKandidatnichFaktur(invoiceRows.length)} ke stejné objednávce
+                </VazebniSkupinaSub>
+              </div>
+              {/* Souhrn objednávky - vedle popisu objednávky (ne pod ním),
+                  v hlavičce je dost volného vodorovného prostoru. */}
+              {(() => {
+                const dVytvoreno = parseFlexibleDate(candidate.dt_vytvoreni);
+                const dObjednano = parseFlexibleDate(candidate.dt_objednavky);
+                const dSchvaleno = parseFlexibleDate(candidate.dt_schvaleni);
+                const objJmeno = candidate.objednatel_jmeno || candidate.zadavatel_jmeno;
+                const objPrijmeni = candidate.objednatel_prijmeni || candidate.zadavatel_prijmeni;
+                const objednatel = objJmeno ? `${objJmeno} ${objPrijmeni || ''}`.trim() : null;
+                const schvalovatel = candidate.schvalovatel_jmeno
+                  ? `${candidate.schvalovatel_jmeno} ${candidate.schvalovatel_prijmeni || ''}`.trim()
+                  : null;
+                const substInfo = candidate.substitution_info && candidate.substitution_info.schvalovatel;
+
+                const items = [];
+                if (dVytvoreno) items.push(['Vytvořeno', formatDateShort(dVytvoreno)]);
+                if (dObjednano) items.push(['Objednáno', formatDateShort(dObjednano)]);
+                if (objednatel) items.push(['Objednatel', objednatel]);
+                if (schvalovatel) {
+                  const schvalenoSuffix = dSchvaleno ? ` (${formatDateShort(dSchvaleno)})` : '';
+                  const substSuffix = substInfo ? ` — v zastoupení za ${substInfo.zastupovany_jmeno}` : '';
+                  items.push(['Schválil', `${schvalovatel}${schvalenoSuffix}${substSuffix}`]);
+                } else if (dSchvaleno) {
+                  items.push(['Schváleno', formatDateShort(dSchvaleno)]);
+                }
+                if (items.length === 0) return null;
+
+                return (
+                  <ObjInfoGrid>
+                    {items.map(([label, value]) => (
+                      <div className="item" key={label}>
+                        <span className="label">{label}:</span>
+                        <span className="value">{value}</span>
+                      </div>
+                    ))}
+                  </ObjInfoGrid>
+                );
+              })()}
             </div>
             <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
-              <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
-              {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} ke kontrole</SkupinaPill>}
+              {isSingle ? (
+                <SkupinaPill $tone={groupTone}>
+                  {groupTone === 'good' ? 'potvrzeno v EEO' : groupTone === 'bad' ? 'nesedí' : 'odhad, ověřit'}
+                </SkupinaPill>
+              ) : (
+                <>
+                  <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
+                  {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} ke kontrole</SkupinaPill>}
+                </>
+              )}
             </div>
           </VazebniSkupinaHead>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
@@ -1873,7 +2086,7 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
               const pv = pairVerdicts[`${row.id}__${candidate.id}`];
               return (
                 <div key={row.id} style={idx > 0 ? { paddingTop: '0.6rem', borderTop: '1px solid #e2e8f0' } : undefined}>
-                  {renderPairRow(row, candidate, pv, [])}
+                  {renderPairRow(row, candidate, pv, [], true)}
                 </div>
               );
             })}
@@ -1939,7 +2152,10 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
                       })()}
                     </span>
                     {identifikacePanelyFor(row.original, matchedFakturyByRowId[row.id])}
-                    <div style={{ marginTop: 4 }}>{kontrolaCellFor(row)}</div>
+                    <div style={{ marginTop: 6 }}>
+                  <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0 0 6px 0' }} />
+                  {kontrolaCellFor(row)}
+                </div>
                   </MatrixRowHead>
                   {candidates.map((cand) => {
                     const pv = pairVerdicts[`${row.id}__${cand.id}`];
@@ -1980,84 +2196,133 @@ const GroupedKontrolaObjView = ({ groups, token, username, objednavkaFakturyData
     );
   };
 
-  // Skupiny rozdělíme na 3 sady, aby se dala řešit priorita pozornosti a
-  // aby jednoznačné (malé) páry nemusely zbytečně zabírat celou šířku
-  // obrazovky jako plnohodnotný řádek - jdou vedle sebe jako dlaždice.
-  // Do dlaždicové sekce (potvrzeno) patří JEN 1:1 páry, kde verdikt vyšel
-  // 'good' - strukturální jednoznačnost (přesně 1 kandidát) není totéž co
-  // potvrzená shoda. Chybějící kandidát nebo verdikt 'bad'/'warn' u 1:1 páru
-  // je pořád něco, co vyžaduje pozornost, i když je "jen jeden".
-  const loadingGroups = [];
+  // Skupiny rozdělíme na 2 sady, aby jednoznačné (malé) páry nemusely
+  // zbytečně zabírat celou šířku obrazovky jako plnohodnotný řádek - jdou
+  // vedle sebe jako dlaždice. Do dlaždicové sekce (potvrzeno) patří JEN 1:1
+  // páry, kde verdikt vyšel 'good' (server je označí jako verdictCategory
+  // 'good') - vše ostatní (fan/matrix/no_candidate/bad/warn) vyžaduje
+  // pozornost. Klasifikaci i počty (verdictCounts) už dodává server.
   const attentionItems = []; // { groupId, node } - matice i 1:1 páry co nesedí/nejde ověřit
   const confirmedGroups = [];
 
   groups.forEach((group) => {
-    const stillLoading = group.invoiceRows.some((row) => !group.isLoadedByRowId[row.id]);
-    if (stillLoading) {
-      loadingGroups.push(group);
-      return;
-    }
-
-    const isSimpleShape = group.invoiceRows.length === 1 && group.candidates.length <= 1;
-    // Víc faktur, ale jen jedna kandidátní objednávka - to není opravdový
-    // N x M shluk (matice s 1 sloupcem vypadá blbě), radši to poskládat jako
-    // opakované řádky "faktura <-> objednávka" pod jednu hlavičku objednávky.
-    const isFanShape = group.invoiceRows.length > 1 && group.candidates.length === 1;
-    if (isFanShape) {
-      attentionItems.push({ groupId: group.groupId, node: renderFanCard(group) });
-      return;
-    }
-    if (!isSimpleShape) {
+    if (group.verdictCategory === 'matrix') {
       attentionItems.push({ groupId: group.groupId, node: renderMatrixCard(group) });
-      return;
-    }
-
-    const row = group.invoiceRows[0];
-    const candidate = group.candidates[0];
-    const pv = candidate ? group.pairVerdicts[`${row.id}__${candidate.id}`] : null;
-    const isConfirmedGood = !!candidate && pv && pv.verdict === 'good';
-
-    if (isConfirmedGood) {
+    } else if (group.verdictCategory === 'good') {
       confirmedGroups.push(group);
     } else {
-      attentionItems.push({ groupId: group.groupId, node: renderSimpleCard(group) });
+      // 'fan' i 1:1 páry (no_candidate/bad/warn) používají stejnou sjednocenou kartu.
+      attentionItems.push({ groupId: group.groupId, node: renderObjGroupCard(group) });
     }
   });
 
+  const hasAnyVerdictCounts = Object.values(verdictCounts).some((n) => n > 0);
+
   return (
     <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      {loadingGroups.length > 0 && (
-        <MatrixGroupsStack>
-          {loadingGroups.map((group) => (
-            <SkupinaLoadingCard key={group.groupId}>
-              <span>Načítám propojení ({group.invoiceRows.map((r) => r.original.cfak).join(', ')})…</span>
+      {hasAnyVerdictCounts && (
+        <VerdictFilterBar style={{ opacity: groupsLoading ? 0.55 : 1, pointerEvents: groupsLoading ? 'none' : 'auto', transition: 'opacity 0.15s ease' }}>
+          {Object.entries(VERDICT_CATEGORY_META).map(([key, meta]) => {
+            const count = verdictCounts[key] || 0;
+            if (count === 0) return null;
+            return (
+              <VerdictFilterChip
+                key={key}
+                type="button"
+                disabled={groupsLoading}
+                $active={verdictFilter === key}
+                $bg={meta.bg}
+                $border={meta.border}
+                $text={meta.text}
+                onClick={() => setVerdictFilter((prev) => (prev === key ? null : key))}
+                title={`Filtrovat podle vyhodnocení: ${meta.label}`}
+              >
+                {meta.label} ({count})
+              </VerdictFilterChip>
+            );
+          })}
+          {groupsLoading && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#64748b' }}>
+              <LoadingSpinner style={{ width: 13, height: 13, borderWidth: 2 }} />
+              Načítám…
+            </span>
+          )}
+        </VerdictFilterBar>
+      )}
+
+      {groupsError && <ErrorMessage>{groupsError}</ErrorMessage>}
+
+      {groupsLoading ? (
+        <LoadingInline>
+          <LoadingSpinner />
+          <span>Načítám seskupený pohled…</span>
+        </LoadingInline>
+      ) : (
+        <>
+          {attentionItems.length === 0 && confirmedGroups.length === 0 && (
+            <SkupinaLoadingCard>
+              <span>Žádné položky neodpovídají aktuálním filtrům.</span>
             </SkupinaLoadingCard>
-          ))}
-        </MatrixGroupsStack>
-      )}
-
-      {attentionItems.length > 0 && (
-        <div>
-          {(loadingGroups.length > 0 || confirmedGroups.length > 0) && (
-            <GroupsSectionLabel>Vyžaduje pozornost ({attentionItems.length})</GroupsSectionLabel>
           )}
-          <MatrixGroupsStack>
-            {attentionItems.map((item) => (
-              <React.Fragment key={item.groupId}>{item.node}</React.Fragment>
-            ))}
-          </MatrixGroupsStack>
-        </div>
-      )}
 
-      {confirmedGroups.length > 0 && (
-        <div>
-          {(loadingGroups.length > 0 || attentionItems.length > 0) && (
-            <GroupsSectionLabel>Potvrzená shoda ({confirmedGroups.length})</GroupsSectionLabel>
+          {attentionItems.length > 0 && (
+            <div>
+              {confirmedGroups.length > 0 && (
+                <GroupsSectionLabel>Vyžaduje pozornost ({attentionItems.length})</GroupsSectionLabel>
+              )}
+              <MatrixGroupsStack>
+                {attentionItems.map((item) => (
+                  <React.Fragment key={item.groupId}>{item.node}</React.Fragment>
+                ))}
+              </MatrixGroupsStack>
+            </div>
           )}
-          <SimpleTileGrid>
-            {confirmedGroups.map((group) => renderSimpleCard(group))}
-          </SimpleTileGrid>
-        </div>
+
+          {confirmedGroups.length > 0 && (
+            <div>
+              {attentionItems.length > 0 && (
+                <GroupsSectionLabel>Potvrzená shoda ({confirmedGroups.length})</GroupsSectionLabel>
+              )}
+              <SimpleTileGrid>
+                {confirmedGroups.map((group) => renderObjGroupCard(group))}
+              </SimpleTileGrid>
+            </div>
+          )}
+
+          {pagination.total > 0 && (
+            <PaginationContainer>
+              <PaginationInfo>
+                Celkem {pagination.total} skupin
+              </PaginationInfo>
+              <PaginationControls>
+                {pagination.total_pages > 1 && (
+                  <>
+                    <PageButton onClick={() => setPage(1)} disabled={pagination.page <= 1}>
+                      <FontAwesomeIcon icon={faAnglesLeft} />
+                    </PageButton>
+                    <PageButton onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={pagination.page <= 1}>
+                      <FontAwesomeIcon icon={faChevronLeft} />
+                    </PageButton>
+                    <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0.5rem' }}>
+                      Stránka {pagination.page} z {pagination.total_pages}
+                    </span>
+                    <PageButton onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))} disabled={pagination.page >= pagination.total_pages}>
+                      <FontAwesomeIcon icon={faChevronRight} />
+                    </PageButton>
+                    <PageButton onClick={() => setPage(pagination.total_pages)} disabled={pagination.page >= pagination.total_pages}>
+                      <FontAwesomeIcon icon={faAnglesRight} />
+                    </PageButton>
+                  </>
+                )}
+                <PageSizeSelector value={groupedPageSize} onChange={(e) => setGroupedPageSize(Number(e.target.value))}>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>{size} / stránku</option>
+                  ))}
+                </PageSizeSelector>
+              </PaginationControls>
+            </PaginationContainer>
+          )}
+        </>
       )}
     </div>
   );
@@ -2079,18 +2344,21 @@ const VemaDenik = () => {
   const [searchInput, setSearchInput] = useState(''); // Pro okamžitou aktualizaci inputu
   const [badgeFilter, setBadgeFilter] = useState(() => getStoredString(VEMA_BADGE_FILTER_LS_KEY, 'all')); // all | 0 | 1 | 2 | 3plus
   const [warningOnlyFilter, setWarningOnlyFilter] = useState(() => getStoredJSON(VEMA_WARNING_FILTER_LS_KEY, false));
-  // Filtr podle dlaždice kontroly (klik na widget) - null | 'zkontrolovano' | 'v_kontrole' | 'nezkontrolovano' | 'varovani'
-  const [kontrolaFilter, setKontrolaFilter] = useState(() => getStoredString(VEMA_KONTROLA_FILTER_LS_KEY, null));
+  // Filtr podle kontroly (dlaždice OBJ i multiselect u vyhledávání) - pole hodnot
+  // z KONTROLA_STATUS + 'varovani', OR logika. Prázdné pole = bez filtru.
+  const [kontrolaFilter, setKontrolaFilter] = useState(() => {
+    const stored = getStoredJSON(VEMA_KONTROLA_FILTER_LS_KEY, []);
+    return Array.isArray(stored) ? stored : [];
+  });
+  const [kontrolaMultiOpen, setKontrolaMultiOpen] = useState(false);
 
   // BETA Kontrola OBJ - nezávislá je POUZE stránkování a třídění, filtry jsou sdílené s OBJ
   const [betaPageIndex, setBetaPageIndex] = useState(0);
-  const [betaPageSize, setBetaPageSize] = useState(50);
+  const [betaPageSize, setBetaPageSize] = useUserScopedPageSize(VEMA_BETA_PAGE_SIZE_LS_KEY, userDetail);
   const [betaSorting, setBetaSorting] = useState(() => getStoredJSON(VEMA_BETA_SORTING_LS_KEY, []));
-  // Seskupený pohled BETA - 'flat' (dnešní tabulka) | 'grouped' (vazební skupiny)
+  // Seskupený pohled BETA - 'flat' (dnešní tabulka) | 'grouped' (vazební
+  // skupiny - od teď plně BE-řízené, viz GroupedKontrolaObjView).
   const [betaViewMode, setBetaViewMode] = useState(() => getStoredString(VEMA_BETA_VIEW_MODE_LS_KEY, 'flat'));
-  // Reálné EEO faktury podle objednavka_id (bez fuzzy hledání) - klíč je String(objednavka.id)
-  const [objednavkaFakturyData, setObjednavkaFakturyData] = useState({});
-  const [objednavkaFakturyLoading, setObjednavkaFakturyLoading] = useState(false);
 
   // Data
   const [firmyData, setFirmyData] = useState([]);
@@ -2115,7 +2383,7 @@ const VemaDenik = () => {
 
   // Pagination
   const [pageIndex, setPageIndex] = useState(0);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useUserScopedPageSize(VEMA_PAGE_SIZE_LS_KEY, userDetail);
   const [sorting, setSorting] = useState(() => getStoredJSON(VEMA_SORTING_LS_KEY, []));
 
   // Sorting oddělený pro OBJ (aby zůstalo nezávislé od BETA)
@@ -2176,10 +2444,7 @@ const VemaDenik = () => {
   useEffect(() => { setStoredString(VEMA_BETA_VIEW_MODE_LS_KEY, betaViewMode); }, [betaViewMode]);
   useEffect(() => { setStoredString(VEMA_BADGE_FILTER_LS_KEY, badgeFilter); }, [badgeFilter]);
   useEffect(() => { setStoredJSON(VEMA_WARNING_FILTER_LS_KEY, warningOnlyFilter); }, [warningOnlyFilter]);
-  useEffect(() => {
-    if (kontrolaFilter === null) { try { localStorage.removeItem(VEMA_KONTROLA_FILTER_LS_KEY); } catch (e) {} }
-    else setStoredString(VEMA_KONTROLA_FILTER_LS_KEY, kontrolaFilter);
-  }, [kontrolaFilter]);
+  useEffect(() => { setStoredJSON(VEMA_KONTROLA_FILTER_LS_KEY, kontrolaFilter); }, [kontrolaFilter]);
 
   // Load LP seznam pro parsing financování
   useEffect(() => {
@@ -3427,12 +3692,11 @@ const VemaDenik = () => {
     // Filtr podle kliknutí na dlaždici dashboardu (Nezkontrolováno / V pořádku / Nelze vyřešit / V řešení / S varováním)
     // Filtr je sdílený mezi OBJ a OBJ BETA (jen sorting je oddělené)
     const applyKontrolaFilter = (items) => {
-      if (!kontrolaFilter) return items;
+      if (!kontrolaFilter || kontrolaFilter.length === 0) return items;
 
-      return items.filter((item) => {
-        if (kontrolaFilter === 'varovani') return hasWarningIssue(item);
-        return normalizeKontrolaStatus(item.kontrola) === kontrolaFilter;
-      });
+      return items.filter((item) => kontrolaFilter.some((f) => (
+        f === 'varovani' ? hasWarningIssue(item) : normalizeKontrolaStatus(item.kontrola) === f
+      )));
     };
 
     const hasAnyEeoLink = (item) => {
@@ -3635,67 +3899,10 @@ const VemaDenik = () => {
   const end = start + currentPageSize;
   const paginatedData = allSortedRows.slice(start, end);
 
-  // ============================================================================
-  // KONTROLA OBJ BETA - Seskupený pohled: eager-fetch propojení + klastrování
-  // ============================================================================
-
-  // V seskupeném pohledu potřebujeme propojeni (kandidátní objednávky) pro
-  // KAŽDÝ řádek aktuální stránky, ne jen pro ten, co uživatel ručně rozklikne.
-  // Používáme stejný loadPropojeni/propojenData mechanismus jako flat pohled
-  // (žádná změna endpointu) - jen ho spouštíme aktivně, s omezenou souběžností.
-  const betaGroupedPageRowIds = paginatedData.map(r => r.id).join('|');
-  useEffect(() => {
-    if (fakturySubTab !== 'kontrola-obj-beta' || betaViewMode !== 'grouped') return;
-    const rowsNeedingFetch = paginatedData.filter(row => !propojenData[row.id] && !loadingPropojeni[row.id]);
-    if (rowsNeedingFetch.length === 0) return;
-    runWithConcurrencyLimit(rowsNeedingFetch, (row) => loadPropojeni(row), 6);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fakturySubTab, betaViewMode, betaGroupedPageRowIds, propojenData, loadingPropojeni]);
-
-  const vazebniSkupiny = useMemo(() => {
-    if (fakturySubTab !== 'kontrola-obj-beta' || betaViewMode !== 'grouped') return [];
-    return buildVazebniSkupiny(paginatedData, propojenData).map(deriveGroupVerdicts);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fakturySubTab, betaViewMode, betaGroupedPageRowIds, propojenData]);
-
-  // Reálné EEO faktury pro kandidátní objednávky viditelné na stránce -
-  // přímo podle objednavka_id, bez fuzzy VS/doklad hledání (viz nový
-  // endpoint vema-objednavky/faktury-list). Doplňuje identifikacePanely
-  // i tam, kde stávající fuzzy hledání reálně existující fakturu mine.
-  useEffect(() => {
-    if (fakturySubTab !== 'kontrola-obj-beta' || betaViewMode !== 'grouped') return;
-    if (objednavkaFakturyLoading) return;
-
-    const allIds = new Set();
-    vazebniSkupiny.forEach((group) => {
-      group.candidates.forEach((cand) => {
-        if (cand?.id !== undefined && cand?.id !== null) allIds.add(cand.id);
-      });
-    });
-    const missingIds = Array.from(allIds).filter((id) => !(String(id) in objednavkaFakturyData));
-    if (missingIds.length === 0) return;
-
-    setObjednavkaFakturyLoading(true);
-    getVemaObjednavkyFaktury(missingIds, token, username)
-      .then((data) => {
-        const byObj = data?.faktury_by_objednavka || {};
-        setObjednavkaFakturyData((prev) => {
-          const next = { ...prev };
-          missingIds.forEach((id) => { next[String(id)] = byObj[String(id)] || []; });
-          return next;
-        });
-      })
-      .catch((e) => {
-        console.warn('Nepodařilo se načíst EEO faktury objednávek:', e);
-        setObjednavkaFakturyData((prev) => {
-          const next = { ...prev };
-          missingIds.forEach((id) => { next[String(id)] = []; });
-          return next;
-        });
-      })
-      .finally(() => setObjednavkaFakturyLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fakturySubTab, betaViewMode, vazebniSkupiny, objednavkaFakturyData, objednavkaFakturyLoading, token, username]);
+  // Poznámka: Kontrola OBJ BETA seskupený pohled (betaViewMode === 'grouped')
+  // si groupování, matchování na EEO i stránkování řídí sám na straně BE -
+  // viz GroupedKontrolaObjView a vema-faktury/kontrola-obj-beta/grouped-list.
+  // paginatedData/propojenData tady dál slouží jen plochému (flat) pohledu.
 
   // ============================================================================
   // HANDLERS
@@ -4354,10 +4561,13 @@ const VemaDenik = () => {
               if (hasChybaObj || hasChybaSml) sVarovanim++;
             });
 
-            // Toggle filtru: klik na aktivní dlaždici filtr vypne, jinak ho nastaví
-            // Filtr je sdílený mezi OBJ a OBJ BETA - pouze sorting je oddělené
+            // Toggle filtru: klik na dlaždici přidá/odebere hodnotu z multiselectu
+            // (sdíleného s dropdownem u vyhledávání). Filtr je sdílený mezi OBJ
+            // a OBJ BETA - pouze sorting je oddělené.
             const toggleFilter = (value) => {
-              setKontrolaFilter(prev => (prev === value ? null : value));
+              setKontrolaFilter(prev => (
+                prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]
+              ));
               setPageIndex(0);
               setBetaPageIndex(0);
             };
@@ -4377,7 +4587,7 @@ const VemaDenik = () => {
                     <DashboardCard
                       key={status}
                       $color={colors.border}
-                      $active={kontrolaFilter === status}
+                      $active={kontrolaFilter.includes(status)}
                       onClick={() => toggleFilter(status)}
                       title={`Filtrovat: ${KONTROLA_STATUS_LABELS[status]}`}
                     >
@@ -4391,7 +4601,7 @@ const VemaDenik = () => {
 
                 <DashboardCard
                   $color="#dc2626"
-                  $active={kontrolaFilter === 'varovani'}
+                  $active={kontrolaFilter.includes('varovani')}
                   onClick={() => toggleFilter('varovani')}
                   title="Filtrovat: S varováním"
                 >
@@ -4444,7 +4654,6 @@ const VemaDenik = () => {
                 onClick={() => {
                   setBetaViewMode('grouped');
                   setBetaPageIndex(0);
-                  if (betaPageSize > 50) setBetaPageSize(50);
                 }}
               >
                 Seskupený pohled (BETA)
@@ -4480,6 +4689,67 @@ const VemaDenik = () => {
         {activeTab === 'faktury' && (
           <FilterToolsRight>
             {/* Filtry jsou sdílené mezi OBJ a OBJ BETA - jen sorting je oddělené */}
+            <KontrolaFilterWrap>
+              <KontrolaFilterButton
+                type="button"
+                $active={kontrolaFilter.length > 0}
+                onClick={() => setKontrolaMultiOpen((o) => !o)}
+                title="Filtrovat podle stavu kontroly (lze vybrat víc)"
+              >
+                Kontrola{kontrolaFilter.length > 0 ? ` (${kontrolaFilter.length})` : ''}
+                <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: '0.65rem' }} />
+              </KontrolaFilterButton>
+
+              {kontrolaMultiOpen && (
+                <>
+                  <KontrolaFilterOverlay onClick={() => setKontrolaMultiOpen(false)} />
+                  <KontrolaFilterPanel>
+                    {[
+                      KONTROLA_STATUS.NEZKONTROLOVANO,
+                      KONTROLA_STATUS.V_PORADKU,
+                      KONTROLA_STATUS.NELZE_VYRESIT,
+                      KONTROLA_STATUS.V_RESENI,
+                    ].map((status) => {
+                      const colors = KONTROLA_STATUS_COLORS[status];
+                      const checked = kontrolaFilter.includes(status);
+                      return (
+                        <KontrolaFilterOption key={status}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setKontrolaFilter((prev) => (
+                                checked ? prev.filter((v) => v !== status) : [...prev, status]
+                              ));
+                              setPageIndex(0);
+                              setBetaPageIndex(0);
+                            }}
+                          />
+                          <span>{colors.icon}</span> {KONTROLA_STATUS_LABELS[status]}
+                        </KontrolaFilterOption>
+                      );
+                    })}
+                    <KontrolaFilterDivider />
+                    <KontrolaFilterOption>
+                      <input
+                        type="checkbox"
+                        checked={kontrolaFilter.includes('varovani')}
+                        onChange={() => {
+                          const checked = kontrolaFilter.includes('varovani');
+                          setKontrolaFilter((prev) => (
+                            checked ? prev.filter((v) => v !== 'varovani') : [...prev, 'varovani']
+                          ));
+                          setPageIndex(0);
+                          setBetaPageIndex(0);
+                        }}
+                      />
+                      <span>⚠️</span> S varováním
+                    </KontrolaFilterOption>
+                  </KontrolaFilterPanel>
+                </>
+              )}
+            </KontrolaFilterWrap>
+
             <select
               value={badgeFilter}
               onChange={(e) => {
@@ -4495,16 +4765,16 @@ const VemaDenik = () => {
                 fontSize: '0.78rem',
                 color: '#1e293b',
                 background: '#fff',
-                width: '96px',
-                minWidth: '96px'
+                width: '190px',
+                minWidth: '190px'
               }}
-              title="Filtrovat podle počtu dokladů v badge"
+              title="Filtruje podle počtu nalezených propojení k VEMA dokladu (objednávky/faktury/roční poplatky v EEO)"
             >
-              <option value="all">Vše</option>
-              <option value="0">Badge 0</option>
-              <option value="1">Badge 1</option>
-              <option value="2">Badge 2</option>
-              <option value="3plus">Badge 3+</option>
+              <option value="all">Vazby na EEO: všechny</option>
+              <option value="0">Bez vazby na EEO</option>
+              <option value="1">Přesně 1 vazba</option>
+              <option value="2">Přesně 2 vazby</option>
+              <option value="3plus">3 a víc vazeb</option>
             </select>
 
             <button
@@ -4530,6 +4800,40 @@ const VemaDenik = () => {
             >
               <FontAwesomeIcon icon={faBoltLightning} />
             </button>
+
+            {(() => {
+              const hasActiveFilter = badgeFilter !== 'all' || warningOnlyFilter || kontrolaFilter.length > 0 || !!searchInput.trim();
+              return (
+                <button
+                  onClick={() => {
+                    if (!hasActiveFilter) return;
+                    setBadgeFilter('all');
+                    setWarningOnlyFilter(false);
+                    setKontrolaFilter([]);
+                    handleClearSearch();
+                    setPageIndex(0);
+                    setBetaPageIndex(0);
+                  }}
+                  disabled={!hasActiveFilter}
+                  title={hasActiveFilter ? 'Zrušit filtry' : 'Žádný filtr není aktivní'}
+                  style={{
+                    height: '40px',
+                    width: '40px',
+                    borderRadius: '6px',
+                    border: `1px solid ${hasActiveFilter ? '#ef4444' : '#cbd5e1'}`,
+                    background: hasActiveFilter ? '#fee2e2' : '#ffffff',
+                    color: hasActiveFilter ? '#dc2626' : '#94a3b8',
+                    cursor: hasActiveFilter ? 'pointer' : 'not-allowed',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.9rem'
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFilterCircleXmark} />
+                </button>
+              );
+            })()}
           </FilterToolsRight>
         )}
 
@@ -4543,13 +4847,30 @@ const VemaDenik = () => {
             let pouzeFa = 0;
             let objAFa = 0;
             let rocniPopl = 0;
-            
+
+            // V Kontrola OBJ/SML nezahrnujeme roční poplatky do badge (stejně jako badge na kartě a dropdown filtr).
+            const includeRocniPoplatky = !(fakturySubTab === 'kontrola-obj' || fakturySubTab === 'kontrola-sml');
+
             data.forEach(fa => {
-              const pocetObj = fa.pocet_objednavek || 0;
-              const pocetFa = fa.pocet_faktur || 0;
-              const pocetRp = fa.pocet_rocnich_poplatku || 0;
+              let pocetObj;
+              let pocetFa;
+              let pocetRp;
+
+              if (fa._groupedKontrola && Array.isArray(fa._groupInvoices) && fa._groupInvoices.length > 0) {
+                // Seskupená ("fan") karta - agregovat přes celou skupinu, ne jen přes jeden reprezentativní řádek.
+                pocetObj = fa._groupInvoices.reduce((max, row) => Math.max(max, Number(row?.pocet_objednavek || 0)), 0);
+                pocetFa = fa._groupInvoices.reduce((max, row) => Math.max(max, Number(row?.pocet_faktur || 0)), 0);
+                pocetRp = fa._groupInvoices.reduce((max, row) => Math.max(max, Number(row?.pocet_rocnich_poplatku || 0)), 0);
+              } else {
+                pocetObj = Number(fa.pocet_objednavek || 0);
+                pocetFa = Number(fa.pocet_faktur || 0);
+                pocetRp = Number(fa.pocet_rocnich_poplatku || 0);
+              }
+
+              if (!includeRocniPoplatky) pocetRp = 0;
+
               const celkem = pocetObj + pocetFa + pocetRp;
-              
+
               if (celkem === 0) {
                 bezVazby++;
               } else if (pocetRp > 0) {
@@ -4701,42 +5022,19 @@ const VemaDenik = () => {
             <span>Načítám data…</span>
           </LoadingInline>
         ) : fakturySubTab === 'kontrola-obj-beta' && betaViewMode === 'grouped' ? (
-          <>
-            <GroupedKontrolaObjView groups={vazebniSkupiny} token={token} username={username} objednavkaFakturyData={objednavkaFakturyData} />
-
-            {/* Pagination */}
-            <PaginationContainer>
-              <PaginationInfo>
-                Zobrazeno {totalRows > 0 ? start + 1 : 0}–{Math.min(end, totalRows)} z {totalRows}
-              </PaginationInfo>
-
-              <PaginationControls>
-                <PageButton onClick={goToFirstPage} disabled={getCurrentPageIndex() === 0}>
-                  <FontAwesomeIcon icon={faAnglesLeft} />
-                </PageButton>
-                <PageButton onClick={goToPreviousPage} disabled={getCurrentPageIndex() === 0}>
-                  <FontAwesomeIcon icon={faChevronLeft} />
-                </PageButton>
-
-                <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0.5rem' }}>
-                  Stránka {getCurrentPageIndex() + 1} z {totalPages}
-                </span>
-
-                <PageButton onClick={goToNextPage} disabled={getCurrentPageIndex() >= totalPages - 1}>
-                  <FontAwesomeIcon icon={faChevronRight} />
-                </PageButton>
-                <PageButton onClick={goToLastPage} disabled={getCurrentPageIndex() >= totalPages - 1}>
-                  <FontAwesomeIcon icon={faAnglesRight} />
-                </PageButton>
-
-                <PageSizeSelector value={getCurrentPageSize()} onChange={(e) => { setCurrentPageSize(Number(e.target.value)); setCurrentPageIndex(0); }}>
-                  <option value={25}>25 / stránku</option>
-                  <option value={50}>50 / stránku</option>
-                  <option value={100}>100 / stránku</option>
-                </PageSizeSelector>
-              </PaginationControls>
-            </PaginationContainer>
-          </>
+          // Seskupený pohled si groupování, matchování i stránkování řídí
+          // sám na straně BE (viz komponenta) - žádné externí stránkování tu
+          // není potřeba, "stránka raw řádků" by tu ani nedávala smysl.
+          <GroupedKontrolaObjView
+            token={token}
+            username={username}
+            userDetail={userDetail}
+            search={search}
+            badgeFilter={badgeFilter}
+            warningOnlyFilter={warningOnlyFilter}
+            kontrolaFilter={kontrolaFilter}
+            lpSeznam={lpSeznam}
+          />
         ) : (
           <>
             <Table>
@@ -4841,10 +5139,9 @@ const VemaDenik = () => {
                 </PageButton>
 
                 <PageSizeSelector value={getCurrentPageSize()} onChange={(e) => { setCurrentPageSize(Number(e.target.value)); setCurrentPageIndex(0); }}>
-                  <option value={25}>25 / stránku</option>
-                  <option value={50}>50 / stránku</option>
-                  <option value={100}>100 / stránku</option>
-                  <option value={200}>200 / stránku</option>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>{size} / stránku</option>
+                  ))}
                 </PageSizeSelector>
               </PaginationControls>
             </PaginationContainer>

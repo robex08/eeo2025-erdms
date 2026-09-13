@@ -554,105 +554,64 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
 }
 
 /**
- * Najde EEO záznamy propojené s VEMA fakturou
- * POST /vema-faktury/propojeni-eeo
- * 
- * Parametry:
- * - token (string, required)
- * - username (string, required)
- * - vema_faktura (object, required) - data VEMA faktury {cfak, cobj, csml, vsymb, cdok, smlouva_ecsml}
- * 
- * Algoritmus hledání (podle priority):
- * 1. Č. objednávky - formát O-xxxx/75030926/2026 → EEO O-xxxx/75030926/2026/usek
- * 2. Ev.číslo smlouvy - smlouva_ecsml → EEO 25_smlouvy.cislo_smlouvy
- * 3. Variabilní symbol - vsymb → EEO 25a_objednavky_faktury (hledat v různých polích)
- * 4. VEMA kód - cdok → EEO 25a_objednavky_faktury.fa_vema_kod
- * 
- * Response: {
- *   status: 'success',
- *   data: {
- *     objednavky: [...],
- *     faktury: [...],
- *     smlouvy: [...],
- *     celkem: 10
- *   }
- * }
+ * Naformátuje VEMA číslo objednávky (f.cobj) do EEO tvaru vložením konstanty
+ * IČO doprostřed - O-xxxx/2026 nebo O-xxxx-2026 nebo O-xxxx2026 -> O-xxxx/75030926/2026.
+ * Vytaženo z handle_vema_faktury_list, aby stejnou logiku mohl použít i nový
+ * hromadný handler pro Kontrola OBJ BETA (handle_vema_beta_grouped_list) beze
+ * změny chování a bez duplikace.
+ *
+ * @param string|null $cobj syrová hodnota f.cobj
+ * @return string|null naformátované číslo, nebo null pokud $cobj je prázdné
  */
-function handle_vema_faktury_propojeni_eeo($input, $config) {
-    error_log("🔍 VEMA Propojení - start handleru");
-    
-    // Validace metody
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        error_log("❌ VEMA Propojení - špatná metoda: " . $_SERVER['REQUEST_METHOD']);
-        http_response_code(405);
-        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
-        return;
+function format_vema_cislo_objednavky($cobj) {
+    if (empty($cobj)) return null;
+
+    $cobj = trim($cobj);
+    // Odstranit mezery za O- (např. "O- 0176" -> "O-0176")
+    $cobj = preg_replace('/^(O-)\s+/i', '$1', $cobj);
+
+    if (stripos($cobj, 'O-') !== 0) {
+        // Není O-xxxx, nechat původní
+        return $cobj;
     }
 
-    // Autentizace
-    $token = isset($input['token']) ? $input['token'] : '';
-    $username = isset($input['username']) ? $input['username'] : '';
+    $ico_konstanta = '75030926'; // KONSTANTA, ne z firmy!
 
-    error_log("🔍 VEMA Propojení - token: " . ($token ? 'OK' : 'MISSING') . ", username: $username");
-
-    if (!$token || !$username) {
-        error_log("❌ VEMA Propojení - chybí credentials");
-        http_response_code(400);
-        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
-        return;
+    // 1. Pokud má formát O-xxxx/ROK, vložit konstantu doprostřed
+    if (preg_match('/^(O-\d+)\/(\d{4})$/i', $cobj, $matches)) {
+        return $matches[1] . '/' . $ico_konstanta . '/' . $matches[2];
+    }
+    // 2. Pokud má formát O-xxxx-ROK, převést na /konstanta/ formát
+    if (preg_match('/^(O-\d+)-(\d{2,4})$/i', $cobj, $matches)) {
+        $rok = $matches[2];
+        if (strlen($rok) == 2) {
+            $rok = '20' . $rok;
+        }
+        return $matches[1] . '/' . $ico_konstanta . '/' . $rok;
+    }
+    // 3. Pokud má formát O-xxxROK (bez oddělovače), např. O-01972026
+    if (preg_match('/^(O-\d+?)(20\d{2})$/i', $cobj, $matches)) {
+        return $matches[1] . '/' . $ico_konstanta . '/' . $matches[2];
     }
 
-    try {
-        $token_data = verify_token($token);
-        if (!$token_data) {
-            error_log("❌ VEMA Propojení - neplatný token");
-            http_response_code(401);
-            echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
-            return;
-        }
+    // Jinak nechat původní
+    return $cobj;
+}
 
-        if ($token_data['username'] !== $username) {
-            error_log("❌ VEMA Propojení - username mismatch");
-            http_response_code(401);
-            echo json_encode(array('status' => 'error', 'message' => 'Uživatelské jméno neodpovídá tokenu'));
-            return;
-        }
-
-            // Kontrola oprávnění VEMA_VIEW
-        if (!has_permission($token_data['id'], 'VEMA_VIEW')) {
-            error_log("❌ VEMA Propojení - nemá oprávnění");
-            http_response_code(403);
-            echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k zobrazení Deníku VEMA'));
-            return;
-        }
-
-        error_log("✅ VEMA Propojení - autentizace OK");
-
-    } catch (Exception $e) {
-        error_log("❌ VEMA Propojení - chyba autentizace: " . $e->getMessage());
-        http_response_code(500);
-        echo json_encode(array('status' => 'error', 'message' => 'Chyba autentizace: ' . $e->getMessage()));
-        return;
-    }
-
-    // Data VEMA faktury
-    $vema_faktura = isset($input['vema_faktura']) ? $input['vema_faktura'] : array();
-    
-    error_log("🔍 VEMA Propojení - vema_faktura: " . json_encode($vema_faktura));
-    
-    if (empty($vema_faktura)) {
-        error_log("❌ VEMA Propojení - prázdná data");
-        http_response_code(400);
-        echo json_encode(array('status' => 'error', 'message' => 'Chybí data VEMA faktury'));
-        return;
-    }
-
-    try {
-        $db = get_db($config);
-        if (!$db) {
-            throw new Exception('Chyba připojení k databázi');
-        }
-
+/**
+ * Jádro matchovací logiky VEMA faktura -> EEO záznamy (objednávky, faktury,
+ * roční poplatky), vytažené z handle_vema_faktury_propojeni_eeo, aby ho mohl
+ * bez duplikace/rizika rozjetí chování volat i hromadný endpoint pro
+ * Kontrola OBJ BETA seskupený pohled (viz handle_vema_beta_grouped_list
+ * v vemaBetaGroupedHandlers.php). Beze změny SQL/priorit oproti původnímu
+ * handleru - jen přesunuté z HTTP wrapperu do volatelné funkce.
+ *
+ * @param PDO $db
+ * @param array $vema_faktura {cfak, cobj, csml, vsymb, cdok, smlouva_ecsml, cobj_formatovane, celkem}
+ * @return array {objednavky, faktury, rocni_poplatky, celkem, kriteria}
+ * @throws Exception při chybě DB dotazu (nechává na volajícím, ať zpracuje/zaloguje)
+ */
+function resolve_vema_faktura_propojeni($db, $vema_faktura) {
         TimezoneHelper::setMysqlTimezone($db);
 
         // Výsledky
@@ -1080,22 +1039,425 @@ function handle_vema_faktury_propojeni_eeo($input, $config) {
         // Celkový počet nalezených záznamů (bez smluv - ty se nezobrazují samostatně)
         $celkem = count($objednavky) + count($faktury_unique) + count($rocni_poplatky);
 
-        // Úspěšná odpověď
+        return array(
+            'objednavky' => $objednavky,
+            'faktury' => $faktury_unique,
+            'rocni_poplatky' => $rocni_poplatky,
+            'celkem' => $celkem,
+            'kriteria' => array(
+                'cobj' => !empty($vema_faktura['cobj_formatovane']) ? $vema_faktura['cobj_formatovane'] : (!empty($vema_faktura['cobj']) ? $vema_faktura['cobj'] : null),
+                'ecsml' => !empty($vema_faktura['smlouva_ecsml']) ? $vema_faktura['smlouva_ecsml'] : null,
+                'vsymb' => !empty($vema_faktura['vsymb']) ? $vema_faktura['vsymb'] : null,
+                'cdok' => !empty($vema_faktura['cdok']) ? $vema_faktura['cdok'] : null
+            )
+        );
+}
+
+/**
+ * Dávková (batch) varianta objednávkové/fakturové části
+ * resolve_vema_faktura_propojeni() - stejné SQL priority a tolerance (č.
+ * objednávky prefix-match, VS+cdok přesná shoda, VS fallback s RP kontextem,
+ * cdok+částka), ale spuštěné jednou přes VŠECHNY faktury najednou (pár
+ * dotazů s IN/OR-LIKE) místo N sekvenčních volání resolve_vema_faktura_propojeni
+ * - stejný vzor jako bulk_calculate_vema_propojeni_counts() výše v tomto
+ * souboru, jen místo počtů vrací plné kandidátní řádky.
+ *
+ * Neřeší smlouvy/roční poplatky jako výstup (volající - handle_vema_beta_grouped_list
+ * - je nepotřebuje), jen jako interní kontext pro VS fallback filtrování.
+ *
+ * @param PDO $db
+ * @param array $invoices list of {_key, cobj, cobj_formatovane, csml, smlouva_ecsml, vsymb, cdok, celkem}
+ *              _key musí být unikátní (typicky VEMA faktura id) - podle něj se vrací výsledek.
+ * @return array [$_key => {objednavky: [...], faktury: [...]}]
+ */
+function bulk_resolve_vema_faktura_propojeni($db, $invoices) {
+    $results = array();
+    foreach ($invoices as $inv) {
+        $results[$inv['_key']] = array('objednavky' => array(), 'faktury' => array());
+    }
+    if (empty($invoices)) return $results;
+
+    try {
+        // ==================================================================
+        // Kontext ročních poplatků podle cdok (jen pro VS fallback filtr níže)
+        // ==================================================================
+        $cdok_rp_exists = array();
+        $cdok_has_paid_rp = array();
+        $rp_faktura_ids_by_cdok = array();
+        $rp_castky_by_cdok = array();
+        $rp_splatnosti_by_cdok = array();
+
+        $cdok_values = array();
+        foreach ($invoices as $inv) {
+            $cdok = !empty($inv['cdok']) ? trim((string)$inv['cdok']) : '';
+            if ($cdok !== '') $cdok_values[$cdok] = true;
+        }
+        if (!empty($cdok_values)) {
+            $unique_cdok = array_keys($cdok_values);
+            $placeholders = implode(',', array_fill(0, count($unique_cdok), '?'));
+            $sql_rp = "SELECT TRIM(rpp.cislo_dokladu) as cislo_dokladu, rpp.faktura_id, rpp.castka,
+                              rpp.datum_splatnosti, rpp.stav as rp_stav, rpp.datum_zaplaceno
+                       FROM `" . TBL_ROCNI_POPLATKY_POLOZKY . "` rpp
+                       INNER JOIN `" . TBL_ROCNI_POPLATKY . "` rp ON rpp.rocni_poplatek_id = rp.id
+                       WHERE rpp.aktivni = 1 AND rp.aktivni = 1
+                         AND TRIM(rpp.cislo_dokladu) IN ($placeholders)";
+            $stmt_rp = $db->prepare($sql_rp);
+            $stmt_rp->execute($unique_cdok);
+            foreach ($stmt_rp->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $key = trim((string)$row['cislo_dokladu']);
+                $cdok_rp_exists[$key] = true;
+
+                if (!empty($row['faktura_id'])) {
+                    $fid = (int)$row['faktura_id'];
+                    if ($fid > 0) {
+                        if (!isset($rp_faktura_ids_by_cdok[$key])) $rp_faktura_ids_by_cdok[$key] = array();
+                        $rp_faktura_ids_by_cdok[$key][$fid] = true;
+                    }
+                }
+                if ($row['castka'] !== null && $row['castka'] !== '') {
+                    if (!isset($rp_castky_by_cdok[$key])) $rp_castky_by_cdok[$key] = array();
+                    $rp_castky_by_cdok[$key][] = floatval($row['castka']);
+                }
+                if (!empty($row['datum_splatnosti'])) {
+                    if (!isset($rp_splatnosti_by_cdok[$key])) $rp_splatnosti_by_cdok[$key] = array();
+                    $rp_splatnosti_by_cdok[$key][] = $row['datum_splatnosti'];
+                }
+                $rp_stav = isset($row['rp_stav']) ? strtoupper(trim((string)$row['rp_stav'])) : '';
+                if ($rp_stav === 'ZAPLACENO' || !empty($row['datum_zaplaceno'])) {
+                    $cdok_has_paid_rp[$key] = true;
+                }
+            }
+        }
+
+        // ==================================================================
+        // 1. PRIORITA (batch): objednávky podle č. objednávky (prefix LIKE)
+        // ==================================================================
+        $cobj_map = array(); // prefix => [_key, ...]
+        foreach ($invoices as $inv) {
+            $cobj = !empty($inv['cobj_formatovane']) ? $inv['cobj_formatovane'] : (!empty($inv['cobj']) ? $inv['cobj'] : null);
+            if ($cobj) {
+                if (!isset($cobj_map[$cobj])) $cobj_map[$cobj] = array();
+                $cobj_map[$cobj][] = $inv['_key'];
+            }
+        }
+        if (!empty($cobj_map)) {
+            $unique_cobjs = array_keys($cobj_map);
+            $like_parts = array();
+            $params = array();
+            foreach ($unique_cobjs as $cobj) {
+                $like_parts[] = "o.cislo_objednavky LIKE ?";
+                $params[] = $cobj . '%';
+            }
+            $sql = "SELECT
+                        o.id, o.cislo_objednavky, o.predmet as nazev, o.dt_objednavky,
+                        o.max_cena_s_dph as castka_max,
+                        (SELECT SUM(pol.cena_s_dph) FROM `" . TBL_OBJEDNAVKY . "_polozky` pol WHERE pol.objednavka_id = o.id) as castka_detail,
+                        o.stav_objednavky as stav, o.dodavatel_nazev as dodavatel, o.druh_objednavky_kod, o.financovani,
+                        u.jmeno as zadavatel_jmeno, u.prijmeni as zadavatel_prijmeni,
+                        o.dt_vytvoreni, o.dt_schvaleni, o.schvalovatel_id, o.stav_workflow_kod,
+                        obj.jmeno as objednatel_jmeno, obj.prijmeni as objednatel_prijmeni,
+                        sch.jmeno as schvalovatel_jmeno, sch.prijmeni as schvalovatel_prijmeni,
+                        (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO') as pocet_faktur,
+                        (SELECT SUM(f.fa_castka) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO') as zaplaceno,
+                        'objednavka' as typ_zaznamu
+                    FROM `" . TBL_OBJEDNAVKY . "` o
+                    LEFT JOIN `" . TBL_UZIVATELE . "` u ON o.uzivatel_id = u.id
+                    LEFT JOIN `" . TBL_UZIVATELE . "` obj ON o.objednatel_id = obj.id
+                    LEFT JOIN `" . TBL_UZIVATELE . "` sch ON o.schvalovatel_id = sch.id
+                    WHERE (" . implode(' OR ', $like_parts) . ")
+                      AND o.stav_objednavky NOT IN ('Zrušena', 'Zamítnutá', 'Odloženo')";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($params);
+            $objednavky_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            // Batch dohledání "skutečného" schvalovatele (může se lišit od
+            // schvalovatel_id, pokud akci provedl někdo v zastoupení) -
+            // stejná logika a stejný log jako u Order V3 seznamu objednávek.
+            if (function_exists('enrichOrdersV3WithSubstitutionBatch')) {
+                enrichOrdersV3WithSubstitutionBatch($db, $objednavky_rows);
+            }
+            foreach ($objednavky_rows as $row) {
+                foreach ($unique_cobjs as $prefix) {
+                    if (strpos((string)$row['cislo_objednavky'], $prefix) === 0) {
+                        foreach ($cobj_map[$prefix] as $key) {
+                            $results[$key]['objednavky'][] = $row;
+                        }
+                    }
+                }
+            }
+        }
+
+        // ==================================================================
+        // Sdílený kandidátní set pro faktury podle VS (fa_cislo_vema) - použit
+        // pro 2c (přesná shoda VS+cdok) i 3 (VS fallback) níže, beze změny
+        // SQL/podmínek, jen bez per-invoice amount/cdok filtru v SQL (ten se
+        // aplikuje v PHP, protože se liší faktura od faktury).
+        // ==================================================================
+        $vsymb_map = array(); // vsymb => [_key, ...]
+        foreach ($invoices as $inv) {
+            if (!empty($inv['vsymb'])) {
+                if (!isset($vsymb_map[$inv['vsymb']])) $vsymb_map[$inv['vsymb']] = array();
+                $vsymb_map[$inv['vsymb']][] = $inv['_key'];
+            }
+        }
+        $vsymb_candidates = array(); // vsymb => [row, ...]
+        if (!empty($vsymb_map)) {
+            $unique_vsymb = array_keys($vsymb_map);
+            $placeholders = implode(',', array_fill(0, count($unique_vsymb), '?'));
+            $sql = "SELECT f.id, f.fa_cislo_vema as cislo_faktury, f.fa_vema_kod, f.smlouva_id, s.cislo_smlouvy,
+                           f.fa_datum_vystaveni as datum_vystaveni, f.fa_datum_splatnosti as datum_splatnosti,
+                           f.fa_castka as castka, f.stav, o.cislo_objednavky, o.dodavatel_nazev as dodavatel,
+                           'faktura' as typ_zaznamu
+                    FROM `" . TBL_FAKTURY . "` f
+                    LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                    LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
+                    WHERE f.fa_cislo_vema IN ($placeholders)
+                      AND f.aktivni = 1 AND f.stav != 'STORNO'";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($unique_vsymb);
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $vs = $row['cislo_faktury'];
+                if (!isset($vsymb_candidates[$vs])) $vsymb_candidates[$vs] = array();
+                $vsymb_candidates[$vs][] = $row;
+            }
+        }
+
+        // ==================================================================
+        // 2c + 3. PRIORITA per-invoice: přesná shoda VS+cdok, jinak VS fallback
+        // ==================================================================
+        foreach ($invoices as $inv) {
+            $key = $inv['_key'];
+            $vsymb = !empty($inv['vsymb']) ? $inv['vsymb'] : '';
+            $cdok = !empty($inv['cdok']) ? trim((string)$inv['cdok']) : '';
+            $vema_castka = !empty($inv['celkem']) ? floatval($inv['celkem']) : null;
+            $candidates = ($vsymb !== '' && !empty($vsymb_candidates[$vsymb])) ? $vsymb_candidates[$vsymb] : array();
+            $exact_vs_cdok_found = false;
+
+            if ($vsymb !== '' && $cdok !== '' && !empty($candidates)) {
+                foreach ($candidates as $row) {
+                    $fa_vema_kod = isset($row['fa_vema_kod']) ? trim((string)$row['fa_vema_kod']) : '';
+                    if ($fa_vema_kod !== $cdok) continue;
+                    if ($vema_castka !== null) {
+                        $eeo_castka = isset($row['castka']) ? floatval($row['castka']) : null;
+                        if ($eeo_castka === null || abs($eeo_castka - $vema_castka) >= 0.01) continue;
+                    }
+                    $results[$key]['faktury'][] = $row;
+                    $exact_vs_cdok_found = true;
+                }
+            }
+
+            $has_paid_rp = ($cdok !== '' && !empty($cdok_has_paid_rp[$cdok]));
+            if ($vsymb !== '' && !$exact_vs_cdok_found && ($cdok === '' || $has_paid_rp) && !empty($candidates)) {
+                $faktury_vsymb = array();
+                foreach ($candidates as $row) {
+                    $fa_vema_kod_trim = isset($row['fa_vema_kod']) ? trim((string)$row['fa_vema_kod']) : '';
+                    if (!($cdok === '' || $fa_vema_kod_trim === '')) continue;
+                    if ($vema_castka !== null) {
+                        $eeo_castka = isset($row['castka']) ? floatval($row['castka']) : null;
+                        if ($eeo_castka === null || abs($eeo_castka - $vema_castka) >= 0.01) continue;
+                    }
+                    $faktury_vsymb[] = $row;
+                }
+
+                $has_rp_context = ($cdok !== '' && !empty($cdok_rp_exists[$cdok]));
+                if ($has_rp_context) {
+                    $rp_id_map = !empty($rp_faktura_ids_by_cdok[$cdok]) ? $rp_faktura_ids_by_cdok[$cdok] : array();
+                    $rp_castky = !empty($rp_castky_by_cdok[$cdok]) ? $rp_castky_by_cdok[$cdok] : array();
+                    $rp_splatnosti = !empty($rp_splatnosti_by_cdok[$cdok]) ? $rp_splatnosti_by_cdok[$cdok] : array();
+                    $filtered = array();
+                    foreach ($faktury_vsymb as $row) {
+                        $faktura_id = isset($row['id']) ? (int)$row['id'] : 0;
+                        $ma_cdok = ($cdok !== '' && isset($row['fa_vema_kod']) && trim((string)$row['fa_vema_kod']) === $cdok);
+                        $je_v_rp_vazbe = ($faktura_id > 0 && isset($rp_id_map[$faktura_id]));
+
+                        if ($ma_cdok || $je_v_rp_vazbe) {
+                            $filtered[] = $row;
+                            continue;
+                        }
+
+                        $castka_ok = false;
+                        if (!empty($rp_castky) && isset($row['castka']) && $row['castka'] !== null && $row['castka'] !== '') {
+                            $fa_castka = floatval($row['castka']);
+                            foreach ($rp_castky as $rp_castka) {
+                                if (abs($fa_castka - $rp_castka) < 0.01) { $castka_ok = true; break; }
+                            }
+                        }
+
+                        $datum_ok = false;
+                        if (!empty($rp_splatnosti) && !empty($row['datum_splatnosti'])) {
+                            $fa_ts = strtotime($row['datum_splatnosti']);
+                            if ($fa_ts !== false) {
+                                foreach ($rp_splatnosti as $rp_splatnost) {
+                                    $rp_ts = strtotime($rp_splatnost);
+                                    if ($rp_ts !== false && abs($fa_ts - $rp_ts) <= (35 * 86400)) { $datum_ok = true; break; }
+                                }
+                            }
+                        }
+
+                        if ($castka_ok && $datum_ok) $filtered[] = $row;
+                    }
+                    $faktury_vsymb = $filtered;
+                }
+
+                foreach ($faktury_vsymb as $row) {
+                    $results[$key]['faktury'][] = $row;
+                }
+            }
+        }
+
+        // ==================================================================
+        // 4. PRIORITA (batch): faktury podle VEMA kódu (cdok) + částka
+        // ==================================================================
+        $cdok4_map = array(); // cdok (raw, netrimované - stejně jako originál) => [_key, ...]
+        foreach ($invoices as $inv) {
+            $cdok = !empty($inv['cdok']) ? $inv['cdok'] : '';
+            if ($cdok !== '') {
+                if (!isset($cdok4_map[$cdok])) $cdok4_map[$cdok] = array();
+                $cdok4_map[$cdok][] = $inv['_key'];
+            }
+        }
+        if (!empty($cdok4_map)) {
+            $unique_cdok4 = array_keys($cdok4_map);
+            $placeholders = implode(',', array_fill(0, count($unique_cdok4), '?'));
+            $sql = "SELECT f.id, f.fa_cislo_vema as cislo_faktury, f.fa_vema_kod, f.smlouva_id, s.cislo_smlouvy,
+                           f.fa_datum_vystaveni as datum_vystaveni, f.fa_datum_splatnosti as datum_splatnosti,
+                           f.fa_castka as castka, f.stav, o.cislo_objednavky, o.dodavatel_nazev as dodavatel,
+                           'faktura' as typ_zaznamu
+                    FROM `" . TBL_FAKTURY . "` f
+                    LEFT JOIN `" . TBL_OBJEDNAVKY . "` o ON f.objednavka_id = o.id
+                    LEFT JOIN `" . TBL_SMLOUVY . "` s ON f.smlouva_id = s.id
+                    WHERE f.fa_vema_kod IN ($placeholders)
+                      AND f.aktivni = 1 AND f.stav != 'STORNO'";
+            $stmt = $db->prepare($sql);
+            $stmt->execute($unique_cdok4);
+            $cdok4_candidates = array();
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $c = $row['fa_vema_kod'];
+                if (!isset($cdok4_candidates[$c])) $cdok4_candidates[$c] = array();
+                $cdok4_candidates[$c][] = $row;
+            }
+
+            foreach ($invoices as $inv) {
+                $cdok = !empty($inv['cdok']) ? $inv['cdok'] : '';
+                if ($cdok === '' || empty($cdok4_candidates[$cdok])) continue;
+                $vema_castka = !empty($inv['celkem']) ? floatval($inv['celkem']) : null;
+                foreach ($cdok4_candidates[$cdok] as $row) {
+                    if ($vema_castka !== null) {
+                        $eeo_castka = isset($row['castka']) ? floatval($row['castka']) : null;
+                        if ($eeo_castka === null || abs($eeo_castka - $vema_castka) >= 0.01) continue;
+                    }
+                    $results[$inv['_key']]['faktury'][] = $row;
+                }
+            }
+        }
+
+        // Deduplikace faktur podle ID (stejně jako v resolve_vema_faktura_propojeni)
+        foreach ($results as $key => &$r) {
+            $seen = array();
+            $unique = array();
+            foreach ($r['faktury'] as $f) {
+                if (!in_array($f['id'], $seen)) {
+                    $unique[] = $f;
+                    $seen[] = $f['id'];
+                }
+            }
+            $r['faktury'] = $unique;
+        }
+        unset($r);
+
+    } catch (Exception $e) {
+        error_log('⚠️ bulk_resolve_vema_faktura_propojeni - chyba: ' . $e->getMessage());
+    }
+
+    return $results;
+}
+
+/**
+ * POST /vema-faktury/propojeni-eeo
+ *
+ * Tenký HTTP wrapper nad resolve_vema_faktura_propojeni() - viz jeho docblock
+ * pro parametry a algoritmus. Zajišťuje jen auth/validaci vstupu a JSON odpověď.
+ */
+function handle_vema_faktury_propojeni_eeo($input, $config) {
+    error_log("🔍 VEMA Propojení - start handleru");
+
+    // Validace metody
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        error_log("❌ VEMA Propojení - špatná metoda: " . $_SERVER['REQUEST_METHOD']);
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        return;
+    }
+
+    // Autentizace
+    $token = isset($input['token']) ? $input['token'] : '';
+    $username = isset($input['username']) ? $input['username'] : '';
+
+    error_log("🔍 VEMA Propojení - token: " . ($token ? 'OK' : 'MISSING') . ", username: $username");
+
+    if (!$token || !$username) {
+        error_log("❌ VEMA Propojení - chybí credentials");
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
+        return;
+    }
+
+    try {
+        $token_data = verify_token($token);
+        if (!$token_data) {
+            error_log("❌ VEMA Propojení - neplatný token");
+            http_response_code(401);
+            echo json_encode(array('status' => 'error', 'message' => 'Neplatný nebo chybějící token'));
+            return;
+        }
+
+        if ($token_data['username'] !== $username) {
+            error_log("❌ VEMA Propojení - username mismatch");
+            http_response_code(401);
+            echo json_encode(array('status' => 'error', 'message' => 'Uživatelské jméno neodpovídá tokenu'));
+            return;
+        }
+
+            // Kontrola oprávnění VEMA_VIEW
+        if (!has_permission($token_data['id'], 'VEMA_VIEW')) {
+            error_log("❌ VEMA Propojení - nemá oprávnění");
+            http_response_code(403);
+            echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k zobrazení Deníku VEMA'));
+            return;
+        }
+
+        error_log("✅ VEMA Propojení - autentizace OK");
+
+    } catch (Exception $e) {
+        error_log("❌ VEMA Propojení - chyba autentizace: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba autentizace: ' . $e->getMessage()));
+        return;
+    }
+
+    // Data VEMA faktury
+    $vema_faktura = isset($input['vema_faktura']) ? $input['vema_faktura'] : array();
+
+    error_log("🔍 VEMA Propojení - vema_faktura: " . json_encode($vema_faktura));
+
+    if (empty($vema_faktura)) {
+        error_log("❌ VEMA Propojení - prázdná data");
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí data VEMA faktury'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        $data = resolve_vema_faktura_propojeni($db, $vema_faktura);
+
         http_response_code(200);
         echo json_encode(array(
             'status' => 'success',
-            'data' => array(
-                'objednavky' => $objednavky,
-                'faktury' => $faktury_unique,
-                'rocni_poplatky' => $rocni_poplatky,
-                'celkem' => $celkem,
-                'kriteria' => array(
-                    'cobj' => !empty($vema_faktura['cobj_formatovane']) ? $vema_faktura['cobj_formatovane'] : (!empty($vema_faktura['cobj']) ? $vema_faktura['cobj'] : null),
-                    'ecsml' => !empty($vema_faktura['smlouva_ecsml']) ? $vema_faktura['smlouva_ecsml'] : null,
-                    'vsymb' => !empty($vema_faktura['vsymb']) ? $vema_faktura['vsymb'] : null,
-                    'cdok' => !empty($vema_faktura['cdok']) ? $vema_faktura['cdok'] : null
-                )
-            ),
+            'data' => $data,
             'message' => 'Propojení nalezeno'
         ));
 

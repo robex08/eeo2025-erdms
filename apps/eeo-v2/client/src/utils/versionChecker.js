@@ -23,6 +23,15 @@
 
 import { APP_VERSION } from '../config/appVersion';
 
+// Namespace odděluje leader election mezi prostředími se stejným originem (DEV/PROD na stejné doméně)
+const ENV_NAMESPACE = (process.env.PUBLIC_URL || 'local').replace(/[^a-zA-Z0-9]/g, '_') || 'local';
+const VERSION_LEADER_KEY = `version_checker_leader_${ENV_NAMESPACE}`;
+
+// version.json leží v build outputu vedle index.html, tedy pod stejnou base cestou jako appka
+// (Router basename používá stejný PUBLIC_URL). Na npm start je PUBLIC_URL prázdný -> '/version.json',
+// dev server na něj odpoví historyApiFallback (index.html), což checkForUpdate() níže tiše ignoruje.
+const DEFAULT_VERSION_ENDPOINT = `${process.env.PUBLIC_URL || ''}/version.json`;
+
 class VersionChecker {
   constructor(options = {}) {
     this.currentHash = this.getBuildHash();
@@ -36,12 +45,7 @@ class VersionChecker {
     this.isLeader = false; // Leader election flag
     this.leaderCheckInterval = null;
     this.onUpdateCallback = options.onUpdate || null;
-    this.versionEndpoint = options.endpoint || '/dev/eeo-v2/version.json';
-    
-    // Detekce production/dev prostředí
-    if (window.location.pathname.startsWith('/eeo-v2') && !window.location.pathname.includes('/dev/')) {
-      this.versionEndpoint = '/eeo-v2/version.json';
-    }
+    this.versionEndpoint = options.endpoint || DEFAULT_VERSION_ENDPOINT;
 
     if (process.env.NODE_ENV === 'development') {
       console.log('[VersionChecker] Initialized:', {
@@ -211,7 +215,7 @@ class VersionChecker {
    */
   becomeLeader() {
     this.isLeader = true;
-    localStorage.setItem('version_checker_leader', JSON.stringify({
+    localStorage.setItem(VERSION_LEADER_KEY, JSON.stringify({
       tabId: this.tabId,
       timestamp: Date.now()
     }));
@@ -233,9 +237,9 @@ class VersionChecker {
    */
   checkLeaderStatus() {
     try {
-      const leaderData = JSON.parse(localStorage.getItem('version_checker_leader'));
+      const leaderData = JSON.parse(localStorage.getItem(VERSION_LEADER_KEY));
       const now = Date.now();
-      
+
       // Pokud žádný leader nebo starý (60s), staň se leaderem
       if (!leaderData || (now - leaderData.timestamp) > 60000) {
         if (!this.isLeader) {
@@ -243,7 +247,7 @@ class VersionChecker {
         }
       } else if (leaderData.tabId === this.tabId) {
         // Jsme leader - update timestamp
-        localStorage.setItem('version_checker_leader', JSON.stringify({
+        localStorage.setItem(VERSION_LEADER_KEY, JSON.stringify({
           tabId: this.tabId,
           timestamp: now
         }));
@@ -295,6 +299,22 @@ class VersionChecker {
       this.checkLeaderStatus();
     }, 30000);
 
+    // Uvolnění leadershipu při odchodu ze stránky (F5 reload, zavření tabu, navigace pryč).
+    // React cleanup (stop()) se při tvrdém reloadu nespustí - bez tohoto by nová instance
+    // musela čekat na 60s timeout, i když leader byl tenhle samý tab.
+    window.addEventListener('pagehide', () => {
+      if (this.isLeader) {
+        try {
+          const leaderData = JSON.parse(localStorage.getItem(VERSION_LEADER_KEY));
+          if (leaderData && leaderData.tabId === this.tabId) {
+            localStorage.removeItem(VERSION_LEADER_KEY);
+          }
+        } catch (e) {
+          // Ignore
+        }
+      }
+    });
+
     // Poslech zpráv z jiných tabů
     window.addEventListener('storage', (e) => {
       if (e.key === 'app_update_available' && !this.notificationShown) {
@@ -337,9 +357,9 @@ class VersionChecker {
     // Pokud jsme byli leader, uvolni leadership
     if (this.isLeader) {
       try {
-        const leaderData = JSON.parse(localStorage.getItem('version_checker_leader'));
+        const leaderData = JSON.parse(localStorage.getItem(VERSION_LEADER_KEY));
         if (leaderData && leaderData.tabId === this.tabId) {
-          localStorage.removeItem('version_checker_leader');
+          localStorage.removeItem(VERSION_LEADER_KEY);
         }
       } catch (e) {
         // Ignore

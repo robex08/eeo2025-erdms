@@ -1445,6 +1445,47 @@ const HeaderTitle = styled.h1`
   text-rendering: optimizeLegibility;
 `;
 
+// Odvodí barvu badge ze zbylých nepřečtených notifikací (po lokální/optimistické úpravě
+// bez čekání na backend). Zrcadlí prioritní logiku v handle_notifications_unread_count()
+// (notificationHandlers.php): červená (urgent/high/schvalování) > modrá (komentáře) >
+// modrá (pouze planning) > zelená (info/normal/low u objednávek) > oranžová (výchozí).
+// Pozn.: `notifications` je jen posledních 20 položek dropdownu, ne kompletní seznam -
+// při >20 nepřečtených je to tedy odhad, ne 100% přesná hodnota (přesnou dorovná další
+// backend poll).
+const computeBadgeColorFromNotifications = (list) => {
+  const unread = (list || []).filter(n => !n.precteno || n.precteno === 0);
+  if (unread.length === 0) return 'gray';
+
+  let hasHighPriority = false;
+  let hasComments = false;
+  let hasOrdersNormal = false;
+  let planningCount = 0;
+
+  unread.forEach(n => {
+    const typ = n.typ || '';
+    const priorita = n.priorita || '';
+    const kategorie = n.kategorie || '';
+
+    if (kategorie === 'planning') planningCount += 1;
+
+    if (priorita === 'EXCEPTIONAL' || priorita === 'high' || priorita === 'APPROVAL') {
+      hasHighPriority = true;
+    } else if (typ.includes('COMMENT')) {
+      hasComments = true;
+    } else if (priorita === 'INFO' && typ.includes('ORDER_')) {
+      hasOrdersNormal = true;
+    } else if (typ.includes('ORDER_') && (priorita === 'normal' || priorita === 'low')) {
+      hasOrdersNormal = true;
+    }
+  });
+
+  if (hasHighPriority) return 'red';
+  if (hasComments) return 'blue';
+  if (planningCount > 0 && planningCount === unread.length) return 'blue';
+  if (hasOrdersNormal) return 'green';
+  return 'orange';
+};
+
 // ============================================================================
 // Notification Bell Wrapper - 100% BACKEND API
 // VŠE načítá z backend API - žádné lokální TODO alarmy!
@@ -1753,15 +1794,17 @@ const NotificationBellWrapper = ({ userId }) => {
       await markNotificationAsRead(notificationId);
 
       // Aktualizuj lokální stav - použij 'precteno' místo 'is_read'
-      setNotifications(prev =>
-        prev.map(n => n.id === notificationId ? { ...n, precteno: 1, is_read: 1 } : n)
+      const updatedNotifications = notifications.map(n =>
+        n.id === notificationId ? { ...n, precteno: 1, is_read: 1 } : n
       );
+      setNotifications(updatedNotifications);
 
-      // Aktualizuj badge
+      // Aktualizuj badge (počet i barvu podle zbylých nepřečtených)
       if (bgTasks?.handleUnreadCountChange) {
         const currentCount = bgTasks.unreadNotificationsCount || 0;
         if (currentCount > 0) {
-          bgTasks.handleUnreadCountChange(currentCount - 1);
+          const newColor = computeBadgeColorFromNotifications(updatedNotifications);
+          bgTasks.handleUnreadCountChange(currentCount - 1, newColor);
         }
       }
     } catch (error) {
@@ -1779,9 +1822,9 @@ const NotificationBellWrapper = ({ userId }) => {
         prev.map(n => ({ ...n, precteno: 1, is_read: 1 }))
       );
 
-      // Aktualizuj badge na 0
+      // Aktualizuj badge na 0 (šedá - žádné nepřečtené)
       if (bgTasks?.handleUnreadCountChange) {
-        bgTasks.handleUnreadCountChange(0);
+        bgTasks.handleUnreadCountChange(0, 'gray');
       }
     } catch (error) {
     }
@@ -1795,15 +1838,17 @@ const NotificationBellWrapper = ({ userId }) => {
       await dismissNotification(notificationId);
 
       // Odstraň z lokálního stavu dropdownu
-      setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      const updatedNotifications = notifications.filter(n => n.id !== notificationId);
+      setNotifications(updatedNotifications);
 
-      // Aktualizuj badge pokud byla nepřečtená
+      // Aktualizuj badge pokud byla nepřečtená (počet i barvu podle zbylých nepřečtených)
       const notification = notifications.find(n => n.id === notificationId);
       if (notification && (!notification.precteno || notification.precteno === 0)) {
         if (bgTasks?.handleUnreadCountChange) {
           const currentCount = bgTasks.unreadNotificationsCount || 0;
           if (currentCount > 0) {
-            bgTasks.handleUnreadCountChange(currentCount - 1);
+            const newColor = computeBadgeColorFromNotifications(updatedNotifications);
+            bgTasks.handleUnreadCountChange(currentCount - 1, newColor);
           }
         }
       }
@@ -1821,9 +1866,9 @@ const NotificationBellWrapper = ({ userId }) => {
       // Vyčisti lokální stav dropdownu
       setNotifications([]);
 
-      // Aktualizuj badge na 0
+      // Aktualizuj badge na 0 (šedá - žádné nepřečtené)
       if (bgTasks?.handleUnreadCountChange) {
-        bgTasks.handleUnreadCountChange(0);
+        bgTasks.handleUnreadCountChange(0, 'gray');
       }
     } catch (error) {
       // Znovu načti pro sync
