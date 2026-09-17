@@ -10,13 +10,15 @@
  */
 
 import React, { useState, useEffect, useContext, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { keyframes } from '@emotion/react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
-  faBuilding, faFileInvoice, faFileContract, faSearch, faTimes, 
+  faBuilding, faFileInvoice, faFileContract, faSearch, faTimes,
   faChevronLeft, faChevronRight, faAnglesLeft, faAnglesRight,
-  faChevronDown, faChevronUp, faUpload, faCheckCircle, faPlus, faMinus, faBoltLightning, faFilterCircleXmark
+  faChevronDown, faChevronUp, faUpload, faCheckCircle, faPlus, faMinus, faBoltLightning, faFilterCircleXmark,
+  faMoneyBill, faCalendar, faIdCard, faFileAlt, faExternalLinkAlt
 } from '@fortawesome/free-solid-svg-icons';
 import {
   useReactTable,
@@ -34,6 +36,11 @@ import { fetchLimitovanePrisliby } from '../services/api2auth';
 import { KONTROLA_STATUS, KONTROLA_STATUS_LABELS, KONTROLA_STATUS_COLORS, normalizeKontrolaStatus, saveVemaRucniVazba } from '../services/apiVemaKontrola';
 import { getStatusColor } from '../constants/orderStatusColors';
 import { getOrderSystemStatus } from '../utils/orderStatsUtils';
+import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
+import OrderFormReadOnly from '../components/OrderFormReadOnly';
+import SmlouvaPreview from '../components/SmlouvaPreview';
+import { getOrderV2 } from '../services/apiOrderV2';
+import { getSmlouvyList, getSmlouvaDetail } from '../services/apiSmlouvy';
 
 // Priorita stavů kontroly pro třídění sloupce "Kontrola" (problémy první, hotovo poslední)
 const KONTROLA_STATUS_SORT_PRIORITY = {
@@ -511,6 +518,9 @@ const VerdictFilterBar = styled.div`
   gap: 0.5rem;
 `;
 
+// $active vykresluje fajfku (✓) na začátek popisku - u pilulkových filtrů
+// (verdikt i financování) samotná změna barvy na aktivní stav nebyla dost
+// znatelná (zpětná vazba), fajfka dělá aktivní filtr jednoznačný na první pohled.
 const VerdictFilterChip = styled.button`
   display: inline-flex;
   align-items: center;
@@ -822,6 +832,28 @@ const RucniVazbaLink = styled.button`
 
   &:hover { opacity: 1; color: ${MANUAL_VAZBA_COLORS.text}; }
   &:disabled { opacity: 0.4; cursor: default; }
+`;
+
+// Malá ikonka "otevřít v plném formuláři" vedle klikatelných čísel OBJ/FA/SML
+// (ty samotné otevírají rychlý náhled v postranním panelu) - stejná ikona
+// (faExternalLinkAlt) jako jinde v appce pro "otevřít jinde" akce.
+const OpenInFormButton = styled.button`
+  border: none;
+  background: transparent;
+  padding: 0.1rem;
+  margin-left: 0.2rem;
+  cursor: pointer;
+  color: #3b82f6;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.68rem;
+  line-height: 1;
+  vertical-align: -1px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+
+  &:hover { color: #1d4ed8; background: #eff6ff; }
 `;
 
 const FAKTURY_SUB_SECTIONS = [
@@ -1694,6 +1726,219 @@ function compareVemaEeoIdentifikace(invoiceRow, matchedFaktura) {
 }
 
 // ============================================================================
+// FA - obsah slide-in náhledu jedné EEO faktury (samostatný panel, ne
+// kombinovaný s objednávkou - viz zpětná vazba). Vizuálně stejný jazyk jako
+// EntityDetailViews (UniversalSearch) - sekce/ikona/label/hodnota.
+// ============================================================================
+
+const QVSection = styled.div`
+  margin-bottom: 1.5rem;
+  &:last-child { margin-bottom: 0; }
+`;
+
+const QVSectionTitle = styled.h3`
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6b7280;
+  margin: 0 0 1rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #e2e8f0;
+`;
+
+const QVGrid = styled.div`
+  display: grid;
+  gap: 1rem;
+  @media (min-width: 480px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+`;
+
+const QVRow = styled.div`
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+`;
+
+const QVIcon = styled.div`
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  border-radius: 6px;
+  color: #3b82f6;
+  flex-shrink: 0;
+  font-size: 0.875rem;
+`;
+
+const QVLabel = styled.div`
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: #6b7280;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.25rem;
+`;
+
+const QVValue = styled.div`
+  font-size: 0.95rem;
+  color: #0f172a;
+  font-weight: 500;
+  line-height: 1.35;
+  word-break: break-word;
+`;
+
+const QVBadge = styled.span`
+  display: inline-block;
+  padding: 0.25rem 0.7rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 700;
+`;
+
+const InvoiceQuickView = ({ faktura, candidate, invoiceRow }) => {
+  if (!faktura) return null;
+  const datumVystaveni = parseFlexibleDate(faktura.datum_vystaveni);
+  const datumSplatnosti = parseFlexibleDate(faktura.datum_splatnosti);
+  const cmp = invoiceRow ? compareVemaEeoIdentifikace(invoiceRow, faktura) : null;
+
+  return (
+    <div>
+      <QVSection>
+        <QVSectionTitle>Základní informace</QVSectionTitle>
+        <QVGrid>
+          <QVRow>
+            <QVIcon><FontAwesomeIcon icon={faFileInvoice} /></QVIcon>
+            <div>
+              <QVLabel>Variabilní symbol</QVLabel>
+              <QVValue>{faktura.cislo_faktury || '—'}</QVValue>
+            </div>
+          </QVRow>
+          {faktura.fa_vema_kod && (
+            <QVRow>
+              <QVIcon><FontAwesomeIcon icon={faFileAlt} /></QVIcon>
+              <div>
+                <QVLabel>Doklad (fa_vema_kod)</QVLabel>
+                <QVValue>{faktura.fa_vema_kod}</QVValue>
+              </div>
+            </QVRow>
+          )}
+          {faktura.fa_typ && (
+            <QVRow>
+              <QVIcon><FontAwesomeIcon icon={faFileAlt} /></QVIcon>
+              <div>
+                <QVLabel>Typ faktury</QVLabel>
+                <QVValue><QVBadge style={{ background: '#fef3c7', color: '#92400e' }}>{FAKTURA_TYP_LABELS[faktura.fa_typ] || faktura.fa_typ}</QVBadge></QVValue>
+              </div>
+            </QVRow>
+          )}
+          {faktura.stav && (
+            <QVRow>
+              <QVIcon><FontAwesomeIcon icon={faCalendar} /></QVIcon>
+              <div>
+                <QVLabel>Stav v EEO</QVLabel>
+                <QVValue><QVBadge style={{ background: '#dbeafe', color: '#1e40af' }}>{FAKTURA_STAV_LABELS[faktura.stav] || faktura.stav}</QVBadge></QVValue>
+              </div>
+            </QVRow>
+          )}
+        </QVGrid>
+      </QVSection>
+
+      {candidate && (
+        <QVSection>
+          <QVSectionTitle>Objednávka</QVSectionTitle>
+          <QVGrid>
+            <QVRow>
+              <QVIcon><FontAwesomeIcon icon={faBuilding} /></QVIcon>
+              <div>
+                <QVLabel>Číslo objednávky</QVLabel>
+                <QVValue>{candidate.cislo_objednavky}</QVValue>
+              </div>
+            </QVRow>
+            {candidate.dodavatel && (
+              <QVRow>
+                <QVIcon><FontAwesomeIcon icon={faBuilding} /></QVIcon>
+                <div>
+                  <QVLabel>Dodavatel</QVLabel>
+                  <QVValue>{candidate.dodavatel}{candidate.dodavatel_ico ? ` · IČO: ${candidate.dodavatel_ico}` : ''}</QVValue>
+                </div>
+              </QVRow>
+            )}
+          </QVGrid>
+        </QVSection>
+      )}
+
+      <QVSection>
+        <QVSectionTitle>Finanční údaje</QVSectionTitle>
+        <QVGrid>
+          <QVRow>
+            <QVIcon><FontAwesomeIcon icon={faMoneyBill} /></QVIcon>
+            <div>
+              <QVLabel>Částka</QVLabel>
+              <QVValue style={{ fontSize: '1.125rem', fontWeight: 700, color: '#1e40af' }}>
+                {Number.isFinite(faktura.castka) ? formatKc(faktura.castka) : '—'}
+              </QVValue>
+            </div>
+          </QVRow>
+          {datumVystaveni && (
+            <QVRow>
+              <QVIcon><FontAwesomeIcon icon={faCalendar} /></QVIcon>
+              <div>
+                <QVLabel>Datum vystavení</QVLabel>
+                <QVValue>{formatDateShort(datumVystaveni)}</QVValue>
+              </div>
+            </QVRow>
+          )}
+          {datumSplatnosti && (
+            <QVRow>
+              <QVIcon><FontAwesomeIcon icon={faCalendar} /></QVIcon>
+              <div>
+                <QVLabel>Datum splatnosti</QVLabel>
+                <QVValue>{formatDateShort(datumSplatnosti)}</QVValue>
+              </div>
+            </QVRow>
+          )}
+        </QVGrid>
+      </QVSection>
+
+      {cmp && (
+        <QVSection>
+          <QVSectionTitle>Shoda s VEMA dokladem</QVSectionTitle>
+          <QVGrid>
+            <QVRow>
+              <QVIcon style={{ color: TICK_COLORS[cmp.vs] }}><FontAwesomeIcon icon={faIdCard} /></QVIcon>
+              <div>
+                <QVLabel>VS</QVLabel>
+                <QVValue>{cmp.vsVema || '—'} / {cmp.vsEeo || '—'}</QVValue>
+              </div>
+            </QVRow>
+            <QVRow>
+              <QVIcon style={{ color: TICK_COLORS[cmp.doklad] }}><FontAwesomeIcon icon={faIdCard} /></QVIcon>
+              <div>
+                <QVLabel>Doklad</QVLabel>
+                <QVValue>{cmp.dokladVema || '—'} / {cmp.dokladEeo || '—'}</QVValue>
+              </div>
+            </QVRow>
+            <QVRow>
+              <QVIcon style={{ color: TICK_COLORS[cmp.castka] }}><FontAwesomeIcon icon={faMoneyBill} /></QVIcon>
+              <div>
+                <QVLabel>Částka</QVLabel>
+                <QVValue>
+                  {Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'} / {Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}
+                </QVValue>
+              </div>
+            </QVRow>
+          </QVGrid>
+        </QVSection>
+      )}
+    </div>
+  );
+};
+
+// ============================================================================
 // KONTROLA OBJ BETA - Seskupený pohled: render komponenta
 // ============================================================================
 
@@ -1703,11 +1948,69 @@ function compareVemaEeoIdentifikace(invoiceRow, matchedFaktura) {
 // (viz vema-faktury/kontrola-obj-beta/grouped-list, PHP
 // handle_vema_beta_grouped_list) - komponenta si data i stránkování řídí
 // sama, nezávisle na plochém (flat) pohledu stejné záložky.
-const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilter, warningOnlyFilter, kontrolaFilter, lpSeznam = [] }) => {
-  const [verdictFilter, setVerdictFilter] = useState(() => getStoredString(VEMA_BETA_VERDICT_FILTER_LS_KEY, null));
-  // Filtr podle financování EEO objednávky (limitovaný příslib vs. smlouva) -
-  // multiselect, OR logika (stejně jako kontrolaFilter).
-  const [financovaniFilter, setFinancovaniFilter] = useState(() => getStoredJSON(VEMA_BETA_FINANCOVANI_FILTER_LS_KEY, []));
+const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, setVerdictFilter, financovaniFilter, setFinancovaniFilter, lpSeznam = [] }) => {
+  const navigate = useNavigate();
+  const { hasPermission, hasAdminRole } = useContext(AuthContext);
+  const isAdminUser = typeof hasAdminRole === 'function' && hasAdminRole();
+  const canEditContract = isAdminUser || (typeof hasPermission === 'function' && hasPermission('CONTRACT_EDIT'));
+  // Zrcadlí canViewTab('CONTRACT') z DictionariesNew.js - jestli tohle je
+  // false, záložka Smlouvy se v číselnících vůbec nezobrazí, takže tam nemá
+  // smysl navigovat (uživatel by přistál na jiné/prázdné záložce).
+  const canAccessContractModule = isAdminUser || (typeof hasPermission === 'function' && (
+    hasPermission('CONTRACT_VIEW') || hasPermission('CONTRACT_CREATE') || hasPermission('CONTRACT_EDIT') || hasPermission('CONTRACT_DELETE')
+  ));
+  // returnTo MUSÍ jít z react-router useLocation(), NE z window.location.pathname!
+  // Router běží s basename={process.env.PUBLIC_URL} (/dev/eeo-v2 na DEV, jiné na
+  // PROD) - navigate() basename automaticky přidává, takže syrové
+  // window.location.pathname (které basename už obsahuje) by se sem započítalo
+  // dvakrát (přesně tenhle bug: /dev/eeo-v2/dev/eeo-v2/vema-denik). Location
+  // z react-routeru je už basename-relative, stejně jako to dělá SmlouvyTab.js.
+  const location = useLocation();
+  // Otevření PŘÍMO v plném formuláři (ne v náhledovém panelu) - stejná
+  // navigace jako na jiných místech appky (viz SmlouvyTab.js "otevřít
+  // objednávku/fakturu z rozbaleného řádku smlouvy").
+  const openOrderInFullForm = (orderId) => {
+    if (!orderId) return;
+    navigate(`/order-form-25?edit=${orderId}`, { state: { returnTo: location.pathname } });
+  };
+  const openInvoiceInEvidenceForm = (orderId, invoiceId) => {
+    if (!invoiceId) return;
+    navigate('/invoice-evidence', { state: { editInvoiceId: invoiceId, orderIdForLoad: orderId, returnTo: location.pathname } });
+  };
+  // Ikona "otevřít smlouvu v plném formuláři" - právo editovat se ověřuje TADY,
+  // podle práva se rozhodne, co se vlastně otevře (viz zpětná vazba - proklik
+  // z VEMA vs EEO nesmí nikomu otevřít editaci smlouvy, na kterou nemá právo):
+  //  - CONTRACT_EDIT (nebo admin) → plný editační formulář (beze změny).
+  //  - jen CONTRACT_VIEW/CREATE/DELETE (přístup do modulu, bez editace) →
+  //    stejná záložka Smlouvy, ale jen read-only detail (SmlouvyTab to
+  //    ověří ještě jednou sám, tohle je jen aby se rovnou otevřelo správně).
+  //  - žádné právo na modul Smlouvy → tam vůbec nenavigovat (záložka by se
+  //    ani nezobrazila), místo toho otevřít stávající read-only náhled
+  //    přímo tady ve VEMA vs EEO (funguje bez práv na modul Smlouvy).
+  const openSmlouvaInEditForm = async (cisloSmlouvy) => {
+    if (!cisloSmlouvy) return;
+    if (!canAccessContractModule) {
+      openSmlouvaPreview(cisloSmlouvy);
+      return;
+    }
+    const stateKey = canEditContract ? 'editSmlouva' : 'viewSmlouva';
+    if (smlouvaPreview.listRow && smlouvaPreview.cisloSmlouvy === cisloSmlouvy) {
+      navigate('/dictionaries', { state: { activeTab: 'smlouvy', [stateKey]: smlouvaPreview.listRow } });
+      return;
+    }
+    try {
+      const match = await findSmlouvaByCislo(cisloSmlouvy);
+      if (!match) return;
+      navigate('/dictionaries', { state: { activeTab: 'smlouvy', [stateKey]: match } });
+    } catch (e) {
+      console.error('Chyba při otevírání smlouvy k editaci:', e);
+    }
+  };
+
+  // verdictFilter/financovaniFilter jsou zvednuté do rodiče (VemaDenik), aby
+  // je viděl i společný "Zrušit filtry" a indikátor aktivního filtru v
+  // toolbaru (viz zpětná vazba - dřív se resetovaly jen badgeFilter/
+  // warningOnlyFilter/kontrolaFilter/search, tyhle dva ne).
   // Řazení VEMA dokladů uvnitř fan/matrix karet - vlastní volba u KAŽDÉ karty
   // zvlášť (vedle badge s počtem faktur), ne jedno globální pro celou
   // stránku - různé skupiny chce uživatel prohlížet nezávisle na sobě.
@@ -1741,18 +2044,82 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
   // správný doklad" - jen pro disable tlačítka během requestu, nic víc.
   const [rucniVazbaSavingKey, setRucniVazbaSavingKey] = useState(null);
 
-  useEffect(() => {
-    if (verdictFilter === null) {
-      try { localStorage.removeItem(VEMA_BETA_VERDICT_FILTER_LS_KEY); } catch (e) {}
-    } else {
-      setStoredString(VEMA_BETA_VERDICT_FILTER_LS_KEY, verdictFilter);
+  // Tři samostatné slide-in náhledy - OBJ / FA / SML mají KAŽDÝ svůj vlastní
+  // panel se svým obsahem, žádný "všechno v jednom" (viz zpětná vazba - dřívější
+  // verze míchala objednávku a fakturu do jednoho panelu, což bylo matoucí).
+  // Stejný sdílený SlideInDetailPanel jako jinde v appce (modul faktur).
+
+  // OBJ - číslo objednávky -> detail objednávky (OrderFormReadOnly, stejné
+  // jako v InvoiceEvidencePage).
+  const [orderPreview, setOrderPreview] = useState({ open: false, orderId: null, data: null, loading: false, error: null });
+  const openOrderPreview = (orderId) => {
+    if (!orderId) return;
+    setOrderPreview({ open: true, orderId, data: null, loading: true, error: null });
+    getOrderV2(orderId, token, username, true)
+      .then((data) => {
+        setOrderPreview((prev) => (prev.open && String(prev.orderId) === String(orderId) ? { ...prev, data, loading: false } : prev));
+      })
+      .catch((e) => {
+        console.error('Chyba při načítání náhledu objednávky:', e);
+        setOrderPreview((prev) => (prev.open && String(prev.orderId) === String(orderId) ? { ...prev, loading: false, error: e.message || 'Chyba při načítání objednávky' } : prev));
+      });
+  };
+  const closeOrderPreview = () => setOrderPreview((prev) => ({ ...prev, open: false }));
+
+  // FA - číslo/VS EEO faktury -> detail té konkrétní faktury. Data (f) už
+  // máme načtená z endpointu vema-objednavky/faktury-list (objednavkaFakturyData),
+  // není potřeba žádný další request - jen je zabalit i s kontextem objednávky
+  // a případně porovnávacím VEMA řádkem pro zobrazení VS/doklad/částka.
+  const [invoicePreview, setInvoicePreview] = useState({ open: false, faktura: null, candidate: null, invoiceRow: null });
+  const openInvoicePreview = (faktura, candidate, invoiceRow = null) => {
+    if (!faktura) return;
+    setInvoicePreview({ open: true, faktura, candidate, invoiceRow });
+  };
+  const closeInvoicePreview = () => setInvoicePreview((prev) => ({ ...prev, open: false }));
+
+  // SML - číslo smlouvy (z financování objednávky) -> detail smlouvy. Máme
+  // jen textové číslo smlouvy (financovani.cislo_smlouvy), ne ID - nejdřív
+  // dohledáme smlouvu podle čísla (getSmlouvyList search), pak stáhneme plný
+  // detail (getSmlouvaDetail) pro SmlouvaPreview (stejná komponenta jako v
+  // InvoiceEvidencePage).
+  const [smlouvaPreview, setSmlouvaPreview] = useState({ open: false, cisloSmlouvy: null, data: null, listRow: null, loading: false, error: null });
+  // Sdílené s openSmlouvaInEditForm (ikona "otevřít v plném formuláři") -
+  // obojí potřebuje ze stejného textového čísla smlouvy dohledat její ID.
+  const findSmlouvaByCislo = async (cisloSmlouvy) => {
+    const listResponse = await getSmlouvyList({ token, username, search: cisloSmlouvy, limit: 20 });
+    const list = Array.isArray(listResponse) ? listResponse : (listResponse?.data || []);
+    return list.find((s) => String(s.cislo_smlouvy).trim() === String(cisloSmlouvy).trim()) || list[0] || null;
+  };
+  const openSmlouvaPreview = async (cisloSmlouvy) => {
+    if (!cisloSmlouvy) return;
+    setSmlouvaPreview({ open: true, cisloSmlouvy, data: null, listRow: null, loading: true, error: null });
+    try {
+      const match = await findSmlouvaByCislo(cisloSmlouvy);
+      if (!match) {
+        setSmlouvaPreview((prev) => (prev.cisloSmlouvy === cisloSmlouvy ? { ...prev, loading: false, error: `Smlouva ${cisloSmlouvy} nebyla v číselníku nalezena.` } : prev));
+        return;
+      }
+      const detail = await getSmlouvaDetail({ token, username, id: match.id });
+      // getSmlouvaDetail vrací { smlouva, objednavky, statistiky } - SmlouvaPreview
+      // očekává ploché pole smlouvy (cislo_smlouvy, nazev_firmy, cerpano_skutecne...)
+      setSmlouvaPreview((prev) => (prev.cisloSmlouvy === cisloSmlouvy ? { ...prev, data: detail?.smlouva || null, listRow: match, loading: false } : prev));
+    } catch (e) {
+      console.error('Chyba při načítání náhledu smlouvy:', e);
+      setSmlouvaPreview((prev) => (prev.cisloSmlouvy === cisloSmlouvy ? { ...prev, loading: false, error: e.message || 'Chyba při načítání smlouvy' } : prev));
     }
-  }, [verdictFilter]);
+  };
+  const closeSmlouvaPreview = () => setSmlouvaPreview((prev) => ({ ...prev, open: false }));
 
-  useEffect(() => {
-    setStoredJSON(VEMA_BETA_FINANCOVANI_FILTER_LS_KEY, financovaniFilter);
-  }, [financovaniFilter]);
-
+  // Klikací číslo objednávky/faktury - sjednocený vzhled napříč kartami
+  // (fan/matrix), stejná dotted-underline konvence jako RucniVazbaLink.
+  const clickableProps = (onClick, title) => ({
+    role: 'button',
+    tabIndex: 0,
+    onClick,
+    onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } },
+    title,
+    style: { cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: '2px' },
+  });
 
   // Změna filtru (kromě stránky samotné) - vrátit se na stránku 1.
   useEffect(() => {
@@ -1988,7 +2355,16 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
               </IdentRow>
               <IdentRow $tick={cmp.doklad}>
                 <span className="label">Doklad</span>
-                <span className="vals"><b>{cmp.dokladVema || '—'}</b> / <b>{cmp.dokladEeo || '—'}</b></span>
+                <span className="vals">
+                  <b>{cmp.dokladVema || '—'}</b> / <b {...clickableProps(() => openInvoicePreview(f, candidate, invoiceRow), 'Zobrazit detail faktury')}>{cmp.dokladEeo || '—'}</b>
+                  <OpenInFormButton
+                    type="button"
+                    onClick={() => openInvoiceInEvidenceForm(candidate?.id, f.id)}
+                    title="Otevřít fakturu ve formuláři zaevidování"
+                  >
+                    <FontAwesomeIcon icon={faExternalLinkAlt} />
+                  </OpenInFormButton>
+                </span>
               </IdentRow>
               <IdentRow $tick={cmp.castka}>
                 <span className="label">Částka</span>
@@ -2146,7 +2522,12 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                 u každého řádku je zbytečná duplicita. */}
             {!hideCandidateNode && (
               <SkupinaNode>
-                <span className="n">{candidate.cislo_objednavky}</span>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="n" {...clickableProps(() => openOrderPreview(candidate.id), 'Zobrazit náhled objednávky')}>{candidate.cislo_objednavky}</span>
+                  <OpenInFormButton type="button" onClick={() => openOrderInFullForm(candidate.id)} title="Otevřít objednávku ve formuláři">
+                    <FontAwesomeIcon icon={faExternalLinkAlt} />
+                  </OpenInFormButton>
+                </div>
                 <span className="m">{candidate.dodavatel}</span>
                 {candidate.nazev && <span className="m" title={candidate.nazev}>{candidate.nazev}</span>}
                 {(() => {
@@ -2295,7 +2676,17 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
             <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '1.5rem', flex: '1 1 auto', minWidth: 0 }}>
               <div style={{ flex: '0 1 auto', minWidth: '220px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <VazebniSkupinaTitle style={{ margin: 0 }}>{candidate.cislo_objednavky}</VazebniSkupinaTitle>
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    <VazebniSkupinaTitle
+                      style={{ margin: 0 }}
+                      {...clickableProps(() => openOrderPreview(candidate.id), 'Zobrazit náhled objednávky')}
+                    >
+                      {candidate.cislo_objednavky}
+                    </VazebniSkupinaTitle>
+                    <OpenInFormButton type="button" onClick={() => openOrderInFullForm(candidate.id)} title="Otevřít objednávku ve formuláři" style={{ marginLeft: '0.15rem' }}>
+                      <FontAwesomeIcon icon={faExternalLinkAlt} />
+                    </OpenInFormButton>
+                  </span>
                   {candidate.stav && (() => {
                     const statusColor = getStatusColor(getOrderSystemStatus({ stav_objednavky: candidate.stav }));
                     return (
@@ -2317,20 +2708,37 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                   {(() => {
                     const fin = parseFinancovaniBadge(candidate.financovani);
                     if (!fin) return null;
+                    const isClickableSmlouva = fin.label === 'Smlouva' && fin.detail;
                     return (
-                      <span
-                        style={{
-                          fontSize: '0.68rem',
-                          fontWeight: 700,
-                          padding: '0.2rem 0.55rem',
-                          borderRadius: 4,
-                          whiteSpace: 'nowrap',
-                          background: fin.bg,
-                          color: fin.color,
-                        }}
-                        title={fin.detail || undefined}
-                      >
-                        {fin.label}{fin.detail ? `: ${fin.detail}` : ''}
+                      <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                        <span
+                          {...(isClickableSmlouva
+                            ? clickableProps(() => openSmlouvaPreview(fin.detail), 'Zobrazit náhled smlouvy')
+                            : {})}
+                          style={{
+                            fontSize: '0.68rem',
+                            fontWeight: 700,
+                            padding: isClickableSmlouva ? '0.2rem 0.35rem 0.2rem 0.55rem' : '0.2rem 0.55rem',
+                            borderRadius: 4,
+                            whiteSpace: 'nowrap',
+                            background: fin.bg,
+                            color: fin.color,
+                            ...(isClickableSmlouva ? { cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: '2px' } : {}),
+                          }}
+                          title={isClickableSmlouva ? 'Zobrazit náhled smlouvy' : (fin.detail || undefined)}
+                        >
+                          {fin.label}{fin.detail ? `: ${fin.detail}` : ''}
+                        </span>
+                        {isClickableSmlouva && (
+                          <OpenInFormButton
+                            type="button"
+                            onClick={() => openSmlouvaInEditForm(fin.detail)}
+                            title={canEditContract ? 'Otevřít smlouvu k editaci' : 'Zobrazit smlouvu (nemáte právo editace)'}
+                            style={{ marginLeft: '0.05rem' }}
+                          >
+                            <FontAwesomeIcon icon={faExternalLinkAlt} />
+                          </OpenInFormButton>
+                        )}
                       </span>
                     );
                   })()}
@@ -2367,7 +2775,13 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                 } else if (dSchvaleno) {
                   items.push(['Schváleno', formatDateShort(dSchvaleno)]);
                 }
-                if (items.length === 0) return null;
+                // Součet položek objednávky (skutečná cena z detailu), NE
+                // max_cena_s_dph (odhad/cena pro schválení) - viz zpětná
+                // vazba. Vykresluje se jako poslední, výrazněji (větší/tučnější
+                // písmo) a natvrdo přiřazená do 2. sloupce mřížky, ať vždy
+                // vyjde jako poslední řádek pravého sloupce (pod "Objednatel").
+                const hasCena = candidate.castka_detail !== null && candidate.castka_detail !== undefined;
+                if (items.length === 0 && !hasCena) return null;
 
                 return (
                   <ObjInfoGrid>
@@ -2377,6 +2791,14 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                         <span className="value">{value}</span>
                       </div>
                     ))}
+                    {hasCena && (
+                      <div className="item" style={{ gridColumn: 2, alignItems: 'baseline' }}>
+                        <span className="label" style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e40af' }}>Cena objednávky:</span>
+                        <span className="value" style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e40af' }}>
+                          {formatKc(candidate.castka_detail)}
+                        </span>
+                      </div>
+                    )}
                   </ObjInfoGrid>
                 );
               })()}
@@ -2446,7 +2868,12 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                 const objDatum = parseFlexibleDate(cand.dt_objednavky);
                 return (
                   <MatrixColHead key={cand.id}>
-                    <span className="n">{cand.cislo_objednavky}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span className="n" {...clickableProps(() => openOrderPreview(cand.id), 'Zobrazit náhled objednávky')}>{cand.cislo_objednavky}</span>
+                      <OpenInFormButton type="button" onClick={() => openOrderInFullForm(cand.id)} title="Otevřít objednávku ve formuláři">
+                        <FontAwesomeIcon icon={faExternalLinkAlt} />
+                      </OpenInFormButton>
+                    </div>
                     <span className="m">{cand.dodavatel}</span>
                     {cand.nazev && <span className="m" title={cand.nazev}>{cand.nazev}</span>}
                     {objDatum && <span className="m">objednáno {formatDateShort(objDatum)}</span>}
@@ -2539,6 +2966,7 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
   const hasAnyFinancovaniCounts = Object.values(financovaniCounts).some((n) => n > 0);
 
   return (
+    <>
     <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       {hasAnyVerdictCounts && (
         <VerdictFilterBar style={{ opacity: groupsLoading ? 0.55 : 1, pointerEvents: groupsLoading ? 'none' : 'auto', transition: 'opacity 0.15s ease' }}>
@@ -2557,7 +2985,7 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                 onClick={() => setVerdictFilter((prev) => (prev === key ? null : key))}
                 title={`Filtrovat podle vyhodnocení: ${meta.label}`}
               >
-                {meta.label} ({count})
+                {verdictFilter === key ? '✓ ' : ''}{meta.label} ({count})
               </VerdictFilterChip>
             );
           })}
@@ -2580,7 +3008,7 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                     onClick={() => toggleFinancovaniFilter(key)}
                     title={`Filtrovat podle financování: ${meta.label}`}
                   >
-                    {meta.label} ({count})
+                    {financovaniFilter.includes(key) ? '✓ ' : ''}{meta.label} ({count})
                   </VerdictFilterChip>
                 );
               })}
@@ -2670,6 +3098,61 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
         </>
       )}
     </div>
+
+    <SlideInDetailPanel
+      isOpen={orderPreview.open}
+      onClose={closeOrderPreview}
+      entityType="orders_2025"
+      entityId={orderPreview.orderId}
+      loading={orderPreview.loading}
+      numberLabel={orderPreview.data?.cislo_objednavky}
+    >
+      {orderPreview.error && (
+        <ErrorMessage>{orderPreview.error}</ErrorMessage>
+      )}
+      {!orderPreview.error && orderPreview.data && (
+        <OrderFormReadOnly
+          orderData={orderPreview.data}
+          isReadOnlyMode
+          token={token}
+          username={username}
+        />
+      )}
+    </SlideInDetailPanel>
+
+    <SlideInDetailPanel
+      isOpen={invoicePreview.open}
+      onClose={closeInvoicePreview}
+      entityType="invoices"
+      entityId={invoicePreview.faktura?.id}
+      loading={false}
+      numberLabel={invoicePreview.faktura ? `${invoicePreview.faktura.cislo_faktury || ''}${invoicePreview.faktura.fa_vema_kod ? ` / ${invoicePreview.faktura.fa_vema_kod}` : ''}`.trim() : null}
+    >
+      {invoicePreview.faktura && (
+        <InvoiceQuickView
+          faktura={invoicePreview.faktura}
+          candidate={invoicePreview.candidate}
+          invoiceRow={invoicePreview.invoiceRow}
+        />
+      )}
+    </SlideInDetailPanel>
+
+    <SlideInDetailPanel
+      isOpen={smlouvaPreview.open}
+      onClose={closeSmlouvaPreview}
+      entityType="contracts"
+      entityId={smlouvaPreview.data?.id}
+      loading={smlouvaPreview.loading}
+      numberLabel={smlouvaPreview.data?.cislo_smlouvy || smlouvaPreview.cisloSmlouvy}
+    >
+      {smlouvaPreview.error && (
+        <ErrorMessage>{smlouvaPreview.error}</ErrorMessage>
+      )}
+      {!smlouvaPreview.error && smlouvaPreview.data && (
+        <SmlouvaPreview smlouvaData={smlouvaPreview.data} />
+      )}
+    </SlideInDetailPanel>
+    </>
   );
 };
 
@@ -2696,6 +3179,12 @@ const VemaDenik = () => {
     return Array.isArray(stored) ? stored : [];
   });
   const [kontrolaMultiOpen, setKontrolaMultiOpen] = useState(false);
+  // Filtr podle automatického vyhodnocení páru (BETA seskupený pohled) a
+  // podle financování EEO objednávky (limitovaný příslib vs. smlouva) -
+  // zvednuté sem z GroupedKontrolaObjView, aby je viděl i společný "Zrušit
+  // filtry" a indikátor aktivního filtru v toolbaru.
+  const [verdictFilter, setVerdictFilter] = useState(() => getStoredString(VEMA_BETA_VERDICT_FILTER_LS_KEY, null));
+  const [financovaniFilter, setFinancovaniFilter] = useState(() => getStoredJSON(VEMA_BETA_FINANCOVANI_FILTER_LS_KEY, []));
 
   // BETA Kontrola OBJ - nezávislá je POUZE stránkování a třídění, filtry jsou sdílené s OBJ
   const [betaPageIndex, setBetaPageIndex] = useState(0);
@@ -2790,6 +3279,14 @@ const VemaDenik = () => {
   useEffect(() => { setStoredString(VEMA_BADGE_FILTER_LS_KEY, badgeFilter); }, [badgeFilter]);
   useEffect(() => { setStoredJSON(VEMA_WARNING_FILTER_LS_KEY, warningOnlyFilter); }, [warningOnlyFilter]);
   useEffect(() => { setStoredJSON(VEMA_KONTROLA_FILTER_LS_KEY, kontrolaFilter); }, [kontrolaFilter]);
+  useEffect(() => {
+    if (verdictFilter === null) {
+      try { localStorage.removeItem(VEMA_BETA_VERDICT_FILTER_LS_KEY); } catch (e) {}
+    } else {
+      setStoredString(VEMA_BETA_VERDICT_FILTER_LS_KEY, verdictFilter);
+    }
+  }, [verdictFilter]);
+  useEffect(() => { setStoredJSON(VEMA_BETA_FINANCOVANI_FILTER_LS_KEY, financovaniFilter); }, [financovaniFilter]);
 
   // Load LP seznam pro parsing financování
   useEffect(() => {
@@ -5041,7 +5538,7 @@ const VemaDenik = () => {
                 onClick={() => setKontrolaMultiOpen((o) => !o)}
                 title="Filtrovat podle stavu kontroly (lze vybrat víc)"
               >
-                Kontrola{kontrolaFilter.length > 0 ? ` (${kontrolaFilter.length})` : ''}
+                {kontrolaFilter.length > 0 ? '✓ ' : ''}Kontrola{kontrolaFilter.length > 0 ? ` (${kontrolaFilter.length})` : ''}
                 <FontAwesomeIcon icon={faChevronDown} style={{ fontSize: '0.65rem' }} />
               </KontrolaFilterButton>
 
@@ -5103,13 +5600,14 @@ const VemaDenik = () => {
                 setBetaPageIndex(0);
               }}
               style={{
-                border: '1px solid #cbd5e1',
+                border: `1px solid ${badgeFilter !== 'all' ? '#ef4444' : '#cbd5e1'}`,
                 borderRadius: '6px',
                 height: '40px',
                 padding: '0 0.5rem',
                 fontSize: '0.78rem',
-                color: '#1e293b',
-                background: '#fff',
+                fontWeight: badgeFilter !== 'all' ? 700 : 400,
+                color: badgeFilter !== 'all' ? '#dc2626' : '#1e293b',
+                background: badgeFilter !== 'all' ? '#fee2e2' : '#fff',
                 width: '190px',
                 minWidth: '190px'
               }}
@@ -5147,7 +5645,7 @@ const VemaDenik = () => {
             </button>
 
             {(() => {
-              const hasActiveFilter = badgeFilter !== 'all' || warningOnlyFilter || kontrolaFilter.length > 0 || !!searchInput.trim();
+              const hasActiveFilter = badgeFilter !== 'all' || warningOnlyFilter || kontrolaFilter.length > 0 || !!searchInput.trim() || !!verdictFilter || financovaniFilter.length > 0;
               return (
                 <button
                   onClick={() => {
@@ -5155,6 +5653,8 @@ const VemaDenik = () => {
                     setBadgeFilter('all');
                     setWarningOnlyFilter(false);
                     setKontrolaFilter([]);
+                    setVerdictFilter(null);
+                    setFinancovaniFilter([]);
                     handleClearSearch();
                     setPageIndex(0);
                     setBetaPageIndex(0);
@@ -5378,6 +5878,10 @@ const VemaDenik = () => {
             badgeFilter={badgeFilter}
             warningOnlyFilter={warningOnlyFilter}
             kontrolaFilter={kontrolaFilter}
+            verdictFilter={verdictFilter}
+            setVerdictFilter={setVerdictFilter}
+            financovaniFilter={financovaniFilter}
+            setFinancovaniFilter={setFinancovaniFilter}
             lpSeznam={lpSeznam}
           />
         ) : (

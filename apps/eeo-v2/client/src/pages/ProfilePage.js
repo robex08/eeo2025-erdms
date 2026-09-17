@@ -1113,7 +1113,7 @@ const TabNavigation = styled.div`
   display: flex;
   background: #f8fafc;
   border-bottom: 2px solid #e2e8f0;
-  padding: 0.5rem;
+  padding: 0.5rem 0.5rem 0;
   gap: 0.5rem;
 `;
 
@@ -1124,19 +1124,24 @@ const TabButton = styled.button`
   justify-content: center;
   gap: 0.75rem;
   padding: 1rem 1.5rem;
-  background: ${props => props.$active ? 'white' : 'transparent'};
+  background: ${props => props.$active ? 'white' : '#eef2f7'};
   color: ${props => props.$active ? '#3b82f6' : '#64748b'};
-  border: none;
-  border-radius: 12px;
+  border: 1px solid ${props => props.$active ? '#bfdbfe' : '#dde3ea'};
+  border-bottom: ${props => props.$active ? '2px solid white' : '1px solid #dde3ea'};
+  border-radius: 12px 12px 0 0;
   font-size: 1rem;
   font-weight: ${props => props.$active ? '600' : '500'};
   cursor: pointer;
   transition: all 0.3s ease;
-  box-shadow: ${props => props.$active ? '0 2px 8px rgba(59, 130, 246, 0.15)' : 'none'};
+  box-shadow: ${props => props.$active ? '0 -2px 8px rgba(59, 130, 246, 0.1)' : 'none'};
+  margin-bottom: -2px;
+  position: relative;
+  z-index: ${props => props.$active ? 1 : 0};
 
   &:hover {
-    background: ${props => props.$active ? 'white' : '#f1f5f9'};
+    background: ${props => props.$active ? 'white' : '#e2e8f0'};
     color: ${props => props.$active ? '#3b82f6' : '#1e293b'};
+    border-color: ${props => props.$active ? '#bfdbfe' : '#cbd5e1'};
   }
 
   svg {
@@ -3426,14 +3431,6 @@ const ProfilePage = () => {
               >
                 <UserCheck size={20} />
                 <span>Zastupování</span>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center',
-                  background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
-                  color: '#fff', fontSize: '0.55rem', fontWeight: 800,
-                  letterSpacing: '0.08em', padding: '2px 5px',
-                  borderRadius: '4px', marginLeft: '5px', verticalAlign: 'middle',
-                  lineHeight: 1.3, boxShadow: '0 1px 4px rgba(109,40,217,0.4)'
-                }}>BETA</span>
               </TabButton>
             )}
             <TabButton 

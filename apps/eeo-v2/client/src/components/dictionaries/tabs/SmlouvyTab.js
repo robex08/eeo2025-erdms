@@ -1354,7 +1354,7 @@ const saveSkupinaFilterToStorage = (value) => {
 // =============================================================================
 
 const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initialFilter = '' }) => {
-  const { user, token, userDetail, hasAdminRole } = useContext(AuthContext);
+  const { user, token, userDetail, hasAdminRole, hasPermission } = useContext(AuthContext);
   const { showToast } = useContext(ToastContext);
 
   // Režim omezení pouze pro menubar "Čerpání smluv" (readOnly varianta)
@@ -1365,6 +1365,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   const userId = user?.id ? parseInt(user.id, 10) : (userDetail?.id ? parseInt(userDetail.id, 10) : null);
   const isAdminUser = typeof hasAdminRole === 'function' ? hasAdminRole() : false;
   const isRestrictedCerpaniUser = readOnly && !forceUnrestrictedReadOnly && !isAdminUser;
+  // Autoritativní právo editovat smlouvu - ověřuje se tady, ne jen na straně
+  // volajícího (deep-link z VEMA vs EEO) - i kdyby jiné místo v appce omylem
+  // poslalo editSmlouva bez ověření práv, tady se to vždy sníží na read-only náhled.
+  const canEditContract = isAdminUser || (typeof hasPermission === 'function' && hasPermission('CONTRACT_EDIT'));
 
   // State
   const [smlouvy, setSmlouvy] = useState([]);
@@ -2089,6 +2093,32 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     setEditingSmlouva(smlouva);
     setFormModalOpen(true);
   };
+
+  // Deep-link z jiného modulu (např. proklik na číslo SML v modulu VEMA vs
+  // EEO) - navigace na /dictionaries předá smlouvu rovnou přes location.state,
+  // ať se nemusí znovu dohledávat. Spustí se jen jednou při mountu a stav
+  // hned vyčistí (navigate replace), aby se modal znovu neotvíral při
+  // přepnutí záložky nebo návratu tlačítkem zpět.
+  // editSmlouva vždy projde přes canEditContract - i když volající (VEMA vs
+  // EEO) o právu editovat neví nebo se zmýlí, tady se to autoritativně
+  // sníží na read-only detail (viz zpětná vazba - proklik na smlouvu z
+  // jiného modulu nesmí nikomu otevřít editaci, na kterou nemá právo).
+  // viewSmlouva je vždy jen read-only, bez ohledu na práva.
+  useEffect(() => {
+    if (readOnly) return;
+    if (location.state?.editSmlouva) {
+      if (canEditContract) {
+        handleEdit(location.state.editSmlouva);
+      } else {
+        handleView(location.state.editSmlouva);
+      }
+      navigate(location.pathname, { replace: true, state: {} });
+    } else if (location.state?.viewSmlouva) {
+      handleView(location.state.viewSmlouva);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleView = async (smlouva) => {
     try {

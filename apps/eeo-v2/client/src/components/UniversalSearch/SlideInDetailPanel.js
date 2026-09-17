@@ -220,13 +220,19 @@ const getCategoryLabel = (type) => {
 /**
  * Slide-in Detail Panel
  */
-const SlideInDetailPanel = ({ 
-  isOpen, 
-  onClose, 
-  entityType, 
-  entityId, 
+const SlideInDetailPanel = ({
+  isOpen,
+  onClose,
+  entityType,
+  entityId,
   loading,
-  children
+  children,
+  // Volitelné čitelné označení entity (číslo objednávky, VS faktury, číslo
+  // smlouvy...) - zobrazí se v záhlaví vedle kategorie, aby bylo hned jasné
+  // NA CO bylo kliknuto, ne jen na jaké interní ID (viz zpětná vazba - jen
+  // "#1082" nestačí). Nepovinné, zpětně kompatibilní s ostatními místy, kde
+  // se tento panel používá.
+  numberLabel
 }) => {
   const panelRef = useRef(null);
 
@@ -287,6 +293,7 @@ const SlideInDetailPanel = ({
               </HeaderIcon>
               <HeaderTitleText>
                 {categoryLabel}
+                {numberLabel ? ` ${numberLabel}` : ''}
                 {entityId && <sup>#{entityId}</sup>}
               </HeaderTitleText>
             </HeaderTitle>

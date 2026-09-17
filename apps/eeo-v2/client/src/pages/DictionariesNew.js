@@ -11,6 +11,7 @@
  */
 
 import React, { useState, useContext } from 'react';
+import { useLocation } from 'react-router-dom';
 import styled from '@emotion/styled';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faBook, faSyncAlt } from '@fortawesome/free-solid-svg-icons';
@@ -182,6 +183,7 @@ const EmptyStateText = styled.p`
 
 const DictionariesNew = () => {
   const { hasPermission, hasAdminRole } = useContext(AuthContext);
+  const location = useLocation();
   
   // Helper pro kontrolu viditelnosti záložky
   const canViewTab = (prefix) => {
@@ -214,7 +216,12 @@ const DictionariesNew = () => {
   const firstAccessibleTab = accessibleTabs[0]?.key || null;
 
   // Load active tab from localStorage with fallback na první dostupnou záložku
+  // - přednost má explicitní požadavek z navigace (location.state.activeTab),
+  //   např. proklik na detail smlouvy z jiného modulu (VEMA vs EEO).
   const [activeTab, setActiveTab] = useState(() => {
+    if (location.state?.activeTab && accessibleTabs.some(t => t.key === location.state.activeTab)) {
+      return location.state.activeTab;
+    }
     try {
       const saved = localStorage.getItem('dictionaries_activeTab');
       // Zkontrolovat, jestli má k uložené záložce přístup

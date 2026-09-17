@@ -1,5 +1,6 @@
 // CSS migrováno do GlobalStyles (emotion)
 import { css } from '@emotion/react';
+import styled from '@emotion/styled';
 import React, { useContext, lazy, Suspense, useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { BrowserRouter as Router, Route, Routes, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './context/AuthContext'; // Ensure correct import
@@ -112,66 +113,98 @@ const clearBuildHashAndReload = () => {
   window.location.reload(true);
 };
 
+const ReloadOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #eef2fb 0%, #dbe3f5 100%);
+  padding: 2rem;
+`;
+
+const ReloadCard = styled.div`
+  width: min(480px, 100%);
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgba(31, 42, 87, 0.2);
+  padding: 2.5rem 2.25rem;
+  color: #1f2a57;
+  text-align: center;
+`;
+
+const ReloadIcon = styled.div`
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 1.25rem;
+  border-radius: 50%;
+  background: ${props => props.$isChunkError ? '#e0edff' : '#fdecec'};
+  color: ${props => props.$isChunkError ? '#2563eb' : '#dc2626'};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+`;
+
+const ReloadTitle = styled.h1`
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem 0;
+  color: #1f2a57;
+`;
+
+const ReloadText = styled.p`
+  margin: 0 0 1.75rem 0;
+  line-height: 1.55;
+  color: #5c6784;
+  font-size: 0.95rem;
+`;
+
+const ReloadButton = styled.button`
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: white;
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.85rem 2rem;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3);
+  transition: all 0.2s ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(37, 99, 235, 0.4);
+  }
+
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 const AppReloadRequired = ({ error }) => {
   const isChunkError = isChunkLoadError(error);
 
   return (
-    <div css={css`
-      position: fixed;
-      inset: 0;
-      z-index: 2147483647;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #f3f6fb;
-      padding: 2rem;
-    `}>
-      <div css={css`
-        width: min(520px, 100%);
-        background: #ffffff;
-        border: 1px solid #dbe3ef;
-        border-radius: 12px;
-        box-shadow: 0 16px 40px rgba(31, 42, 87, 0.16);
-        padding: 1.75rem;
-        color: #1f2a57;
-      `}>
-        <h1 css={css`
-          font-size: 1.35rem;
-          margin: 0 0 0.75rem 0;
-          color: #1f2a57;
-        `}>
+    <ReloadOverlay>
+      <ReloadCard>
+        <ReloadIcon $isChunkError={isChunkError}>
+          {isChunkError ? '🔄' : '⚠️'}
+        </ReloadIcon>
+        <ReloadTitle>
           {isChunkError ? 'Je dostupná nová verze aplikace' : 'Aplikaci je potřeba obnovit'}
-        </h1>
-        <p css={css`
-          margin: 0 0 1.25rem 0;
-          line-height: 1.5;
-          color: #4b587c;
-        `}>
+        </ReloadTitle>
+        <ReloadText>
           {isChunkError
             ? 'Aplikace byla mezitím aktualizována a aktuálně otevřená stránka už používá staré soubory. Obnovte stránku pro načtení nové verze.'
             : 'Při načítání stránky došlo k chybě. Obnovení načte aktuální verzi aplikace.'}
-        </p>
-        <button
-          type="button"
-          onClick={clearBuildHashAndReload}
-          css={css`
-            border: 0;
-            border-radius: 8px;
-            background: #2563eb;
-            color: white;
-            font-weight: 700;
-            padding: 0.75rem 1.1rem;
-            cursor: pointer;
-
-            &:hover {
-              background: #1d4ed8;
-            }
-          `}
-        >
+        </ReloadText>
+        <ReloadButton type="button" onClick={clearBuildHashAndReload}>
           Obnovit stránku
-        </button>
-      </div>
-    </div>
+        </ReloadButton>
+      </ReloadCard>
+    </ReloadOverlay>
   );
 };
 
@@ -185,13 +218,15 @@ class AppErrorBoundary extends React.Component {
     return { error };
   }
 
-  componentDidCatch(error) {
+  componentDidCatch(error, errorInfo) {
     if (isChunkLoadError(error)) {
       try {
         localStorage.removeItem('app_build_hash');
       } catch (storageError) {
         // Ignore storage errors during recovery.
       }
+    } else {
+      console.error('AppErrorBoundary caught error:', error, errorInfo?.componentStack);
     }
   }
 

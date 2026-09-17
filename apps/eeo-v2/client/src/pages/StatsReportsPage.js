@@ -3995,6 +3995,10 @@ export default function StatsReportsPage() {
     }
     
     if (!silent) setLoading(true);
+    // ✅ Tab může být natažen samostatně (přepnutím na tab), ne jen z handleLoadData -
+    // proto musí sám nastartovat i dokončit/zneviditelnit progress bar, jinak zůstane
+    // "zaseknutý" na cca 95 % (setProgress nikdy nedosáhne 100, viz ProgressContext.setProgress).
+    if (!silent && progress?.start) progress.start();
     setLoadingTabs(prev => new Set([...prev, 'control']));
     try {
       let completedTasks = 0;
@@ -4013,7 +4017,7 @@ export default function StatsReportsPage() {
         trackProgress(loadInvoices({ source: 'control' })),
         trackProgress(listAllOrderAttachments(username, token, 10000, 0).catch(err => { console.error('❌ OBJ attachments failed:', err); return { data: [] }; }))
       ]);
-      
+
       setOrders(ordersResult.data || []);
       setInvoices(invoicesResult.data || []);
       setOrderAttachments(orderAttachmentsResult?.data || []);
@@ -4021,13 +4025,15 @@ export default function StatsReportsPage() {
         loadedAt: new Date().toISOString(),
         truncated: ordersResult.truncated || invoicesResult.truncated
       });
-      
+
       setLoadedTabs(prev => new Set([...prev, 'control']));
+      if (!silent && progress?.done) progress.done();
     } catch (e) {
       console.error('❌ Control tab data load failed:', e);
       setFailedTabs(prev => new Set([...prev, 'control']));
       if (!silent) {
         setLoadError(e?.message || 'Nepodařilo se načíst data pro Finanční kontrolu.');
+        if (progress?.fail) progress.fail();
       }
     } finally {
       if (!silent) setLoading(false);
@@ -4113,7 +4119,6 @@ export default function StatsReportsPage() {
     setLoadingTabs(prev => new Set([...prev, 'spend']));
     try {
       const promises = [];
-      if (needsOrders) promises.push(loadOrders());
       if (needsOrders) promises.push(loadOrders({ source: 'spend' }));
       if (needsInvoices) promises.push(loadInvoices({ source: 'spend' }));
       promises.push(loadContracts());
@@ -4209,9 +4214,12 @@ export default function StatsReportsPage() {
 
     const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
     const permReady = hasEducationViewAll !== null;
-    const needsAllUsek = hasEducationViewAll === true && allUsekIds.length > 0;
-    if (!permReady) return;
-    if (needsAllUsek && !arraysEqual(filters.usekIds, allUsekIds)) {
+    // Pokud má uživatel právo "vidět vše", ale seznam úseků (allUsekIds) ještě nedorazil
+    // (pomalejší síť), NESMÍME pokračovat s aktuálním (užším) filtrem - jinak se natáhnou
+    // neúplná/prázdná data a tab se označí jako "loaded" natrvalo.
+    const usekListReady = hasEducationViewAll !== true || allUsekIds.length > 0;
+    if (!permReady || !usekListReady) return;
+    if (hasEducationViewAll === true && !arraysEqual(filters.usekIds, allUsekIds)) {
       setFilters(prev => {
         if (arraysEqual(prev.usekIds, allUsekIds)) return prev;
         return { ...prev, usekIds: allUsekIds };
@@ -4437,11 +4445,14 @@ export default function StatsReportsPage() {
     if (loading) return;
 
     const arraysEqual = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
-    const vzdelNeedsAllUsek = activeTab === 'vzdel' && hasEducationViewAll === true && allUsekIds.length > 0;
-    const vzdelUsekReady = !vzdelNeedsAllUsek || arraysEqual(filters.usekIds, allUsekIds);
+    // Stejná ochrana proti race condition jako v loadVzdelTabData: dokud allUsekIds
+    // (seznam úseků pro "view all" právo) nedorazí, nepovažujeme filtr za připravený,
+    // i kdyby byl mezitím technicky "shodný" s prázdným polem.
+    const vzdelUsekListReady = activeTab !== 'vzdel' || hasEducationViewAll !== true || allUsekIds.length > 0;
+    const vzdelUsekReady = hasEducationViewAll !== true || arraysEqual(filters.usekIds, allUsekIds);
     const vzdelPermReady = activeTab !== 'vzdel' || hasEducationViewAll !== null;
 
-    if (activeTab === 'vzdel' && (!vzdelPermReady || !vzdelUsekReady)) return;
+    if (activeTab === 'vzdel' && (!vzdelPermReady || !vzdelUsekListReady || !vzdelUsekReady)) return;
     
     // ✅ Voláme přes refs - useEffect se nespustí znovu kvůli změně ref funkcí
     if (activeTab === 'control' && !loadedTabsRef.current.has('control') && !loadingTabsRef.current.has('control') && !failedTabsRef.current.has('control')) {
