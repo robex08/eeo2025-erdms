@@ -438,6 +438,167 @@ function handle_vema_kontrola_save($input, $config) {
 }
 
 /**
+ * RUČNÍ VAZBA - Uživatel ručně označí, který EEO doklad je ten správný
+ * (přebíjí automatický odhad "nejspíš tahle faktura" ve VemaDenik.js).
+ *
+ * Ukládá se do stejného sloupce `metadata_json` v `25v_kontrola_metadata`
+ * jako ostatní metadata kontroly (klíč `rucni_vazba`), vázané na stabilní
+ * VEMA ID (cfak+firma) - přežije reimport dat z VEMA stejně jako kontrola
+ * samotná. Na rozdíl od handle_vema_kontrola_save mění POUZE tento jeden
+ * klíč v metadata_json a nesahá na kontrola_status/poznamka/priorita, aby
+ * souběžná úprava "kontroly" (stav/poznámka) o ruční vazbu nepřišla a naopak.
+ *
+ * POST: {token, username, vema_id, vema_id_secondary, action: 'set'|'clear',
+ *        eeo_typ?, eeo_id?, eeo_cislo?, cislo_objednavky?}
+ * (typ_zaznamu je zatím vždy 'faktura' - jediné místo, které to používá)
+ */
+function handle_vema_kontrola_rucni_vazba_save($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $typ_zaznamu = $input['typ_zaznamu'] ?? 'faktura';
+    $vema_id = trim((string)($input['vema_id'] ?? ''));
+    $vema_id_secondary = $input['vema_id_secondary'] ?? '';
+    $action = $input['action'] ?? 'set';
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+    if (!$vema_id) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí vema_id']);
+        return;
+    }
+    if (!in_array($action, ['set', 'clear'], true)) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'action musí být set nebo clear']);
+        return;
+    }
+
+    $normalized_secondary = vema_normalize_secondary_id($typ_zaznamu, $vema_id_secondary);
+    if ($typ_zaznamu === 'faktura' && $normalized_secondary === null) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Pro typ faktura je povinné vema_id_secondary (firma)']);
+        return;
+    }
+
+    if ($action === 'set') {
+        $eeo_id = $input['eeo_id'] ?? null;
+        if ($eeo_id === null || $eeo_id === '') {
+            http_response_code(400);
+            echo json_encode(['status' => 'error', 'message' => 'Chybí eeo_id']);
+            return;
+        }
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $user_id = $token_data['id'];
+        $now = TimezoneHelper::getCzechDateTime('Y-m-d H:i:s');
+
+        $new_vazba = null;
+        if ($action === 'set') {
+            $new_vazba = [
+                'eeo_typ' => (string)($input['eeo_typ'] ?? 'eeo_faktura'),
+                'eeo_id' => $input['eeo_id'],
+                'eeo_cislo' => $input['eeo_cislo'] ?? null,
+                'cislo_objednavky' => $input['cislo_objednavky'] ?? null,
+                'oznacil_uzivatel_id' => $user_id,
+                'dt' => $now,
+            ];
+        }
+
+        $check = $db->prepare("SELECT * FROM `25v_kontrola_metadata` WHERE typ_zaznamu = ? AND vema_id = ? AND vema_id_secondary = ?");
+        $check->execute([$typ_zaznamu, $vema_id, $normalized_secondary]);
+        $existing = $check->fetch(PDO::FETCH_ASSOC);
+
+        $metadata = ($existing && !empty($existing['metadata_json'])) ? json_decode($existing['metadata_json'], true) : [];
+        if (!is_array($metadata)) $metadata = [];
+        $previous_vazba = $metadata['rucni_vazba'] ?? null;
+        $metadata['rucni_vazba'] = $new_vazba;
+        $metadata_json = json_encode($metadata, JSON_UNESCAPED_UNICODE);
+
+        if ($existing) {
+            $stmt = $db->prepare("
+                UPDATE `25v_kontrola_metadata` SET
+                    metadata_json = ?,
+                    upravil_uzivatel_id = ?,
+                    dt_upravy = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$metadata_json, $user_id, $now, $existing['id']]);
+            $result_id = $existing['id'];
+        } else {
+            $stmt = $db->prepare("
+                INSERT INTO `25v_kontrola_metadata` (
+                    typ_zaznamu, vema_id, vema_id_secondary,
+                    kontrola_status, priorita, metadata_json,
+                    kontroloval_uzivatel_id, dt_kontroly,
+                    vytvoril_uzivatel_id, dt_vytvoreni
+                ) VALUES (?, ?, ?, 'nezkontrolovano', 0, ?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([$typ_zaznamu, $vema_id, $normalized_secondary, $metadata_json, $user_id, $now, $user_id, $now]);
+            $result_id = $db->lastInsertId();
+        }
+
+        // Historie - stejná tabulka/mechanismus jako u ZMENA_STAVU apod.,
+        // takže výběr správného dokladu má vlastní auditní stopu (kdo, kdy,
+        // co bylo předtím) a nic se při dalším ručním výběru neztrácí.
+        // stav_pred/stav_po jsou VARCHAR(50) (sdílené se ZMENA_STAVU/ZMENA_PRIORITY),
+        // takže sem jde jen stručný popis - celý JSON výběru je v text_zprava (TEXT).
+        $vazba_summary = function ($v) {
+            if (!$v) return 'žádný';
+            $cislo = $v['eeo_cislo'] ?? $v['eeo_id'] ?? '?';
+            return mb_substr('EEO faktura ' . $cislo, 0, 50);
+        };
+        vema_add_udalost(
+            $db,
+            $result_id,
+            'RUCNI_VAZBA',
+            json_encode(['pred' => $previous_vazba, 'po' => $new_vazba], JSON_UNESCAPED_UNICODE),
+            $vazba_summary($previous_vazba),
+            $vazba_summary($new_vazba),
+            $user_id
+        );
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'success',
+            'data' => ['id' => $result_id, 'rucni_vazba' => $new_vazba],
+            'message' => $action === 'set' ? 'Doklad označen jako správný' : 'Ruční výběr zrušen',
+        ]);
+
+    } catch (Exception $e) {
+        error_log("VEMA kontrola/rucni-vazba/save error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode([
+            'status' => 'error',
+            'message' => 'Chyba při ukládání ruční vazby: ' . $e->getMessage(),
+        ]);
+    }
+}
+
+/**
  * LIST - Seznam kontrol s filtrováním
  * POST: {token, username, typ_zaznamu?, kontrola_status?, limit?, offset?}
  */

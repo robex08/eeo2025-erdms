@@ -156,6 +156,60 @@ export async function saveVemaKontrola(
 }
 
 // -----------------------------------------------------------
+// RUČNÍ VAZBA - Označit / zrušit "tohle je ten správný doklad"
+// -----------------------------------------------------------
+
+/**
+ * Ručně označí (nebo zruší) konkrétní EEO doklad jako ten správný pro danou
+ * VEMA fakturu - přebíjí automatický odhad ("nejspíš tahle faktura").
+ * Ukládá se do stejné kontroly (25v_kontrola_metadata, vázáno na cfak+firma),
+ * takže výběr přežije i reimport dat z VEMA - viz
+ * handle_vema_kontrola_rucni_vazba_save.
+ *
+ * @param {{
+ *   vemaId: string,
+ *   vemaIdSecondary?: string,
+ *   action: 'set'|'clear',
+ *   eeoTyp?: string,
+ *   eeoId?: string|number,
+ *   eeoCislo?: string,
+ *   cisloObjednavky?: string
+ * }} params
+ * @param {string} token
+ * @param {string} username
+ * @returns {Promise<{id: number, rucni_vazba: object|null}>}
+ */
+export async function saveVemaRucniVazba(
+  { vemaId, vemaIdSecondary, action, eeoTyp = 'eeo_faktura', eeoId, eeoCislo, cisloObjednavky },
+  token,
+  username
+) {
+  if (!token || !username) throw new Error('Chybí autentizační údaje');
+  if (!vemaId || !action) throw new Error('Chybí povinné parametry: vema_id, action');
+  if (action === 'set' && (eeoId === undefined || eeoId === null || eeoId === '')) {
+    throw new Error('Chybí eeo_id');
+  }
+
+  const response = await api.post('/vema-kontrola/rucni-vazba/save', {
+    token,
+    username,
+    typ_zaznamu: 'faktura',
+    vema_id: String(vemaId),
+    vema_id_secondary: vemaIdSecondary ? String(vemaIdSecondary) : null,
+    action,
+    eeo_typ: eeoTyp,
+    eeo_id: eeoId,
+    eeo_cislo: eeoCislo || null,
+    cislo_objednavky: cisloObjednavky || null,
+  });
+
+  if (response.data && response.data.status === 'success') {
+    return response.data.data;
+  }
+  throw new Error(response.data?.message || 'Chyba API vema-kontrola/rucni-vazba/save');
+}
+
+// -----------------------------------------------------------
 // LIST - Seznam kontrol
 // -----------------------------------------------------------
 

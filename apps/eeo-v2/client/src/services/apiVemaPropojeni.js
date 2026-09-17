@@ -91,9 +91,10 @@ export const getVemaObjednavkyFaktury = async (objednavkaIds, token, username) =
  * @param {boolean} [params.warningOnlyFilter]
  * @param {string[]} [params.kontrolaFilter] - multiselect, OR logika
  * @param {string|null} [params.verdictFilter]
+ * @param {string[]} [params.financovaniFilter] - multiselect ('LP'|'SMLOUVA'|...), OR logika
  * @param {number} [params.page]
  * @param {number} [params.perPage]
- * @returns {Promise<{groups: object[], verdictCounts: object, pagination: object}>}
+ * @returns {Promise<{groups: object[], verdictCounts: object, financovaniCounts: object, pagination: object}>}
  */
 export const getVemaBetaGroupedList = async ({
   token,
@@ -103,6 +104,7 @@ export const getVemaBetaGroupedList = async ({
   warningOnlyFilter = false,
   kontrolaFilter = [],
   verdictFilter = null,
+  financovaniFilter = [],
   page = 1,
   perPage = 50
 }) => {
@@ -117,6 +119,7 @@ export const getVemaBetaGroupedList = async ({
         warningOnlyFilter,
         kontrolaFilter,
         verdictFilter,
+        financovaniFilter,
         page,
         perPage
       },

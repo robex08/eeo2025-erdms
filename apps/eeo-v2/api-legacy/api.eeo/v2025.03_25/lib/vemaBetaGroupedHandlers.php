@@ -131,6 +131,40 @@ function vema_beta_matches_badge_filter($count, $badgeFilter) {
 }
 
 /**
+ * Vytáhne TYP financování ('LP'|'SMLOUVA'|'INDIVIDUALNI'|'POJISTNA_UDALOST'|null)
+ * z JSON pole `financovani` kandidátní EEO objednávky - port stejného parsování,
+ * jaké FE dělá u sloupce "Financování" v matici (viz VemaDenik.js).
+ */
+function vema_beta_get_financovani_typ($candidate) {
+    if (empty($candidate['financovani'])) return null;
+    $raw = $candidate['financovani'];
+    $data = null;
+    if (is_string($raw)) {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) $data = $decoded;
+    } elseif (is_array($raw)) {
+        $data = $raw;
+    }
+    if (!$data) return null;
+    $typ = isset($data['TYP']) ? $data['TYP'] : (isset($data['typ']) ? $data['typ'] : null);
+    return $typ !== null && $typ !== '' ? $typ : null;
+}
+
+/**
+ * Skupina projde filtrem podle financování, pokud ALESPOŇ JEDEN kandidát ve
+ * skupině odpovídá vybranému typu - multiselect, OR logika (stejný vzor jako
+ * kontrolaFilter).
+ */
+function vema_beta_matches_financovani_filter($group, $financovaniFilter) {
+    if (empty($financovaniFilter)) return true;
+    foreach ($group['candidates'] as $cand) {
+        $typ = vema_beta_get_financovani_typ($cand);
+        if ($typ !== null && in_array($typ, $financovaniFilter, true)) return true;
+    }
+    return false;
+}
+
+/**
  * Port formatKc z VemaDenik.js (Number.toLocaleString('cs-CZ')) - jen pro
  * detailní texty ve verdiktech (castkaDetail), přesná shoda desetin není
  * kriticka.
@@ -466,11 +500,23 @@ function vema_beta_classify_group($group) {
  * v VemaDenik.js) skutečně čtou z `row.original`.
  */
 function vema_beta_format_invoice_row($dedupRow) {
+    // Ruční výběr "tohle je ten správný doklad" (viz handle_vema_kontrola_rucni_vazba_save
+    // v vemaKontrolaHandlers.php) - uložený v metadata_json téhož záznamu kontroly,
+    // vázaný na stabilní VEMA ID (cfak+firma), takže přežije reimport dat z VEMA.
+    $rucniVazba = null;
+    if (!empty($dedupRow['metadata_json'])) {
+        $decoded = json_decode($dedupRow['metadata_json'], true);
+        if (is_array($decoded) && !empty($decoded['rucni_vazba'])) {
+            $rucniVazba = $decoded['rucni_vazba'];
+        }
+    }
+
     return array(
         'id' => $dedupRow['_group_key'],
         'cfak' => $dedupRow['cfak'] ?? null,
         'firma' => $dedupRow['firma'] ?? null,
         'firma_nazev' => $dedupRow['firma_nazev'] ?? null,
+        'firma_ico' => $dedupRow['firma_ico'] ?? null,
         'nazevfak' => $dedupRow['nazevfak'] ?? null,
         'celkem' => $dedupRow['celkem'] ?? null,
         'dof' => $dedupRow['dof'] ?? null,
@@ -484,6 +530,7 @@ function vema_beta_format_invoice_row($dedupRow) {
         'cdok' => $dedupRow['cdok'] ?? null,
         'typdok' => $dedupRow['typdok'] ?? null,
         'kontrola' => $dedupRow['kontrola'] ?? null,
+        'rucni_vazba' => $rucniVazba,
         '_masterCfak' => $dedupRow['cfak'] ?? null,
         '_groupedKontrola' => count($dedupRow['_group_invoices']) > 1,
         '_groupInvoicesCount' => count($dedupRow['_group_invoices']),
@@ -505,10 +552,13 @@ function vema_beta_format_invoice_row($dedupRow) {
  * - warningOnlyFilter (bool, optional, default false)
  * - kontrolaFilter (string[]|string|null, optional - multiselect, hodnoty z 'nezkontrolovano'|'v_poradku'|'nelze_vyresit'|'v_reseni'|'varovani', OR logika)
  * - verdictFilter (string|null, optional - 'no_candidate'|'bad'|'warn'|'fan'|'matrix'|'good')
+ * - financovaniFilter (string[]|string|null, optional - multiselect, hodnoty z 'LP'|'SMLOUVA'
+ *   (a případně dalších TYP hodnot pole financovani na EEO objednávce) - OR logika,
+ *   skupina projde, pokud alespoň jeden kandidát ve skupině odpovídá)
  * - page (int, optional, default 1)
  * - perPage (int, optional, default 50, max 250)
  *
- * Response: {status, data: {groups: [...], verdictCounts: {...}}, pagination: {...}}
+ * Response: {status, data: {groups: [...], verdictCounts: {...}, financovaniCounts: {...}}, pagination: {...}}
  */
 function handle_vema_beta_grouped_list($input, $config) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -567,6 +617,13 @@ function handle_vema_beta_grouped_list($input, $config) {
             $kontrolaFilter = array();
         }
         $verdictFilter = (!empty($input['verdictFilter'])) ? (string)$input['verdictFilter'] : null;
+        if (!empty($input['financovaniFilter'])) {
+            $financovaniFilter = is_array($input['financovaniFilter'])
+                ? array_values(array_filter(array_map('strval', $input['financovaniFilter'])))
+                : array((string)$input['financovaniFilter']);
+        } else {
+            $financovaniFilter = array();
+        }
         $page = isset($input['page']) ? max(1, (int)$input['page']) : 1;
         $perPage = isset($input['perPage']) ? max(1, min(250, (int)$input['perPage'])) : 50;
 
@@ -607,7 +664,8 @@ function handle_vema_beta_grouped_list($input, $config) {
                     firmy.nazev as firma_nazev,
                     firmy.ico as firma_ico,
                     smlouvy.ecsml as smlouva_ecsml,
-                    COALESCE(k.kontrola_status, 'nezkontrolovano') as kontrola
+                    COALESCE(k.kontrola_status, 'nezkontrolovano') as kontrola,
+                    k.metadata_json
                 FROM `" . TBL_VEMA_FPAZAHL . "` f
                     LEFT JOIN `" . TBL_VEMA_FIRMYUPL . "` firmy
                          ON f.firma = firmy.firma
@@ -694,21 +752,37 @@ function handle_vema_beta_grouped_list($input, $config) {
         // ---- 5. Union-find - sloučit faktury sdílející kandidátní objednávku (GLOBÁLNĚ) ----
         $groups = vema_beta_build_vazebni_skupiny($entries);
 
-        // ---- 6. Verdikty párů + klasifikace skupiny ----
+        // ---- 6. Verdikty párů + klasifikace skupiny + počty podle financování ----
         $verdictCounts = array('no_candidate' => 0, 'bad' => 0, 'warn' => 0, 'fan' => 0, 'matrix' => 0, 'good' => 0);
+        $financovaniCounts = array();
         foreach ($groups as &$group) {
             vema_beta_derive_group_verdicts($group);
             $category = vema_beta_classify_group($group);
             $group['verdictCategory'] = $category;
             $verdictCounts[$category] = (isset($verdictCounts[$category]) ? $verdictCounts[$category] : 0) + 1;
+
+            // Skupina se do počtu daného typu započítá max. jednou, i když má víc
+            // kandidátů se stejným TYP financování.
+            $seenTypy = array();
+            foreach ($group['candidates'] as $cand) {
+                $typ = vema_beta_get_financovani_typ($cand);
+                if ($typ === null || isset($seenTypy[$typ])) continue;
+                $seenTypy[$typ] = true;
+                $financovaniCounts[$typ] = (isset($financovaniCounts[$typ]) ? $financovaniCounts[$typ] : 0) + 1;
+            }
         }
         unset($group);
 
-        // ---- 7. Filtr podle vyhodnocení (nemění počty výše, jen zúží výsledky) ----
+        // ---- 7. Filtr podle vyhodnocení + financování (nemění počty výše, jen zúží výsledky) ----
         $filteredGroups = $groups;
         if ($verdictFilter !== null) {
-            $filteredGroups = array_values(array_filter($groups, function ($g) use ($verdictFilter) {
+            $filteredGroups = array_values(array_filter($filteredGroups, function ($g) use ($verdictFilter) {
                 return $g['verdictCategory'] === $verdictFilter;
+            }));
+        }
+        if (!empty($financovaniFilter)) {
+            $filteredGroups = array_values(array_filter($filteredGroups, function ($g) use ($financovaniFilter) {
+                return vema_beta_matches_financovani_filter($g, $financovaniFilter);
             }));
         }
 
@@ -743,6 +817,7 @@ function handle_vema_beta_grouped_list($input, $config) {
             'data' => array(
                 'groups' => $outputGroups,
                 'verdictCounts' => $verdictCounts,
+                'financovaniCounts' => $financovaniCounts,
             ),
             'pagination' => array(
                 'page' => $safePage,

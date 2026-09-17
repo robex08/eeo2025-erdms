@@ -2501,6 +2501,10 @@ switch ($endpoint) {
         handle_vema_kontrola_stats($input, $config);
         break;
 
+    case 'vema-kontrola/rucni-vazba/save':
+        handle_vema_kontrola_rucni_vazba_save($input, $config);
+        break;
+
     case 'vema-faktury/propojeni-eeo':
         handle_vema_faktury_propojeni_eeo($input, $config);
         break;

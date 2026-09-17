@@ -1152,7 +1152,7 @@ function bulk_resolve_vema_faktura_propojeni($db, $invoices) {
                         o.id, o.cislo_objednavky, o.predmet as nazev, o.dt_objednavky,
                         o.max_cena_s_dph as castka_max,
                         (SELECT SUM(pol.cena_s_dph) FROM `" . TBL_OBJEDNAVKY . "_polozky` pol WHERE pol.objednavka_id = o.id) as castka_detail,
-                        o.stav_objednavky as stav, o.dodavatel_nazev as dodavatel, o.druh_objednavky_kod, o.financovani,
+                        o.stav_objednavky as stav, o.dodavatel_nazev as dodavatel, o.dodavatel_ico, o.druh_objednavky_kod, o.financovani,
                         u.jmeno as zadavatel_jmeno, u.prijmeni as zadavatel_prijmeni,
                         o.dt_vytvoreni, o.dt_schvaleni, o.schvalovatel_id, o.stav_workflow_kod,
                         obj.jmeno as objednatel_jmeno, obj.prijmeni as objednatel_prijmeni,
@@ -1565,6 +1565,7 @@ function handle_vema_objednavky_faktury_list($input, $config) {
                     f.fa_datum_vystaveni,
                     f.fa_datum_splatnosti,
                     f.fa_castka,
+                    f.fa_typ,
                     f.stav
                 FROM `" . TBL_FAKTURY . "` f
                 WHERE f.objednavka_id IN ($placeholders)
@@ -1590,6 +1591,7 @@ function handle_vema_objednavky_faktury_list($input, $config) {
                 'datum_vystaveni' => $row['fa_datum_vystaveni'],
                 'datum_splatnosti' => $row['fa_datum_splatnosti'],
                 'castka' => $row['fa_castka'] !== null ? (float)$row['fa_castka'] : null,
+                'fa_typ' => $row['fa_typ'],
                 'stav' => $row['stav']
             );
         }
