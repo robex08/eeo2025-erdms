@@ -2468,6 +2468,10 @@ switch ($endpoint) {
         }
         break;
     
+    case 'vema/import/posledni':
+        handle_vema_import_posledni($input, $config);
+        break;
+
     case 'vema/import/upload':
         if ($request_method === 'POST') {
             handle_vema_import_upload($input, $config, $queries);

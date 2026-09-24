@@ -1727,3 +1727,96 @@ function handle_vema_truncate($input, $config, $queries) {
         ));
     }
 }
+
+/**
+ * POST /vema/import/posledni - informace o posledním importu VEMA dat.
+ * Samostatný log importů neexistuje: poslední import se odvozuje z aktivních
+ * záznamů (import je vždy celý a záznamy mimo aktuální dávku označí jako
+ * smazané, takže všechny aktivní záznamy nesou dávku posledního importu).
+ * Čas bere z dt_posledni_aktualizace (místní čas DB) - čas v import_batch_id
+ * je v UTC. Uživatel je poslední část import_batch_id (Ymd_His_<user_id>).
+ *
+ * Response: {status, data: {batch_id, dt_importu, uzivatel, pocty: {faktury, smlouvy, firmy}} | null}
+ */
+function handle_vema_import_posledni($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(array('status' => 'error', 'message' => 'Pouze POST metoda'));
+        return;
+    }
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(array('status' => 'error', 'message' => 'Chybí token nebo username'));
+        return;
+    }
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(array('status' => 'error', 'message' => 'Neplatný token'));
+        return;
+    }
+    if (!has_permission($token_data['id'], 'VEMA_VIEW')) {
+        http_response_code(403);
+        echo json_encode(array('status' => 'error', 'message' => 'Nemáte oprávnění k zobrazení Deníku VEMA'));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        TimezoneHelper::setMysqlTimezone($db);
+
+        $stmt = $db->query("SELECT import_batch_id,
+                                   GREATEST(COALESCE(MAX(dt_posledni_aktualizace), '1970-01-01'), COALESCE(MAX(dt_vytvoreni), '1970-01-01')) AS dt_importu,
+                                   COUNT(*) AS pocet
+                            FROM `" . TBL_VEMA_FPAZAHL . "`
+                            WHERE stav_zaznamu = 'aktivni' AND import_batch_id IS NOT NULL AND import_batch_id != ''
+                            GROUP BY import_batch_id
+                            ORDER BY import_batch_id DESC
+                            LIMIT 1");
+        $posledni = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$posledni) {
+            http_response_code(200);
+            echo json_encode(array('status' => 'success', 'data' => null));
+            return;
+        }
+
+        $batchId = $posledni['import_batch_id'];
+        $pocetZ = function ($table) use ($db, $batchId) {
+            $s = $db->prepare("SELECT COUNT(*) FROM `" . $table . "` WHERE stav_zaznamu = 'aktivni' AND import_batch_id = ?");
+            $s->execute(array($batchId));
+            return (int)$s->fetchColumn();
+        };
+
+        $uzivatel = null;
+        $parts = explode('_', $batchId);
+        $userId = (int)end($parts);
+        if ($userId > 0) {
+            $u = $db->prepare("SELECT jmeno, prijmeni FROM `" . TBL_UZIVATELE . "` WHERE id = ?");
+            $u->execute(array($userId));
+            $row = $u->fetch(PDO::FETCH_ASSOC);
+            if ($row) $uzivatel = trim($row['jmeno'] . ' ' . $row['prijmeni']);
+        }
+
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => array(
+                'batch_id' => $batchId,
+                'dt_importu' => $posledni['dt_importu'],
+                'uzivatel' => $uzivatel,
+                'pocty' => array(
+                    'faktury' => (int)$posledni['pocet'],
+                    'smlouvy' => $pocetZ(TBL_VEMA_SMLA),
+                    'firmy' => $pocetZ(TBL_VEMA_FIRMYUPL),
+                ),
+            ),
+        ));
+    } catch (Exception $e) {
+        error_log('VEMA import/posledni error: ' . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array('status' => 'error', 'message' => 'Chyba při načítání informací o importu: ' . $e->getMessage()));
+    }
+}

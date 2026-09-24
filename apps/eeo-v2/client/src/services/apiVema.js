@@ -424,3 +424,27 @@ export async function truncateVemaData({ token, username }) {
 
   return response.json();
 }
+
+/**
+ * Informace o posledním importu VEMA dat (datum, kdo, počty záznamů).
+ * @returns {Promise<{batch_id, dt_importu, uzivatel, pocty: {faktury, smlouvy, firmy}}|null>}
+ */
+export async function loadVemaPosledniImport({ token, username }) {
+  if (!token || !username) {
+    throw new Error('Chybí přístupový token nebo uživatelské jméno');
+  }
+
+  const response = await fetch(`${API_BASE_URL}/vema/import/posledni`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token, username }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+  }
+
+  const json = await response.json();
+  return json.data || null;
+}

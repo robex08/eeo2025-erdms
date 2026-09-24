@@ -29,7 +29,7 @@ import {
   createColumnHelper
 } from '@tanstack/react-table';
 import AuthContext from '../context/AuthContext';
-import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, loadEeoFakturyBezVema, formatExcelDate, excelSerialToDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
+import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, loadEeoFakturyBezVema, formatExcelDate, excelSerialToDate, uploadVemaFiles, truncateVemaData, loadVemaPosledniImport } from '../services/apiVema';
 import VemaKontrolaCell from '../components/VemaKontrolaCell';
 import { getVemaFakturaPropojeni, getVemaObjednavkyFaktury, getVemaSmlouvyFaktury, getVemaBetaGroupedList, getVemaSmlGroupedList, getVemaPrehledVazeb } from '../services/apiVemaPropojeni';
 import { fetchLimitovanePrisliby } from '../services/api2auth';
@@ -86,7 +86,20 @@ const HeaderLeft = styled.div`
 
 const HeaderRight = styled.div`
   display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.5rem;
+`;
+
+const HeaderButtons = styled.div`
+  display: flex;
   gap: 0.75rem;
+`;
+
+const PosledniImportInfo = styled.div`
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.8);
+  text-align: right;
 `;
 
 const HeaderButton = styled.button`
@@ -4823,6 +4836,21 @@ const VemaDenik = () => {
   // logika jako jejich seskupené pohledy) - z toho se filtrují ploché pohledy
   // i "VEMA doklady bez EEO dokladů", aby se záložky nepřekrývaly.
   const [prehledVazeb, setPrehledVazeb] = useState(null);
+  const [posledniImport, setPosledniImport] = useState(null);
+
+  const nactiPosledniImport = async () => {
+    try {
+      setPosledniImport(await loadVemaPosledniImport({ token, username }));
+    } catch (err) {
+      console.error('Chyba načítání informací o posledním importu VEMA:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (!token || !username) return;
+    nactiPosledniImport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token, username]);
   const [eeoBezVemaLoading, setEeoBezVemaLoading] = useState(false);
   
   // Cache markery - true znamená "už načteno, nezatěžovat server"
@@ -5156,6 +5184,7 @@ const VemaDenik = () => {
       }
       // Cache je aktuální = všechny taby naplněné
       setDataLoaded({ firmy: true, faktury: true, smlouvy: true });
+      nactiPosledniImport();
 
     } catch (err) {
       console.error('Import error:', err);
@@ -5184,6 +5213,7 @@ const VemaDenik = () => {
       setSmlouvyData([]);
       setDataLoaded({ firmy: true, faktury: true, smlouvy: true });
       setShowTruncateModal(false);
+      setPosledniImport(null);
 
     } catch (err) {
       console.error('Truncate error:', err);
@@ -7009,19 +7039,37 @@ const VemaDenik = () => {
           </div>
         </HeaderLeft>
         <HeaderRight>
-          <HeaderButton onClick={() => setShowImportModal(true)}>
-            <FontAwesomeIcon icon={faUpload} />
-            Import dat
-          </HeaderButton>
-          {userDetail?.roles?.some(r => r.kod_role === 'SUPERADMIN') && (
-            <HeaderButton 
-              onClick={() => setShowTruncateModal(true)}
-              style={{background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)'}}
-            >
-              <FontAwesomeIcon icon={faTimes} />
-              Vymazat vše
+          <HeaderButtons>
+            <HeaderButton onClick={() => setShowImportModal(true)}>
+              <FontAwesomeIcon icon={faUpload} />
+              Import dat
             </HeaderButton>
-          )}
+            {userDetail?.roles?.some(r => r.kod_role === 'SUPERADMIN') && (
+              <HeaderButton 
+                onClick={() => setShowTruncateModal(true)}
+                style={{background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)'}}
+              >
+                <FontAwesomeIcon icon={faTimes} />
+                Vymazat vše
+              </HeaderButton>
+            )}
+          </HeaderButtons>
+          <PosledniImportInfo>
+            {posledniImport ? (() => {
+              const d = new Date(String(posledniImport.dt_importu).replace(' ', 'T'));
+              const kdy = Number.isNaN(d.getTime())
+                ? posledniImport.dt_importu
+                : `${d.toLocaleDateString('cs-CZ')} ${d.toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`;
+              const p = posledniImport.pocty || {};
+              return (
+                <>
+                  Poslední import: <b>{kdy}</b>{posledniImport.uzivatel ? ` · ${posledniImport.uzivatel}` : ''}
+                  <br />
+                  {p.faktury ?? 0} faktur · {p.smlouvy ?? 0} smluv · {p.firmy ?? 0} firem
+                </>
+              );
+            })() : 'Žádný import VEMA dat'}
+          </PosledniImportInfo>
         </HeaderRight>
       </Header>
 
