@@ -165,6 +165,56 @@ function vema_beta_matches_financovani_filter($group, $financovaniFilter) {
 }
 
 /**
+ * Fulltext hledá jak v syrových VEMA polích (stejná pole jako dřív SQL LIKE
+ * WHERE), tak - nově - v EEO datech kandidátní objednávky: čísle objednávky
+ * a čísle smlouvy z JSON pole `financovani` (relevantní hlavně u financování
+ * typu SMLOUVA). Hledá se na úrovni celé vazební skupiny, ne jen jednoho
+ * řádku/kandidáta - když hledaný text sedí kdekoliv ve skupině, zůstane
+ * viditelná celá (všechny faktury i objednávka), ne jen ta jedna shoda.
+ */
+function vema_beta_group_matches_search($group, $search) {
+    if ($search === '') return true;
+
+    foreach ($group['entries'] as $entry) {
+        $row = $entry['row'];
+        $vemaFields = array(
+            $row['cfak'] ?? null, $row['nazevfak'] ?? null, $row['cdok'] ?? null,
+            $row['csml'] ?? null, $row['cobj'] ?? null, $row['cobj_formatovane'] ?? null,
+            $row['typdok'] ?? null, $row['ksymb'] ?? null, $row['vsymb'] ?? null,
+            $row['ssymb'] ?? null, $row['dicp'] ?? null, $row['cfakdupl'] ?? null,
+            $row['dobrdok'] ?? null, $row['dobrfak'] ?? null, $row['smlouva_ecsml'] ?? null,
+        );
+        foreach ($vemaFields as $val) {
+            if ($val !== null && $val !== '' && mb_stripos((string)$val, $search) !== false) return true;
+        }
+    }
+
+    foreach ($group['candidates'] as $cand) {
+        $eeoFields = array($cand['cislo_objednavky'] ?? null, $cand['nazev'] ?? null, $cand['dodavatel'] ?? null);
+
+        if (!empty($cand['financovani'])) {
+            $raw = $cand['financovani'];
+            $data = null;
+            if (is_string($raw)) {
+                $decoded = json_decode($raw, true);
+                if (is_array($decoded)) $data = $decoded;
+            } elseif (is_array($raw)) {
+                $data = $raw;
+            }
+            if (is_array($data) && !empty($data['cislo_smlouvy'])) {
+                $eeoFields[] = $data['cislo_smlouvy'];
+            }
+        }
+
+        foreach ($eeoFields as $val) {
+            if ($val !== null && $val !== '' && mb_stripos((string)$val, $search) !== false) return true;
+        }
+    }
+
+    return false;
+}
+
+/**
  * Port formatKc z VemaDenik.js (Number.toLocaleString('cs-CZ')) - jen pro
  * detailní texty ve verdiktech (castkaDetail), přesná shoda desetin není
  * kriticka.
@@ -223,6 +273,62 @@ function vema_beta_dedupe_by_id($items, $fallbackField) {
 }
 
 /**
+ * Doplní chybějící kandidátní objednávky do $batchResults tam, kde se faktura
+ * našla přes spolehlivou vazbu VS/doklad/částka (viz bulk_resolve_vema_faktura_propojeni,
+ * priorita 2c/3/4), ale objednávka k ní (priorita 1, LIKE na VEMA cobj) mezi
+ * kandidáty chybí - typicky proto, že VEMA cobj se textově neshoduje s EEO
+ * cislo_objednavky (jiný formát čísla u některých financování). Bez tohoto
+ * doplnění zůstane pár "bez kandidáta", i když EEO OBJ -> (financování) -> FA
+ * na import z VEMA fakticky sedí - objednávka se dohledá podle cislo_objednavky
+ * uvedeného přímo na té nalezené EEO faktuře.
+ *
+ * Záměrně izolováno jen v tomto souboru (BETA grouped-view) - `$batchResults`
+ * je čerstvě vrácené z bulk_resolve_vema_faktura_propojeni() pro AKTUÁLNÍ
+ * přefiltrovaný set této záložky, takže úprava se nijak nedotkne ostatních
+ * záložek modulu VEMA vs EEO (ty volají tutéž sdílenou funkci nezávisle).
+ */
+function vema_beta_backfill_missing_objednavky(&$batchResults, $db) {
+    $missing_cobj_map = array(); // cislo_objednavky => [_key, ...]
+    foreach ($batchResults as $key => $res) {
+        $existing = array();
+        foreach ($res['objednavky'] as $o) {
+            if (!empty($o['cislo_objednavky'])) $existing[$o['cislo_objednavky']] = true;
+        }
+        foreach ($res['faktury'] as $f) {
+            $cislo = !empty($f['cislo_objednavky']) ? $f['cislo_objednavky'] : null;
+            if ($cislo === null || isset($existing[$cislo])) continue;
+            if (!isset($missing_cobj_map[$cislo])) $missing_cobj_map[$cislo] = array();
+            $missing_cobj_map[$cislo][] = $key;
+            $existing[$cislo] = true;
+        }
+    }
+    if (empty($missing_cobj_map)) return;
+
+    $unique_cisla = array_keys($missing_cobj_map);
+    $placeholders = implode(',', array_fill(0, count($unique_cisla), '?'));
+    $sql = "SELECT
+                o.id, o.cislo_objednavky, o.predmet as nazev, o.dt_objednavky,
+                o.max_cena_s_dph as castka_max,
+                (SELECT SUM(pol.cena_s_dph) FROM `" . TBL_OBJEDNAVKY . "_polozky` pol WHERE pol.objednavka_id = o.id) as castka_detail,
+                o.stav_objednavky as stav, o.dodavatel_nazev as dodavatel, o.dodavatel_ico, o.druh_objednavky_kod, o.financovani,
+                (SELECT COUNT(*) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO') as pocet_faktur,
+                (SELECT SUM(f.fa_castka) FROM `" . TBL_FAKTURY . "` f WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO') as zaplaceno,
+                'objednavka' as typ_zaznamu
+            FROM `" . TBL_OBJEDNAVKY . "` o
+            WHERE o.cislo_objednavky IN ($placeholders)";
+    $stmt = $db->prepare($sql);
+    $stmt->execute($unique_cisla);
+
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $cislo = $row['cislo_objednavky'];
+        if (empty($missing_cobj_map[$cislo])) continue;
+        foreach ($missing_cobj_map[$cislo] as $key) {
+            $batchResults[$key]['objednavky'][] = $row;
+        }
+    }
+}
+
+/**
  * Pro jednu "kontrola" skupinu (může mít víc _group_invoices) vezme
  * předpočítané dávkové výsledky (viz bulk_resolve_vema_faktura_propojeni,
  * volané JEDNOU pro celý dataset v handle_vema_beta_grouped_list) a
@@ -262,8 +368,8 @@ function vema_beta_compute_condition_ticks($invoiceRow, $candidate, $matchedFakt
     $pocetFakturNaObj = isset($candidate['pocet_faktur']) && $candidate['pocet_faktur'] !== null ? (float)$candidate['pocet_faktur'] : null;
     $zaplacenoNaObj = isset($candidate['zaplaceno']) && $candidate['zaplaceno'] !== null ? (float)$candidate['zaplaceno'] : null;
 
+    $shodnaFaktura = null;
     if (count($faktury) > 0) {
-        $shodnaFaktura = null;
         foreach ($faktury as $f) {
             $fObj = trim((string)($f['cislo_objednavky'] ?? ''));
             if ($candObjCislo !== '' && $fObj === $candObjCislo) {
@@ -302,17 +408,28 @@ function vema_beta_compute_condition_ticks($invoiceRow, $candidate, $matchedFakt
 
     $castka = 'unk';
     $castkaDetail = 'objednávka nemá položky ani strop k porovnání';
-    $soucetPolozek = isset($candidate['castka_detail']) && $candidate['castka_detail'] !== null ? (float)$candidate['castka_detail'] : null;
-    $stropObjednavky = isset($candidate['castka_max']) && $candidate['castka_max'] !== null ? (float)$candidate['castka_max'] : null;
 
     $referencniCastka = null;
     $referenceLabel = '';
-    if ($soucetPolozek !== null && $soucetPolozek > 0) {
-        $referencniCastka = $soucetPolozek;
-        $referenceLabel = 'položky obj.';
-    } elseif ($stropObjednavky !== null && $stropObjednavky > 0) {
-        $referencniCastka = $stropObjednavky;
-        $referenceLabel = 'max obj. (bez položek)';
+    $shodnaFakturaCastka = ($shodnaFaktura !== null && isset($shodnaFaktura['castka']) && $shodnaFaktura['castka'] !== null && $shodnaFaktura['castka'] !== '')
+        ? (float)$shodnaFaktura['castka'] : null;
+    if ($shodnaFakturaCastka !== null) {
+        // Existuje konkrétní spárovaná EEO faktura (eeoVazba='ok') - částka se
+        // má porovnávat proti JÍ, ne proti součtu položek/stropu CELÉ objednávky
+        // (ta může mít víc faktur, součet položek s jednou konkrétní fakturou
+        // nemá logicky co do činění).
+        $referencniCastka = $shodnaFakturaCastka;
+        $referenceLabel = 'EEO faktura';
+    } else {
+        $soucetPolozek = isset($candidate['castka_detail']) && $candidate['castka_detail'] !== null ? (float)$candidate['castka_detail'] : null;
+        $stropObjednavky = isset($candidate['castka_max']) && $candidate['castka_max'] !== null ? (float)$candidate['castka_max'] : null;
+        if ($soucetPolozek !== null && $soucetPolozek > 0) {
+            $referencniCastka = $soucetPolozek;
+            $referenceLabel = 'položky obj.';
+        } elseif ($stropObjednavky !== null && $stropObjednavky > 0) {
+            $referencniCastka = $stropObjednavky;
+            $referenceLabel = 'max obj. (bez položek)';
+        }
     }
 
     $fakturaCastka = isset($invoiceRow['celkem']) && $invoiceRow['celkem'] !== null ? (float)$invoiceRow['celkem'] : null;
@@ -435,7 +552,18 @@ function vema_beta_derive_group_verdicts(&$group) {
     $pairVerdicts = array();
     foreach ($entries as $entry) {
         $rowKey = $entry['row']['_group_key'];
-        foreach ($entry['candidates'] as $cand) {
+        // Ruční potvrzení uživatelem (dialog Kontrola, stav 'v_poradku') musí
+        // přebít automaticky spočítaný verdikt - jinak by faktura zůstávala
+        // navždy vidět/počítaná ve filtru "Nesedí" i po potvrzení, že je OK.
+        $rowKontrola = vema_beta_normalize_kontrola_status($entry['row']['kontrola'] ?? null);
+        $rowManuallyConfirmed = ($rowKontrola === 'v_poradku');
+        // Cross-produkt přes VŠECHNY kandidáty CELÉ vazební skupiny, ne jen ty,
+        // které si tahle konkrétní faktura sama fuzzy-matchla (entry['candidates']).
+        // Jinak v matrix pohledu zůstávala u kombinací faktura×kandidát, kam
+        // kandidát přišel jen přes JINOU fakturu ve skupině, prázdná buňka
+        // "Nesedí" bez jakéhokoliv vysvětlení (viz zpětná vazba - uživatel
+        // nevidí, proč se tak vyhodnotilo).
+        foreach ($group['candidates'] as $cand) {
             if (!isset($cand['id'])) continue;
             $candId = $cand['id'];
 
@@ -444,7 +572,16 @@ function vema_beta_derive_group_verdicts(&$group) {
             $jednoznacne = (isset($candidateCountByInvoice[$rowKey]) ? $candidateCountByInvoice[$rowKey] : 0) === 1
                 && (isset($invoiceCountByCandidate[$candId]) ? $invoiceCountByCandidate[$candId] : 0) === 1;
 
-            if ($ticks['datum'] === 'ok' && !$jednoznacne) {
+            // Dampening nejistoty u data má smysl JEN když vazbu na EEO fakturu
+            // vůbec neznáme (eeoVazba='unk') a odhadujeme kandidáta jen z
+            // částky/data - tam víc kandidátů ve skupině skutečně znamená
+            // nejednoznačnost. Když už VS/doklad/částka dají jednoznačnou
+            // odpověď (eeoVazba='ok' nebo 'no' - konkrétní EEO faktura buď
+            // patří TÉTO objednávce, nebo prokazatelně jiné), není co
+            // zpochybňovat - i kdyby stejná VEMA faktura textově (přes cobj)
+            // "kandidovala" na víc objednávek, sama vazba na EEO fakturu je
+            // už rozhodnutá a nezávislá na tom textovém shlukování.
+            if ($ticks['datum'] === 'ok' && !$jednoznacne && $ticks['eeoVazba'] === 'unk') {
                 $ticks['datum'] = 'unk';
                 $ticks['datumDetail'] .= ' — nejednoznačné (víc kandidátů ve skupině), nelze potvrdit automaticky';
             }
@@ -458,6 +595,11 @@ function vema_beta_derive_group_verdicts(&$group) {
                 $verdict = 'bad';
             } elseif ($ticks['castka'] === 'ok' && $ticks['datum'] === 'ok') {
                 $verdict = 'warn';
+            }
+
+            if ($rowManuallyConfirmed && $verdict !== 'good') {
+                $verdict = 'good';
+                $ticks['manuallyConfirmed'] = true;
             }
 
             $ticks['verdict'] = $verdict;
@@ -504,10 +646,14 @@ function vema_beta_format_invoice_row($dedupRow) {
     // v vemaKontrolaHandlers.php) - uložený v metadata_json téhož záznamu kontroly,
     // vázaný na stabilní VEMA ID (cfak+firma), takže přežije reimport dat z VEMA.
     $rucniVazba = null;
+    $zamitnuteVazby = array();
     if (!empty($dedupRow['metadata_json'])) {
         $decoded = json_decode($dedupRow['metadata_json'], true);
         if (is_array($decoded) && !empty($decoded['rucni_vazba'])) {
             $rucniVazba = $decoded['rucni_vazba'];
+        }
+        if (is_array($decoded) && !empty($decoded['zamitnute_vazby']) && is_array($decoded['zamitnute_vazby'])) {
+            $zamitnuteVazby = array_values($decoded['zamitnute_vazby']);
         }
     }
 
@@ -531,6 +677,7 @@ function vema_beta_format_invoice_row($dedupRow) {
         'typdok' => $dedupRow['typdok'] ?? null,
         'kontrola' => $dedupRow['kontrola'] ?? null,
         'rucni_vazba' => $rucniVazba,
+        'zamitnute_vazby' => $zamitnuteVazby,
         '_masterCfak' => $dedupRow['cfak'] ?? null,
         '_groupedKontrola' => count($dedupRow['_group_invoices']) > 1,
         '_groupInvoicesCount' => count($dedupRow['_group_invoices']),
@@ -631,33 +778,25 @@ function handle_vema_beta_grouped_list($input, $config) {
         $where = array();
         $params = array();
         $where[] = "f.stav_zaznamu = 'aktivni'";
-        // Kontrola OBJ/BETA (VemaDenik.js filteredFakturyData, case 'kontrola-obj'):
-        // musí mít číslo objednávky A NESMÍ mít evidenční číslo smlouvy.
+        // Kontrola objednávek: VEMA doklad s číslem objednávky - i když má
+        // zároveň evidenční číslo smlouvy (objednávka financovaná ze smlouvy,
+        // EEO: OBJ -> financování SML -> FA). Do kontroly se nakonec dostane jen
+        // doklad, ke kterému se v EEO našla objednávka (viz krok 4); ostatní
+        // doklady se smlouvou převezme Kontrola smluv (handle_vema_sml_grouped_list
+        // vylučuje doklady pokryté touto kontrolou).
         $where[] = "TRIM(COALESCE(f.cobj, '')) != ''";
-        $where[] = "(smlouvy.ecsml IS NULL OR TRIM(smlouvy.ecsml) = '')";
 
-        if ($search !== '') {
-            $where[] = "(f.cfak LIKE ? OR f.nazevfak LIKE ? OR f.cdok LIKE ?
-                        OR f.csml LIKE ? OR f.cobj LIKE ? OR f.typdok LIKE ?
-                        OR f.ksymb LIKE ? OR f.vsymb LIKE ? OR f.ssymb LIKE ?
-                        OR f.dicp LIKE ? OR f.cfakdupl LIKE ? OR f.dobrdok LIKE ?
-                        OR f.dobrfak LIKE ?
-                        OR EXISTS (
-                                SELECT 1
-                                FROM `" . TBL_VEMA_SMLA . "` s_map
-                                WHERE s_map.csml = f.csml
-                                    AND s_map.ecsml LIKE ?
-                                    AND s_map.stav_zaznamu = 'aktivni'
-                        ))";
-            $search_param = '%' . $search . '%';
-            for ($i = 0; $i < 14; $i++) $params[] = $search_param;
-        }
+        // Pozn.: $search se SQL WHERE (jako dřív) neaplikuje - hledat se má i
+        // v EEO datech (cislo_objednavky, číslo smlouvy z financování), která
+        // se dohledávají až po fuzzy matchování (viz krok 7 - filtr na úrovni
+        // skupiny, vema_beta_group_matches_search).
 
         $where_sql = 'WHERE ' . implode(' AND ', $where);
 
         $sql = "SELECT
                     f.id, f.stav, f.firma, f.cfak, f.cdok, f.nazevfak,
-                    f.typdok, f.ksymb, f.vsymb,
+                    f.typdok, f.ksymb, f.vsymb, f.ssymb, f.dicp, f.cfakdupl,
+                    f.dobrdok, f.dobrfak,
                     f.datpri, f.dof, f.spl,
                     f.csml, f.cobj, f.vlast,
                     f.celkem, f.cplatby, f.czbyva,
@@ -738,15 +877,54 @@ function handle_vema_beta_grouped_list($input, $config) {
             }
         }
         $batchResults = bulk_resolve_vema_faktura_propojeni($db, array_values($invoicesFlat));
+        vema_beta_backfill_missing_objednavky($batchResults, $db);
 
+        // VEMA doklad, ke kterému se v EEO nedohledala VŮBEC žádná kandidátní
+        // objednávka (ani přímým OBJ->financování->FA párováním, ani přes
+        // vema_beta_backfill_missing_objednavky výše), do "Kontroly objednávek"
+        // vůbec nepatří - patří jen do záložky "VEMA doklady bez EEO dokladů".
+        // Vynechává se zde ("bez kandidáta"/no_candidate v tomto pohledu tím
+        // pádem zmizí), ne jen přeznačuje, aby nešlo o šum, který se nemá
+        // proti čemu párovat/seskupovat.
         $entries = array();
         foreach ($filteredDedupRows as $dedupRow) {
             $resolved = vema_beta_resolve_candidates_for_group($dedupRow, $batchResults);
+            if (empty($resolved['objednavky'])) continue;
             $entries[] = array(
                 'row' => $dedupRow,
                 'candidates' => $resolved['objednavky'],
                 'faktury' => $resolved['faktury'],
             );
+        }
+
+        // Interní režim pro vema_prehled_vazeb_collect (vemaPrehledVazebHandlers.php):
+        // vrátí jen, které VEMA doklady a EEO faktury tahle kontrola pokrývá -
+        // "bez" seznamy se z toho odvozují, aby se s kontrolou nepřekrývaly.
+        if (!empty($input['_membershipOnly'])) {
+            $vemaIds = array();
+            $eeoIds = array();
+            $objednavkaIds = array();
+            foreach ($entries as $entry) {
+                foreach ($entry['row']['_group_invoices'] as $inv) {
+                    if (isset($inv['id'])) $vemaIds[(string)$inv['id']] = true;
+                }
+                foreach ($entry['faktury'] as $f) {
+                    if (!empty($f['id'])) $eeoIds[(string)$f['id']] = true;
+                }
+                // Panel "faktury na objednávce" ukazuje VŠECHNY EEO faktury
+                // kandidátní objednávky - všechny jsou tedy v této kontrole.
+                foreach ($entry['candidates'] as $cand) {
+                    if (!empty($cand['id'])) $objednavkaIds[(int)$cand['id']] = true;
+                }
+            }
+            if (!empty($objednavkaIds)) {
+                $sqlFa = "SELECT id FROM `" . TBL_FAKTURY . "` WHERE aktivni = 1 AND stav != 'STORNO' AND objednavka_id IN ("
+                    . implode(',', array_keys($objednavkaIds)) . ")";
+                foreach ($db->query($sqlFa)->fetchAll(PDO::FETCH_COLUMN) as $fid) {
+                    $eeoIds[(string)$fid] = true;
+                }
+            }
+            return array('vemaIds' => array_keys($vemaIds), 'eeoFakturaIds' => array_keys($eeoIds));
         }
 
         // ---- 5. Union-find - sloučit faktury sdílející kandidátní objednávku (GLOBÁLNĚ) ----
@@ -773,7 +951,7 @@ function handle_vema_beta_grouped_list($input, $config) {
         }
         unset($group);
 
-        // ---- 7. Filtr podle vyhodnocení + financování (nemění počty výše, jen zúží výsledky) ----
+        // ---- 7. Filtr podle vyhodnocení + financování + fulltextu (nemění počty výše, jen zúží výsledky) ----
         $filteredGroups = $groups;
         if ($verdictFilter !== null) {
             $filteredGroups = array_values(array_filter($filteredGroups, function ($g) use ($verdictFilter) {
@@ -783,6 +961,11 @@ function handle_vema_beta_grouped_list($input, $config) {
         if (!empty($financovaniFilter)) {
             $filteredGroups = array_values(array_filter($filteredGroups, function ($g) use ($financovaniFilter) {
                 return vema_beta_matches_financovani_filter($g, $financovaniFilter);
+            }));
+        }
+        if ($search !== '') {
+            $filteredGroups = array_values(array_filter($filteredGroups, function ($g) use ($search) {
+                return vema_beta_group_matches_search($g, $search);
             }));
         }
 

@@ -359,6 +359,14 @@ const truncateText = (val, maxLen = 34) => {
  * @param {string} props.token - Auth token
  * @param {string} props.username - Username
  * @param {function} [props.onSave] - Callback po uložení
+ * @param {object|null} [props.initialKontrola] - Předem natažená kontrola (z batchGetVemaKontrola
+ *   v rodiči) - `null` znamená "víme, že žádná kontrola neexistuje", `undefined`/vynechání
+ *   (výchozí) znamená "nemám, natáhni si to sám" = původní chování (self-fetch v useEffectu).
+ *   Když je předáno (i jako null), komponenta svůj vlastní fetch PŘESKOČÍ a použije rovnou
+ *   tuhle hodnotu - viz VemaKontrolaCell v seskupených pohledech VemaDenik.js, kde by stovky
+ *   instancí najednou jinak vystřelily stovky samostatných HTTP requestů (waterfall).
+ *   Popover si při otevření VŽDY dotáhne čerstvá data (loadKontrola) bez ohledu na tenhle
+ *   prop - initialKontrola šetří jen počáteční/zavřený stav buňky (badge, náhled poznámky).
  */
 export default function VemaKontrolaCell({
   typZaznamu,
@@ -368,8 +376,10 @@ export default function VemaKontrolaCell({
   token,
   username,
   onSave,
+  initialKontrola,
 }) {
-  const [kontrola, setKontrola] = useState(null);
+  const hasInitialKontrola = initialKontrola !== undefined;
+  const [kontrola, setKontrola] = useState(() => (hasInitialKontrola ? (initialKontrola || null) : null));
   const [udalosti, setUdalosti] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -419,10 +429,21 @@ export default function VemaKontrolaCell({
     }
   }, [typZaznamu, vemaId, vemaIdSecondary, token, username]);
 
-  // Načíst při prvním zobrazení
+  // Načíst při prvním zobrazení - PŘESKOČENO, pokud rodič už dodal
+  // initialKontrola (batch fetch), viz docblock komponenty.
   useEffect(() => {
+    if (hasInitialKontrola) return;
     loadKontrola();
-  }, [loadKontrola]);
+  }, [loadKontrola, hasInitialKontrola]);
+
+  // Synchronizace se změnou initialKontrola z rodiče (např. batch mapa se
+  // po refetchi stránky přepočítala) - zavřený stav buňky (badge/náhled
+  // poznámky) se má promítnout beze změny bez toho, aby komponenta musela
+  // dělat vlastní fetch.
+  useEffect(() => {
+    if (!hasInitialKontrola) return;
+    setKontrola(initialKontrola || null);
+  }, [initialKontrola, hasInitialKontrola]);
 
   // Otevřít popover
   const handleOpen = useCallback(async () => {

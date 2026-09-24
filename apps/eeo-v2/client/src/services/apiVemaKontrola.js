@@ -109,6 +109,58 @@ export async function getVemaKontrola(typZaznamu, vemaId, vemaIdSecondary, token
 }
 
 // -----------------------------------------------------------
+// BATCH GET - Načíst kontroly pro víc VEMA záznamů najednou
+// -----------------------------------------------------------
+
+/**
+ * Sestaví stejný párovací klíč, jaký backend (vema-kontrola/batch-get) vrací
+ * v mapě `data.items` - `<vema_id>__<vema_id_secondary>`. Volající (VemaKontrolaCell
+ * i seskupené pohledy ve VemaDenik.js) musí tenhle klíč používat konzistentně
+ * na obou stranách (sestavení requestu i čtení z výsledné mapy).
+ * @param {string|number} vemaId
+ * @param {string|number|null} [vemaIdSecondary]
+ * @returns {string}
+ */
+export function vemaKontrolaBatchKey(vemaId, vemaIdSecondary) {
+  return `${vemaId}__${vemaIdSecondary ? String(vemaIdSecondary) : ''}`;
+}
+
+/**
+ * Načte kontroly pro víc VEMA záznamů JEDNÍM requestem - náhrada za to, aby
+ * si každá instance VemaKontrolaCell dělala vlastní fetch (viz její
+ * `initialKontrola` prop). Bez tohohle batchování seskupený pohled Kontroly
+ * SML/OBJ vykreslí stovky buněk najednou a každá stříli vlastní HTTP
+ * request (naměřeno ~533 sekvenčních requestů = 25-30s waterfall na
+ * jednu stránku).
+ *
+ * @param {'faktura'|'firma'|'smlouva'} typZaznamu
+ * @param {Array<{vemaId: string|number, vemaIdSecondary?: string|number|null}>} items
+ * @param {string} token
+ * @param {string} username
+ * @returns {Promise<Object<string, object|null>>} mapa `vemaKontrolaBatchKey(...) => kontrola|null`
+ */
+export async function batchGetVemaKontrola(typZaznamu, items, token, username) {
+  if (!token || !username) throw new Error('Chybí autentizační údaje');
+  if (!typZaznamu) throw new Error('Chybí typ_zaznamu');
+  if (!Array.isArray(items) || items.length === 0) return {};
+
+  const response = await api.post('/vema-kontrola/batch-get', {
+    token,
+    username,
+    typ_zaznamu: typZaznamu,
+    items: items.map((it) => ({
+      vema_id: String(it.vemaId),
+      vema_id_secondary: it.vemaIdSecondary ? String(it.vemaIdSecondary) : null,
+    })),
+  });
+
+  if (response.data && response.data.status === 'success') {
+    return response.data.data?.items || {};
+  }
+  throw new Error(response.data?.message || 'Chyba API vema-kontrola/batch-get');
+}
+
+// -----------------------------------------------------------
 // SAVE - Uložit/aktualizovat kontrolu
 // -----------------------------------------------------------
 
@@ -186,7 +238,7 @@ export async function saveVemaRucniVazba(
 ) {
   if (!token || !username) throw new Error('Chybí autentizační údaje');
   if (!vemaId || !action) throw new Error('Chybí povinné parametry: vema_id, action');
-  if (action === 'set' && (eeoId === undefined || eeoId === null || eeoId === '')) {
+  if (action !== 'clear' && (eeoId === undefined || eeoId === null || eeoId === '')) {
     throw new Error('Chybí eeo_id');
   }
 

@@ -903,15 +903,24 @@ function loadOrderInvoicesBatch($db, $order_ids) {
         
         // Stejný dotaz jako loadOrderInvoices(), jen batch
         $sql = "
-            SELECT 
+            SELECT
                 f.*,
                 CONCAT(COALESCE(u_prijem.titul_pred,''), ' ', u_prijem.jmeno, ' ', u_prijem.prijmeni, ' ', COALESCE(u_prijem.titul_za,'')) as prijal_user_jmeno,
                 CONCAT(COALESCE(u_upd.titul_pred,''), ' ', u_upd.jmeno, ' ', u_upd.prijmeni, ' ', COALESCE(u_upd.titul_za,'')) as upd_user_jmeno,
-                CONCAT(COALESCE(u_schval.titul_pred,''), ' ', u_schval.jmeno, ' ', u_schval.prijmeni, ' ', COALESCE(u_schval.titul_za,'')) as schvalil_user_jmeno
+                CONCAT(COALESCE(u_schval.titul_pred,''), ' ', u_schval.jmeno, ' ', u_schval.prijmeni, ' ', COALESCE(u_schval.titul_za,'')) as schvalil_user_jmeno,
+                u_vytvoril.jmeno as vytvoril_uzivatel_jmeno,
+                u_vytvoril.prijmeni as vytvoril_uzivatel_prijmeni,
+                u_vytvoril.titul_pred as vytvoril_uzivatel_titul_pred,
+                u_vytvoril.titul_za as vytvoril_uzivatel_titul_za,
+                u_schval.jmeno as potvrdil_vecnou_spravnost_jmeno,
+                u_schval.prijmeni as potvrdil_vecnou_spravnost_prijmeni,
+                u_schval.titul_pred as potvrdil_vecnou_spravnost_titul_pred,
+                u_schval.titul_za as potvrdil_vecnou_spravnost_titul_za
             FROM " . TBL_FAKTURY . " f
             LEFT JOIN " . TBL_UZIVATELE . " u_prijem ON f.fa_predana_zam_id = u_prijem.id
             LEFT JOIN " . TBL_UZIVATELE . " u_upd ON f.aktualizoval_uzivatel_id = u_upd.id
             LEFT JOIN " . TBL_UZIVATELE . " u_schval ON f.potvrdil_vecnou_spravnost_id = u_schval.id
+            LEFT JOIN " . TBL_UZIVATELE . " u_vytvoril ON f.vytvoril_uzivatel_id = u_vytvoril.id
             WHERE f.objednavka_id IN ($placeholders)
               AND f.aktivni = 1
             ORDER BY f.objednavka_id, f.id

@@ -355,7 +355,7 @@ const EmptyBox = styled.div`
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const fmtCurrency = (v) => `${Number(v || 0).toLocaleString('cs-CZ')} Kč`;
+const fmtCurrency = (v) => `${Number(v || 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`;
 
 const fmtDate = (v) => {
   if (!v) return '—';
@@ -543,7 +543,7 @@ export default function SmlouvyCerpaniView({ forceUnrestricted = false }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ color: '#64748b' }}>Dokončeno:</span>
               <span style={{ color: barColor, fontWeight: 700 }}>
-                {solidAmt.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
+                {solidAmt.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
               </span>
             </div>
           )}
@@ -551,7 +551,7 @@ export default function SmlouvyCerpaniView({ forceUnrestricted = false }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ color: '#64748b' }}>V procesu:</span>
               <span style={{ color: '#f59e0b', fontWeight: 700 }}>
-                {inProcessAmt.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
+                {inProcessAmt.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
               </span>
             </div>
           )}
@@ -559,7 +559,7 @@ export default function SmlouvyCerpaniView({ forceUnrestricted = false }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
               <span style={{ color: '#64748b' }}>Volné:</span>
               <span style={{ color: '#10b981', fontWeight: 700 }}>
-                {volneAmt.toLocaleString('cs-CZ', { maximumFractionDigits: 0 })} Kč
+                {volneAmt.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
               </span>
             </div>
           )}

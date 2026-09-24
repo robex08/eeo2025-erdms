@@ -2828,8 +2828,13 @@ const OrdersTableV3 = ({
       const cerpanoSkutecne = parseFloat(lp.cerpano_skutecne) || 0;
       const cerpanoPredpoklad = parseFloat(lp.cerpano_predpoklad) || 0;
       const cerpanoRezervovano = parseFloat(lp.rezervovano) || 0;
+      // ✅ Musí zahrnout i cerpano_pokladna (reálné čerpání z pokladny) - jinak tato
+      // kontrola (gating tlačítka Schválit) nesouhlasí s tím, co se ve stejném dialogu
+      // reálně zobrazuje uživateli (viz percentCerpani/lpExceeded v render bloku níže,
+      // které cerpano_pokladna již správně počítají).
+      const cerpanoPokladna = parseFloat(lp.cerpano_pokladna) || 0;
       const plannedFull = cerpanoPredpoklad + cerpanoRezervovano;
-      if ((hodnotaLP - cerpanoSkutecne - plannedFull - lpPodil) < 0) return true;
+      if ((hodnotaLP - cerpanoSkutecne - cerpanoPokladna - plannedFull - lpPodil) < 0) return true;
     }
     const smlouvaInfo = orderToApprove._enriched?.smlouva_info;
     if (smlouvaInfo?.hodnota) {
@@ -2839,7 +2844,11 @@ const OrdersTableV3 = ({
         const cerpanoPozadovano = parseFloat(
           smlouvaInfo.cerpano_v_procesu != null ? smlouvaInfo.cerpano_v_procesu : smlouvaInfo.cerpano_pozadovano
         ) || 0;
-        if ((cerpanoPozadovano + maxCena) > hodnotaSmlouvy) return true;
+        // ✅ Musí zahrnout i už dokončené/fakturované čerpání (cerpano_skutecne),
+        // jinak kontrola porovnává jen "v procesu" a přehlédne skutečně utracené peníze
+        // (viz stejná logika u LP kontroly výše - cerpanoSkutecne).
+        const cerpanoSkutecneSmlouva = parseFloat(smlouvaInfo.cerpano_skutecne) || 0;
+        if ((cerpanoPozadovano + cerpanoSkutecneSmlouva + maxCena) > hodnotaSmlouvy) return true;
       }
     }
     return false;
@@ -6243,13 +6252,15 @@ const OrdersTableV3 = ({
                           const hodnotaSmlouvy = parseFloat(smlouvaInfo.hodnota) || 0;
                           // ✅ Použít dynamicky počítané cerpano_v_procesu (jen obj v procesu bez faktury)
                           let cerpanoPozadovano = parseFloat(smlouvaInfo.cerpano_v_procesu != null ? smlouvaInfo.cerpano_v_procesu : smlouvaInfo.cerpano_pozadovano) || 0;
-                          
-                          // ✅ Připočíst aktuální objednávku k simulaci
-                          const simulovaneCerpaniSmlouva = cerpanoPozadovano + maxCenaSmlouva;
+                          const cerpanoSkutecneSmlouvaRow = parseFloat(smlouvaInfo.cerpano_skutecne) || 0;
+
+                          // ✅ Připočíst aktuální objednávku k simulaci VČETNĚ už dokončeného/fakturovaného
+                          // čerpání (cerpano_skutecne) - jinak simulace i blokace schválení přehlédne
+                          // peníze, které už byly na smlouvě reálně utraceny (viz isBudgetExceeded výše).
+                          const simulovaneCerpaniSmlouva = cerpanoPozadovano + cerpanoSkutecneSmlouvaRow + maxCenaSmlouva;
                           // Smlouvy s hodnotou ≤ 10 Kč jsou bez stropové ceny
                           const percentCerpani = hodnotaSmlouvy > 10 ? Math.round((simulovaneCerpaniSmlouva / hodnotaSmlouvy) * 100) : 0;
                           const hasStropovaCena = hodnotaSmlouvy > 10;
-                          const cerpanoSkutecneSmlouvaRow = parseFloat(smlouvaInfo.cerpano_skutecne) || 0;
                           const { smlouvaRowBarColor, smlouvaRowBarColorLight } = (() => {
                             const _t = Math.round(((new Date().getMonth() + 1) / 12) * 100);
                             const _b = hodnotaSmlouvy > 0 ? ((cerpanoSkutecneSmlouvaRow + cerpanoPozadovano) / hodnotaSmlouvy) * 100 : 0;

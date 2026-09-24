@@ -31,9 +31,9 @@ import {
 import AuthContext from '../context/AuthContext';
 import { loadVemaFirmy, loadVemaFaktury, loadVemaSmlouvy, loadEeoFakturyBezVema, formatExcelDate, excelSerialToDate, uploadVemaFiles, truncateVemaData } from '../services/apiVema';
 import VemaKontrolaCell from '../components/VemaKontrolaCell';
-import { getVemaFakturaPropojeni, getVemaObjednavkyFaktury, getVemaBetaGroupedList } from '../services/apiVemaPropojeni';
+import { getVemaFakturaPropojeni, getVemaObjednavkyFaktury, getVemaSmlouvyFaktury, getVemaBetaGroupedList, getVemaSmlGroupedList, getVemaPrehledVazeb } from '../services/apiVemaPropojeni';
 import { fetchLimitovanePrisliby } from '../services/api2auth';
-import { KONTROLA_STATUS, KONTROLA_STATUS_LABELS, KONTROLA_STATUS_COLORS, normalizeKontrolaStatus, saveVemaRucniVazba } from '../services/apiVemaKontrola';
+import { KONTROLA_STATUS, KONTROLA_STATUS_LABELS, KONTROLA_STATUS_COLORS, normalizeKontrolaStatus, saveVemaRucniVazba, batchGetVemaKontrola, vemaKontrolaBatchKey } from '../services/apiVemaKontrola';
 import { getStatusColor } from '../constants/orderStatusColors';
 import { getOrderSystemStatus } from '../utils/orderStatsUtils';
 import SlideInDetailPanel from '../components/UniversalSearch/SlideInDetailPanel';
@@ -813,6 +813,27 @@ const EeoFakturaHighlightTag = styled.div`
   gap: 6px;
 `;
 
+// Odlišná barva (jantarová) pro položky pocházející z modulu Roční poplatky
+// (ne skutečná EEO faktura z 25a_objednavky_faktury) - viz zadání uživatele:
+// smlouvy s pravidelnou platbou (nájem/služby) často mají v EEO jen JEDNU
+// souhrnnou fakturu a zbytek období vedou v Ročních poplatcích. Uživatel
+// musí na první pohled vidět, že jde o jiný typ dokladu, ne o klasickou
+// fakturu.
+const RpZdrojTag = styled.div`
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-bottom: 3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  width: fit-content;
+`;
+
 // Nenápadný odkaz pro označení/zrušení ručního výběru - vlastní styl je
 // vidět jen na hover, aby to v klidovém stavu tabulku nezaneřádilo.
 const RucniVazbaLink = styled.button`
@@ -858,10 +879,12 @@ const OpenInFormButton = styled.button`
 
 const FAKTURY_SUB_SECTIONS = [
   { id: 'tabulka', label: 'Veškeré doklady' },
-  { id: 'kontrola-obj', label: 'Kontrola OBJ' },
-  { id: 'kontrola-obj-beta', label: 'Kontrola OBJ BETA', isBeta: true, requiredRoles: ['SUPERADMIN', 'ADMINISTRATOR', 'ROZPOCTAR'] },
-  { id: 'kontrola-sml', label: 'Kontrola SML' },
-  { id: 'kontrola-rp', label: 'Kontrola ročních poplatků' },
+  // Skryto - nahrazeno záložkou "Kontrola objednávek". Kód záložky zůstává.
+  { id: 'kontrola-obj', label: 'Kontrola OBJ', hidden: true },
+  { id: 'kontrola-obj-beta', label: 'Kontrola objednávek', isBeta: true, requiredRoles: ['SUPERADMIN', 'ADMINISTRATOR', 'ROZPOCTAR'] },
+  { id: 'kontrola-sml', label: 'Kontrola smluv', isBeta: true },
+  // Skryto - roční poplatky se párují v Kontrole smluv. Kód záložky zůstává.
+  { id: 'kontrola-rp', label: 'Kontrola ročních poplatků', hidden: true },
   { id: 'vema-bez-eeo', label: 'VEMA doklady bez EEO dokladů' },
   { id: 'eeo-bez-vema', label: 'Faktury EEO bez VEMA dokladů' }
 ];
@@ -904,6 +927,9 @@ const PAGE_SIZE_OPTIONS = [25, 50, 100, 250];
 const VEMA_PAGE_SIZE_LS_KEY = 'eeo_vs_vema_page_size';
 const VEMA_BETA_PAGE_SIZE_LS_KEY = 'eeo_vs_vema_beta_page_size';
 const VEMA_BETA_GROUPED_PAGE_SIZE_LS_KEY = 'eeo_vs_vema_beta_grouped_page_size';
+const VEMA_SML_GROUPED_PAGE_SIZE_LS_KEY = 'eeo_vs_vema_sml_grouped_page_size';
+const VEMA_SML_VIEW_MODE_LS_KEY = 'eeo_vs_vema_sml_view_mode';
+const VEMA_SML_VERDICT_FILTER_LS_KEY = 'eeo_vs_vema_sml_verdict_filter';
 
 const getStoredJSON = (key, fallback) => {
   if (typeof window === 'undefined') return fallback;
@@ -976,7 +1002,7 @@ const getStoredMainTab = () => {
 
 const getStoredFakturySubTab = () => {
   if (typeof window === 'undefined') return 'tabulka';
-  const allowed = FAKTURY_SUB_SECTIONS.map(section => section.id);
+  const allowed = FAKTURY_SUB_SECTIONS.filter(section => !section.hidden).map(section => section.id);
   try {
     const stored = localStorage.getItem(VEMA_FAKTURY_SUBTAB_LS_KEY);
     return allowed.includes(stored) ? stored : 'tabulka';
@@ -1700,6 +1726,32 @@ const formatDateShort = (date) => date.toLocaleDateString('cs-CZ');
 // takový rozdíl skoro vždy znamená překlep na jedné nebo druhé straně -
 // proto se surová čísla porovnávají zvlášť a zobrazují se transparentně,
 // nezávisle na tom, jestli backend pár nakonec uznal nebo ne.
+// Vytáhne číselné jádro čísla objednávky ("O-0274/75030926/2026/RE" -> "0274"),
+// ať jde porovnat, jestli VEMA cobj a EEO cislo_objednavky nejsou jen
+// přesmyčka stejných číslic (typický překlep při ručním přepisu ve VEMA).
+function extractObjCore(cislo) {
+  if (!cislo) return null;
+  const m = String(cislo).match(/O-\s*(\d+)/i);
+  return m ? m[1] : null;
+}
+
+// true, pokud a i b mají stejnou délku, stejnou multimnožinu číslic, ale
+// jsou to jiné řetězce - tj. "0274" vs "0724" (přehozené 2. a 3. číslice).
+function isDigitTransposition(a, b) {
+  if (!a || !b || a === b || a.length !== b.length) return false;
+  return a.split('').sort().join('') === b.split('').sort().join('');
+}
+
+// Analogie extractObjCore pro evidenční číslo smlouvy - to má ve VEMA i EEO
+// tvar "XXX/IČO/RR" (např. "007/75030926/17"), ne "O-XXXX/..." jako
+// objednávka. Jádro pro porovnání přesmyčky číslic je první číselná skupina
+// před lomítkem (typicky pořadové číslo smlouvy v roce, kde vzniká překlep).
+function extractSmlCore(cislo) {
+  if (!cislo) return null;
+  const m = String(cislo).trim().match(/^(\d+)/);
+  return m ? m[1] : null;
+}
+
 function compareVemaEeoIdentifikace(invoiceRow, matchedFaktura) {
   const norm = (v) => String(v ?? '').trim();
 
@@ -2199,14 +2251,68 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [groups, objednavkaFakturyData, objednavkaFakturyLoading, token, username]);
 
+  // Batch natažení VEMA kontrol pro všechny VEMA faktury viditelné na
+  // aktuální stránce - JEDNÍM requestem, místo aby si každá vykreslená
+  // instance VemaKontrolaCell dělala vlastní fetch (viz její initialKontrola
+  // prop). Bez tohohle by seskupený pohled vykreslil stovky buněk najednou
+  // a každá vystřelila vlastní HTTP request (naměřeno ~533 sekvenčních
+  // requestů = 25-30s waterfall na stránku) - analogie efektu výše pro
+  // objednavkaFakturyData, jen zdroj je vema-kontrola/batch-get.
+  const [kontrolaBatchData, setKontrolaBatchData] = useState({});
+  const [kontrolaBatchLoading, setKontrolaBatchLoading] = useState(false);
+  useEffect(() => {
+    if (!token || !username) return;
+    if (kontrolaBatchLoading) return;
+
+    const items = [];
+    const seenKeys = new Set();
+    groups.forEach((group) => {
+      group.invoiceRows.forEach((row) => {
+        const vemaId = row.original._masterCfak || row.original.cfak;
+        if (!vemaId) return;
+        const vemaIdSecondary = row.original.firma;
+        const key = vemaKontrolaBatchKey(vemaId, vemaIdSecondary);
+        if (seenKeys.has(key) || key in kontrolaBatchData) return;
+        seenKeys.add(key);
+        items.push({ vemaId, vemaIdSecondary });
+      });
+    });
+    if (items.length === 0) return;
+
+    setKontrolaBatchLoading(true);
+    batchGetVemaKontrola('faktura', items, token, username)
+      .then((result) => {
+        setKontrolaBatchData((prev) => ({ ...prev, ...result }));
+      })
+      .catch((e) => {
+        console.warn('Nepodařilo se natáhnout VEMA kontroly dávkou:', e);
+        setKontrolaBatchData((prev) => {
+          const next = { ...prev };
+          items.forEach((it) => { next[vemaKontrolaBatchKey(it.vemaId, it.vemaIdSecondary)] = null; });
+          return next;
+        });
+      })
+      .finally(() => setKontrolaBatchLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, kontrolaBatchData, kontrolaBatchLoading, token, username]);
+
   const kontrolaCellFor = (row) => {
     const vemaId = row.original._masterCfak || row.original.cfak;
     if (!vemaId) return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>;
+    const vemaIdSecondary = row.original.firma;
+    const batchKey = vemaKontrolaBatchKey(vemaId, vemaIdSecondary);
+    // Dokud dávkový fetch pro tenhle klíč ještě neproběhl, radši nevykreslovat
+    // buňku vůbec (ta by jinak spustila vlastní self-fetch fallback), než
+    // znovu dostat waterfall stovek jednotlivých requestů.
+    if (!(batchKey in kontrolaBatchData)) {
+      return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>…</span>;
+    }
     return (
       <VemaKontrolaCell
         typZaznamu="faktura"
         vemaId={vemaId}
-        vemaIdSecondary={row.original.firma}
+        vemaIdSecondary={vemaIdSecondary}
+        initialKontrola={kontrolaBatchData[batchKey]}
         token={token}
         username={username}
       />
@@ -2310,6 +2416,12 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
     const rucniVazba = invoiceRow?.rucni_vazba || null;
     const canPick = Boolean(invoiceRowId && invoiceRow?.cfak);
     const isSaving = rucniVazbaSavingKey === invoiceRowId;
+    // Bez konkrétní VEMA faktury (invoiceRow===null - matrix hlavička sloupce,
+    // sdílená pro všechny řádky matice) nejde nic srovnávat "VEMA / EEO" - je
+    // to jen prostý výpis skutečných EEO faktur na objednávce. Zobrazovat tam
+    // "— / hodnota" matlo, že VEMA stranu nemáme (i když ji jinde reálně máme),
+    // proto se tu ukazuje jen samotná EEO hodnota bez "VEMA / " prefixu.
+    const hasInvoiceRow = Boolean(invoiceRow);
 
     if (list === undefined) {
       return (
@@ -2330,14 +2442,34 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
 
     return (
       <EeoFakturyBox>
-        <EeoFakturyBoxTitle>VEMA / EEO — faktury na objednávce ({list.length})</EeoFakturyBoxTitle>
+        <EeoFakturyBoxTitle>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+            <span>VEMA / EEO — faktury na objednávce ({list.length})</span>
+            {candidate.cislo_objednavky && (
+              <div style={{ display: 'flex', alignItems: 'center', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600 }}>
+                <span {...clickableProps(() => openOrderPreview(candidate.id), 'Zobrazit náhled objednávky')}>{candidate.cislo_objednavky}</span>
+                <OpenInFormButton type="button" onClick={() => openOrderInFullForm(candidate.id)} title="Otevřít objednávku ve formuláři">
+                  <FontAwesomeIcon icon={faExternalLinkAlt} />
+                </OpenInFormButton>
+              </div>
+            )}
+          </div>
+        </EeoFakturyBoxTitle>
         {list.map((f) => {
           const cmp = compareVemaEeoIdentifikace(invoiceRow, f);
           const isManualPick = rucniVazba ? String(rucniVazba.eeo_id) === String(f.id) : false;
           // Auto-odhad se zobrazí, jen pokud u této VEMA faktury není žádný
           // ruční výběr - jakmile člověk jednou vybere, systémový odhad se
           // dál nenabízí (viz odpověď v konverzaci: jednoznačné přebití).
-          const autoHighlight = !rucniVazba && (cmp.vs === 'ok' || cmp.castka === 'ok');
+          // Číslo dokladu (cmp.doklad) MÁ PŘEDNOST před VS/částkou - u
+          // pravidelných měsíčních plateb (nájem, roční poplatky) je částka
+          // identická u všech období a VS bývá jen firma/IČO, ne konkrétní
+          // doklad, takže by jinak "nejspíš tahle faktura" svítilo na VŠECH
+          // kandidátech současně (viz zpětná vazba uživatele). Na VS/částku
+          // se spoléháme jen když doklad nejde porovnat (cmp.doklad==='unk').
+          const autoHighlight = !rucniVazba && (
+            cmp.doklad === 'ok' || (cmp.doklad === 'unk' && (cmp.vs === 'ok' || cmp.castka === 'ok'))
+          );
           const highlight = isManualPick || autoHighlight;
           const datum = parseFlexibleDate(f?.datum_vystaveni);
 
@@ -2349,14 +2481,15 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                 </EeoFakturaHighlightTag>
               )}
               {autoHighlight && <EeoFakturaHighlightTag>↳ nejspíš tahle faktura</EeoFakturaHighlightTag>}
-              <IdentRow $tick={cmp.vs}>
+              <IdentRow $tick={hasInvoiceRow ? cmp.vs : 'unk'}>
                 <span className="label">VS</span>
-                <span className="vals">{cmp.vsVema || '—'} / {cmp.vsEeo || '—'}</span>
+                <span className="vals">{hasInvoiceRow ? <>{cmp.vsVema || '—'} / {cmp.vsEeo || '—'}</> : (cmp.vsEeo || '—')}</span>
               </IdentRow>
-              <IdentRow $tick={cmp.doklad}>
+              <IdentRow $tick={hasInvoiceRow ? cmp.doklad : 'unk'}>
                 <span className="label">Doklad</span>
                 <span className="vals">
-                  <b>{cmp.dokladVema || '—'}</b> / <b {...clickableProps(() => openInvoicePreview(f, candidate, invoiceRow), 'Zobrazit detail faktury')}>{cmp.dokladEeo || '—'}</b>
+                  {hasInvoiceRow && <><b>{cmp.dokladVema || '—'}</b> / </>}
+                  <b {...clickableProps(() => openInvoicePreview(f, candidate, invoiceRow), 'Zobrazit detail faktury')}>{cmp.dokladEeo || '—'}</b>
                   <OpenInFormButton
                     type="button"
                     onClick={() => openInvoiceInEvidenceForm(candidate?.id, f.id)}
@@ -2366,20 +2499,23 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                   </OpenInFormButton>
                 </span>
               </IdentRow>
-              <IdentRow $tick={cmp.castka}>
+              <IdentRow $tick={hasInvoiceRow ? cmp.castka : 'unk'}>
                 <span className="label">Částka</span>
                 <span className="vals">
-                  <b>{Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'}</b> / <b>{Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}</b>
+                  {hasInvoiceRow && <><b>{Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'}</b> / </>}
+                  <b>{Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}</b>
                 </span>
               </IdentRow>
               {(() => {
                 const datumVema = parseFlexibleDate(invoiceRow?.dof) || parseFlexibleDate(invoiceRow?.datpri);
-                if (!datumVema && !datum) return null;
+                if (!hasInvoiceRow && !datum) return null;
+                if (hasInvoiceRow && !datumVema && !datum) return null;
                 return (
                   <IdentRow $tick="unk">
                     <span className="label">Vystaveno</span>
                     <span className="vals">
-                      <b>{datumVema ? formatDateShort(datumVema) : '—'}</b> / <b>{datum ? formatDateShort(datum) : '—'}</b>
+                      {hasInvoiceRow && <><b>{datumVema ? formatDateShort(datumVema) : '—'}</b> / </>}
+                      <b>{datum ? formatDateShort(datum) : '—'}</b>
                     </span>
                   </IdentRow>
                 );
@@ -2390,11 +2526,12 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                   ? (VEMA_TYPDOK_LABELS[Number(typdok)] || `kód ${typdok}`)
                   : null;
                 const eeoTypLabel = f.fa_typ ? (FAKTURA_TYP_LABELS[f.fa_typ] || f.fa_typ) : null;
-                if (!vemaTypLabel && !eeoTypLabel) return null;
+                if (hasInvoiceRow && !vemaTypLabel && !eeoTypLabel) return null;
+                if (!hasInvoiceRow && !eeoTypLabel) return null;
                 return (
                   <IdentRow $tick="unk">
                     <span className="label">Typ faktury</span>
-                    <span className="vals">{vemaTypLabel || '—'} / {eeoTypLabel || '—'}</span>
+                    <span className="vals">{hasInvoiceRow ? <>{vemaTypLabel || '—'} / {eeoTypLabel || '—'}</> : (eeoTypLabel || '—')}</span>
                   </IdentRow>
                 );
               })()}
@@ -2476,7 +2613,7 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
     return (
       <SimplePairCard key={row.id}>
         <SkupinaNode>
-          <span className="n">{row.original.cfak}</span>
+          <span className="n">VS: {row.original.cfak}</span>
           <span className="m">{row.original.firma_nazev}{row.original.firma_ico ? ` · IČO: ${row.original.firma_ico}` : ''}</span>
           {row.original.nazevfak && <span className="m" title={row.original.nazevfak}>{row.original.nazevfak}</span>}
           <span className="m">
@@ -2485,6 +2622,7 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
             {fakturaSplatnost && <> · splatnost <b>{formatDateShort(fakturaSplatnost)}</b></>}
           </span>
           <span className="m">Číslo dokladu: <b>{row.original.cdok || '—'}</b></span>
+          <span className="m">Číslo objednávky (VEMA): <b>{row.original.cobj_formatovane || row.original.cobj || '—'}</b></span>
           <span className="m">Částka: <b>{formatKc(row.original.celkem || 0)}</b></span>
           <span className="m">Datum vystavení: <b>{fakturaDatumVystaveni ? formatDateShort(fakturaDatumVystaveni) : '—'}</b></span>
           {(row.original.typdok !== null && row.original.typdok !== undefined && row.original.typdok !== '') && (
@@ -2648,7 +2786,7 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
           <VazebniSkupinaBody>
             <VazebniSkupinaHead>
               <div>
-                <VazebniSkupinaTitle>{row.original.cfak || '—'}</VazebniSkupinaTitle>
+                <VazebniSkupinaTitle>{row.original.cfak ? `VS: ${row.original.cfak}` : '—'}</VazebniSkupinaTitle>
                 <VazebniSkupinaSub>{row.original.firma_nazev} · {formatKc(row.original.celkem || 0)}</VazebniSkupinaSub>
               </div>
               <SkupinaPill $tone="warn">bez kandidáta</SkupinaPill>
@@ -2803,20 +2941,42 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
                 );
               })()}
             </div>
-            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
-              {isSingle ? (
-                <SkupinaPill $tone={groupTone}>
-                  {groupTone === 'good' ? 'potvrzeno v EEO' : groupTone === 'bad' ? 'nesedí' : 'odhad, ověřit'}
-                </SkupinaPill>
-              ) : (
-                <>
-                  {renderDokladySortControl(groupId)}
-                  <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
-                  {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} ke kontrole</SkupinaPill>}
-                </>
-              )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+                {isSingle ? (
+                  <SkupinaPill $tone={groupTone}>
+                    {groupTone === 'good' ? 'potvrzeno v EEO' : groupTone === 'bad' ? 'nesedí' : 'odhad, ověřit'}
+                  </SkupinaPill>
+                ) : (
+                  <>
+                    {renderDokladySortControl(groupId)}
+                    <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
+                    {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} ke kontrole</SkupinaPill>}
+                  </>
+                )}
+              </div>
+              {/* Proč "nesedí"/"odhad, ověřit" - jen u 1:1 páru (u fan/matrix
+                  karty se tón lišší mezi řádky, vysvětlení patří k jednotlivému
+                  páru, ne do záhlaví celého bloku). Priorita shodná s tím, co
+                  na serveru určuje celkový verdikt (vema_beta_derive_group_verdicts). */}
+              {isSingle && rowVerdicts[0] && groupTone !== 'good' && (() => {
+                const pv = rowVerdicts[0];
+                const reason = pv.eeoVazba === 'no' ? pv.eeoVazbaDetail
+                  : pv.datum === 'no' ? pv.datumDetail
+                  : pv.castka === 'no' ? pv.castkaDetail
+                  : pv.eeoVazba === 'unk' ? pv.eeoVazbaDetail
+                  : null;
+                if (!reason) return null;
+                const reasonColor = VERDICT_COLORS[groupTone]?.text || VERDICT_COLORS.bad.text;
+                return (
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: reasonColor, textAlign: 'right', maxWidth: 280, lineHeight: 1.3 }}>
+                    {reason}
+                  </span>
+                );
+              })()}
             </div>
           </VazebniSkupinaHead>
+          {renderCobjTypoWarning(invoiceRows, pairVerdicts)}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {/* Řazeno podle volby uživatele u této karty (viz sort control výše)
                 - stejné doklady na stejné objednávce se tak čtou v logickém
@@ -2833,6 +2993,55 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
           </div>
         </VazebniSkupinaBody>
       </VazebniSkupinaCard>
+    );
+  };
+
+  // Zvýrazní podezření, že VEMA cobj a EEO číslo objednávky, kterou EEO
+  // fakturu reálně eviduje, se liší jen přehozenými číslicemi (typický ruční
+  // překlep ve VEMA, např. 0274 vs 0724) - konkrétní a snadno opravitelný
+  // nález, který si zaslouží vlastní výrazný banner v záhlaví karty, ne jen
+  // tichý červený "nesedí" u jednotlivého páru.
+  const renderCobjTypoWarning = (invoiceRows, pairVerdicts) => {
+    const findings = [];
+    const seen = new Set();
+    Object.entries(pairVerdicts || {}).forEach(([key, pv]) => {
+      if (pv.eeoVazba !== 'no') return;
+      const m = pv.eeoVazbaDetail && pv.eeoVazbaDetail.match(/jinou objednávkou \(([^)]+)\)/);
+      if (!m) return;
+      const targetCislo = m[1];
+      const rowId = key.split('__')[0];
+      const row = invoiceRows.find((r) => r.id === rowId);
+      if (!row) return;
+      const vemaCobj = row.original.cobj_formatovane || row.original.cobj;
+      const coreVema = extractObjCore(vemaCobj);
+      const coreTarget = extractObjCore(targetCislo);
+      if (!coreVema || !coreTarget || !isDigitTransposition(coreVema, coreTarget)) return;
+      const dedupKey = `${row.original.cfak}__${targetCislo}`;
+      if (seen.has(dedupKey)) return;
+      seen.add(dedupKey);
+      findings.push({ vs: row.original.cfak, vemaCobj, targetCislo });
+    });
+    if (findings.length === 0) return null;
+    return (
+      <div
+        style={{
+          margin: '0.5rem 0 0.75rem',
+          padding: '0.5rem 0.75rem',
+          borderRadius: 8,
+          border: `1px solid ${VERDICT_COLORS.bad.border}`,
+          background: VERDICT_COLORS.bad.bg,
+          color: VERDICT_COLORS.bad.text,
+          fontSize: '0.72rem',
+          fontWeight: 700,
+        }}
+      >
+        ⚠ Nesedí číslo objednávky - podezření na přehozené číslice ve VEMA:
+        {findings.map((f) => (
+          <div key={`${f.vs}_${f.targetCislo}`} style={{ fontWeight: 500, marginTop: 2 }}>
+            VS {f.vs}: VEMA uvádí <b>{f.vemaCobj}</b>, ale EEO má tuto fakturu spárovanou s <b>{f.targetCislo}</b>.
+          </div>
+        ))}
+      </div>
     );
   };
 
@@ -2860,6 +3069,7 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
               {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} párů ke kontrole</SkupinaPill>}
             </div>
           </VazebniSkupinaHead>
+          {renderCobjTypoWarning(invoiceRows, pairVerdicts)}
 
           <MatchMatrixWrap>
             <MatchMatrixGrid style={{ gridTemplateColumns: `230px repeat(${candidates.length}, minmax(190px, 1fr))` }}>
@@ -2885,18 +3095,38 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
               {sortInvoiceRowsBy(invoiceRows, getGroupSort(groupId)).map((row) => (
                 <React.Fragment key={row.id}>
                   <MatrixRowHead>
-                    <span className="n">{row.original.cfak}</span>
-                    <span className="m">{formatKc(row.original.celkem || 0)}</span>
+                    <span className="n">VS: {row.original.cfak}</span>
+                    <span className="m">{row.original.firma_nazev}{row.original.firma_ico ? ` · IČO: ${row.original.firma_ico}` : ''}</span>
                     {row.original.nazevfak && <span className="m" title={row.original.nazevfak}>{row.original.nazevfak}</span>}
                     <span className="m">
                       {(() => {
                         const dV = parseFlexibleDate(row.original.dof);
                         const dP = parseFlexibleDate(row.original.datpri);
-                        if (dV) return `vystavení ${formatDateShort(dV)}`;
-                        if (dP) return `přijetí ${formatDateShort(dP)}`;
-                        return '';
+                        const dSpl = parseFlexibleDate(row.original.spl);
+                        return (
+                          <>
+                            {dV && <>vystavení <b>{formatDateShort(dV)}</b></>}
+                            {!dV && dP && <>přijetí <b>{formatDateShort(dP)}</b></>}
+                            {dSpl && <> · splatnost <b>{formatDateShort(dSpl)}</b></>}
+                          </>
+                        );
                       })()}
                     </span>
+                    <span className="m">Číslo dokladu: <b>{row.original.cdok || '—'}</b></span>
+                    <span className="m">Číslo objednávky (VEMA): <b>{row.original.cobj_formatovane || row.original.cobj || '—'}</b></span>
+                    <span className="m">Částka: <b>{formatKc(row.original.celkem || 0)}</b></span>
+                    <span className="m">Datum vystavení: <b>{(() => {
+                      const dV = parseFlexibleDate(row.original.dof);
+                      return dV ? formatDateShort(dV) : '—';
+                    })()}</b></span>
+                    {(row.original.typdok !== null && row.original.typdok !== undefined && row.original.typdok !== '') && (
+                      <span
+                        className="m"
+                        style={Number(row.original.typdok) === VEMA_TYPDOK_ZALOHOVA ? { color: '#b45309', fontWeight: 700 } : undefined}
+                      >
+                        Typ dokladu: <b>{VEMA_TYPDOK_LABELS[Number(row.original.typdok)] || `kód ${row.original.typdok}`}</b>
+                      </span>
+                    )}
                     {identifikacePanelyFor(row.original, matchedFakturyByRowId[row.id])}
                     <div style={{ marginTop: 6 }}>
                   <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0 0 6px 0' }} />
@@ -3157,6 +3387,1383 @@ const GroupedKontrolaObjView = ({ token, username, userDetail, search, badgeFilt
 };
 
 // ============================================================================
+// KONTROLA SML - Seskupený pohled: render komponenta
+// ============================================================================
+//
+// Analogie GroupedKontrolaObjView, ale kandidát vazební skupiny je EEO
+// SMLOUVA (ne objednávka) - viz backend handle_vema_sml_grouped_list
+// (vemaSmlGroupedHandlers.php) pro přesný párovací predikát ("EEO SML má
+// PŘÍMO fakturu, BEZ EEO objednávky"). Vůči OBJ variantě je zjednodušená
+// o dvě věci, obě záměrně (menší rozsah, jde je doplnit později):
+//  - žádný filtr "financování" (to pole existuje jen na objednávce, ne na
+//    faktuře napojené přímo na smlouvu),
+//  - žádný panel "všechny skutečné EEO faktury na kandidátovi" ani ruční
+//    výběr "tohle je ten správný doklad" (to by vyžadovalo obdobu endpointu
+//    vema-objednavky/faktury-list pro smlouvy) - místo toho se u každého
+//    VEMA řádku ukazuje jen fuzzy-matchované srovnání VS/doklad/částka
+//    (identifikacePanelyFor), které backend už vrací v matchedFakturyByRowId.
+const GroupedKontrolaSmlView = ({ token, username, userDetail, search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, setVerdictFilter, smlouvaWarningFilter, setSmlouvaWarningFilter }) => {
+  const navigate = useNavigate();
+  const { hasPermission, hasAdminRole } = useContext(AuthContext);
+  const isAdminUser = typeof hasAdminRole === 'function' && hasAdminRole();
+  const canEditContract = isAdminUser || (typeof hasPermission === 'function' && hasPermission('CONTRACT_EDIT'));
+  const canAccessContractModule = isAdminUser || (typeof hasPermission === 'function' && (
+    hasPermission('CONTRACT_VIEW') || hasPermission('CONTRACT_CREATE') || hasPermission('CONTRACT_EDIT') || hasPermission('CONTRACT_DELETE')
+  ));
+
+  const [dokladySortByGroup, setDokladySortByGroup] = useState({});
+  const getGroupSort = (groupId) => dokladySortByGroup[groupId] || { field: 'castka', dir: DOKLADY_SORT_FIELDS.castka.defaultDir };
+  const setGroupSortField = (groupId, field) => {
+    setDokladySortByGroup((prev) => {
+      const current = prev[groupId] || { field: 'castka', dir: DOKLADY_SORT_FIELDS.castka.defaultDir };
+      const next = current.field === field
+        ? { field, dir: current.dir === 'asc' ? 'desc' : 'asc' }
+        : { field, dir: DOKLADY_SORT_FIELDS[field].defaultDir };
+      return { ...prev, [groupId]: next };
+    });
+  };
+
+  const [page, setPage] = useState(1);
+  const [groupedPageSize, setGroupedPageSize] = useUserScopedPageSize(VEMA_SML_GROUPED_PAGE_SIZE_LS_KEY, userDetail);
+  const [groupsResult, setGroupsResult] = useState({ groups: [], verdictCounts: {}, pagination: { page: 1, per_page: 50, total: 0, total_pages: 1 } });
+  const [groupsLoading, setGroupsLoading] = useState(true);
+  const [groupsError, setGroupsError] = useState(null);
+  // Reálné EEO faktury (bez objednávky) pro kandidátní smlouvy viditelné na
+  // aktuální stránce - přímo podle smlouva_id, bez fuzzy VS/doklad hledání
+  // (viz vema-smlouvy/faktury-list). Analogie objednavkaFakturyData v
+  // GroupedKontrolaObjView.
+  const [smlouvaFakturyData, setSmlouvaFakturyData] = useState({});
+  const [smlShowOkRows, setSmlShowOkRows] = useState({});
+  const [smlouvaFakturyLoading, setSmlouvaFakturyLoading] = useState(false);
+  // Klíč (invoiceRow.id) právě ukládaného ručního výběru "tohle je ten
+  // správný doklad" - jen pro disable tlačítka během requestu.
+  const [rucniVazbaSavingKey, setRucniVazbaSavingKey] = useState(null);
+
+  // SML - náhled smlouvy (SmlouvaPreview) + otevření v plném formuláři/detailu
+  // číselníku - stejný vzor jako v GroupedKontrolaObjView (openSmlouvaPreview/
+  // openSmlouvaInEditForm), jen bez mezikroku "najdi smlouvu podle textového
+  // čísla z JSON financování" - kandidát TADY už je přímo smlouva (má id).
+  const [smlouvaPreview, setSmlouvaPreview] = useState({ open: false, cisloSmlouvy: null, data: null, loading: false, error: null });
+  const openSmlouvaPreview = async (candidate) => {
+    if (!candidate?.id) return;
+    setSmlouvaPreview({ open: true, cisloSmlouvy: candidate.cislo_smlouvy, data: null, loading: true, error: null });
+    try {
+      const detail = await getSmlouvaDetail({ token, username, id: candidate.id });
+      setSmlouvaPreview((prev) => (prev.cisloSmlouvy === candidate.cislo_smlouvy ? { ...prev, data: detail?.smlouva || null, loading: false } : prev));
+    } catch (e) {
+      console.error('Chyba při načítání náhledu smlouvy:', e);
+      setSmlouvaPreview((prev) => (prev.cisloSmlouvy === candidate.cislo_smlouvy ? { ...prev, loading: false, error: e.message || 'Chyba při načítání smlouvy' } : prev));
+    }
+  };
+  const closeSmlouvaPreview = () => setSmlouvaPreview((prev) => ({ ...prev, open: false }));
+
+  const location = useLocation();
+  const openSmlouvaInEditForm = async (candidate) => {
+    if (!candidate?.cislo_smlouvy) return;
+    if (!canAccessContractModule) {
+      openSmlouvaPreview(candidate);
+      return;
+    }
+    const stateKey = canEditContract ? 'editSmlouva' : 'viewSmlouva';
+    try {
+      const listResponse = await getSmlouvyList({ token, username, search: candidate.cislo_smlouvy, limit: 20 });
+      const list = Array.isArray(listResponse) ? listResponse : (listResponse?.data || []);
+      const match = list.find((s) => String(s.cislo_smlouvy).trim() === String(candidate.cislo_smlouvy).trim()) || list[0] || null;
+      if (!match) return;
+      navigate('/dictionaries', { state: { activeTab: 'smlouvy', [stateKey]: match, returnTo: location.pathname } });
+    } catch (e) {
+      console.error('Chyba při otevírání smlouvy k editaci:', e);
+    }
+  };
+
+  const clickableProps = (onClick, title) => ({
+    role: 'button',
+    tabIndex: 0,
+    onClick,
+    onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } },
+    title,
+    style: { cursor: 'pointer', textDecoration: 'underline', textDecorationStyle: 'dotted', textUnderlineOffset: '2px' },
+  });
+
+  // Filtr "jen skupiny s varováním čerpání smlouvy" (mimo datumový rozsah /
+  // přečerpáno) - analogie warningOnlyFilter, ale nad novým backendovým
+  // příznakem smlouvaWarning (viz vema_sml_compute_smlouva_financni_kontrola),
+  // ne nad has_chyba_sml.
+  // smlouvaWarningFilter je zvednutý do rodiče (VemaDenik), aby ho viděl
+  // společný "Zrušit filtry" v toolbaru.
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, smlouvaWarningFilter, groupedPageSize]);
+
+  useEffect(() => {
+    if (!token || !username) return;
+    let cancelled = false;
+    setGroupsLoading(true);
+    setGroupsError(null);
+
+    getVemaSmlGroupedList({ token, username, search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, smlouvaWarningFilter, page, perPage: groupedPageSize })
+      .then((data) => {
+        if (cancelled) return;
+        setGroupsResult(data);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        console.error('Chyba při načítání seskupeného pohledu Kontrola SML:', e);
+        setGroupsError(e.message || 'Chyba při načítání seskupeného pohledu');
+      })
+      .finally(() => {
+        if (!cancelled) setGroupsLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [token, username, search, badgeFilter, warningOnlyFilter, kontrolaFilter, verdictFilter, smlouvaWarningFilter, page, groupedPageSize]);
+
+  const groups = useMemo(
+    () => (groupsResult.groups || []).map((g) => ({
+      ...g,
+      invoiceRows: g.invoiceRows.map((r) => ({ id: r.id, original: r })),
+    })),
+    [groupsResult.groups]
+  );
+  const verdictCounts = groupsResult.verdictCounts || {};
+  const smlouvaWarningCount = groupsResult.smlouvaWarningCount || 0;
+  const pagination = groupsResult.pagination || { page: 1, per_page: 50, total: 0, total_pages: 1 };
+
+  // Reálné EEO faktury na kandidátních smlouvách aktuální stránky - analogie
+  // stejného efektu v GroupedKontrolaObjView (jen smlouva_id místo objednavka_id).
+  useEffect(() => {
+    if (!token || !username) return;
+    if (smlouvaFakturyLoading) return;
+
+    const allIds = new Set();
+    groups.forEach((group) => {
+      group.candidates.forEach((cand) => {
+        if (cand?.id !== undefined && cand?.id !== null) allIds.add(cand.id);
+      });
+    });
+    const missingIds = Array.from(allIds).filter((id) => !(String(id) in smlouvaFakturyData));
+    if (missingIds.length === 0) return;
+
+    setSmlouvaFakturyLoading(true);
+    getVemaSmlouvyFaktury(missingIds, token, username)
+      .then((data) => {
+        const bySml = data?.faktury_by_smlouva || {};
+        setSmlouvaFakturyData((prev) => {
+          const next = { ...prev };
+          missingIds.forEach((id) => { next[String(id)] = bySml[String(id)] || []; });
+          return next;
+        });
+      })
+      .catch((e) => {
+        console.warn('Nepodařilo se načíst EEO faktury smluv:', e);
+        setSmlouvaFakturyData((prev) => {
+          const next = { ...prev };
+          missingIds.forEach((id) => { next[String(id)] = []; });
+          return next;
+        });
+      })
+      .finally(() => setSmlouvaFakturyLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, smlouvaFakturyData, smlouvaFakturyLoading, token, username]);
+
+  // Optimistická aktualizace jednoho invoiceRow napříč groupsResult po
+  // úspěšném uložení/zrušení ručního výběru - stejný vzor jako u objednávek
+  // (updateInvoiceRowRucniVazba v GroupedKontrolaObjView).
+  const updateInvoiceRowRucniVazba = (rowId, newVazba, zamitnuteVazby) => {
+    setGroupsResult((prev) => ({
+      ...prev,
+      groups: (prev.groups || []).map((g) => ({
+        ...g,
+        invoiceRows: g.invoiceRows.map((r) => (r.id === rowId
+          ? { ...r, rucni_vazba: newVazba, ...(zamitnuteVazby !== undefined ? { zamitnute_vazby: zamitnuteVazby } : {}) }
+          : r)),
+      })),
+    }));
+  };
+
+  // Zamítnutí "tenhle EEO doklad k VEMA faktuře nepatří" - trvale v
+  // metadata_json.zamitnute_vazby (handle_vema_kontrola_rucni_vazba_save,
+  // action reject/unreject); backend zamítnutý doklad nepočítá jako shodu.
+  const handleZamitnutiToggle = async (rowId, invoiceRow, target, isRejected) => {
+    setRucniVazbaSavingKey(rowId);
+    try {
+      const result = await saveVemaRucniVazba(
+        {
+          vemaId: invoiceRow.cfak,
+          vemaIdSecondary: invoiceRow.firma,
+          action: isRejected ? 'unreject' : 'reject',
+          eeoTyp: target.eeoTyp,
+          eeoId: target.eeoId,
+          eeoCislo: target.eeoCislo,
+        },
+        token,
+        username
+      );
+      updateInvoiceRowRucniVazba(rowId, result.rucni_vazba, result.zamitnute_vazby || []);
+    } catch (e) {
+      console.error('Chyba při ukládání zamítnutí dokladu:', e);
+      alert(e.message || 'Nepodařilo se uložit zamítnutí dokladu');
+    } finally {
+      setRucniVazbaSavingKey(null);
+    }
+  };
+
+  // Přepínač ručního výběru "tohle je ten správný doklad" - ruční vazba se
+  // ukládá per VEMA doklad (vema_id+firma) do 25v_kontrola_metadata, ne per
+  // typ kandidáta (objednávka/smlouva) - handle_vema_kontrola_rucni_vazba_save
+  // je proto beze změny použitelný i tady, jen eeoTyp zůstává 'eeo_faktura'
+  // (to je typ CÍLE vazby - EEO faktura - ne typ kandidáta, u kterého se
+  // vazba zobrazuje).
+  const handleRucniVazbaToggle = async (rowId, invoiceRow, target) => {
+    const currentVazba = invoiceRow?.rucni_vazba;
+    const isSameTarget = currentVazba && String(currentVazba.eeo_id) === String(target.eeoId);
+    const action = isSameTarget ? 'clear' : 'set';
+
+    setRucniVazbaSavingKey(rowId);
+    try {
+      const result = await saveVemaRucniVazba(
+        {
+          vemaId: invoiceRow.cfak,
+          vemaIdSecondary: invoiceRow.firma,
+          action,
+          eeoTyp: 'eeo_faktura',
+          eeoId: target.eeoId,
+          eeoCislo: target.eeoCislo,
+          cisloObjednavky: target.cisloSmlouvy,
+        },
+        token,
+        username
+      );
+      updateInvoiceRowRucniVazba(rowId, result.rucni_vazba, result.zamitnute_vazby);
+    } catch (e) {
+      console.error('Chyba při ukládání ručního výběru správného dokladu:', e);
+      alert(e.message || 'Nepodařilo se uložit ruční výběr správného dokladu');
+    } finally {
+      setRucniVazbaSavingKey(null);
+    }
+  };
+
+  // Batch natažení VEMA kontrol pro všechny VEMA faktury viditelné na
+  // aktuální stránce - stejný důvod a stejný vzor jako v GroupedKontrolaObjView
+  // (viz její komentář u kontrolaBatchData) - bez tohohle by tenhle seskupený
+  // pohled taky vykreslil stovky buněk, každou s vlastním HTTP requestem.
+  const [kontrolaBatchData, setKontrolaBatchData] = useState({});
+  const [kontrolaBatchLoading, setKontrolaBatchLoading] = useState(false);
+  useEffect(() => {
+    if (!token || !username) return;
+    if (kontrolaBatchLoading) return;
+
+    const items = [];
+    const seenKeys = new Set();
+    groups.forEach((group) => {
+      group.invoiceRows.forEach((row) => {
+        const vemaId = row.original._masterCfak || row.original.cfak;
+        if (!vemaId) return;
+        const vemaIdSecondary = row.original.firma;
+        const key = vemaKontrolaBatchKey(vemaId, vemaIdSecondary);
+        if (seenKeys.has(key) || key in kontrolaBatchData) return;
+        seenKeys.add(key);
+        items.push({ vemaId, vemaIdSecondary });
+      });
+    });
+    if (items.length === 0) return;
+
+    setKontrolaBatchLoading(true);
+    batchGetVemaKontrola('faktura', items, token, username)
+      .then((result) => {
+        setKontrolaBatchData((prev) => ({ ...prev, ...result }));
+      })
+      .catch((e) => {
+        console.warn('Nepodařilo se natáhnout VEMA kontroly dávkou:', e);
+        setKontrolaBatchData((prev) => {
+          const next = { ...prev };
+          items.forEach((it) => { next[vemaKontrolaBatchKey(it.vemaId, it.vemaIdSecondary)] = null; });
+          return next;
+        });
+      })
+      .finally(() => setKontrolaBatchLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groups, kontrolaBatchData, kontrolaBatchLoading, token, username]);
+
+  const kontrolaCellFor = (row) => {
+    const vemaId = row.original._masterCfak || row.original.cfak;
+    if (!vemaId) return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>;
+    const vemaIdSecondary = row.original.firma;
+    const batchKey = vemaKontrolaBatchKey(vemaId, vemaIdSecondary);
+    if (!(batchKey in kontrolaBatchData)) {
+      return <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>…</span>;
+    }
+    return (
+      <VemaKontrolaCell
+        typZaznamu="faktura"
+        vemaId={vemaId}
+        vemaIdSecondary={vemaIdSecondary}
+        initialKontrola={kontrolaBatchData[batchKey]}
+        token={token}
+        username={username}
+      />
+    );
+  };
+
+  // Panel se všemi skutečnými EEO fakturami (bez objednávky) na kandidátní
+  // smlouvě (zdroj: vema-smlouvy/faktury-list podle smlouva_id, ne fuzzy
+  // hledání) - analogie eeoFakturyPanelFor v GroupedKontrolaObjView. Porovná
+  // KAŽDOU skutečnou EEO fakturu proti VEMA faktuře, pole po poli, a nabízí
+  // ruční výběr "tohle je ten správný doklad" (handleRucniVazbaToggle výše).
+  const eeoFakturyPanelFor = (candidate, invoiceRow, invoiceRowId, groupRows = null, matchedFaktury = null) => {
+    if (!candidate) return null;
+    const list = smlouvaFakturyData[String(candidate.id)];
+    const rucniVazba = invoiceRow?.rucni_vazba || null;
+    const canPick = Boolean(invoiceRowId && invoiceRow?.cfak);
+    const isSaving = rucniVazbaSavingKey === invoiceRowId;
+    // Bez konkrétní VEMA faktury (invoiceRow===null - matrix hlavička sloupce,
+    // sdílená pro všechny řádky matice) nejde nic srovnávat "VEMA / EEO".
+    const hasInvoiceRow = Boolean(invoiceRow);
+
+    if (list === undefined) {
+      return (
+        <EeoFakturyBox>
+          <EeoFakturyBoxTitle>EEO faktury na smlouvě (bez objednávky)</EeoFakturyBoxTitle>
+          <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Načítám…</span>
+        </EeoFakturyBox>
+      );
+    }
+    if (list.length === 0) {
+      return (
+        <EeoFakturyBox>
+          <EeoFakturyBoxTitle>EEO faktury na smlouvě (bez objednávky)</EeoFakturyBoxTitle>
+          <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Smlouva zatím v EEO nemá žádnou fakturu bez objednávky.</span>
+        </EeoFakturyBox>
+      );
+    }
+
+    // Pro konkrétní VEMA fakturu ukazujeme jen doklady, které k ní opravdu
+    // patří - smlouva s měsíční platbou má 12+ položek se stejnou částkou a
+    // VS, takže celý seznam u každé VEMA faktury působil jako 13 duplicit.
+    //  - RP položka: jen při shodě čísla dokladu (VEMA cdok = cislo_dokladu).
+    //  - EEO faktura: shoda čísla dokladu, jinak (doklad v EEO chybí) VS +
+    //    částka + datum vystavení v toleranci 10 dní. Bez data se nepáruje.
+    const isRelevantFor = (row, f) => {
+      const cmp = compareVemaEeoIdentifikace(row, f);
+      if (cmp.doklad === 'ok') return true;
+      if (cmp.doklad === 'no' || f.zdroj === 'rocni_poplatek') return false;
+      if (cmp.vs !== 'ok' || cmp.castka !== 'ok') return false;
+      const dVema = parseFlexibleDate(row?.dof) || parseFlexibleDate(row?.datpri);
+      const dEeo = parseFlexibleDate(f?.datum_vystaveni);
+      if (!dVema || !dEeo) return false;
+      return Math.abs(dVema.getTime() - dEeo.getTime()) <= 10 * 24 * 60 * 60 * 1000;
+    };
+    const isRelevant = (f) => isRelevantFor(invoiceRow, f);
+    // Hlavička sloupce matice (bez konkrétní VEMA faktury): jen doklady, které
+    // odpovídají některé VEMA faktuře ve skupině, s uvedením které.
+    const isGroupHead = !hasInvoiceRow && Array.isArray(groupRows);
+    const vemaMatchesFor = (f) => (isGroupHead
+      ? groupRows.filter((r) => isRelevantFor(r.original, f)).map((r) => r.original.cfak)
+      : []);
+    const relevantList = hasInvoiceRow
+      ? list.filter((f) => isRelevant(f) || (rucniVazba && String(rucniVazba.eeo_id) === String(f.id)))
+      : isGroupHead ? list.filter((f) => vemaMatchesFor(f).length > 0) : list;
+    const visibleList = relevantList;
+    const zamitnuteIds = new Set((invoiceRow?.zamitnute_vazby || []).map((z) => String(z.eeo_id)));
+
+    return (
+      <EeoFakturyBox>
+        <EeoFakturyBoxTitle>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4 }}>
+            <span>
+              VEMA / EEO — {hasInvoiceRow
+                ? `shodné doklady na smlouvě (${relevantList.length})`
+                : isGroupHead
+                  ? `doklady odpovídající VEMA fakturám ve skupině (${relevantList.length} z ${list.length})`
+                  : `doklady na smlouvě (${list.length})`}
+            </span>
+            {candidate.cislo_smlouvy && (
+              <div style={{ display: 'flex', alignItems: 'center', textTransform: 'none', letterSpacing: 'normal', fontWeight: 600 }}>
+                <span {...clickableProps(() => openSmlouvaPreview(candidate), 'Zobrazit náhled smlouvy')}>{candidate.cislo_smlouvy}</span>
+                <OpenInFormButton type="button" onClick={() => openSmlouvaInEditForm(candidate)} title={canEditContract ? 'Otevřít smlouvu k editaci' : 'Zobrazit smlouvu (nemáte právo editace)'}>
+                  <FontAwesomeIcon icon={faExternalLinkAlt} />
+                </OpenInFormButton>
+              </div>
+            )}
+          </div>
+        </EeoFakturyBoxTitle>
+        {hasInvoiceRow && visibleList.length === 0 && (
+          <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+            K této VEMA faktuře se na smlouvě nenašel doklad se stejným číslem dokladu.
+          </span>
+        )}
+        {hasInvoiceRow && (matchedFaktury || [])
+          .filter((f) => f.cislo_smlouvy && f.cislo_smlouvy !== candidate.cislo_smlouvy)
+          .map((f) => (
+            <EeoFakturaRow key={`cizi-${f.id}`} style={{ background: '#fef2f2', borderColor: '#fecaca' }}>
+              <EeoFakturaHighlightTag style={{ color: VERDICT_COLORS.bad.text }}>
+                ⚠ tento doklad má EEO zaevidovaný na jiné smlouvě: {f.cislo_smlouvy}
+              </EeoFakturaHighlightTag>
+              <IdentRow $tick="unk">
+                <span className="label">VS</span>
+                <span className="vals">{invoiceRow.vsymb || '—'} / {f.cislo_faktury || '—'}</span>
+              </IdentRow>
+              <IdentRow $tick="unk">
+                <span className="label">Doklad</span>
+                <span className="vals"><b>{invoiceRow.cdok || '—'}</b> / <b>{f.fa_vema_kod || '—'}</b></span>
+              </IdentRow>
+              <IdentRow $tick="unk">
+                <span className="label">Částka</span>
+                <span className="vals"><b>{formatKc(invoiceRow.celkem || 0)}</b> / <b>{f.castka != null ? formatKc(f.castka) : '—'}</b></span>
+              </IdentRow>
+              <IdentRow $tick="unk">
+                <span className="label">Vystaveno</span>
+                <span className="vals">
+                  <b>{(() => { const d = parseFlexibleDate(invoiceRow.dof) || parseFlexibleDate(invoiceRow.datpri); return d ? formatDateShort(d) : '—'; })()}</b>
+                  {' / '}
+                  <b>{(() => { const d = parseFlexibleDate(f.datum_vystaveni); return d ? formatDateShort(d) : '—'; })()}</b>
+                </span>
+              </IdentRow>
+            </EeoFakturaRow>
+          ))}
+        {isGroupHead && visibleList.length === 0 && (
+          <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+            Žádný z {list.length} dokladů na smlouvě neodpovídá VEMA fakturám v této skupině.
+          </span>
+        )}
+        {visibleList.map((f) => {
+          const cmp = compareVemaEeoIdentifikace(invoiceRow, f);
+          const isManualPick = rucniVazba ? String(rucniVazba.eeo_id) === String(f.id) : false;
+          const isRejected = zamitnuteIds.has(String(f.id));
+          const autoHighlight = !rucniVazba && !isRejected && hasInvoiceRow && isRelevant(f);
+          const highlight = !isRejected && (isManualPick || autoHighlight);
+          const datum = parseFlexibleDate(f?.datum_vystaveni);
+          // Položka ročního poplatku (25a_rocni_poplatky_polozky), ne skutečná
+          // EEO faktura - viz backend vema_sml_attach_rp_polozky. Ruční výběr
+          // "tohle je ten správný doklad" cílí jen na eeo_faktura id
+          // (handle_vema_kontrola_rucni_vazba_save), takže se u RP položek
+          // nenabízí - nešlo by ho korektně uložit/rozpoznat zpět. Zamítnout
+          // jde naopak obojí (klíč 'rp_<id>' je stabilní).
+          const isRpZdroj = f.zdroj === 'rocni_poplatek';
+          const rowCanPick = canPick && !isRpZdroj && !isRejected;
+
+          return (
+            <EeoFakturaRow
+              key={f.id}
+              $highlight={highlight}
+              $manual={isManualPick}
+              style={isRejected ? { background: '#fef2f2', borderColor: '#fecaca', opacity: 0.85 } : undefined}
+            >
+              {isRejected && (
+                <EeoFakturaHighlightTag style={{ color: VERDICT_COLORS.bad.text }}>
+                  ✕ zamítnuto – tento doklad k VEMA faktuře nepatří
+                </EeoFakturaHighlightTag>
+              )}
+              {isRpZdroj && (
+                <RpZdrojTag title="Platba evidovaná v modulu Roční poplatky, ne jako samostatná EEO faktura">
+                  ⓘ Položka ročního poplatku{f.rp_nazev ? ` · ${f.rp_nazev}` : ''}{f.rp_rok ? ` (${f.rp_rok})` : ''}
+                </RpZdrojTag>
+              )}
+              {isGroupHead && (
+                <EeoFakturaHighlightTag>↔ odpovídá VEMA {vemaMatchesFor(f).join(', ')}</EeoFakturaHighlightTag>
+              )}
+              {isManualPick && (
+                <EeoFakturaHighlightTag $manual>
+                  ↳ ručně potvrzeno jako správné
+                </EeoFakturaHighlightTag>
+              )}
+              {autoHighlight && <EeoFakturaHighlightTag>↳ nejspíš tahle faktura</EeoFakturaHighlightTag>}
+              <IdentRow $tick={hasInvoiceRow ? cmp.vs : 'unk'}>
+                <span className="label">VS</span>
+                <span className="vals">{hasInvoiceRow ? <>{cmp.vsVema || '—'} / {cmp.vsEeo || '—'}</> : (cmp.vsEeo || '—')}</span>
+              </IdentRow>
+              <IdentRow $tick={hasInvoiceRow ? cmp.doklad : 'unk'}>
+                <span className="label">Doklad</span>
+                <span className="vals">
+                  {hasInvoiceRow && <><b>{cmp.dokladVema || '—'}</b> / </>}
+                  <b>{cmp.dokladEeo || '—'}</b>
+                </span>
+              </IdentRow>
+              <IdentRow $tick={hasInvoiceRow ? cmp.castka : 'unk'}>
+                <span className="label">Částka</span>
+                <span className="vals">
+                  {hasInvoiceRow && <><b>{Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'}</b> / </>}
+                  <b>{Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}</b>
+                </span>
+              </IdentRow>
+              {(() => {
+                const datumVema = parseFlexibleDate(invoiceRow?.dof) || parseFlexibleDate(invoiceRow?.datpri);
+                if (!hasInvoiceRow && !datum) return null;
+                if (hasInvoiceRow && !datumVema && !datum) return null;
+                return (
+                  <IdentRow $tick="unk">
+                    <span className="label">Vystaveno</span>
+                    <span className="vals">
+                      {hasInvoiceRow && <><b>{datumVema ? formatDateShort(datumVema) : '—'}</b> / </>}
+                      <b>{datum ? formatDateShort(datum) : '—'}</b>
+                    </span>
+                  </IdentRow>
+                );
+              })()}
+              {(() => {
+                const typdok = invoiceRow?.typdok;
+                const vemaTypLabel = (typdok !== null && typdok !== undefined && typdok !== '')
+                  ? (VEMA_TYPDOK_LABELS[Number(typdok)] || `kód ${typdok}`)
+                  : null;
+                const eeoTypLabel = f.fa_typ ? (FAKTURA_TYP_LABELS[f.fa_typ] || f.fa_typ) : null;
+                if (hasInvoiceRow && !vemaTypLabel && !eeoTypLabel) return null;
+                if (!hasInvoiceRow && !eeoTypLabel) return null;
+                return (
+                  <IdentRow $tick="unk">
+                    <span className="label">Typ faktury</span>
+                    <span className="vals">{hasInvoiceRow ? <>{vemaTypLabel || '—'} / {eeoTypLabel || '—'}</> : (eeoTypLabel || '—')}</span>
+                  </IdentRow>
+                );
+              })()}
+              {f.stav && (
+                <IdentRow $tick="unk">
+                  <span className="label">{isRpZdroj ? 'Stav platby' : 'Stav v EEO'}</span>
+                  <span className="vals">{isRpZdroj ? f.stav : (FAKTURA_STAV_LABELS[f.stav] || f.stav)}</span>
+                </IdentRow>
+              )}
+              {rowCanPick && (
+                <RucniVazbaLink
+                  type="button"
+                  $active={isManualPick}
+                  disabled={isSaving}
+                  onClick={() => handleRucniVazbaToggle(invoiceRowId, invoiceRow, {
+                    eeoId: f.id,
+                    eeoCislo: f.cislo_faktury,
+                    cisloSmlouvy: candidate.cislo_smlouvy,
+                  })}
+                >
+                  {isSaving ? 'Ukládám…' : isManualPick ? '✕ zrušit ruční výběr' : '✓ označit jako správnou'}
+                </RucniVazbaLink>
+              )}
+              {canPick && (
+                <RucniVazbaLink
+                  type="button"
+                  disabled={isSaving}
+                  style={{ color: isRejected ? undefined : VERDICT_COLORS.bad.text }}
+                  onClick={() => handleZamitnutiToggle(invoiceRowId, invoiceRow, {
+                    eeoTyp: isRpZdroj ? 'rocni_poplatek' : 'eeo_faktura',
+                    eeoId: f.id,
+                    eeoCislo: isRpZdroj ? f.fa_vema_kod : f.cislo_faktury,
+                  }, isRejected)}
+                >
+                  {isSaving ? 'Ukládám…' : isRejected ? '↺ zrušit zamítnutí' : '✕ zamítnout tento doklad'}
+                </RucniVazbaLink>
+              )}
+            </EeoFakturaRow>
+          );
+        })}
+      </EeoFakturyBox>
+    );
+  };
+
+  // Srovnání VS/doklad/částka pro každou fuzzy-matchovanou EEO fakturu (bez
+  // objednávky - backend je už tak vrací, viz vema_sml_backfill_missing_smlouvy),
+  // nezávisle na tom, jestli pár nakonec vyšel jako eeoVazba 'ok'.
+  const identifikacePanelyFor = (invoiceRow, matchedFaktury) => {
+    if (!Array.isArray(matchedFaktury) || matchedFaktury.length === 0) return null;
+    return matchedFaktury.map((mf, idx) => {
+      const cmp = compareVemaEeoIdentifikace(invoiceRow, mf);
+      const hasMismatch = cmp.vs === 'no' || cmp.doklad === 'no' || cmp.castka === 'no';
+      return (
+        <IdentPanel key={mf?.id ?? idx} $hasMismatch={hasMismatch}>
+          <IdentPanelTitle>EEO faktura {mf?.cislo_smlouvy ? `→ ${mf.cislo_smlouvy}` : '(bez vazby na smlouvu)'}</IdentPanelTitle>
+          <IdentRow $tick={cmp.vs}>
+            <span className="label">VS</span>
+            <span className="vals">{cmp.vsVema || '—'} <b>{cmp.vs === 'ok' ? '=' : '≠'}</b> {cmp.vsEeo || '—'}</span>
+          </IdentRow>
+          <IdentRow $tick={cmp.doklad}>
+            <span className="label">Doklad</span>
+            <span className="vals"><b>{cmp.dokladVema || '—'}</b> {cmp.doklad === 'ok' ? '=' : '≠'} <b>{cmp.dokladEeo || '—'}</b></span>
+          </IdentRow>
+          <IdentRow $tick={cmp.castka}>
+            <span className="label">Částka</span>
+            <span className="vals">
+              <b>{Number.isFinite(cmp.castkaVema) ? formatKc(cmp.castkaVema) : '—'}</b> {cmp.castka === 'ok' ? '=' : '≠'} <b>{Number.isFinite(cmp.castkaEeo) ? formatKc(cmp.castkaEeo) : '—'}</b>
+            </span>
+          </IdentRow>
+        </IdentPanel>
+      );
+    });
+  };
+
+  const pluralKandidatnichFaktur = (n) => {
+    if (n === 1) return 'kandidátní faktura';
+    if (n >= 2 && n <= 4) return 'kandidátní faktury';
+    return 'kandidátních faktur';
+  };
+
+  // Zvýrazní podezření na přehozené číslice mezi VEMA ecsml a evidenčním
+  // číslem smlouvy, kterou reálně eviduje EEO faktura spárovaná s "jinou
+  // smlouvou" - analogie renderCobjTypoWarning, jen nad evidenčním číslem
+  // smlouvy (extractSmlCore), ne číslem objednávky.
+  const renderSmlTypoWarning = (invoiceRows, pairVerdicts) => {
+    const findings = [];
+    const seen = new Set();
+    Object.entries(pairVerdicts || {}).forEach(([key, pv]) => {
+      if (pv.eeoVazba !== 'no') return;
+      const m = pv.eeoVazbaDetail && pv.eeoVazbaDetail.match(/jinou smlouvou \(([^)]+)\)/);
+      if (!m) return;
+      const targetCislo = m[1];
+      const rowId = key.split('__')[0];
+      const row = invoiceRows.find((r) => r.id === rowId);
+      if (!row) return;
+      const vemaEcsml = row.original.smlouva_ecsml;
+      const coreVema = extractSmlCore(vemaEcsml);
+      const coreTarget = extractSmlCore(targetCislo);
+      if (!coreVema || !coreTarget || !isDigitTransposition(coreVema, coreTarget)) return;
+      const dedupKey = `${row.original.cfak}__${targetCislo}`;
+      if (seen.has(dedupKey)) return;
+      seen.add(dedupKey);
+      findings.push({ vs: row.original.cfak, vemaEcsml, targetCislo });
+    });
+    if (findings.length === 0) return null;
+    return (
+      <div
+        style={{
+          margin: '0.5rem 0 0.75rem',
+          padding: '0.5rem 0.75rem',
+          borderRadius: 8,
+          border: `1px solid ${VERDICT_COLORS.bad.border}`,
+          background: VERDICT_COLORS.bad.bg,
+          color: VERDICT_COLORS.bad.text,
+          fontSize: '0.72rem',
+          fontWeight: 700,
+        }}
+      >
+        ⚠ Nesedí evidenční číslo smlouvy - podezření na přehozené číslice ve VEMA:
+        {findings.map((f) => (
+          <div key={`${f.vs}_${f.targetCislo}`} style={{ fontWeight: 500, marginTop: 2 }}>
+            VS {f.vs}: VEMA uvádí <b>{f.vemaEcsml}</b>, ale EEO má tuto fakturu spárovanou se smlouvou <b>{f.targetCislo}</b>.
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Banner "kontrola čerpání smlouvy" - zvýrazní, když backend vyhodnotil
+  // smlouva_precerpano (součet EEO faktur > hodnota smlouvy) nebo
+  // mimo_datumovy_rozsah u některé z faktur (viz
+  // vema_sml_compute_smlouva_financni_kontrola ve vemaSmlGroupedHandlers.php).
+  // Analogie renderCobjTypoWarning/renderSmlTypoWarning, jen nad jiným zdrojem
+  // varování (group.smlouvaWarning/smlouvaWarningReasons z BE, ne odvozené na FE).
+  const renderSmlouvaFinancniWarning = (group) => {
+    if (!group || !group.smlouvaWarning) return null;
+    const reasons = Array.isArray(group.smlouvaWarningReasons) ? group.smlouvaWarningReasons : [];
+    return (
+      <div
+        style={{
+          margin: '0.5rem 0 0.75rem',
+          padding: '0.5rem 0.75rem',
+          borderRadius: 8,
+          border: `1px solid ${VERDICT_COLORS.bad.border}`,
+          background: VERDICT_COLORS.bad.bg,
+          color: VERDICT_COLORS.bad.text,
+          fontSize: '0.72rem',
+          fontWeight: 700,
+        }}
+      >
+        ⚠ Kontrola čerpání smlouvy: pravděpodobně čerpáno mimo datumový rozsah smlouvy a/nebo je smlouva přečerpána.
+        {reasons.map((r) => (
+          <div key={r} style={{ fontWeight: 500, marginTop: 2, textTransform: 'none' }}>
+            {r}
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  // Jeden řádek "faktura <-> kandidátní smlouva" - sdílené mezi 1:1 kartou a
+  // "fan" kartou. Analogie renderPairRow z GroupedKontrolaObjView.
+  const renderPairRow = (row, candidate, pv, matchedFaktury, hideCandidateNode = false) => {
+    const tone = candidate ? (pv ? pv.verdict : 'warn') : 'warn';
+    const fakturaDatumVystaveni = parseFlexibleDate(row.original.dof);
+    const fakturaDatumPrijeti = parseFlexibleDate(row.original.datpri);
+    const fakturaSplatnost = parseFlexibleDate(row.original.spl);
+
+    return (
+      <SimplePairCard key={row.id}>
+        <SkupinaNode>
+          <span className="n">VS: {row.original.cfak}</span>
+          <span className="m">{row.original.firma_nazev}{row.original.firma_ico ? ` · IČO: ${row.original.firma_ico}` : ''}</span>
+          {row.original.nazevfak && <span className="m" title={row.original.nazevfak}>{row.original.nazevfak}</span>}
+          <span className="m">
+            {fakturaDatumVystaveni && <>vystavení <b>{formatDateShort(fakturaDatumVystaveni)}</b></>}
+            {!fakturaDatumVystaveni && fakturaDatumPrijeti && <>přijetí <b>{formatDateShort(fakturaDatumPrijeti)}</b></>}
+            {fakturaSplatnost && <> · splatnost <b>{formatDateShort(fakturaSplatnost)}</b></>}
+          </span>
+          <span className="m">Číslo dokladu: <b>{row.original.cdok || '—'}</b></span>
+          <span className="m">Evidenční číslo smlouvy (VEMA): <b>{row.original.smlouva_ecsml || '—'}</b></span>
+          <span className="m">Číslo objednávky (VEMA): <b>{row.original.cobj_formatovane || row.original.cobj || '—'}</b></span>
+          <span className="m">Částka: <b>{formatKc(row.original.celkem || 0)}</b></span>
+          {row.original.mimo_datumovy_rozsah === true && (
+            <span className="m" style={{ color: VERDICT_COLORS.bad.text, fontWeight: 700 }}>
+              ⚠ mimo datumový rozsah smlouvy
+            </span>
+          )}
+          {(row.original.typdok !== null && row.original.typdok !== undefined && row.original.typdok !== '') && (
+            <span
+              className="m"
+              style={Number(row.original.typdok) === VEMA_TYPDOK_ZALOHOVA ? { color: '#b45309', fontWeight: 700 } : undefined}
+            >
+              Typ dokladu: <b>{VEMA_TYPDOK_LABELS[Number(row.original.typdok)] || `kód ${row.original.typdok}`}</b>
+            </span>
+          )}
+          {/* Bez kandidáta nemáme smlouvu, ke které natáhnout skutečné EEO
+              faktury - jediné, co nabídnout, je stará fuzzy shoda. */}
+          {!candidate && identifikacePanelyFor(row.original, matchedFaktury)}
+          <div style={{ marginTop: 6 }}>
+            <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0 0 6px 0' }} />
+            {kontrolaCellFor(row)}
+          </div>
+        </SkupinaNode>
+        {!candidate && (
+          <>
+            <SkupinaWire $verdict="bad" />
+            <EeoFakturyBox style={{ borderColor: VERDICT_COLORS.bad.border, background: VERDICT_COLORS.bad.bg }}>
+              <EeoFakturyBoxTitle style={{ color: VERDICT_COLORS.bad.text }}>EEO — smlouva</EeoFakturyBoxTitle>
+              <span style={{ fontSize: '0.7rem', color: VERDICT_COLORS.bad.text }}>
+                Kandidát nenalezen. Oprava patří do VEMA / EEO u zdrojových dokladů, ne sem - poznámku k řešení zapište do dialogu Kontrola.
+              </span>
+            </EeoFakturyBox>
+          </>
+        )}
+        {candidate && (
+          <>
+            <SkupinaWire $verdict={tone} />
+            {!hideCandidateNode && (
+              <SkupinaNode>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span className="n" {...clickableProps(() => openSmlouvaPreview(candidate), 'Zobrazit náhled smlouvy')}>{candidate.cislo_smlouvy}</span>
+                  <OpenInFormButton type="button" onClick={() => openSmlouvaInEditForm(candidate)} title={canEditContract ? 'Otevřít smlouvu k editaci' : 'Zobrazit smlouvu (nemáte právo editace)'}>
+                    <FontAwesomeIcon icon={faExternalLinkAlt} />
+                  </OpenInFormButton>
+                </div>
+                <span className="m">{candidate.dodavatel}{candidate.dodavatel_ico ? ` · IČO: ${candidate.dodavatel_ico}` : ''}</span>
+                {candidate.nazev_smlouvy && <span className="m" title={candidate.nazev_smlouvy}>{candidate.nazev_smlouvy}</span>}
+                {(() => {
+                  const d = parseFlexibleDate(candidate.platnost_od);
+                  return d ? <span className="m">platná od {formatDateShort(d)}</span> : null;
+                })()}
+                {pv && (
+                  <CondRow style={{ marginTop: 4 }}>
+                    <Cond $tick={pv.eeoVazba} title={pv.eeoVazbaDetail}>
+                      <span className="label">vazba EEO</span>
+                      <span className="detail">{pv.eeoVazbaDetail}</span>
+                    </Cond>
+                    <Cond $tick={pv.castka} title={pv.castkaDetail}>
+                      <span className="label">částka</span>
+                      <span className="detail">{pv.castkaDetail}</span>
+                    </Cond>
+                    <Cond $tick={pv.datum} title={pv.datumDetail}>
+                      <span className="label">datum</span>
+                      <span className="detail">{pv.datumDetail}</span>
+                    </Cond>
+                  </CondRow>
+                )}
+              </SkupinaNode>
+            )}
+            {eeoFakturyPanelFor(candidate, row.original, row.id, null, matchedFaktury)}
+          </>
+        )}
+      </SimplePairCard>
+    );
+  };
+
+  const compareInvoiceRowsByField = (a, b, field, dir) => {
+    const getValue = DOKLADY_SORT_FIELDS[field].getValue;
+    const va = getValue(a);
+    const vb = getValue(b);
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    const diff = va - vb;
+    return dir === 'asc' ? diff : -diff;
+  };
+
+  const sortInvoiceRowsBy = (rows, sort) => {
+    const { field, dir } = sort;
+    const fallbackFields = DOKLADY_SORT_FIELD_ORDER.filter((f) => f !== field);
+    return [...rows].sort((a, b) => {
+      const primary = compareInvoiceRowsByField(a, b, field, dir);
+      if (primary !== 0) return primary;
+      for (const f of fallbackFields) {
+        const c = compareInvoiceRowsByField(a, b, f, DOKLADY_SORT_FIELDS[f].defaultDir);
+        if (c !== 0) return c;
+      }
+      return String(a.original?.cfak || '').localeCompare(String(b.original?.cfak || ''));
+    });
+  };
+
+  const renderDokladySortControl = (groupId) => {
+    const activeSort = getGroupSort(groupId);
+    return DOKLADY_SORT_FIELD_ORDER.map((field) => {
+      const isActive = activeSort.field === field;
+      return (
+        <SortTogglePill
+          key={field}
+          type="button"
+          $active={isActive}
+          onClick={() => setGroupSortField(groupId, field)}
+          title={`Řadit doklady v této skupině podle: ${DOKLADY_SORT_FIELDS[field].label}`}
+        >
+          {DOKLADY_SORT_FIELDS[field].label}{isActive ? (activeSort.dir === 'asc' ? ' ↑' : ' ↓') : ''}
+        </SortTogglePill>
+      );
+    });
+  };
+
+  // Sjednocená karta pro 1:1 pár i "fan" (víc faktur sdílejících jednu
+  // kandidátní smlouvu) - analogie renderObjGroupCard.
+  const renderSmlGroupCard = (group) => {
+    const { groupId, invoiceRows, candidates, pairVerdicts, matchedFakturyByRowId } = group;
+    const candidate = candidates[0];
+
+    if (!candidate) {
+      const row = invoiceRows[0];
+      return (
+        <VazebniSkupinaCard key={groupId}>
+          <VazebniSkupinaStripe $verdict="warn" />
+          <VazebniSkupinaBody>
+            <VazebniSkupinaHead>
+              <div>
+                <VazebniSkupinaTitle>{row.original.cfak ? `VS: ${row.original.cfak}` : '—'}</VazebniSkupinaTitle>
+                <VazebniSkupinaSub>{row.original.firma_nazev} · {formatKc(row.original.celkem || 0)}</VazebniSkupinaSub>
+              </div>
+              <SkupinaPill $tone="warn">bez kandidáta</SkupinaPill>
+            </VazebniSkupinaHead>
+            {renderPairRow(row, null, null, matchedFakturyByRowId[row.id])}
+          </VazebniSkupinaBody>
+        </VazebniSkupinaCard>
+      );
+    }
+
+    const isSingle = invoiceRows.length === 1;
+    const rowVerdicts = invoiceRows.map((row) => pairVerdicts[`${row.id}__${candidate.id}`]).filter(Boolean);
+    const toReviewCount = rowVerdicts.filter((pv) => pv.verdict === 'warn').length;
+    const groupTone = isSingle
+      ? (rowVerdicts[0] ? rowVerdicts[0].verdict : 'warn')
+      : (rowVerdicts.length > 0 && rowVerdicts.every((pv) => pv.verdict === 'good') ? 'good' : 'mixed');
+
+    return (
+      <VazebniSkupinaCard key={groupId}>
+        <VazebniSkupinaStripe $verdict={groupTone} />
+        <VazebniSkupinaBody>
+          <VazebniSkupinaHead style={{ flexWrap: 'nowrap', alignItems: 'flex-start' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '1.5rem', flex: '1 1 auto', minWidth: 0 }}>
+              <div style={{ flex: '0 1 auto', minWidth: '220px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                    <VazebniSkupinaTitle
+                      style={{ margin: 0 }}
+                      {...clickableProps(() => openSmlouvaPreview(candidate), 'Zobrazit náhled smlouvy')}
+                    >
+                      {candidate.cislo_smlouvy}
+                    </VazebniSkupinaTitle>
+                    <OpenInFormButton type="button" onClick={() => openSmlouvaInEditForm(candidate)} title={canEditContract ? 'Otevřít smlouvu k editaci' : 'Zobrazit smlouvu (nemáte právo editace)'} style={{ marginLeft: '0.15rem' }}>
+                      <FontAwesomeIcon icon={faExternalLinkAlt} />
+                    </OpenInFormButton>
+                  </span>
+                  {candidate.stav && (
+                    <span
+                      style={{
+                        fontSize: '0.68rem',
+                        fontWeight: 700,
+                        padding: '0.2rem 0.55rem',
+                        borderRadius: 4,
+                        whiteSpace: 'nowrap',
+                        background: candidate.stav === 'AKTIVNI' ? '#dcfce7' : '#f1f5f9',
+                        color: candidate.stav === 'AKTIVNI' ? '#166534' : '#475569',
+                      }}
+                    >
+                      {candidate.stav}
+                    </span>
+                  )}
+                </div>
+                <VazebniSkupinaSub>
+                  {candidate.dodavatel}{candidate.dodavatel_ico ? ` · IČO: ${candidate.dodavatel_ico}` : ''}{candidate.nazev_smlouvy ? ` · ${candidate.nazev_smlouvy}` : ''}
+                </VazebniSkupinaSub>
+                <VazebniSkupinaSub style={{ color: '#94a3b8' }}>
+                  {invoiceRows.length} {pluralKandidatnichFaktur(invoiceRows.length)} ke stejné smlouvě
+                </VazebniSkupinaSub>
+              </div>
+              {(() => {
+                const dOd = parseFlexibleDate(candidate.platnost_od);
+                const dDo = parseFlexibleDate(candidate.platnost_do);
+                const items = [];
+                if (dOd) items.push(['Platnost od', formatDateShort(dOd)]);
+                if (candidate.typ_smlouvy) items.push(['Druh smlouvy', candidate.typ_smlouvy]);
+                const hasCena = candidate.castka !== null && candidate.castka !== undefined && Number(candidate.castka) > 0;
+                // Čerpáno (soucet EEO faktur na smlouvě bez objednávky) + příznak
+                // přečerpání - viz vema_sml_compute_smlouva_financni_kontrola (BE).
+                const hasCerpano = candidate.smlouva_soucet_faktur !== null && candidate.smlouva_soucet_faktur !== undefined;
+                const jePrecerpano = !!candidate.smlouva_precerpano;
+                // Součet VEMA (informativní) - vysvětluje uživateli, proč "Čerpáno
+                // (EEO faktury)" může být nižší než počet kandidátních faktur VEMA
+                // by napovídal: VEMA má víc dokladů evidenčně navázaných na tuto
+                // smlouvu, než kolik jich EEO skutečně eviduje jako fakturu na
+                // smlouvě (zbytek se nepodařilo/nedošlo k jejich zaúčtování v EEO).
+                const hasVemaSoucet = candidate.smlouva_soucet_faktur_vema !== null && candidate.smlouva_soucet_faktur_vema !== undefined && Number(candidate.smlouva_soucet_faktur_vema) > 0;
+                // Platnost do - zvýrazněná jako Čerpáno/Hodnota smlouvy (ne jen šedý
+                // řádek v gridu), protože jde o klíčový údaj pro posouzení, zda
+                // faktury nejsou čerpány mimo rozsah smlouvy.
+                const jeMimoRozsah = (group.smlouvaFinancniKontrola?.reasons || []).some((r) => r.includes('mimo datumový rozsah'));
+                if (items.length === 0 && !dDo && !hasCena && !hasCerpano) return null;
+                return (
+                  <ObjInfoGrid>
+                    {items.map(([label, value]) => (
+                      <div className="item" key={label}>
+                        <span className="label">{label}:</span>
+                        <span className="value">{value}</span>
+                      </div>
+                    ))}
+                    {dDo && (
+                      <div className="item" style={{ gridColumn: 2, alignItems: 'baseline' }}>
+                        <span className="label" style={{ fontSize: '0.8rem', fontWeight: 700, color: jeMimoRozsah ? VERDICT_COLORS.bad.text : '#1e40af' }}>Platnost do:</span>
+                        <span className="value" style={{ fontSize: '0.95rem', fontWeight: 800, color: jeMimoRozsah ? VERDICT_COLORS.bad.text : '#1e40af' }}>
+                          {formatDateShort(dDo)}{jeMimoRozsah ? ' ⚠ faktura mimo rozsah' : ''}
+                        </span>
+                      </div>
+                    )}
+                    {hasCena && (
+                      <div className="item" style={{ gridColumn: 2, alignItems: 'baseline' }}>
+                        <span className="label" style={{ fontSize: '0.8rem', fontWeight: 700, color: '#1e40af' }}>Hodnota smlouvy:</span>
+                        <span className="value" style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1e40af' }}>
+                          {formatKc(candidate.castka)}
+                        </span>
+                      </div>
+                    )}
+                    {hasCerpano && (
+                      <div className="item" style={{ gridColumn: 2, alignItems: 'baseline' }}>
+                        <span className="label" style={{ fontSize: '0.8rem', fontWeight: 700, color: jePrecerpano ? VERDICT_COLORS.bad.text : '#1e40af' }}>Čerpáno (EEO faktury):</span>
+                        <span className="value" style={{ fontSize: '0.95rem', fontWeight: 800, color: jePrecerpano ? VERDICT_COLORS.bad.text : '#1e40af' }}>
+                          {formatKc(candidate.smlouva_soucet_faktur)}{jePrecerpano ? ' ⚠ přečerpáno' : ''}
+                        </span>
+                      </div>
+                    )}
+                    {hasVemaSoucet && (
+                      <div className="item" style={{ gridColumn: 2, alignItems: 'baseline' }}>
+                        <span className="label" style={{ fontSize: '0.72rem', color: '#94a3b8' }}>z toho VEMA celkem (info):</span>
+                        <span className="value" style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                          {formatKc(candidate.smlouva_soucet_faktur_vema)}
+                        </span>
+                      </div>
+                    )}
+                  </ObjInfoGrid>
+                );
+              })()}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', alignItems: 'flex-end' }}>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
+                {isSingle ? (
+                  <SkupinaPill $tone={groupTone}>
+                    {groupTone === 'good' ? 'potvrzeno v EEO' : groupTone === 'bad' ? 'nesedí' : 'odhad, ověřit'}
+                  </SkupinaPill>
+                ) : (
+                  <>
+                    {renderDokladySortControl(groupId)}
+                    <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
+                    {rowVerdicts.some((pv) => pv.verdict === 'bad') && (
+                      <SkupinaPill $tone="bad">{rowVerdicts.filter((pv) => pv.verdict === 'bad').length} nesedí</SkupinaPill>
+                    )}
+                    {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} ke kontrole</SkupinaPill>}
+                  </>
+                )}
+              </div>
+              {!isSingle && invoiceRows.map((row) => {
+                // U skupiny s víc fakturami vypsat, KTERÁ faktura nesedí / je
+                // k ověření a proč - jinak pruhovaný okraj nic neříká.
+                const pv = pairVerdicts[`${row.id}__${candidate.id}`];
+                if (!pv || pv.verdict === 'good') return null;
+                const reason = pv.eeoVazba === 'no' ? pv.eeoVazbaDetail
+                  : pv.datum === 'no' ? pv.datumDetail
+                  : pv.castka === 'no' ? pv.castkaDetail
+                  : pv.eeoVazbaDetail;
+                return (
+                  <span key={row.id} style={{ fontSize: '0.7rem', fontWeight: 700, color: VERDICT_COLORS[pv.verdict]?.text || VERDICT_COLORS.warn.text, textAlign: 'right', maxWidth: 420, lineHeight: 1.3 }}>
+                    VS {row.original.cfak}: {reason}
+                  </span>
+                );
+              })}
+              {isSingle && rowVerdicts[0] && groupTone !== 'good' && (() => {
+                const pv = rowVerdicts[0];
+                const reason = pv.eeoVazba === 'no' ? pv.eeoVazbaDetail
+                  : pv.datum === 'no' ? pv.datumDetail
+                  : pv.castka === 'no' ? pv.castkaDetail
+                  : pv.eeoVazba === 'unk' ? pv.eeoVazbaDetail
+                  : null;
+                if (!reason) return null;
+                const reasonColor = VERDICT_COLORS[groupTone]?.text || VERDICT_COLORS.bad.text;
+                return (
+                  <span style={{ fontSize: '0.7rem', fontWeight: 700, color: reasonColor, textAlign: 'right', maxWidth: 280, lineHeight: 1.3 }}>
+                    {reason}
+                  </span>
+                );
+              })()}
+            </div>
+          </VazebniSkupinaHead>
+          {renderSmlTypoWarning(invoiceRows, pairVerdicts)}
+          {renderSmlouvaFinancniWarning(group)}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {(() => {
+              // Nesedící a neověřené faktury vždy nahoru (v rámci zvoleného
+              // řazení), ať je problém vidět bez scrollování přes celou skupinu.
+              const rank = { bad: 0, warn: 1, good: 2 };
+              const sorted = sortInvoiceRowsBy(invoiceRows, getGroupSort(groupId));
+              const ranked = sorted
+                .map((row, pos) => ({ row, pos, v: pairVerdicts[`${row.id}__${candidate.id}`]?.verdict || 'warn' }))
+                .sort((a, b) => (rank[a.v] ?? 1) - (rank[b.v] ?? 1) || a.pos - b.pos);
+              // Při filtru Nesedí / Ověřit ukázat jen faktury, kterých se filtr
+              // týká - ostatní faktury téže smlouvy schovat pod odkaz.
+              const filterRows = !isSingle && (verdictFilter === 'bad' || verdictFilter === 'warn') && !smlShowOkRows[groupId];
+              const shown = filterRows ? ranked.filter((x) => x.v === verdictFilter) : ranked;
+              const hiddenCount = ranked.length - shown.length;
+              const toggle = (!isSingle && (verdictFilter === 'bad' || verdictFilter === 'warn') && (hiddenCount > 0 || smlShowOkRows[groupId])) ? (
+                <RucniVazbaLink
+                  key="toggle"
+                  type="button"
+                  onClick={() => setSmlShowOkRows((prev) => ({ ...prev, [groupId]: !prev[groupId] }))}
+                >
+                  {smlShowOkRows[groupId]
+                    ? 'skrýt ostatní faktury na smlouvě'
+                    : `+ ${hiddenCount} ${hiddenCount === 1 ? 'další faktura' : hiddenCount < 5 ? 'další faktury' : 'dalších faktur'} na smlouvě (skryto filtrem) – zobrazit`}
+                </RucniVazbaLink>
+              ) : null;
+              return [...shown
+                .map(({ row, v }, idx) => {
+                  const pv = pairVerdicts[`${row.id}__${candidate.id}`];
+                  const problem = !isSingle && v !== 'good';
+                  const style = {
+                    ...(idx > 0 ? { paddingTop: '0.6rem', borderTop: '1px solid #e2e8f0' } : {}),
+                    ...(problem ? {
+                      background: VERDICT_COLORS[v]?.bg,
+                      borderLeft: `4px solid ${VERDICT_COLORS[v]?.border}`,
+                      borderRadius: 6,
+                      padding: '0.5rem 0.5rem 0.5rem 0.6rem',
+                    } : {}),
+                  };
+                  return (
+                    <div key={row.id} style={style}>
+                      {problem && (
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: VERDICT_COLORS[v]?.text, marginBottom: '0.35rem' }}>
+                          {v === 'bad' ? '✕ Nesedí' : '? Ověřit'}: {pv?.eeoVazba === 'no' ? pv.eeoVazbaDetail
+                            : pv?.datum === 'no' ? pv.datumDetail
+                            : pv?.castka === 'no' ? pv.castkaDetail
+                            : pv?.eeoVazbaDetail}
+                        </div>
+                      )}
+                      {renderPairRow(row, candidate, pv, matchedFakturyByRowId[row.id], true)}
+                    </div>
+                  );
+                }), toggle];
+            })()}
+          </div>
+        </VazebniSkupinaBody>
+      </VazebniSkupinaCard>
+    );
+  };
+
+  const renderMatrixCard = (group) => {
+    const { groupId, invoiceRows, candidates, pairVerdicts, matchedFakturyByRowId } = group;
+    const verdictsInGroup = Object.values(pairVerdicts).map((pv) => pv.verdict);
+    const toReviewCount = verdictsInGroup.filter((v) => v === 'warn').length;
+    const groupTone = verdictsInGroup.length > 0 && verdictsInGroup.every((v) => v === 'good') ? 'good' : 'mixed';
+
+    return (
+      <VazebniSkupinaCard key={groupId}>
+        <VazebniSkupinaStripe $verdict={groupTone} />
+        <VazebniSkupinaBody>
+          <VazebniSkupinaHead>
+            <div>
+              <VazebniSkupinaTitle>Vazební skupina ({invoiceRows.length} faktur × {candidates.length} smluv)</VazebniSkupinaTitle>
+              <VazebniSkupinaSub>
+                VEMA a EEO se neshodnou, ke které smlouvě faktura patří: ve VEMA je vedena na jedné smlouvě, v EEO je stejný doklad zaevidovaný na jiné.
+              </VazebniSkupinaSub>
+              {invoiceRows.flatMap((row) => (matchedFakturyByRowId[row.id] || [])
+                .filter((f) => f.cislo_smlouvy && f.cislo_smlouvy !== row.original.smlouva_ecsml)
+                .map((f) => (
+                  <VazebniSkupinaSub key={`${row.id}-${f.id}`} style={{ color: VERDICT_COLORS.bad.text, fontWeight: 600 }}>
+                    VEMA {row.original.cfak} (doklad {row.original.cdok || '—'}): VEMA smlouva {row.original.smlouva_ecsml || '—'} × EEO smlouva {f.cislo_smlouvy}
+                  </VazebniSkupinaSub>
+                )))}
+            </div>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {invoiceRows.length > 1 && renderDokladySortControl(groupId)}
+              <SkupinaPill $tone="warn">{invoiceRows.length} faktur</SkupinaPill>
+              <SkupinaPill $tone="warn">{candidates.length} smluv</SkupinaPill>
+              {toReviewCount > 0 && <SkupinaPill $tone="warn">{toReviewCount} párů ke kontrole</SkupinaPill>}
+            </div>
+          </VazebniSkupinaHead>
+          {renderSmlTypoWarning(invoiceRows, pairVerdicts)}
+          {renderSmlouvaFinancniWarning(group)}
+
+          <MatchMatrixWrap>
+            <MatchMatrixGrid style={{ gridTemplateColumns: `230px repeat(${candidates.length}, minmax(190px, 1fr))` }}>
+              <MatrixCorner>faktura ↓ / smlouva →</MatrixCorner>
+              {candidates.map((cand) => {
+                const dOd = parseFlexibleDate(cand.platnost_od);
+                return (
+                  <MatrixColHead key={cand.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <span className="n" {...clickableProps(() => openSmlouvaPreview(cand), 'Zobrazit náhled smlouvy')}>{cand.cislo_smlouvy}</span>
+                      <OpenInFormButton type="button" onClick={() => openSmlouvaInEditForm(cand)} title={canEditContract ? 'Otevřít smlouvu k editaci' : 'Zobrazit smlouvu (nemáte právo editace)'}>
+                        <FontAwesomeIcon icon={faExternalLinkAlt} />
+                      </OpenInFormButton>
+                    </div>
+                    <span className="m">{cand.dodavatel}</span>
+                    {cand.nazev_smlouvy && <span className="m" title={cand.nazev_smlouvy}>{cand.nazev_smlouvy}</span>}
+                    {dOd && <span className="m">platná od {formatDateShort(dOd)}</span>}
+                    <div style={{ marginTop: 4, textAlign: 'left' }}>{eeoFakturyPanelFor(cand, null, null, invoiceRows)}</div>
+                  </MatrixColHead>
+                );
+              })}
+
+              {sortInvoiceRowsBy(invoiceRows, getGroupSort(groupId)).map((row) => (
+                <React.Fragment key={row.id}>
+                  <MatrixRowHead>
+                    <span className="n">VS: {row.original.cfak}</span>
+                    <span className="m">{row.original.firma_nazev}{row.original.firma_ico ? ` · IČO: ${row.original.firma_ico}` : ''}</span>
+                    {row.original.nazevfak && <span className="m" title={row.original.nazevfak}>{row.original.nazevfak}</span>}
+                    <span className="m">
+                      {(() => {
+                        const dV = parseFlexibleDate(row.original.dof);
+                        const dP = parseFlexibleDate(row.original.datpri);
+                        const dSpl = parseFlexibleDate(row.original.spl);
+                        return (
+                          <>
+                            {dV && <>vystavení <b>{formatDateShort(dV)}</b></>}
+                            {!dV && dP && <>přijetí <b>{formatDateShort(dP)}</b></>}
+                            {dSpl && <> · splatnost <b>{formatDateShort(dSpl)}</b></>}
+                          </>
+                        );
+                      })()}
+                    </span>
+                    <span className="m">Číslo dokladu: <b>{row.original.cdok || '—'}</b></span>
+                    <span className="m">Evidenční číslo smlouvy (VEMA): <b>{row.original.smlouva_ecsml || '—'}</b></span>
+                    <span className="m">Číslo objednávky (VEMA): <b>{row.original.cobj_formatovane || row.original.cobj || '—'}</b></span>
+                    <span className="m">Částka: <b>{formatKc(row.original.celkem || 0)}</b></span>
+                    {row.original.mimo_datumovy_rozsah === true && (
+                      <span className="m" style={{ color: VERDICT_COLORS.bad.text, fontWeight: 700 }}>
+                        ⚠ mimo datumový rozsah smlouvy
+                      </span>
+                    )}
+                    {(row.original.typdok !== null && row.original.typdok !== undefined && row.original.typdok !== '') && (
+                      <span
+                        className="m"
+                        style={Number(row.original.typdok) === VEMA_TYPDOK_ZALOHOVA ? { color: '#b45309', fontWeight: 700 } : undefined}
+                      >
+                        Typ dokladu: <b>{VEMA_TYPDOK_LABELS[Number(row.original.typdok)] || `kód ${row.original.typdok}`}</b>
+                      </span>
+                    )}
+                    {identifikacePanelyFor(row.original, matchedFakturyByRowId[row.id])}
+                    <div style={{ marginTop: 6 }}>
+                      <hr style={{ border: 'none', borderTop: '1px solid #e2e8f0', margin: '0 0 6px 0' }} />
+                      {kontrolaCellFor(row)}
+                    </div>
+                  </MatrixRowHead>
+                  {candidates.map((cand) => {
+                    const pv = pairVerdicts[`${row.id}__${cand.id}`];
+                    if (!pv) {
+                      return (
+                        <MatrixCell key={cand.id} $verdict="bad">
+                          <MatrixCellVerdict $verdict="bad">Nesedí</MatrixCellVerdict>
+                        </MatrixCell>
+                      );
+                    }
+                    const verdictLabel = pv.verdict === 'good' ? 'Potvrzeno v EEO' : pv.verdict === 'bad' ? 'Nesedí' : 'Odhad, ověřit';
+                    return (
+                      <MatrixCell key={cand.id} $verdict={pv.verdict}>
+                        <MatrixCellVerdict $verdict={pv.verdict}>{verdictLabel}</MatrixCellVerdict>
+                        <CondRow>
+                          <Cond $tick={pv.eeoVazba} title={pv.eeoVazbaDetail}>
+                            <span className="label">vazba EEO</span>
+                            <span className="detail">{pv.eeoVazbaDetail}</span>
+                          </Cond>
+                          <Cond $tick={pv.castka} title={pv.castkaDetail}>
+                            <span className="label">částka</span>
+                            <span className="detail">{pv.castkaDetail}</span>
+                          </Cond>
+                          <Cond $tick={pv.datum} title={pv.datumDetail}>
+                            <span className="label">datum</span>
+                            <span className="detail">{pv.datumDetail}</span>
+                          </Cond>
+                        </CondRow>
+                      </MatrixCell>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </MatchMatrixGrid>
+          </MatchMatrixWrap>
+        </VazebniSkupinaBody>
+      </VazebniSkupinaCard>
+    );
+  };
+
+  const attentionItems = [];
+  const confirmedGroups = [];
+
+  groups.forEach((group) => {
+    if (group.verdictCategory === 'matrix') {
+      attentionItems.push({ groupId: group.groupId, node: renderMatrixCard(group) });
+    } else if (group.verdictCategory === 'good') {
+      confirmedGroups.push(group);
+    } else {
+      attentionItems.push({ groupId: group.groupId, node: renderSmlGroupCard(group) });
+    }
+  });
+
+  const hasAnyVerdictCounts = Object.values(verdictCounts).some((n) => n > 0) || smlouvaWarningCount > 0 || verdictFilter || smlouvaWarningFilter;
+
+  return (
+    <>
+    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {hasAnyVerdictCounts && (
+        <VerdictFilterBar style={{ opacity: groupsLoading ? 0.55 : 1, pointerEvents: groupsLoading ? 'none' : 'auto', transition: 'opacity 0.15s ease' }}>
+          {Object.entries(VERDICT_CATEGORY_META).map(([key, meta]) => {
+            const count = verdictCounts[key] || 0;
+            // Při jiném aktivním filtru se chip s nulou nezobrazí zmizelý, ale
+            // zašedlý (jinak to vypadá, že kategorie přestala existovat).
+            // Aktivní chip zůstává vidět vždy, jinak by nešel vypnout.
+            const jinyFiltr = smlouvaWarningFilter || (verdictFilter && verdictFilter !== key);
+            const dimZero = count === 0 && jinyFiltr && ['bad', 'warn', 'good'].includes(key);
+            if (count === 0 && verdictFilter !== key && !dimZero) return null;
+            return (
+              <VerdictFilterChip
+                key={key}
+                type="button"
+                disabled={groupsLoading}
+                $active={verdictFilter === key}
+                $bg={meta.bg}
+                $border={meta.border}
+                $text={meta.text}
+                onClick={() => setVerdictFilter((prev) => (prev === key ? null : key))}
+                title={dimZero ? `${meta.label}: v kombinaci s ostatními filtry nic` : `Filtrovat podle vyhodnocení: ${meta.label}`}
+                style={dimZero ? { opacity: 0.45 } : undefined}
+              >
+                {verdictFilter === key ? '✓ ' : ''}{meta.label} ({count})
+              </VerdictFilterChip>
+            );
+          })}
+          {(smlouvaWarningCount > 0 || smlouvaWarningFilter) && (
+            <VerdictFilterChip
+              type="button"
+              disabled={groupsLoading}
+              $active={smlouvaWarningFilter}
+              $bg={VERDICT_COLORS.bad.bg}
+              $border={VERDICT_COLORS.bad.border}
+              $text={VERDICT_COLORS.bad.text}
+              onClick={() => setSmlouvaWarningFilter((prev) => !prev)}
+              title="Filtrovat jen smlouvy s varováním čerpání (mimo datumový rozsah / přečerpáno)"
+            >
+              {smlouvaWarningFilter ? '✓ ' : ''}⚠ Čerpání smlouvy ({smlouvaWarningCount})
+            </VerdictFilterChip>
+          )}
+          {groupsLoading && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', color: '#64748b' }}>
+              <LoadingSpinner style={{ width: 13, height: 13, borderWidth: 2 }} />
+              Načítám…
+            </span>
+          )}
+        </VerdictFilterBar>
+      )}
+
+      {groupsError && <ErrorMessage>{groupsError}</ErrorMessage>}
+
+      {groupsLoading ? (
+        <LoadingInline>
+          <LoadingSpinner />
+          <span>Načítám seskupený pohled…</span>
+        </LoadingInline>
+      ) : (
+        <>
+          {attentionItems.length === 0 && confirmedGroups.length === 0 && (
+            <SkupinaLoadingCard>
+              <span>Žádné položky neodpovídají aktuálním filtrům.</span>
+            </SkupinaLoadingCard>
+          )}
+
+          {attentionItems.length > 0 && (
+            <div>
+              {confirmedGroups.length > 0 && (
+                <GroupsSectionLabel>Vyžaduje pozornost ({attentionItems.length})</GroupsSectionLabel>
+              )}
+              <MatrixGroupsStack>
+                {attentionItems.map((item) => (
+                  <React.Fragment key={item.groupId}>{item.node}</React.Fragment>
+                ))}
+              </MatrixGroupsStack>
+            </div>
+          )}
+
+          {confirmedGroups.length > 0 && (
+            <div>
+              {attentionItems.length > 0 && (
+                <GroupsSectionLabel>Potvrzená shoda ({confirmedGroups.length})</GroupsSectionLabel>
+              )}
+              <SimpleTileGrid>
+                {confirmedGroups.map((group) => renderSmlGroupCard(group))}
+              </SimpleTileGrid>
+            </div>
+          )}
+
+          {pagination.total > 0 && (
+            <PaginationContainer>
+              <PaginationInfo>
+                Celkem {pagination.total} skupin
+              </PaginationInfo>
+              <PaginationControls>
+                {pagination.total_pages > 1 && (
+                  <>
+                    <PageButton onClick={() => setPage(1)} disabled={pagination.page <= 1}>
+                      <FontAwesomeIcon icon={faAnglesLeft} />
+                    </PageButton>
+                    <PageButton onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={pagination.page <= 1}>
+                      <FontAwesomeIcon icon={faChevronLeft} />
+                    </PageButton>
+                    <span style={{ fontSize: '0.875rem', color: '#64748b', margin: '0 0.5rem' }}>
+                      Stránka {pagination.page} z {pagination.total_pages}
+                    </span>
+                    <PageButton onClick={() => setPage((p) => Math.min(pagination.total_pages, p + 1))} disabled={pagination.page >= pagination.total_pages}>
+                      <FontAwesomeIcon icon={faChevronRight} />
+                    </PageButton>
+                    <PageButton onClick={() => setPage(pagination.total_pages)} disabled={pagination.page >= pagination.total_pages}>
+                      <FontAwesomeIcon icon={faAnglesRight} />
+                    </PageButton>
+                  </>
+                )}
+                <PageSizeSelector value={groupedPageSize} onChange={(e) => setGroupedPageSize(Number(e.target.value))}>
+                  {PAGE_SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>{size} / stránku</option>
+                  ))}
+                </PageSizeSelector>
+              </PaginationControls>
+            </PaginationContainer>
+          )}
+        </>
+      )}
+    </div>
+
+    <SlideInDetailPanel
+      isOpen={smlouvaPreview.open}
+      onClose={closeSmlouvaPreview}
+      entityType="contracts"
+      entityId={smlouvaPreview.data?.id}
+      loading={smlouvaPreview.loading}
+      numberLabel={smlouvaPreview.data?.cislo_smlouvy || smlouvaPreview.cisloSmlouvy}
+    >
+      {smlouvaPreview.error && (
+        <ErrorMessage>{smlouvaPreview.error}</ErrorMessage>
+      )}
+      {!smlouvaPreview.error && smlouvaPreview.data && (
+        <SmlouvaPreview smlouvaData={smlouvaPreview.data} />
+      )}
+    </SlideInDetailPanel>
+    </>
+  );
+};
+
+// ============================================================================
 // COMPONENT
 // ============================================================================
 
@@ -3194,11 +4801,28 @@ const VemaDenik = () => {
   // skupiny - od teď plně BE-řízené, viz GroupedKontrolaObjView).
   const [betaViewMode, setBetaViewMode] = useState(() => getStoredString(VEMA_BETA_VIEW_MODE_LS_KEY, 'flat'));
 
+  // Kontrola SML - stejný "flat"/"grouped" přepínač jako u Kontroly OBJ BETA,
+  // ale nezávislý stav/localStorage klíč (jiná záložka, jiná logika párování -
+  // viz GroupedKontrolaSmlView) a vlastní verdictFilter (financování se tu
+  // nefiltruje, proto žádný smlFinancovaniFilter).
+  const [smlViewMode, setSmlViewMode] = useState(() => getStoredString(VEMA_SML_VIEW_MODE_LS_KEY, 'flat'));
+  // Kontrola SML kategorii 'fan' nemá (víc faktur na smlouvu je normální
+  // čerpání) - dřív uložený filtr by vedl k prázdnému seznamu bez chipu.
+  const [smlWarningFilter, setSmlWarningFilter] = useState(false);
+  const [smlVerdictFilter, setSmlVerdictFilter] = useState(() => {
+    const stored = getStoredString(VEMA_SML_VERDICT_FILTER_LS_KEY, null);
+    return stored === 'fan' ? null : stored;
+  });
+
   // Data
   const [firmyData, setFirmyData] = useState([]);
   const [fakturyData, setFakturyData] = useState([]);
   const [smlouvyData, setSmlouvyData] = useState([]);
   const [eeoBezVemaData, setEeoBezVemaData] = useState([]);
+  // Které VEMA doklady pokrývá Kontrola objednávek / Kontrola smluv (stejná
+  // logika jako jejich seskupené pohledy) - z toho se filtrují ploché pohledy
+  // i "VEMA doklady bez EEO dokladů", aby se záložky nepřekrývaly.
+  const [prehledVazeb, setPrehledVazeb] = useState(null);
   const [eeoBezVemaLoading, setEeoBezVemaLoading] = useState(false);
   
   // Cache markery - true znamená "už načteno, nezatěžovat server"
@@ -3287,6 +4911,14 @@ const VemaDenik = () => {
     }
   }, [verdictFilter]);
   useEffect(() => { setStoredJSON(VEMA_BETA_FINANCOVANI_FILTER_LS_KEY, financovaniFilter); }, [financovaniFilter]);
+  useEffect(() => { setStoredString(VEMA_SML_VIEW_MODE_LS_KEY, smlViewMode); }, [smlViewMode]);
+  useEffect(() => {
+    if (smlVerdictFilter === null) {
+      try { localStorage.removeItem(VEMA_SML_VERDICT_FILTER_LS_KEY); } catch (e) {}
+    } else {
+      setStoredString(VEMA_SML_VERDICT_FILTER_LS_KEY, smlVerdictFilter);
+    }
+  }, [smlVerdictFilter]);
 
   // Load LP seznam pro parsing financování
   useEffect(() => {
@@ -3405,6 +5037,29 @@ const VemaDenik = () => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, token, username, search]);
+
+  const PREHLED_VAZEB_SUBTABS = ['kontrola-obj', 'kontrola-obj-beta', 'kontrola-sml', 'vema-bez-eeo'];
+  useEffect(() => {
+    if (!token || !username) return;
+    if (activeTab !== 'faktury' || !PREHLED_VAZEB_SUBTABS.includes(fakturySubTab)) return;
+    let cancelled = false;
+    const loadPrehled = async () => {
+      try {
+        const data = await getVemaPrehledVazeb(token, username);
+        if (cancelled) return;
+        setPrehledVazeb({
+          obj: new Set((data.vemaIdsObj || []).map(String)),
+          sml: new Set((data.vemaIdsSml || []).map(String)),
+          pokryte: new Set((data.vemaIdsPokryte || []).map(String)),
+        });
+      } catch (err) {
+        console.error('Chyba načítání přehledu vazeb VEMA-EEO:', err);
+      }
+    };
+    loadPrehled();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, fakturySubTab, token, username, fakturyData]);
 
   // Načtení EEO faktur bez vazby na VEMA import
   useEffect(() => {
@@ -4613,13 +6268,28 @@ const VemaDenik = () => {
     switch (fakturySubTab) {
       case 'kontrola-obj':
       case 'kontrola-obj-beta':
+        if (prehledVazeb) {
+          result = groupFakturyForKontrola(fakturyData.filter(item => prehledVazeb.obj.has(String(item.id))));
+          break;
+        }
         result = groupFakturyForKontrola(fakturyData.filter(item => {
           const hasObj = item.cobj && String(item.cobj).trim() !== '';
           const hasEvidencniSmlouva = item.smlouva_ecsml && String(item.smlouva_ecsml).trim() !== '';
-          return hasObj && !hasEvidencniSmlouva;
+          if (!hasObj || hasEvidencniSmlouva) return false;
+          // VEMA doklad, ke kterému EEO nemá vůbec žádnou napárovanou
+          // objednávku ani fakturu (fuzzy match beze shody), patří jen do
+          // "VEMA doklady bez EEO dokladů" - v Kontrole objednávek by byl jen
+          // šum "bez kandidáta", který se nemá proti čemu párovat.
+          const pocetObj = Number(item?.pocet_objednavek || 0);
+          const pocetFa = Number(item?.pocet_faktur || 0);
+          return pocetObj > 0 || pocetFa > 0;
         }));
         break;
       case 'kontrola-sml':
+        if (prehledVazeb) {
+          result = groupFakturyForKontrola(fakturyData.filter(item => prehledVazeb.sml.has(String(item.id))));
+          break;
+        }
         result = groupFakturyForKontrola(fakturyData.filter(item => {
           const hasEvidencniSmlouva = item.smlouva_ecsml && String(item.smlouva_ecsml).trim() !== '';
           const hasObj = item.cobj && String(item.cobj).trim() !== '';
@@ -4634,8 +6304,12 @@ const VemaDenik = () => {
         result = fakturyData.filter(item => (item.pocet_rocnich_poplatku || 0) > 0);
         break;
       case 'vema-bez-eeo':
-        // Doklady z VEMA importu bez JAKÉKOLI vazby na EEO (obj/faktura/roční poplatek)
-        result = fakturyData.filter(item => !hasAnyEeoLink(item));
+        // VEMA doklady, které nepokrývá Kontrola objednávek ani smluv (ani
+        // shoda čísla dokladu mimo ně) - viz vemaPrehledVazebHandlers.php.
+        // Dokud se přehled nenačte, platí původní odhad podle počtů vazeb.
+        result = prehledVazeb
+          ? fakturyData.filter(item => !prehledVazeb.pokryte.has(String(item.id)))
+          : fakturyData.filter(item => !hasAnyEeoLink(item));
         break;
       case 'eeo-bez-vema':
         result = eeoBezVemaData;
@@ -4649,7 +6323,7 @@ const VemaDenik = () => {
     const withBadgeFilter = applyBadgeFilter(result);
     const withWarningFilter = applyWarningFilter(withBadgeFilter);
     return applyKontrolaFilter(withWarningFilter);
-  }, [fakturyData, fakturySubTab, eeoBezVemaData, badgeFilter, warningOnlyFilter, kontrolaFilter]);
+  }, [fakturyData, fakturySubTab, eeoBezVemaData, badgeFilter, warningOnlyFilter, kontrolaFilter, prehledVazeb]);
 
   // Select data based on active tab
   const data = useMemo(() => {
@@ -4663,7 +6337,7 @@ const VemaDenik = () => {
   useEffect(() => {
     if (activeTab !== 'faktury') return;
     const currentSection = FAKTURY_SUB_SECTIONS.find(s => s.id === fakturySubTab);
-    if (currentSection && !canAccessSection(currentSection, userDetail)) {
+    if (currentSection && (currentSection.hidden || !canAccessSection(currentSection, userDetail))) {
       setFakturySubTab('tabulka');
       setPageIndex(0);
       setBetaPageIndex(0);
@@ -5461,7 +7135,7 @@ const VemaDenik = () => {
       {activeTab === 'faktury' && (
         <>
           <FakturySubTabs>
-            {FAKTURY_SUB_SECTIONS.filter(section => canAccessSection(section, userDetail)).map(section => (
+            {FAKTURY_SUB_SECTIONS.filter(section => !section.hidden && canAccessSection(section, userDetail)).map(section => (
               <FakturySubTab
                 key={section.id}
                 $active={fakturySubTab === section.id}
@@ -5496,6 +7170,28 @@ const VemaDenik = () => {
                 onClick={() => {
                   setBetaViewMode('grouped');
                   setBetaPageIndex(0);
+                }}
+              >
+                Seskupený pohled (BETA)
+              </ViewModeButton>
+            </ViewModeToggleBar>
+          )}
+
+          {fakturySubTab === 'kontrola-sml' && (
+            <ViewModeToggleBar>
+              <ViewModeButton
+                type="button"
+                $active={smlViewMode === 'flat'}
+                onClick={() => setSmlViewMode('flat')}
+              >
+                Plochý pohled
+              </ViewModeButton>
+              <ViewModeButton
+                type="button"
+                $active={smlViewMode === 'grouped'}
+                onClick={() => {
+                  setSmlViewMode('grouped');
+                  setPageIndex(0);
                 }}
               >
                 Seskupený pohled (BETA)
@@ -5645,7 +7341,7 @@ const VemaDenik = () => {
             </button>
 
             {(() => {
-              const hasActiveFilter = badgeFilter !== 'all' || warningOnlyFilter || kontrolaFilter.length > 0 || !!searchInput.trim() || !!verdictFilter || financovaniFilter.length > 0;
+              const hasActiveFilter = badgeFilter !== 'all' || warningOnlyFilter || kontrolaFilter.length > 0 || !!searchInput.trim() || !!verdictFilter || financovaniFilter.length > 0 || !!smlVerdictFilter || smlWarningFilter;
               return (
                 <button
                   onClick={() => {
@@ -5655,6 +7351,8 @@ const VemaDenik = () => {
                     setKontrolaFilter([]);
                     setVerdictFilter(null);
                     setFinancovaniFilter([]);
+                    setSmlVerdictFilter(null);
+                    setSmlWarningFilter(false);
                     handleClearSearch();
                     setPageIndex(0);
                     setBetaPageIndex(0);
@@ -5883,6 +7581,22 @@ const VemaDenik = () => {
             financovaniFilter={financovaniFilter}
             setFinancovaniFilter={setFinancovaniFilter}
             lpSeznam={lpSeznam}
+          />
+        ) : fakturySubTab === 'kontrola-sml' && smlViewMode === 'grouped' ? (
+          // Analogie Kontroly OBJ BETA výše, ale kandidát je EEO smlouva (viz
+          // GroupedKontrolaSmlView a vema-faktury/kontrola-sml/grouped-list).
+          <GroupedKontrolaSmlView
+            token={token}
+            username={username}
+            userDetail={userDetail}
+            search={search}
+            badgeFilter={badgeFilter}
+            warningOnlyFilter={warningOnlyFilter}
+            kontrolaFilter={kontrolaFilter}
+            verdictFilter={smlVerdictFilter}
+            setVerdictFilter={setSmlVerdictFilter}
+            smlouvaWarningFilter={smlWarningFilter}
+            setSmlouvaWarningFilter={setSmlWarningFilter}
           />
         ) : (
           <>

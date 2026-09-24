@@ -214,6 +214,150 @@ function handle_vema_kontrola_get($input, $config) {
 }
 
 /**
+ * BATCH GET - Načíst kontroly pro víc VEMA záznamů NAJEDNOU (jeden HTTP
+ * request místo N) - viz VemaKontrolaCell.js, který si dřív dělal vlastní
+ * fetch přes vema-kontrola/get pro KAŽDOU instanci sebe sama. V seskupeném
+ * pohledu (Kontrola SML i Kontrola OBJ BETA ve VemaDenik.js) se najednou
+ * vykreslí stovky instancí této buňky (jedna na VEMA doklad napříč všemi
+ * skupinami na stránce) a každá střílela vlastní request - naměřeno reálně
+ * 533 sekvenčních requestů (~25-30s waterfall) na jednu stránku.
+ *
+ * Vrací jen "case" objekt (bez historie událostí - ta zůstává na
+ * vema-kontrola/get, dotahuje se až při otevření popoveru, kdy uživatel
+ * skutečně jednu konkrétní historii chce vidět/editovat) - stejně
+ * normalizovaný (kontrola_status, metadata) jako handle_vema_kontrola_get.
+ *
+ * Stejný párovací klíč (typ_zaznamu, vema_id, vema_id_secondary) a stejná
+ * normalizace sekundárního ID (vema_normalize_secondary_id) jako
+ * handle_vema_kontrola_get, aby výsledek byl 1:1 shodný s tím, co by vrátilo
+ * volání get() pro každou položku zvlášť.
+ *
+ * POST: {token, username, typ_zaznamu, items: [{vema_id, vema_id_secondary?}, ...]}
+ * Response: {status, data: {items: {"<vema_id>__<vema_id_secondary>": kontrola|null, ...}}}
+ */
+function handle_vema_kontrola_batch_get($input, $config) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['status' => 'error', 'message' => 'Pouze POST metoda']);
+        return;
+    }
+
+    $token = $input['token'] ?? '';
+    $username = $input['username'] ?? '';
+    $typ_zaznamu = $input['typ_zaznamu'] ?? '';
+    $items_raw = isset($input['items']) && is_array($input['items']) ? $input['items'] : [];
+
+    if (!$token || !$username) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí token nebo username']);
+        return;
+    }
+    if (!$typ_zaznamu) {
+        http_response_code(400);
+        echo json_encode(['status' => 'error', 'message' => 'Chybí typ_zaznamu']);
+        return;
+    }
+
+    $token_data = verify_token($token);
+    if (!$token_data || $token_data['username'] !== $username) {
+        http_response_code(401);
+        echo json_encode(['status' => 'error', 'message' => 'Neplatný token']);
+        return;
+    }
+
+    // Normalizace + dedup položek - stejný klíč a stejná validace jako
+    // handle_vema_kontrola_get výše (vema_normalize_secondary_id).
+    $pairs = array(); // "vema_id__secondary" => [vema_id, normalized_secondary]
+    foreach ($items_raw as $item) {
+        $vema_id = is_array($item) ? ($item['vema_id'] ?? '') : '';
+        $vema_id_secondary = is_array($item) ? ($item['vema_id_secondary'] ?? '') : '';
+        $vema_id = trim((string)$vema_id);
+        if ($vema_id === '') continue;
+
+        $normalized_secondary = vema_normalize_secondary_id($typ_zaznamu, $vema_id_secondary);
+        if ($typ_zaznamu === 'faktura' && $normalized_secondary === null) continue;
+
+        $key = $vema_id . '__' . ($normalized_secondary ?? '');
+        $pairs[$key] = array($vema_id, $normalized_secondary);
+    }
+
+    // Bezpečnostní strop - stejný řád jako u ostatních batch endpointů VEMA
+    // modulu (vema-smlouvy/faktury-list, vema-objednavky/faktury-list).
+    if (count($pairs) > 1000) {
+        $pairs = array_slice($pairs, 0, 1000, true);
+    }
+
+    $result = array();
+    foreach (array_keys($pairs) as $key) { $result[$key] = null; }
+
+    if (empty($pairs)) {
+        http_response_code(200);
+        echo json_encode(array('status' => 'success', 'data' => array('items' => new stdClass())));
+        return;
+    }
+
+    try {
+        $db = get_db($config);
+        if (!$db) {
+            throw new Exception('Chyba připojení k databázi');
+        }
+        TimezoneHelper::setMysqlTimezone($db);
+
+        // Row-constructor IN - jeden dotaz pro celou dávku párů (vema_id,
+        // vema_id_secondary), místo N samostatných SELECT (nebo OR řetězce).
+        $tuples = implode(',', array_fill(0, count($pairs), '(?,?)'));
+        $params = array($typ_zaznamu);
+        foreach ($pairs as $pair) {
+            $params[] = $pair[0];
+            $params[] = $pair[1];
+        }
+
+        $sql = "
+            SELECT
+                k.*,
+                u1.jmeno as kontroloval_jmeno,
+                u1.prijmeni as kontroloval_prijmeni,
+                u2.jmeno as vytvoril_jmeno,
+                u2.prijmeni as vytvoril_prijmeni
+            FROM `25v_kontrola_metadata` k
+            LEFT JOIN `25_uzivatele` u1 ON k.kontroloval_uzivatel_id = u1.id
+            LEFT JOIN `25_uzivatele` u2 ON k.vytvoril_uzivatel_id = u2.id
+            WHERE k.typ_zaznamu = ? AND (k.vema_id, k.vema_id_secondary) IN ($tuples)
+        ";
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $byKey = array();
+        foreach ($rows as $row) {
+            $key = $row['vema_id'] . '__' . ($row['vema_id_secondary'] ?? '');
+            if (!empty($row['metadata_json'])) {
+                $row['metadata'] = json_decode($row['metadata_json'], true);
+            }
+            $row['kontrola_status'] = vema_normalize_status_for_api($row['kontrola_status'] ?? null);
+            $byKey[$key] = $row;
+        }
+
+        foreach ($pairs as $key => $pair) {
+            $result[$key] = isset($byKey[$key]) ? $byKey[$key] : null;
+        }
+
+        http_response_code(200);
+        echo json_encode(array(
+            'status' => 'success',
+            'data' => array('items' => empty($result) ? new stdClass() : $result),
+        ));
+    } catch (Exception $e) {
+        error_log("VEMA kontrola/batch-get error: " . $e->getMessage());
+        http_response_code(500);
+        echo json_encode(array(
+            'status' => 'error',
+            'message' => 'Chyba při načítání kontrol: ' . $e->getMessage(),
+        ));
+    }
+}
+
+/**
  * SAVE - Uložit nebo aktualizovat kontrolu
  * POST: {token, username, typ_zaznamu, vema_id, vema_id_secondary?, kontrola_status, poznamka, priorita, metadata}
  */
@@ -476,9 +620,9 @@ function handle_vema_kontrola_rucni_vazba_save($input, $config) {
         echo json_encode(['status' => 'error', 'message' => 'Chybí vema_id']);
         return;
     }
-    if (!in_array($action, ['set', 'clear'], true)) {
+    if (!in_array($action, ['set', 'clear', 'reject', 'unreject'], true)) {
         http_response_code(400);
-        echo json_encode(['status' => 'error', 'message' => 'action musí být set nebo clear']);
+        echo json_encode(['status' => 'error', 'message' => 'action musí být set, clear, reject nebo unreject']);
         return;
     }
 
@@ -489,7 +633,7 @@ function handle_vema_kontrola_rucni_vazba_save($input, $config) {
         return;
     }
 
-    if ($action === 'set') {
+    if ($action !== 'clear') {
         $eeo_id = $input['eeo_id'] ?? null;
         if ($eeo_id === null || $eeo_id === '') {
             http_response_code(400);
@@ -535,7 +679,40 @@ function handle_vema_kontrola_rucni_vazba_save($input, $config) {
         $metadata = ($existing && !empty($existing['metadata_json'])) ? json_decode($existing['metadata_json'], true) : [];
         if (!is_array($metadata)) $metadata = [];
         $previous_vazba = $metadata['rucni_vazba'] ?? null;
-        $metadata['rucni_vazba'] = $new_vazba;
+
+        // Zamítnuté EEO doklady ("tenhle doklad k VEMA faktuře nepatří") -
+        // klíčované stringovým eeo_id, jak ho posílá FE (int ID EEO faktury,
+        // nebo 'rp_<id>' u položky ročního poplatku).
+        $zamitnute = (isset($metadata['zamitnute_vazby']) && is_array($metadata['zamitnute_vazby'])) ? $metadata['zamitnute_vazby'] : [];
+        $eeo_key = isset($input['eeo_id']) ? (string)$input['eeo_id'] : '';
+        $udalost_typ = 'RUCNI_VAZBA';
+        $udalost_pred = $previous_vazba;
+        $udalost_po = $new_vazba;
+
+        if ($action === 'reject') {
+            $zamitnute[$eeo_key] = [
+                'eeo_typ' => (string)($input['eeo_typ'] ?? 'eeo_faktura'),
+                'eeo_id' => $input['eeo_id'],
+                'eeo_cislo' => $input['eeo_cislo'] ?? null,
+                'oznacil_uzivatel_id' => $user_id,
+                'dt' => $now,
+            ];
+            if ($previous_vazba && (string)($previous_vazba['eeo_id'] ?? '') === $eeo_key) {
+                $metadata['rucni_vazba'] = null;
+            }
+            $udalost_typ = 'ZAMITNUTI_VAZBY';
+            $udalost_pred = null;
+            $udalost_po = $zamitnute[$eeo_key];
+        } elseif ($action === 'unreject') {
+            $udalost_typ = 'ZAMITNUTI_VAZBY';
+            $udalost_pred = $zamitnute[$eeo_key] ?? null;
+            $udalost_po = null;
+            unset($zamitnute[$eeo_key]);
+        } else {
+            $metadata['rucni_vazba'] = $new_vazba;
+            if ($action === 'set') unset($zamitnute[$eeo_key]);
+        }
+        $metadata['zamitnute_vazby'] = $zamitnute;
         $metadata_json = json_encode($metadata, JSON_UNESCAPED_UNICODE);
 
         if ($existing) {
@@ -566,26 +743,38 @@ function handle_vema_kontrola_rucni_vazba_save($input, $config) {
         // co bylo předtím) a nic se při dalším ručním výběru neztrácí.
         // stav_pred/stav_po jsou VARCHAR(50) (sdílené se ZMENA_STAVU/ZMENA_PRIORITY),
         // takže sem jde jen stručný popis - celý JSON výběru je v text_zprava (TEXT).
-        $vazba_summary = function ($v) {
+        $vazba_summary = function ($v) use ($udalost_typ) {
             if (!$v) return 'žádný';
             $cislo = $v['eeo_cislo'] ?? $v['eeo_id'] ?? '?';
-            return mb_substr('EEO faktura ' . $cislo, 0, 50);
+            return mb_substr(($udalost_typ === 'ZAMITNUTI_VAZBY' ? 'zamítnut ' : 'EEO faktura ') . $cislo, 0, 50);
         };
         vema_add_udalost(
             $db,
             $result_id,
+            // Historie.typ je ENUM bez samostatné hodnoty pro zamítnutí -
+            // zapisuje se pod RUCNI_VAZBA, druh akce je v JSON (akce).
             'RUCNI_VAZBA',
-            json_encode(['pred' => $previous_vazba, 'po' => $new_vazba], JSON_UNESCAPED_UNICODE),
-            $vazba_summary($previous_vazba),
-            $vazba_summary($new_vazba),
+            json_encode(['akce' => $action, 'pred' => $udalost_pred, 'po' => $udalost_po], JSON_UNESCAPED_UNICODE),
+            $vazba_summary($udalost_pred),
+            $vazba_summary($udalost_po),
             $user_id
         );
 
+        $messages = [
+            'set' => 'Doklad označen jako správný',
+            'clear' => 'Ruční výběr zrušen',
+            'reject' => 'Doklad zamítnut',
+            'unreject' => 'Zamítnutí dokladu zrušeno',
+        ];
         http_response_code(200);
         echo json_encode([
             'status' => 'success',
-            'data' => ['id' => $result_id, 'rucni_vazba' => $new_vazba],
-            'message' => $action === 'set' ? 'Doklad označen jako správný' : 'Ruční výběr zrušen',
+            'data' => [
+                'id' => $result_id,
+                'rucni_vazba' => $metadata['rucni_vazba'] ?? null,
+                'zamitnute_vazby' => array_values($zamitnute),
+            ],
+            'message' => $messages[$action],
         ]);
 
     } catch (Exception $e) {

@@ -7880,7 +7880,11 @@ function OrderForm25() {
       const skutecne = parseFloat(d.skutecne_cerpano) || 0;
       const predpoklad = parseFloat(d.predpokladane_cerpani) || 0;
       const pokladna = parseFloat(d.cerpano_pokladna) || 0;
-      return (skutecne + predpoklad + pokladna + lpPodil) > limit;
+      // ✅ Musí zahrnout i rezervovano (objednávky ve stavu "Schválená" bez faktury/položek) -
+      // je to samostatná, nepřekrývající se kategorie čerpání LP (viz backend
+      // limitovanePrislibyCerpaniHandlers_v2_pdo.php), stejně jako v dialogu rychlého schválení.
+      const rezervovano = parseFloat(d.rezervovano) || 0;
+      return (skutecne + predpoklad + pokladna + rezervovano + lpPodil) > limit;
     });
   }, [formData?.lp_kod, formData?.max_cena_s_dph, lpDetails]);
 
@@ -23561,7 +23565,9 @@ function OrderForm25() {
                                       </>)}
                                       <span style={{ color: '#6b7280' }}>V procesu:</span>
                                       <span style={{ textAlign: 'right', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px', flexWrap: 'wrap', color: smlouvaRowBarColorLight }}>
-                                        {formatCZK(cerpano)}
+                                        {/* ✅ Zobrazit jen "v procesu" (bez Dokončeno) - cerpano/cerpano_celkem
+                                            zahrnuje i cerpano_skutecne, které se ukazuje zvlášť níže jako "Dokončeno" */}
+                                        {formatCZK(vProcesuS)}
                                         {maxCena > 0 && (
                                           <span title={`Tato objednávka (+${formatCZK(maxCena)})`} style={{ fontSize: '0.7rem', color: wouldExceed ? '#991b1b' : '#059669', fontWeight: 700, background: wouldExceed ? '#fee2e2' : '#d1fae5', padding: '1px 5px', borderRadius: '3px', border: `1px solid ${wouldExceed ? '#fca5a5' : '#6ee7b7'}`, cursor: 'help', whiteSpace: 'nowrap' }}>
                                             +{formatCZK(maxCena)}

@@ -642,39 +642,21 @@ function handle_vema_faktury_eeo_bez_vema_list($input, $config, $queries) {
         $params = array();
 
         $where[] = "f.aktivni = 1";
+        // Stornované faktury se v žádné záložce VEMA vs EEO nezohledňují.
+        $where[] = "f.stav != 'STORNO'";
 
-        // ⚡ Optimalizace: rozdělené NOT IN podmínky využijí indexy:
-        //  - 25v_fpazahl(vsymb, cdok, cobj)
-        //  - 25v_smla(ecsml)
-        // Sekce hledá EEO faktury, které VEMA vůbec nezná → bez částkové tolerance.
-        $where[] = "(
-            f.fa_cislo_vema IS NULL OR f.fa_cislo_vema = ''
-            OR f.fa_cislo_vema NOT IN (
-                SELECT v.vsymb FROM `" . TBL_VEMA_FPAZAHL . "` v
-                WHERE v.stav_zaznamu = 'aktivni' AND v.vsymb IS NOT NULL AND v.vsymb != ''
-            )
-        )";
-        $where[] = "(
-            f.fa_vema_kod IS NULL OR f.fa_vema_kod = ''
-            OR f.fa_vema_kod NOT IN (
-                SELECT v.cdok FROM `" . TBL_VEMA_FPAZAHL . "` v
-                WHERE v.stav_zaznamu = 'aktivni' AND v.cdok IS NOT NULL AND v.cdok != ''
-            )
-        )";
-        $where[] = "(
-            o.cislo_objednavky IS NULL OR o.cislo_objednavky = ''
-            OR o.cislo_objednavky NOT IN (
-                SELECT v.cobj FROM `" . TBL_VEMA_FPAZAHL . "` v
-                WHERE v.stav_zaznamu = 'aktivni' AND v.cobj IS NOT NULL AND v.cobj != ''
-            )
-        )";
-        $where[] = "(
-            sm.cislo_smlouvy IS NULL OR sm.cislo_smlouvy = ''
-            OR sm.cislo_smlouvy NOT IN (
-                SELECT vs.ecsml FROM `" . TBL_VEMA_SMLA . "` vs
-                WHERE vs.stav_zaznamu = 'aktivni' AND vs.ecsml IS NOT NULL AND vs.ecsml != ''
-            )
-        )";
+        // EEO faktura je "bez VEMA", když není spárovaná s VEMA dokladem v
+        // Kontrole objednávek ani v Kontrole smluv (ani přes shodu čísla
+        // dokladu mimo ně) - stejný zdroj jako "VEMA doklady bez EEO", aby se
+        // záložky navzájem nepřekrývaly (viz vemaPrehledVazebHandlers.php).
+        $prehled = vema_prehled_vazeb_collect($input, $config);
+        if ($prehled === null) {
+            throw new Exception('Nepodařilo se sestavit přehled vazeb z kontrol');
+        }
+        $sparovaneIds = array_values(array_filter(array_map('intval', $prehled['eeoFakturaIds'])));
+        if (!empty($sparovaneIds)) {
+            $where[] = "f.id NOT IN (" . implode(',', $sparovaneIds) . ")";
+        }
 
         if ($search !== '') {
             $where[] = "(

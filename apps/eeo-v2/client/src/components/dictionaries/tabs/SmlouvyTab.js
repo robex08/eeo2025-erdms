@@ -2998,8 +2998,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     return new Intl.NumberFormat('cs-CZ', {
       style: 'currency',
       currency: 'CZK',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(num);
   };
 
@@ -3591,7 +3591,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                             }
                           });
                           const thBase = { padding: '0.35rem 0.5rem', fontWeight: 600, fontSize: '0.75rem', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.025em', borderBottom: '2px solid #cbd5e1', cursor: 'pointer', userSelect: 'none', whiteSpace: 'nowrap' };
-                          const czFormat = (v) => new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v || 0);
+                          const czFormat = (v) => new Intl.NumberFormat('cs-CZ', { style: 'currency', currency: 'CZK', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v || 0);
                           const czDate = (d) => { if (!d) return '—'; const s = d.substring(0,10); const p = s.split('-'); return p.length === 3 ? `${parseInt(p[2])}.${parseInt(p[1])}.${p[0]}` : s; };
                           const allRows = [...objednavky, ...primeFaktury];
                           const totalRows = allRows.length;

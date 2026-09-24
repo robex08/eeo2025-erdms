@@ -185,20 +185,19 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
         }
 
         if (!empty($cobj_map)) {
-            // 1 dotaz: SELECT cislo_objednavky WHERE cislo_objednavky LIKE prefix1% OR LIKE prefix2% ...
-            $unique_cobjs = array_keys($cobj_map);
-            $like_parts = array();
-            $params = array();
-            foreach ($unique_cobjs as $cobj) {
-                $like_parts[] = "cislo_objednavky LIKE ?";
-                $params[] = $cobj . '%';
-            }
-            $sql = "SELECT cislo_objednavky FROM `" . TBL_OBJEDNAVKY . "` 
-                    WHERE (" . implode(' OR ', $like_parts) . ")
-                    AND stav_objednavky NOT IN ('Zrušena', 'Zamítnutá', 'Odloženo')";
+            // Výkonnostní pozn.: desítky až stovky OR-LIKE podmínek donutí
+            // MariaDB k plnému scanu bez ohledu na index na cislo_objednavky
+            // (ověřeno EXPLAINem - key zůstává NULL i s indexem), takže
+            // místo generování obřího WHERE radši načteme VŠECHNY aktivní
+            // objednávky JEDNÍM prostým dotazem (tabulka má jen ~2500
+            // řádků, <100ms) a prefix matching děláme v PHP - stejná
+            // sémantika, jen bez zbytečně drahého SQL WHERE.
+            $sql = "SELECT cislo_objednavky FROM `" . TBL_OBJEDNAVKY . "`
+                    WHERE stav_objednavky NOT IN ('Zrušena', 'Zamítnutá', 'Odloženo')";
             $stmt = $db->prepare($sql);
-            $stmt->execute($params);
+            $stmt->execute();
             $eeo_obj_rows = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $unique_cobjs = array_keys($cobj_map);
 
             // Spočítat: pro každý cobj prefix kolik EEO obj odpovídá
             $cobj_counts = array();
@@ -390,7 +389,6 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
                 foreach ($idx_list as $idx) {
                     $vema_castka = !empty($vema_faktury[$idx]['celkem']) ? floatval($vema_faktury[$idx]['celkem']) : null;
                     $cdok = !empty($vema_faktury[$idx]['cdok']) ? trim((string)$vema_faktury[$idx]['cdok']) : '';
-                    $allow_fallback_for_cdok = ($cdok === '' || (!empty($cdok_has_paid_rp[$cdok]) && $cdok_has_paid_rp[$cdok] === true));
                     $rp_id_map = ($cdok !== '' && !empty($cdok_rp_faktura_ids[$cdok])) ? $cdok_rp_faktura_ids[$cdok] : array();
                     $rp_castky = ($cdok !== '' && !empty($cdok_rp_castky[$cdok])) ? $cdok_rp_castky[$cdok] : array();
                     $rp_splatnosti = ($cdok !== '' && !empty($cdok_rp_splatnosti[$cdok])) ? $cdok_rp_splatnosti[$cdok] : array();
@@ -415,10 +413,22 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
                         if ($cdok !== '') {
                             if ($fa_vema_kod === $cdok) {
                                 $exact_ids[$row_id] = true;
-                            } elseif ($fa_vema_kod === '' && $allow_fallback_for_cdok) {
-                                // Stejná detail logika pro staré faktury bez fa_vema_kod:
-                                // 1) pokud je faktura přímo navázaná v RP položce, bereme ji,
-                                // 2) jinak musí sedět RP částka + blízká splatnost.
+                            } elseif ($fa_vema_kod === '') {
+                                $has_rp_context = (!empty($rp_id_map) || !empty($rp_castky) || !empty($rp_splatnosti));
+                                if (!$has_rp_context) {
+                                    // Běžná (ne-RP) faktura: VS+částka už sedí (viz kontrola
+                                    // výše) a EEO fa_vema_kod je prázdné (EEO číslo dokladu
+                                    // u starších/běžných faktur nebývá vždy doplněné) - to samo
+                                    // o sobě stačí k fallback shodě, netřeba vyžadovat prázdný
+                                    // VEMA cdok jako dřív.
+                                    $fallback_ids[$row_id] = true;
+                                    continue;
+                                }
+
+                                // RP kontext: stejná přísnější detail logika pro staré faktury
+                                // bez fa_vema_kod - 1) pokud je faktura přímo navázaná v RP
+                                // položce, bereme ji, 2) jinak musí sedět RP částka + blízká
+                                // splatnost.
                                 if ($je_v_rp_vazbe) {
                                     $fallback_ids[$row_id] = true;
                                     continue;
@@ -453,7 +463,7 @@ function bulk_calculate_vema_propojeni_counts(&$vema_faktury, $db) {
                                     $fallback_ids[$row_id] = true;
                                 }
                             }
-                        } elseif ($allow_fallback_for_cdok) {
+                        } else {
                             $fallback_ids[$row_id] = true;
                         }
                     }
@@ -592,6 +602,10 @@ function format_vema_cislo_objednavky($cobj) {
     // 3. Pokud má formát O-xxxROK (bez oddělovače), např. O-01972026
     if (preg_match('/^(O-\d+?)(20\d{2})$/i', $cobj, $matches)) {
         return $matches[1] . '/' . $ico_konstanta . '/' . $matches[2];
+    }
+    // 4. Pokud má formát O-xxxx/YY (dvoumístný rok s lomítkem), např. O-0101/26
+    if (preg_match('/^(O-\d+)\/(\d{2})$/i', $cobj, $matches)) {
+        return $matches[1] . '/' . $ico_konstanta . '/20' . $matches[2];
     }
 
     // Jinak nechat původní
@@ -831,8 +845,14 @@ function resolve_vema_faktura_propojeni($db, $vema_faktura) {
         // 3. PRIORITA: Hledat podle variabilního symbolu + částka
         // OPTIMALIZACE: odstraněn LIKE '%vsymb%' v rozsirujici_data
         // (rozsirujici_data zatím nikdy neobsahuje var.symbol => 0 výsledků, full scan)
+        // Pozn.: dřív se sem vůbec nevstoupilo, když VEMA cdok nebyl prázdný
+        // (a nešlo o placený RP) - i když EEO faktura má fa_vema_kod prázdné
+        // (běžné u starších/běžných faktur, EEO číslo dokladu nedoplňuje vždy).
+        // SQL níže samo správně omezuje shodu na "VEMA cdok prázdný NEBO EEO
+        // fa_vema_kod prázdný" (viz `? = '' OR f.fa_vema_kod IS NULL OR TRIM(...) = ''`),
+        // takže netřeba to duplicitně (a chybně) hlídat i tady.
         // ==================================================================
-        if (!empty($vema_faktura['vsymb']) && !$exact_vs_cdok_found && ($vema_cdok_trim === '' || $has_paid_rp)) {
+        if (!empty($vema_faktura['vsymb']) && !$exact_vs_cdok_found) {
             $vsymb = $vema_faktura['vsymb'];
             $vema_castka = !empty($vema_faktura['celkem']) ? floatval($vema_faktura['celkem']) : null;
             $has_rp_context = !empty($rocni_poplatky) && !empty($vema_faktura['cdok']);
@@ -1142,12 +1162,13 @@ function bulk_resolve_vema_faktura_propojeni($db, $invoices) {
         }
         if (!empty($cobj_map)) {
             $unique_cobjs = array_keys($cobj_map);
-            $like_parts = array();
-            $params = array();
-            foreach ($unique_cobjs as $cobj) {
-                $like_parts[] = "o.cislo_objednavky LIKE ?";
-                $params[] = $cobj . '%';
-            }
+            // Výkonnostní pozn. (stejná jako v bulk_calculate_vema_propojeni_counts):
+            // OR-LIKE s desítkami/stovkami podmínek donutí MariaDB k plnému
+            // scanu bez ohledu na index na cislo_objednavky (ověřeno
+            // EXPLAINem). Tabulka objednávek má jen ~2500 řádků a i se
+            // všemi JOINy/subquery se celá vejde do <100ms, takže místo
+            // obřího WHERE načteme všechny aktivní objednávky najednou a
+            // prefix matching (níže, beze změny) provedeme v PHP.
             $sql = "SELECT
                         o.id, o.cislo_objednavky, o.predmet as nazev, o.dt_objednavky,
                         o.max_cena_s_dph as castka_max,
@@ -1164,10 +1185,9 @@ function bulk_resolve_vema_faktura_propojeni($db, $invoices) {
                     LEFT JOIN `" . TBL_UZIVATELE . "` u ON o.uzivatel_id = u.id
                     LEFT JOIN `" . TBL_UZIVATELE . "` obj ON o.objednatel_id = obj.id
                     LEFT JOIN `" . TBL_UZIVATELE . "` sch ON o.schvalovatel_id = sch.id
-                    WHERE (" . implode(' OR ', $like_parts) . ")
-                      AND o.stav_objednavky NOT IN ('Zrušena', 'Zamítnutá', 'Odloženo')";
+                    WHERE o.stav_objednavky NOT IN ('Zrušena', 'Zamítnutá', 'Odloženo')";
             $stmt = $db->prepare($sql);
-            $stmt->execute($params);
+            $stmt->execute();
             $objednavky_rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             // Batch dohledání "skutečného" schvalovatele (může se lišit od
             // schvalovatel_id, pokud akci provedl někdo v zastoupení) -
@@ -1245,8 +1265,12 @@ function bulk_resolve_vema_faktura_propojeni($db, $invoices) {
                 }
             }
 
-            $has_paid_rp = ($cdok !== '' && !empty($cdok_has_paid_rp[$cdok]));
-            if ($vsymb !== '' && !$exact_vs_cdok_found && ($cdok === '' || $has_paid_rp) && !empty($candidates)) {
+            // Pozn.: vnější brána dřív navíc vyžadovala ($cdok === '' || $has_paid_rp),
+            // takže se sem vůbec nevstoupilo, i když EEO fa_vema_kod bylo prázdné
+            // u běžné (ne-RP) faktury s neprázdným VEMA cdok - viz vnitřní filtr
+            // o dva řádky níž, který tenhle případ (fa_vema_kod_trim === '') už
+            // sám správně povoluje.
+            if ($vsymb !== '' && !$exact_vs_cdok_found && !empty($candidates)) {
                 $faktury_vsymb = array();
                 foreach ($candidates as $row) {
                     $fa_vema_kod_trim = isset($row['fa_vema_kod']) ? trim((string)$row['fa_vema_kod']) : '';

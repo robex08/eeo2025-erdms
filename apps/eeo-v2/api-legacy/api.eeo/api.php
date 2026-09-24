@@ -308,6 +308,8 @@ require_once __DIR__ . '/v2025.03_25/lib/vemaHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaKontrolaHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaPropojenHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaBetaGroupedHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/vemaSmlGroupedHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/vemaPrehledVazebHandlers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
@@ -2489,6 +2491,10 @@ switch ($endpoint) {
         handle_vema_kontrola_get($input, $config);
         break;
 
+    case 'vema-kontrola/batch-get':
+        handle_vema_kontrola_batch_get($input, $config);
+        break;
+
     case 'vema-kontrola/save':
         handle_vema_kontrola_save($input, $config);
         break;
@@ -2515,6 +2521,18 @@ switch ($endpoint) {
 
     case 'vema-faktury/kontrola-obj-beta/grouped-list':
         handle_vema_beta_grouped_list($input, $config);
+        break;
+
+    case 'vema-faktury/kontrola-sml/grouped-list':
+        handle_vema_sml_grouped_list($input, $config);
+        break;
+
+    case 'vema-faktury/prehled-vazeb':
+        handle_vema_prehled_vazeb($input, $config);
+        break;
+
+    case 'vema-smlouvy/faktury-list':
+        handle_vema_smlouvy_faktury_list($input, $config);
         break;
 
     // === NOVÉ OBJEDNÁVKY API (25a_*) ===

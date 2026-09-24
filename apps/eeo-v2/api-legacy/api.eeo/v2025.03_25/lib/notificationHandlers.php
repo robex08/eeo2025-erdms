@@ -1141,10 +1141,11 @@ function handle_notifications_create($input, $config, $queries) {
 
     try {
         $db = get_db($config);
+        TimezoneHelper::setMysqlTimezone($db);
         $typ = $input['typ'];
         $current_uzivatel_id = $token_data['id'];
         $username = $token_data['username'];
-        
+
         // Načti template z databáze
         $template = getNotificationTemplate($db, $typ);
         if (!$template) {
