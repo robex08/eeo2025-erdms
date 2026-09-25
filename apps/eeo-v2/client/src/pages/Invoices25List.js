@@ -4475,9 +4475,14 @@ const Invoices25List = () => {
       return;
     }
     
-    // ⚠️ KONTROLA: Pokud je současný stav ZAPLACENO a uživatel mění na jiný stav -> zobrazit warning
+    // ⚠️ KONTROLA: Návrat z vyššího stavu zpět -> potvrzovací dialog
+    //   ZAPLACENO → cokoli kromě DOKONCENA (ZAPLACENO → DOKONCENA je běžný krok, bez dialogu)
+    //   DOKONCENA → cokoli jiného
     const currentStatus = invoice.stav || 'ZAEVIDOVANA';
-    if (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO') {
+    const isStepBack =
+      (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO' && newStatus !== 'DOKONCENA') ||
+      (currentStatus === 'DOKONCENA' && newStatus !== 'DOKONCENA');
+    if (isStepBack) {
       setStatusChangeDialog({
         isOpen: true,
         invoice: invoice,
@@ -4527,8 +4532,8 @@ const Invoices25List = () => {
           if (inv.id === invoice.id) {
             const updates = { stav: newStatus };
             
-            // Pokud měníme Z ZAPLACENO na jiný stav -> zrušit fa_zaplacena flag
-            if (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO') {
+            // Pokud měníme Z ZAPLACENO na nižší stav -> zrušit fa_zaplacena flag (DOKONCENA zůstává zaplacená)
+            if (currentStatus === 'ZAPLACENO' && newStatus !== 'ZAPLACENO' && newStatus !== 'DOKONCENA') {
               updates.zaplacena = false;
               updates.fa_zaplacena = false;
             }
@@ -7101,7 +7106,22 @@ const Invoices25List = () => {
       )}
       
       {/* Workflow Status Change Dialog - změna ze stavu ZAPLACENO */}
-      {statusChangeDialog.isOpen && statusChangeDialog.invoice && (
+      {statusChangeDialog.isOpen && statusChangeDialog.invoice && (() => {
+        const STAV_LABELS = {
+          ZAEVIDOVANA: 'Zaevidovaná',
+          VECNA_SPRAVNOST: 'Věcná správnost',
+          V_RESENI: 'V řešení',
+          PREDANA_PO: 'Předaná PO',
+          K_ZAPLACENI: 'K zaplacení',
+          ZAPLACENO: 'Zaplaceno',
+          DOKONCENA: 'Dokončená',
+          STORNO: 'Storno+'
+        };
+        const currentStav = statusChangeDialog.invoice.stav;
+        const isDokoncena = currentStav === 'DOKONCENA';
+        const currentLabel = (STAV_LABELS[currentStav] || currentStav || '').toUpperCase();
+        const newLabel = STAV_LABELS[statusChangeDialog.newStatus] || statusChangeDialog.newStatus;
+        return (
         <ConfirmDialog
           isOpen={statusChangeDialog.isOpen}
           onClose={() => setStatusChangeDialog({ isOpen: false, invoice: null, newStatus: null })}
@@ -7109,7 +7129,7 @@ const Invoices25List = () => {
             performStatusChange(statusChangeDialog.invoice, statusChangeDialog.newStatus);
             setStatusChangeDialog({ isOpen: false, invoice: null, newStatus: null });
           }}
-          title="⚠️ Změna stavu zaplacené faktury"
+          title={isDokoncena ? '⚠️ Změna stavu dokončené faktury' : '⚠️ Změna stavu zaplacené faktury'}
           confirmText="Ano, změnit stav"
           cancelText="Zrušit"
           variant="warning"
@@ -7123,18 +7143,11 @@ const Invoices25List = () => {
             }}>
               <h4 style={{ margin: '0 0 0.75rem 0', color: '#92400e' }}>
                 <FontAwesomeIcon icon={faExclamationTriangle} style={{ marginRight: '0.5rem' }} />
-                Měníte stav ZAPLACENÉ faktury
+                Měníte stav {isDokoncena ? 'DOKONČENÉ' : 'ZAPLACENÉ'} faktury zpět
               </h4>
               <p style={{ margin: 0, color: '#92400e', fontSize: '0.95rem' }}>
-                Faktura je aktuálně ve stavu <strong>ZAPLACENO</strong>. Opravdu chcete změnit stav na{' '}
-                <strong>
-                  {statusChangeDialog.newStatus === 'ZAEVIDOVANA' ? 'Zaevidovaná' :
-                   statusChangeDialog.newStatus === 'VECNA_SPRAVNOST' ? 'Věcná správnost' :
-                   statusChangeDialog.newStatus === 'V_RESENI' ? 'V řešení' :
-                   statusChangeDialog.newStatus === 'PREDANA_PO' ? 'Předaná PO' :
-                   statusChangeDialog.newStatus === 'K_ZAPLACENI' ? 'K zaplacení' :
-                   statusChangeDialog.newStatus === 'STORNO' ? 'Storno+' : statusChangeDialog.newStatus}
-                </strong>?
+                Faktura je aktuálně ve stavu <strong>{currentLabel}</strong>. Opravdu chcete změnit stav na{' '}
+                <strong>{newLabel}</strong>?
               </p>
             </div>
 
@@ -7182,14 +7195,15 @@ const Invoices25List = () => {
                   color: '#065f46',
                   fontWeight: '600'
                 }}>
-                  Aktuální stav: ✅ ZAPLACENO
+                  Aktuální stav: ✅ {currentLabel}
                 </div>
               </div>
             </div>
           </div>
         </ConfirmDialog>
-      )}
-      
+        );
+      })()}
+
       {/* Confirm Dialog - Unlink faktura od objednávky/smlouvy */}
       {confirmDialog.isOpen && (
         <ConfirmDialog

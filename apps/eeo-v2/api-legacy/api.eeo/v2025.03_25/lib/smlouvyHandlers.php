@@ -301,6 +301,159 @@ function validateSmlouvaData($data, $db, $is_insert = true) {
 }
 
 /**
+ * Výpočet progressu čerpání smluv (Dokončeno / V procesu).
+ *
+ * Pravidla:
+ *  - OBJ skutečně dokončená = stav Dokončená/Archivovaná + aspoň 1 FA + všechny FA
+ *      (mimo STORNO) ZAPLACENO/DOKONCENA → její FA jdou do "dokončeno".
+ *  - Ostatní OBJ (mimo Zamítnutá/Zrušena/Smazaná), vč. Dokončené s nedokončenou FA
+ *      → do "v procesu" jde částka OBJ (součet položek, fallback max_cena_s_dph),
+ *      FA se nepočítají, protože OBJ může ještě čekat na další FA.
+ *      Pokud součet jejích FA přesahuje částku OBJ, vrátí se v `prekroceni` (upozornění v UI).
+ *  - FA přímo na smlouvě (bez OBJ) → podle stavu jako výše.
+ *
+ * @param PDO   $db
+ * @param array $cisla    Čísla smluv.
+ * @param int   $user_id  Uživatel pro *_user varianty.
+ * @return array cislo_smlouvy => [dokonceno, v_procesu, dokonceno_user, v_procesu_user, prekroceni, prekroceni_user]
+ */
+function _smlouvy_calc_progress($db, array $cisla, $user_id) {
+    $result = array();
+    if (empty($cisla)) {
+        return $result;
+    }
+    foreach ($cisla as $cs) {
+        $result[$cs] = array(
+            'dokonceno' => 0.0, 'v_procesu' => 0.0,
+            'dokonceno_user' => 0.0, 'v_procesu_user' => 0.0,
+            'prekroceni' => array(), 'prekroceni_user' => array()
+        );
+    }
+
+    $tbl_obj = TBL_OBJEDNAVKY;
+    $tbl_fa  = TBL_FAKTURY;
+    $tbl_pol = TBL_OBJEDNAVKY_POLOZKY;
+    $tbl_s   = TBL_SMLOUVY;
+    $placeholders = implode(',', array_fill(0, count($cisla), '?'));
+
+    // ── Objednávky na smlouvě + součty jejich faktur ──
+    $sql_obj = "
+        SELECT
+            JSON_VALUE(o.financovani, '$.cislo_smlouvy') AS cislo_smlouvy,
+            o.id,
+            o.cislo_objednavky,
+            o.stav_objednavky,
+            (o.objednatel_id = ? OR o.uzivatel_id = ? OR o.garant_uzivatel_id = ?
+             OR o.prikazce_id = ? OR o.schvalovatel_id = ?) AS is_user,
+            COALESCE(
+                NULLIF((SELECT SUM(pol.cena_s_dph) FROM `$tbl_pol` pol WHERE pol.objednavka_id = o.id), 0),
+                o.max_cena_s_dph, 0
+            ) AS obj_castka,
+            (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `$tbl_fa` f
+             WHERE f.objednavka_id = o.id AND f.aktivni = 1
+               AND f.stav IN ('ZAPLACENO','DOKONCENA')) AS fa_dokonceno,
+            (SELECT COALESCE(SUM(f.fa_castka), 0) FROM `$tbl_fa` f
+             WHERE f.objednavka_id = o.id AND f.aktivni = 1
+               AND f.stav NOT IN ('ZAPLACENO','DOKONCENA','STORNO')) AS fa_v_procesu,
+            (SELECT COUNT(*) FROM `$tbl_fa` f
+             WHERE f.objednavka_id = o.id AND f.aktivni = 1 AND f.stav != 'STORNO') AS pocet_fa,
+            (SELECT COUNT(*) FROM `$tbl_fa` f
+             WHERE f.objednavka_id = o.id AND f.aktivni = 1
+               AND f.stav NOT IN ('ZAPLACENO','DOKONCENA','STORNO')) AS pocet_fa_v_procesu
+        FROM `$tbl_obj` o
+        WHERE o.aktivni = 1
+          AND o.stav_objednavky NOT IN ('Zamítnutá','Zrušena','Smazaná')
+          AND JSON_VALUE(o.financovani, '$.typ') = 'SMLOUVA'
+          AND JSON_VALUE(o.financovani, '$.cislo_smlouvy') IN ($placeholders)
+    ";
+    $params = array_fill(0, 5, (int)$user_id);
+    foreach ($cisla as $cs) $params[] = $cs;
+    $stmt = $db->prepare($sql_obj);
+    $stmt->execute($params);
+    while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $cs = $r['cislo_smlouvy'];
+        if (!isset($result[$cs])) continue;
+        $is_user = (int)$r['is_user'] === 1;
+        $obj_castka = (float)$r['obj_castka'];
+        $fa_dok = (float)$r['fa_dokonceno'];
+        $fa_proc = (float)$r['fa_v_procesu'];
+
+        // OBJ je skutečně dokončená, jen když je Dokončená/Archivovaná A má aspoň jednu FA
+        // A všechny její FA jsou ZAPLACENO/DOKONCENA. Jinak se bere jako nedokončená.
+        $obj_dokoncena = in_array($r['stav_objednavky'], array('Dokončená', 'Archivovaná'), true)
+            && (int)$r['pocet_fa'] > 0
+            && (int)$r['pocet_fa_v_procesu'] === 0;
+        if ($obj_dokoncena) {
+            $dok = $fa_dok;
+            $proc = 0.0;
+        } else {
+            $dok = 0.0;
+            $proc = $obj_castka;
+
+            // Upozornění: FA nedokončené OBJ převyšují částku OBJ
+            $fakturovano = $fa_dok + $fa_proc;
+            if ($fakturovano - $obj_castka >= 1.0) { // tolerance 1 Kč na zaokrouhlení
+                $info = array(
+                    'objednavka_id' => (int)$r['id'],
+                    'cislo_objednavky' => $r['cislo_objednavky'],
+                    'stav_objednavky' => $r['stav_objednavky'],
+                    'castka_objednavky' => round($obj_castka, 2),
+                    'fakturovano' => round($fakturovano, 2),
+                    'rozdil' => round($fakturovano - $obj_castka, 2)
+                );
+                $result[$cs]['prekroceni'][] = $info;
+                if ($is_user) $result[$cs]['prekroceni_user'][] = $info;
+            }
+        }
+        $result[$cs]['dokonceno'] += $dok;
+        $result[$cs]['v_procesu'] += $proc;
+        if ($is_user) {
+            $result[$cs]['dokonceno_user'] += $dok;
+            $result[$cs]['v_procesu_user'] += $proc;
+        }
+    }
+
+    // ── Faktury přímo na smlouvě (bez objednávky) ──
+    $sql_fa = "
+        SELECT
+            sm.cislo_smlouvy,
+            SUM(CASE WHEN f.stav IN ('ZAPLACENO','DOKONCENA') THEN f.fa_castka ELSE 0 END) AS dokonceno,
+            SUM(CASE WHEN f.stav NOT IN ('ZAPLACENO','DOKONCENA') THEN f.fa_castka ELSE 0 END) AS v_procesu,
+            SUM(CASE WHEN f.stav IN ('ZAPLACENO','DOKONCENA')
+                      AND (f.vytvoril_uzivatel_id = ? OR f.potvrdil_vecnou_spravnost_id = ?)
+                     THEN f.fa_castka ELSE 0 END) AS dokonceno_user,
+            SUM(CASE WHEN f.stav NOT IN ('ZAPLACENO','DOKONCENA')
+                      AND (f.vytvoril_uzivatel_id = ? OR f.potvrdil_vecnou_spravnost_id = ?)
+                     THEN f.fa_castka ELSE 0 END) AS v_procesu_user
+        FROM `$tbl_fa` f
+        INNER JOIN `$tbl_s` sm ON sm.id = f.smlouva_id
+        WHERE f.objednavka_id IS NULL
+          AND f.aktivni = 1 AND f.stav != 'STORNO'
+          AND sm.cislo_smlouvy IN ($placeholders)
+        GROUP BY sm.cislo_smlouvy
+    ";
+    $params = array_fill(0, 4, (int)$user_id);
+    foreach ($cisla as $cs) $params[] = $cs;
+    $stmt = $db->prepare($sql_fa);
+    $stmt->execute($params);
+    while ($r = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $cs = $r['cislo_smlouvy'];
+        if (!isset($result[$cs])) continue;
+        $result[$cs]['dokonceno']      += (float)$r['dokonceno'];
+        $result[$cs]['v_procesu']      += (float)$r['v_procesu'];
+        $result[$cs]['dokonceno_user'] += (float)$r['dokonceno_user'];
+        $result[$cs]['v_procesu_user'] += (float)$r['v_procesu_user'];
+    }
+
+    foreach ($result as $cs => $v) {
+        foreach (array('dokonceno', 'v_procesu', 'dokonceno_user', 'v_procesu_user') as $k) {
+            $result[$cs][$k] = round($v[$k], 2);
+        }
+    }
+    return $result;
+}
+
+/**
  * ⚡ Batch-load statistik k seznamu smluv místo 10 korelovaných subselectů na řádek.
  *
  * Spustí 3 předagregované queries s JSON_VALUE (MariaDB 11.8) a výsledky namapuje
@@ -341,15 +494,12 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
 
     $tbl_obj = TBL_OBJEDNAVKY;
     $tbl_fa  = TBL_FAKTURY;
-    $tbl_pol = TBL_OBJEDNAVKY_POLOZKY;
     $tbl_s   = TBL_SMLOUVY;
     $aktualni_rok = (int)date('Y');
 
     // ── 1) Stats z OBJEDNÁVEK per cislo_smlouvy ──────────────────────
     //     - pocet_objednavek (aktivní, ne Zamítnutá/Zrušená)
     //     - pocet_objednavek_uzivatel
-    //     - cerpano_v_procesu_obj (objednávky bez faktury, ne dokončené/archivované/smazané)
-    //     - cerpano_v_procesu_obj_uzivatel
     $placeholders = implode(',', array_fill(0, count($cisla), '?'));
     $sql_obj = "
         SELECT
@@ -358,33 +508,7 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
             SUM(CASE WHEN o.stav_objednavky NOT IN ('Zamítnutá','Zrušena')
                       AND (o.objednatel_id = ? OR o.uzivatel_id = ? OR o.garant_uzivatel_id = ?
                            OR o.prikazce_id = ? OR o.schvalovatel_id = ?)
-                     THEN 1 ELSE 0 END) AS pocet_obj_user,
-            SUM(CASE
-                WHEN o.stav_objednavky NOT IN ('Zamítnutá','Zrušena','Dokončená','Archivovaná','Smazaná')
-                 AND NOT EXISTS (
-                     SELECT 1 FROM `$tbl_fa` f2
-                     WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.stav != 'STORNO'
-                 )
-                THEN COALESCE(
-                    NULLIF((SELECT SUM(pol.cena_s_dph) FROM `$tbl_pol` pol WHERE pol.objednavka_id = o.id), 0),
-                    o.max_cena_s_dph
-                )
-                ELSE 0
-            END) AS cerpano_v_procesu_obj,
-            SUM(CASE
-                WHEN o.stav_objednavky NOT IN ('Zamítnutá','Zrušena','Dokončená','Archivovaná','Smazaná')
-                 AND (o.objednatel_id = ? OR o.uzivatel_id = ? OR o.garant_uzivatel_id = ?
-                      OR o.prikazce_id = ? OR o.schvalovatel_id = ?)
-                 AND NOT EXISTS (
-                     SELECT 1 FROM `$tbl_fa` f2
-                     WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.stav != 'STORNO'
-                 )
-                THEN COALESCE(
-                    NULLIF((SELECT SUM(pol.cena_s_dph) FROM `$tbl_pol` pol WHERE pol.objednavka_id = o.id), 0),
-                    o.max_cena_s_dph
-                )
-                ELSE 0
-            END) AS cerpano_v_procesu_obj_user
+                     THEN 1 ELSE 0 END) AS pocet_obj_user
         FROM `$tbl_obj` o
         WHERE o.aktivni = 1
           AND JSON_VALUE(o.financovani, '$.typ') = 'SMLOUVA'
@@ -392,8 +516,8 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
         GROUP BY JSON_VALUE(o.financovani, '$.cislo_smlouvy')
     ";
     $params_obj = array();
-    // user_id 5× pro pocet_obj_user, 5× pro cerpano_v_procesu_obj_user
-    for ($i = 0; $i < 10; $i++) $params_obj[] = (int)$user_id;
+    // user_id 5× pro pocet_obj_user
+    for ($i = 0; $i < 5; $i++) $params_obj[] = (int)$user_id;
     foreach ($cisla as $cs) $params_obj[] = $cs;
     $stmt = $db->prepare($sql_obj);
     $stmt->execute($params_obj);
@@ -403,8 +527,6 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
         $idx = $byCislo[$cs];
         $smlouvy_rows[$idx]['pocet_objednavek']            = (int)$r['pocet_obj'];
         $smlouvy_rows[$idx]['pocet_objednavek_uzivatel']   = (int)$r['pocet_obj_user'];
-        $smlouvy_rows[$idx]['cerpano_v_procesu']           = (float)$r['cerpano_v_procesu_obj'];
-        $smlouvy_rows[$idx]['cerpano_v_procesu_uzivatel']  = (float)$r['cerpano_v_procesu_obj_user'];
     }
 
     // ── 2) Stats z FAKTUR per cislo_smlouvy ──────────────────────────
@@ -423,38 +545,6 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
                       AND (o.objednatel_id = ? OR o.uzivatel_id = ? OR o.garant_uzivatel_id = ?
                            OR o.prikazce_id = ? OR o.schvalovatel_id = ?))
                 THEN f.id END) AS pocet_fa_user,
-            SUM(CASE
-                WHEN f.stav IN ('ZAPLACENO','DOKONCENA') AND f.vecna_spravnost_potvrzeno = 1
-                THEN f.fa_castka ELSE 0
-            END) AS cerpano_dokoncene,
-            SUM(CASE
-                WHEN f.stav IN ('ZAPLACENO','DOKONCENA') AND f.vecna_spravnost_potvrzeno = 1
-                 AND (
-                     (f.objednavka_id IS NULL
-                      AND (f.vytvoril_uzivatel_id = ? OR f.potvrdil_vecnou_spravnost_id = ?))
-                  OR (f.objednavka_id IS NOT NULL
-                      AND (o.objednatel_id = ? OR o.uzivatel_id = ? OR o.garant_uzivatel_id = ?
-                           OR o.prikazce_id = ? OR o.schvalovatel_id = ?))
-                 )
-                THEN f.fa_castka ELSE 0
-            END) AS cerpano_dokoncene_user,
-            SUM(CASE
-                WHEN f.stav NOT IN ('ZAPLACENO','DOKONCENA','STORNO')
-                 AND f.vecna_spravnost_potvrzeno = 1
-                THEN f.fa_castka ELSE 0
-            END) AS cerpano_v_procesu_fa,
-            SUM(CASE
-                WHEN f.stav NOT IN ('ZAPLACENO','DOKONCENA','STORNO')
-                 AND f.vecna_spravnost_potvrzeno = 1
-                 AND (
-                     (f.objednavka_id IS NULL
-                      AND (f.vytvoril_uzivatel_id = ? OR f.potvrdil_vecnou_spravnost_id = ?))
-                  OR (f.objednavka_id IS NOT NULL
-                      AND (o.objednatel_id = ? OR o.uzivatel_id = ? OR o.garant_uzivatel_id = ?
-                           OR o.prikazce_id = ? OR o.schvalovatel_id = ?))
-                 )
-                THEN f.fa_castka ELSE 0
-            END) AS cerpano_v_procesu_fa_user,
             SUM(CASE
                 WHEN f.stav IN ('ZAPLACENO','DOKONCENA') AND f.vecna_spravnost_potvrzeno = 1
                  AND YEAR(f.fa_datum_zaplaceni) = ?
@@ -476,10 +566,6 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
     $params_fa = array();
     // pocet_fa_user: 7 placeholderů (2+5)
     for ($i = 0; $i < 7; $i++) $params_fa[] = (int)$user_id;
-    // cerpano_dokoncene_user: 7
-    for ($i = 0; $i < 7; $i++) $params_fa[] = (int)$user_id;
-    // cerpano_v_procesu_fa_user: 7
-    for ($i = 0; $i < 7; $i++) $params_fa[] = (int)$user_id;
     // cerpano_rok_aktualni: 1 (rok)
     $params_fa[] = $aktualni_rok;
     // 2× IN list
@@ -493,14 +579,20 @@ function _smlouvy_load_stats_batch($db, array &$smlouvy_rows, $user_id) {
         $idx = $byCislo[$cs];
         $smlouvy_rows[$idx]['pocet_faktur_celkem']                = (int)$r['pocet_fa'];
         $smlouvy_rows[$idx]['pocet_faktur_uzivatel']              = (int)$r['pocet_fa_user'];
-        $smlouvy_rows[$idx]['cerpano_faktury_dokoncene']          = (float)$r['cerpano_dokoncene'];
-        $smlouvy_rows[$idx]['cerpano_faktury_dokoncene_uzivatel'] = (float)$r['cerpano_dokoncene_user'];
-        // cerpano_v_procesu = objednávky bez faktury (z #1) + faktury rozpracované
-        $smlouvy_rows[$idx]['cerpano_v_procesu'] =
-            (float)$smlouvy_rows[$idx]['cerpano_v_procesu'] + (float)$r['cerpano_v_procesu_fa'];
-        $smlouvy_rows[$idx]['cerpano_v_procesu_uzivatel'] =
-            (float)$smlouvy_rows[$idx]['cerpano_v_procesu_uzivatel'] + (float)$r['cerpano_v_procesu_fa_user'];
         $smlouvy_rows[$idx]['cerpano_rok_aktualni'] = (float)$r['cerpano_rok_aktualni'];
+    }
+
+    // ── Progress čerpání (Dokončeno / V procesu + překročení OBJ) ──
+    $progress = _smlouvy_calc_progress($db, $cisla, $user_id);
+    foreach ($progress as $cs => $p) {
+        if (!isset($byCislo[$cs])) continue;
+        $idx = $byCislo[$cs];
+        $smlouvy_rows[$idx]['cerpano_faktury_dokoncene']          = $p['dokonceno'];
+        $smlouvy_rows[$idx]['cerpano_faktury_dokoncene_uzivatel'] = $p['dokonceno_user'];
+        $smlouvy_rows[$idx]['cerpano_v_procesu']                  = $p['v_procesu'];
+        $smlouvy_rows[$idx]['cerpano_v_procesu_uzivatel']         = $p['v_procesu_user'];
+        $smlouvy_rows[$idx]['v_procesu_prekroceni']               = $p['prekroceni'];
+        $smlouvy_rows[$idx]['v_procesu_prekroceni_uzivatel']      = $p['prekroceni_user'];
     }
 
     // ── 3) MAX roční čerpání per cislo_smlouvy ───────────────────────
@@ -797,6 +889,8 @@ function handle_ciselniky_smlouvy_list($input, $config, $queries) {
             $row['cerpano_v_procesu'] = 0.0;
             $row['cerpano_faktury_dokoncene_uzivatel'] = 0.0;
             $row['cerpano_v_procesu_uzivatel'] = 0.0;
+            $row['v_procesu_prekroceni'] = array();
+            $row['v_procesu_prekroceni_uzivatel'] = array();
             $row['cerpano_rok_aktualni'] = 0.0;
             $row['cerpano_rok_max'] = 0.0;
 
@@ -885,58 +979,12 @@ function handle_ciselniky_smlouvy_detail($input, $config, $queries) {
         $smlouva['zbyva'] = ($smlouva['zbyva'] !== null) ? (float)$smlouva['zbyva'] : null;
         $smlouva['procento_cerpani'] = ($smlouva['procento_cerpani'] !== null) ? (float)$smlouva['procento_cerpani'] : null;
 
-        // Live výpočet pro jezevčík bar (věcná správnost + ZAPLACENO/DOKONCENA = skutečně dokončené)
-        $sql_dok = "SELECT COALESCE(SUM(f.fa_castka), 0) AS cerpano
-            FROM " . TBL_FAKTURY . " f
-            LEFT JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-            WHERE (
-                (f.objednavka_id IS NOT NULL AND o.aktivni = 1
-                 AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-                 AND " . sqlFinancovaniCisloSmlouvyLike('o.financovani', ':cislo_smlouvy_dok') . ")
-                OR (f.smlouva_id = :smlouva_id_dok AND f.objednavka_id IS NULL)
-            )
-            AND f.aktivni = 1 AND f.stav IN ('ZAPLACENO', 'DOKONCENA') AND f.vecna_spravnost_potvrzeno = 1";
-        $stmt_dok = $db->prepare($sql_dok);
-        $stmt_dok->bindValue(':cislo_smlouvy_dok', $smlouva['cislo_smlouvy'], PDO::PARAM_STR);
-        $stmt_dok->bindValue(':smlouva_id_dok', $smlouva['id'], PDO::PARAM_INT);
-        $stmt_dok->execute();
-        $smlouva['cerpano_faktury_dokoncene'] = (float)($stmt_dok->fetchColumn() ?? 0);
-
-        // Live výpočet: faktury v procesu + objednávky bez faktury
-        $sql_vp = "SELECT COALESCE(SUM(castka), 0) FROM (
-            SELECT f.fa_castka AS castka
-            FROM " . TBL_FAKTURY . " f
-            INNER JOIN " . TBL_OBJEDNAVKY . " o ON f.objednavka_id = o.id
-                        WHERE " . sqlFinancovaniCisloSmlouvyLike('o.financovani', ':cislo_smlouvy_vp1') . "
-              AND o.aktivni = 1 AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena')
-              AND f.aktivni = 1 AND f.stav NOT IN ('STORNO')
-              AND NOT (f.vecna_spravnost_potvrzeno = 1 AND f.stav IN ('ZAPLACENO', 'DOKONCENA'))
-            UNION ALL
-            SELECT f.fa_castka AS castka
-            FROM " . TBL_FAKTURY . " f
-            WHERE f.smlouva_id = :smlouva_id_vp1 AND f.objednavka_id IS NULL
-              AND f.aktivni = 1 AND f.stav NOT IN ('STORNO')
-              AND NOT (f.vecna_spravnost_potvrzeno = 1 AND f.stav IN ('ZAPLACENO', 'DOKONCENA'))
-            UNION ALL
-            SELECT COALESCE(
-                NULLIF((SELECT COALESCE(SUM(pol.cena_s_dph), 0) FROM " . TBL_OBJEDNAVKY_POLOZKY . " pol WHERE pol.objednavka_id = o.id), 0),
-                o.max_cena_s_dph
-            ) AS castka
-            FROM " . TBL_OBJEDNAVKY . " o
-                        WHERE " . sqlFinancovaniCisloSmlouvyLike('o.financovani', ':cislo_smlouvy_vp2') . "
-              AND o.aktivni = 1
-              AND o.stav_objednavky NOT IN ('Zamítnutá', 'Zrušena', 'Dokončená', 'Archivovaná', 'Smazaná')
-              AND NOT EXISTS (
-                SELECT 1 FROM " . TBL_FAKTURY . " f2
-                WHERE f2.objednavka_id = o.id AND f2.aktivni = 1 AND f2.stav NOT IN ('STORNO')
-              )
-        ) _vp";
-        $stmt_vp = $db->prepare($sql_vp);
-        $stmt_vp->bindValue(':cislo_smlouvy_vp1', $smlouva['cislo_smlouvy'], PDO::PARAM_STR);
-        $stmt_vp->bindValue(':smlouva_id_vp1', $smlouva['id'], PDO::PARAM_INT);
-        $stmt_vp->bindValue(':cislo_smlouvy_vp2', $smlouva['cislo_smlouvy'], PDO::PARAM_STR);
-        $stmt_vp->execute();
-        $smlouva['cerpano_v_procesu'] = (float)($stmt_vp->fetchColumn() ?? 0);
+        // Live výpočet pro jezevčík bar (Dokončeno / V procesu) - pravidla viz _smlouvy_calc_progress()
+        $progress = _smlouvy_calc_progress($db, array($smlouva['cislo_smlouvy']), (int)$auth_result['id']);
+        $p = $progress[$smlouva['cislo_smlouvy']];
+        $smlouva['cerpano_faktury_dokoncene'] = $p['dokonceno'];
+        $smlouva['cerpano_v_procesu'] = $p['v_procesu'];
+        $smlouva['v_procesu_prekroceni'] = $p['prekroceni'];
         
         // Get related orders
         // financovani obsahuje JSON: {"typ":"SMLOUVA","cislo_smlouvy":"XXX",...}

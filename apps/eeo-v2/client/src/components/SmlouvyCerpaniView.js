@@ -22,6 +22,7 @@ import {
   faTimesCircle, faFilter, faFileContract
 } from '@fortawesome/free-solid-svg-icons';
 import { getSmlouvyList, STAV_SMLOUVY_OPTIONS, getStavSmlouvyConfig } from '../services/apiSmlouvy';
+import SmlouvyPrekroceniWarning from './SmlouvyPrekroceniWarning';
 import { AuthContext } from '../context/AuthContext';
 
 // ─── Styled components ───────────────────────────────────────────────────────
@@ -423,6 +424,7 @@ export default function SmlouvyCerpaniView({ forceUnrestricted = false }) {
         username,
         show_inactive: false,
         limit: 2000,
+        include_stats: true,  // Dokončeno / V procesu pro jezevčík bar
       });
       setSmlouvy(resp?.data || resp?.smlouvy || []);
     } catch (e) {
@@ -553,6 +555,7 @@ export default function SmlouvyCerpaniView({ forceUnrestricted = false }) {
               <span style={{ color: '#f59e0b', fontWeight: 700 }}>
                 {inProcessAmt.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
               </span>
+              <SmlouvyPrekroceniWarning prekroceni={s.v_procesu_prekroceni} />
             </div>
           )}
           {volneAmt > 0 && (

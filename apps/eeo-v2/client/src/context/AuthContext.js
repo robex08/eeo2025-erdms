@@ -484,7 +484,10 @@ export const AuthProvider = ({ children }) => {
 
       if (!result.success || !result.data) {
         console.error('❌ Impersonation selhal:', result.message);
-        return false;
+        // Předat konkrétní důvod z backendu (neaktivní účet, SUPERADMIN...) až do UI
+        const impersonationError = new Error(result.message || 'Nepodařilo se přepnout na uživatele');
+        impersonationError.isImpersonationError = true;
+        throw impersonationError;
       }
 
       const { data } = result;
@@ -543,6 +546,7 @@ export const AuthProvider = ({ children }) => {
 
     } catch (error) {
       console.error('❌ Chyba při startu impersonation v context:', error);
+      if (error?.isImpersonationError) throw error;
       return false;
     }
   }, [user, token, user_id, userDetail]);

@@ -544,8 +544,8 @@ const ImpersonationDialog = ({ isOpen, onClose, onSuccess }) => {
       const result = await fetchUsersList(token, user.username);
       
       if (result.success && result.data) {
-        // Filtrovat - nesmím se přepnout sám na sebe
-        let filteredUsers = result.data.filter(u => u.id !== user_id);
+        // Filtrovat - nesmím se přepnout sám na sebe, ani na neaktivní účet (backend ho odmítne)
+        let filteredUsers = result.data.filter(u => u.id !== user_id && String(u.aktivni ?? 1) === '1');
         
         // 🔒 BEZPEČNOST: ADMINISTRATOR nesmí vidět SUPERADMIN uživatele
         // Pouze SUPERADMIN může přepnout na jiného SUPERADMIN

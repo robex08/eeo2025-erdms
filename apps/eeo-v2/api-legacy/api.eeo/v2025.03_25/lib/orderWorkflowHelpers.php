@@ -215,7 +215,7 @@ function updateWorkflowAfterInvoiceAdded($db, $orderId, $isPokladna = false) {
         
         // 7. Aktualizovat DB
         $stmt = $db->prepare("UPDATE " . get_orders_table_name() . " 
-                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky 
+                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky, dt_aktualizace = NOW() 
                               WHERE id = :id");
         $stmt->bindParam(':workflow_kod', $newWorkflowCode, PDO::PARAM_STR);
         $stmt->bindParam(':stav_objednavky', $newStavObjednavky, PDO::PARAM_STR);
@@ -382,7 +382,7 @@ function updateWorkflowAfterRegistrFilled($db, $orderId, $updateData = []) {
         
         // Aktualizovat DB
         $stmt = $db->prepare("UPDATE " . get_orders_table_name() . " 
-                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky 
+                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky, dt_aktualizace = NOW() 
                               WHERE id = :id");
         $stmt->bindParam(':workflow_kod', $newWorkflowCode, PDO::PARAM_STR);
         $stmt->bindParam(':stav_objednavky', $newStavObjednavky, PDO::PARAM_STR);
@@ -490,7 +490,7 @@ function updateWorkflowAfterVecnaSpravnostApproved($db, $orderId, $auditContext 
         
         // Aktualizovat DB
         $stmt = $db->prepare("UPDATE " . get_orders_table_name() . " 
-                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky 
+                              SET stav_workflow_kod = :workflow_kod, stav_objednavky = :stav_objednavky, dt_aktualizace = NOW() 
                               WHERE id = :id");
         $stmt->bindParam(':workflow_kod', $newWorkflowCode, PDO::PARAM_STR);
         $stmt->bindParam(':stav_objednavky', $newStavObjednavky, PDO::PARAM_STR);
@@ -589,7 +589,7 @@ function removeZkontrolovanaFromWorkflow($db, $orderId, $auditContext = array())
         
         // ⚠️ KRITICKÉ: VŽDY RESETOVAT DOKONČENÍ - BEZ VÝJIMEK
         $stmt = $db->prepare("UPDATE " . get_orders_table_name() . " 
-                              SET stav_workflow_kod = :workflow_kod, 
+                              SET stav_workflow_kod = :workflow_kod, dt_aktualizace = NOW(),
                                   stav_objednavky = :stav_objednavky,
                                   potvrzeni_dokonceni_objednavky = 0,
                                   dokoncil_id = NULL,

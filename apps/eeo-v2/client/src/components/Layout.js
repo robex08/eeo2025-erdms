@@ -3689,7 +3689,8 @@ const Layout = ({ children }) => {
     } catch (error) {
       console.error('❌ Chyba při přepnutí na uživatele:', error);
       if (showToast) {
-        showToast('Chyba při přepnutí na uživatele', { type: 'error', timeout: 5000 });
+        const reason = error?.isImpersonationError ? error.message : 'Chyba při přepnutí na uživatele';
+        showToast(reason, { type: 'error', timeout: 6000 });
       }
       // ✅ Odstranit flag i při chybě
       sessionStorage.removeItem('impersonation_switching');

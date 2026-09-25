@@ -103,8 +103,281 @@ import { useFormController, useWorkflowManager } from './OrderForm25/hooks';
 import { DocxGeneratorModal } from '../components/DocxGeneratorModal';
 import FinancialControlConfirmationModal from '../components/FinancialControlConfirmationModal';
 import SubstitutionBadge from '../components/common/SubstitutionBadge';
+import { calcInvoiceOverrun, formatOverrunMessage, sumPolozkySDph } from '../utils/invoiceOverrun';
 
 // Pomocná funkce pro formátování data pro DatePicker (YYYY-MM-DD formát)
+// =====================================================================
+// 🛡️ KONFLIKT VERZÍ OBJEDNÁVKY (optimistic locking)
+// Sledovaná pole - změna kteréhokoli z nich jiným uživatelem = konflikt (uložení zablokováno).
+// Změna jen "systémových" polí (dt_aktualizace bez těchto změn) se tiše převezme.
+// =====================================================================
+const ORDER_CONFLICT_FIELDS = [
+  { key: 'stav_workflow_kod', label: 'Stav workflow', type: 'workflow' },
+  { key: 'schvalovatel_id', label: 'Schválil', type: 'user' },
+  { key: 'dt_schvaleni', label: 'Datum schválení', type: 'date' },
+  { key: 'schvaleni_komentar', label: 'Komentář ke schválení' },
+  { key: 'prikazce_id', label: 'Příkazce', type: 'user' },
+  { key: 'garant_uzivatel_id', label: 'Garant', type: 'user' },
+  { key: 'objednatel_id', label: 'Objednatel', type: 'user' },
+  { key: 'predmet', label: 'Předmět' },
+  { key: 'max_cena_s_dph', label: 'Max. cena s DPH', type: 'money' },
+  { key: 'financovani', label: 'Financování', type: 'financovani' },
+  { key: 'strediska_kod', label: 'Střediska', type: 'list', options: 'strediska' },
+  { key: 'druh_objednavky_kod', label: 'Druh objednávky', type: 'option', options: 'druh' },
+  { key: 'dodavatel_nazev', label: 'Dodavatel' },
+  { key: 'dodavatel_ico', label: 'IČO dodavatele' },
+  { key: 'dt_odeslani', label: 'Odesláno dodavateli', type: 'date' },
+  { key: 'dt_akceptace', label: 'Potvrzení dodavatelem', type: 'date' },
+  { key: 'dt_zverejneni', label: 'Zveřejnění v registru', type: 'date' },
+  { key: 'poznamka', label: 'Poznámka' },
+  { key: 'dokoncil_id', label: 'Dokončil', type: 'user' },
+  { key: 'dt_dokonceni', label: 'Datum dokončení', type: 'date' },
+  { key: 'mimoradna_udalost', label: 'Mimořádná událost', type: 'bool' },
+  { key: '__polozky', label: 'Položky objednávky', type: 'polozky' },
+  { key: '__faktury', label: 'Faktury', type: 'faktury' }
+];
+
+// Pole workflow/schválení - u zastaralého konceptu se VŽDY berou z DB
+const ORDER_WORKFLOW_DB_FIELDS = [
+  'stav_workflow_kod', 'stav_objednavky', 'schvalovatel_id', 'dt_schvaleni', 'schvaleni_komentar',
+  'prikazce_id', 'dokoncil_id', 'dt_dokonceni', 'potvrzeni_dokonceni_objednavky'
+];
+
+const tryParseJson = (v) => {
+  if (typeof v !== 'string') return v;
+  const t = v.trim();
+  if (!(t.startsWith('[') || t.startsWith('{'))) return v;
+  try { return JSON.parse(t); } catch { return v; }
+};
+
+const stableStringify = (v) => {
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;
+  if (v && typeof v === 'object') {
+    return `{${Object.keys(v).sort().map(k => `${JSON.stringify(k)}:${stableStringify(v[k])}`).join(',')}}`;
+  }
+  return JSON.stringify(v);
+};
+
+const toCodeList = (v) => {
+  const arr = Array.isArray(v) ? v : (v === null || v === undefined || v === '' ? [] : [v]);
+  return arr.map(x => (x && typeof x === 'object') ? String(x.id ?? x.kod_stavu ?? x.value ?? x.kod ?? '') : String(x))
+    .filter(Boolean).sort();
+};
+
+// Financování: formulář ho drží v plochých polích (zpusob_financovani, cislo_smlouvy, lp_kod, ...),
+// DB jako JSON `financovani` → porovnávat společný kanonický tvar
+const getFinancovaniParts = (order) => {
+  if (order.zpusob_financovani) {
+    return {
+      typ: String(order.zpusob_financovani),
+      smlouva: order.cislo_smlouvy || '',
+      lp: toCodeList(order.lp_kod),
+      individualni: order.individualni_schvaleni || '',
+      pojistna: order.pojistna_udalost_cislo || ''
+    };
+  }
+  const fin = tryParseJson(order.financovani);
+  if (!fin || typeof fin !== 'object') return null;
+  return {
+    typ: String(fin.typ || fin.kod_stavu || ''),
+    smlouva: fin.cislo_smlouvy || '',
+    lp: toCodeList(fin.lp_kody || fin.lp_kod),
+    individualni: fin.individualni_schvaleni || '',
+    pojistna: fin.pojistna_udalost_cislo || ''
+  };
+};
+
+// Hodnota pole objednávky pro porovnání (funguje pro surová DB data i data formuláře)
+const getConflictFieldValue = (order, field) => {
+  if (!order) return '';
+  if (field.type === 'polozky') {
+    const all = Array.isArray(order.polozky_objednavky) ? order.polozky_objednavky
+      : (Array.isArray(order.polozky) ? order.polozky : []);
+    const num = (x) => parseFloat(String(x ?? 0).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0;
+    // Prázdné řádky (formulář má vždy 1 prázdnou položku) nejsou položka → nesmí vypadat jako změna
+    const list = all.filter(p => String(p?.popis || p?.nazev || '').trim() !== ''
+      || num(p?.cena_s_dph) !== 0 || num(p?.cena_bez_dph) !== 0);
+    const sum = list.reduce((s, p) => s + (parseFloat(String(p?.cena_s_dph ?? 0).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0), 0);
+    return `${list.length}|${sum.toFixed(2)}`;
+  }
+  if (field.type === 'faktury') {
+    const list = (Array.isArray(order.faktury) ? order.faktury : [])
+      .filter(f => f?.id && !String(f.id).startsWith('temp-') && String(f.aktivni ?? 1) !== '0');
+    return list
+      .map(f => `${f.id}:${(parseFloat(f.fa_castka) || 0).toFixed(2)}:${Number(f.vecna_spravnost_potvrzeno) || 0}`)
+      .sort().join('|');
+  }
+  if (field.type === 'financovani') {
+    const f = getFinancovaniParts(order);
+    if (!f || !f.typ) return '';
+    return [f.typ, f.smlouva, f.lp.join(','), f.individualni, f.pojistna].join('|');
+  }
+  const raw = tryParseJson(order[field.key]);
+  // ano/ne: prázdná hodnota = Ne (jinak by null vs 0 vypadalo jako změna)
+  if (field.type === 'bool') return (raw === true || String(raw) === '1') ? '1' : '0';
+  if (raw === null || raw === undefined || raw === '') return '';
+  // formulář může mít částku formátovanou ("200 000,00") → normalizovat
+  if (field.type === 'money') return (parseFloat(String(raw).replace(/[^\d,.-]/g, '').replace(',', '.')) || 0).toFixed(2);
+  // formulář může mít datum bez času → porovnávat jen datum
+  if (field.type === 'date') return String(raw).trim().slice(0, 10);
+  if (field.type === 'option' && typeof raw === 'object') return String(raw.kod_stavu ?? raw.kod ?? raw.value ?? '');
+  if (field.type === 'user') return String(parseInt(raw, 10) || '');
+  if (field.type === 'list' && Array.isArray(raw)) {
+    return raw.map(x => (x && typeof x === 'object') ? (x.kod_stavu || x.value || x.kod || stableStringify(x)) : String(x)).sort().join(',');
+  }
+  if (typeof raw === 'object') return stableStringify(raw);
+  const s = String(raw).trim();
+  return /^-?\d+(\.\d+)?$/.test(s) ? String(Number(s)) : s;
+};
+
+// Záložní české názvy stavů workflow (primárně se bere DB číselník stavyWorkflowMap)
+const WORKFLOW_STATE_LABELS_FALLBACK = {
+  NOVA: 'Nová', ODESLANA_KE_SCHVALENI: 'Ke schválení', SCHVALENA: 'Schválená', ZAMITNUTA: 'Zamítnutá',
+  CEKA_SE: 'Odloženo', ROZPRACOVANA: 'Rozpracovaná', ODESLANA: 'Odeslaná dodavateli',
+  POTVRZENA: 'Potvrzená dodavatelem', K_UVEREJNENI_DO_REGISTRU: 'Ke zveřejnění', UVEREJNENA: 'Zveřejněno',
+  NEUVEREJNIT: 'Nezveřejňovat', FAKTURACE: 'Fakturace', CEKA_POTVRZENI: 'Čeká na potvrzení',
+  VECNA_SPRAVNOST: 'Věcná správnost', ZKONTROLOVANA: 'Zkontrolovaná', DOKONCENA: 'Dokončená',
+  VYRIZENA: 'Vyřízená', ZRUSENA: 'Zrušená', SMAZANA: 'Smazaná', ARCHIVOVANO: 'Archivováno'
+};
+
+// Čitelná hodnota pro dialog
+// resolvers: { userName(id), workflowLabel(kod) }
+const formatConflictValue = (order, field, resolvers = {}) => {
+  const v = getConflictFieldValue(order, field);
+  if (v === '') return '—';
+  const getUserName = resolvers.userName || (() => null);
+  const optLabel = (kind, code) => (resolvers.optionLabel && resolvers.optionLabel(kind, code)) || code;
+  switch (field.type) {
+    case 'user': return getUserName(v) || `#${v}`;
+    case 'money': return `${Number(v).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`;
+    case 'date': {
+      // porovnává se jen datum, ale zobrazit celý údaj vč. času
+      const rawDate = String(order[field.key] ?? v).trim();
+      const d = new Date(rawDate.replace(' ', 'T'));
+      if (Number.isNaN(d.getTime())) return rawDate;
+      return rawDate.length > 10 ? d.toLocaleString('cs-CZ') : d.toLocaleDateString('cs-CZ');
+    }
+    case 'workflow': {
+      // uživateli ukázat aktuální (poslední) stav objednávky česky, ne systémové kódy
+      const arr = tryParseJson(order.stav_workflow_kod);
+      const codes = Array.isArray(arr) ? arr : [String(order.stav_workflow_kod)];
+      const current = String(codes[codes.length - 1] || '');
+      const fromDb = resolvers.workflowLabel ? resolvers.workflowLabel(current) : null;
+      return fromDb || WORKFLOW_STATE_LABELS_FALLBACK[current]
+        || current.replace(/_/g, ' ').toLowerCase().replace(/^./, c => c.toUpperCase());
+    }
+    case 'financovani': {
+      const [typ, smlouva, lp, individualni, pojistna] = v.split('|');
+      const lpText = lp ? lp.split(',').map(c => optLabel('lp', c)).join(', ') : '';
+      return [
+        optLabel('financovani', typ),
+        smlouva && `smlouva ${smlouva}`,
+        lpText && `LP ${lpText}`,
+        individualni && `č. ${individualni}`,
+        pojistna && `PU ${pojistna}`
+      ].filter(Boolean).join(' / ');
+    }
+    case 'option': return optLabel(field.options, v);
+    case 'list': return v.split(',').map(c => optLabel(field.options, c)).join(', ');
+    case 'bool': return v === '1' ? 'Ano' : 'Ne';
+    case 'polozky': {
+      const [count, sum] = v.split('|');
+      return `${count}× (${Number(sum).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč)`;
+    }
+    case 'faktury': return `${v.split('|').length}×`;
+    default: return v.length > 80 ? `${v.slice(0, 80)}…` : v;
+  }
+};
+
+// Pole workflow/schválení, u starého konceptu bez uložené výchozí verze se porovnávají jen tato
+const ORDER_CONFLICT_WORKFLOW_KEYS = ['stav_workflow_kod', 'schvalovatel_id', 'dt_schvaleni', 'schvaleni_komentar',
+  'prikazce_id', 'dokoncil_id', 'dt_dokonceni'];
+
+/**
+ * Výchozí verze objednávky (jen sledované údaje) - ukládá se do konceptu (formData.__conflictBaseline),
+ * aby se i po refreshi dalo zjistit, co se v DB změnilo OD otevření (= cizí změny, ne vlastní úpravy).
+ */
+const pickConflictBaseline = (order) => {
+  if (!order) return {};
+  const out = {};
+  const keys = [
+    ...ORDER_CONFLICT_FIELDS.map(f => f.key).filter(k => !k.startsWith('__')),
+    'zpusob_financovani', 'cislo_smlouvy', 'lp_kod', 'individualni_schvaleni', 'pojistna_udalost_cislo', 'uzivatel_akt_id'
+  ];
+  keys.forEach(k => { if (order[k] !== undefined) out[k] = order[k]; });
+  const polozky = Array.isArray(order.polozky_objednavky) ? order.polozky_objednavky
+    : (Array.isArray(order.polozky) ? order.polozky : []);
+  out.polozky_objednavky = polozky.map(p => ({ popis: p?.popis || p?.nazev || '', cena_s_dph: p?.cena_s_dph, cena_bez_dph: p?.cena_bez_dph }));
+  out.faktury = (Array.isArray(order.faktury) ? order.faktury : [])
+    .map(f => ({ id: f?.id, fa_castka: f?.fa_castka, vecna_spravnost_potvrzeno: f?.vecna_spravnost_potvrzeno, aktivni: f?.aktivni }));
+  return out;
+};
+
+/** Rozdíly mezi dvěma verzemi objednávky: [{ label, from, to }] */
+const diffOrderVersions = (fromOrder, toOrder, resolvers) =>
+  ORDER_CONFLICT_FIELDS
+    .filter(f => getConflictFieldValue(fromOrder, f) !== getConflictFieldValue(toOrder, f))
+    .map(f => ({
+      key: f.key,
+      label: f.label,
+      from: formatConflictValue(fromOrder, f, resolvers),
+      to: formatConflictValue(toOrder, f, resolvers)
+    }));
+
+const INVOICE_STAV_LABELS = {
+  ZAEVIDOVANA: 'Zaevidovaná',
+  VECNA_SPRAVNOST: 'Věcná správnost',
+  V_RESENI: 'V řešení',
+  PREDANA_PO: 'Předaná PO',
+  K_ZAPLACENI: 'K zaplacení',
+  ZAPLACENO: 'Zaplaceno',
+  DOKONCENA: 'Dokončená',
+  STORNO: 'Storno'
+};
+const getInvoiceStavLabel = (stav) => INVOICE_STAV_LABELS[stav] || String(stav || '').replace(/_/g, ' ');
+
+// Pole faktury, která mění i modul faktur / backend - u uložené faktury mají přednost data z DB
+const FAKTURA_DB_OWNED_FIELDS = [
+  'stav', 'fa_zaplacena', 'fa_datum_zaplaceni', 'aktivni', 'dt_aktualizace',
+  'potvrdil_vecnou_spravnost_id', 'dt_potvrzeni_vecne_spravnosti'
+];
+const FAKTURA_VS_FIELDS = [
+  'vecna_spravnost_potvrzeno', 'vecna_spravnost_poznamka', 'vecna_spravnost_duvod',
+  'vecna_spravnost_umisteni_majetku'
+];
+
+/**
+ * Sloučí faktury z lokálního draftu s fakturami z DB.
+ * - uložená faktura (je v DB): draft hodnoty + DB-owned pole z DB; pokud je VS v DB už potvrzena, i VS pole z DB
+ * - faktura z draftu, která už v DB není (smazaná/odpojená) → vynechat; neuložené (temp-) → ponechat
+ * - faktura v DB, která v draftu chybí (přidaná jinde) → doplnit
+ */
+const mergeDraftFakturyWithDb = (draftFaktury, dbFaktury) => {
+  const draftList = Array.isArray(draftFaktury) ? draftFaktury : [];
+  const dbList = Array.isArray(dbFaktury) ? dbFaktury : [];
+  if (draftList.length === 0) return dbList;
+
+  const dbById = new Map(dbList.map(f => [String(f.id), f]));
+  const isUnsaved = (f) => !f?.id || String(f.id).startsWith('temp-');
+
+  const merged = draftList
+    .filter(f => isUnsaved(f) || dbById.has(String(f.id)))
+    .map(f => {
+      if (isUnsaved(f)) return f;
+      const db = dbById.get(String(f.id));
+      const result = { ...f };
+      FAKTURA_DB_OWNED_FIELDS.forEach(k => { if (k in db) result[k] = db[k]; });
+      if (db.potvrdil_vecnou_spravnost_id) {
+        FAKTURA_VS_FIELDS.forEach(k => { if (k in db) result[k] = db[k]; });
+      }
+      return result;
+    });
+
+  const draftIds = new Set(draftList.map(f => String(f.id)));
+  dbList.forEach(f => { if (!draftIds.has(String(f.id))) merged.push(f); });
+  return merged;
+};
+
 const formatDateForPicker = (date) => {
   if (!date) return '';
   const d = new Date(date);
@@ -5438,7 +5711,15 @@ function OrderForm25() {
 
   // 🔒 CONFLICT DETECTION: state pro dialog konfliktu při uložení
   const [showConflictDialog, setShowConflictDialog] = useState(false);
-  const [conflictPendingSave, setConflictPendingSave] = useState(null); // uložená funkce pro force save
+  // Detekovaný konflikt verzí: { source: 'db'|'draft', upravil, changes: [{label, from, to}] }
+  // Dokud je nastaven: ULOŽIT je zablokováno, ZAVŘÍT = "Obnovit" (smaže koncept, načte z DB)
+  const [orderConflict, setOrderConflict] = useState(null);
+  const orderConflictRef = useRef(null);
+  const checkForOrderConflictRef = useRef(null);
+  const serverSnapshotRef = useRef(null); // surová DB data verze serverDtAktualizaceRef (základ pro diff)
+  const conflictCheckInFlightRef = useRef(false);
+  const baselinePendingRef = useRef(false);
+  const lastConflictCheckAtRef = useRef(0);
 
   // �🔥 REF pro sledování uploadovaných souborů (prevence duplikace)
   const uploadedFilesRef = useRef(new Set());
@@ -5482,6 +5763,9 @@ function OrderForm25() {
 
   // Stav pro cancel confirm modal
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
+  // Dokončení OBJ s nedokončenými fakturami - varovný dialog + ID faktur už přepnutých na DOKONCENA
+  const [dokonceniFakturyDialog, setDokonceniFakturyDialog] = useState({ isOpen: false, faktury: [], processing: false });
+  const autoDokonceneFakturyRef = useRef(new Set());
   const [cancelWarningMessage, setCancelWarningMessage] = useState('');
 
   // 📋 SPRINT 4: Consolidated Template State (13→1 hook)
@@ -5684,6 +5968,8 @@ function OrderForm25() {
   
   // Save State Aliases
   const isSaving = saveState.saving;
+  const isSavingRef = useRef(false);
+  isSavingRef.current = isSaving; // pro listenery (focus kontrola konfliktu se během ukládání nespouští)
   const setIsSaving = (val) => setSaveState(s => ({...s, saving: val}));
   const isSavingDraft = saveState.savingDraft;
   const setIsSavingDraft = (val) => setSaveState(s => ({...s, savingDraft: val}));
@@ -6057,6 +6343,7 @@ function OrderForm25() {
       // 🔥 NOVÉ: Načti draft PŘÍMO TADY během inicializace!
       let finalData = loadedData || {};
       const hasDbData = loadedData && Object.keys(loadedData).length > 0;
+      let staleDraftConflict = null;
 
       if (user_id) {
         try {
@@ -6108,11 +6395,43 @@ function OrderForm25() {
                   datum_vytvoreni: loadedData.datum_vytvoreni,
                   datum_posledni_zmeny: loadedData.datum_posledni_zmeny,
                   
-                  // ✅ FAKTURY: Preferovat draft faktury (obsahují lokální změny), fallback na DB
-                  faktury: (draftData.formData.faktury && draftData.formData.faktury.length > 0) 
-                    ? draftData.formData.faktury 
-                    : (loadedData.faktury || [])
+                  // ✅ FAKTURY: draft (lokální změny) sloučit s DB - stav/zaplacení/potvrzení VS
+                  // se mění i mimo formulář (modul faktur), proto u uložených faktur vždy z DB
+                  faktury: mergeDraftFakturyWithDb(draftData.formData.faktury, loadedData.faktury)
                 };
+
+                // 🛡️ ZASTARALÝ KONCEPT: koncept vznikl nad starší verzí, než je teď v DB
+                // (např. objednávku mezitím schválil příkazce). Workflow/schválení vždy z DB
+                // a pokud se liší sledovaná pole → konflikt (uložení zablokováno, jen "Obnovit").
+                const draftBase = draftData.formData.__conflictBaseline;
+                const draftDt = draftBase?.dt || draftData.formData.dt_aktualizace;
+                if (draftDt && loadedData.dt_aktualizace && String(draftDt) !== String(loadedData.dt_aktualizace)) {
+                  // Co se v DB změnilo od verze, ze které koncept vznikl (= cizí změny, ne vlastní úpravy).
+                  // Starý koncept bez uložené výchozí verze → porovnat jen workflow/schválení.
+                  const baseOrder = draftBase?.order || {
+                    ...pickConflictBaseline(loadedData),
+                    ...Object.fromEntries(ORDER_CONFLICT_WORKFLOW_KEYS
+                      .filter(k => draftData.formData[k] !== undefined)
+                      .map(k => [k, draftData.formData[k]]))
+                  };
+                  const staleChanges = diffOrderVersions(baseOrder, loadedData, getConflictResolvers());
+                  ORDER_WORKFLOW_DB_FIELDS.forEach(k => {
+                    if (Object.prototype.hasOwnProperty.call(loadedData, k)) finalData[k] = loadedData[k];
+                  });
+                  if (staleChanges.length > 0) {
+                    staleDraftConflict = {
+                      source: 'draft',
+                      draftDt,
+                      upravil: getUserNameById(loadedData.uzivatel_akt_id),
+                      dtZmeny: loadedData.dt_aktualizace,
+                      changes: staleChanges
+                    };
+                    // výchozí verze zůstává stará → konflikt (a jeho seznam změn) přežije i refresh
+                    finalData.__conflictBaseline = { dt: draftDt, order: baseOrder };
+                  } else {
+                    finalData.dt_aktualizace = loadedData.dt_aktualizace;
+                  }
+                }
                 } else {
                   // NEW: Použij draft
                   finalData = draftData.formData;
@@ -6235,6 +6554,20 @@ function OrderForm25() {
         // Používáme loadedData.dt_aktualizace (čerstvá DB hodnota), ne finalData (může být z draftu)
         if (loadedData?.id && loadedData?.dt_aktualizace) {
           serverDtAktualizaceRef.current = loadedData.dt_aktualizace;
+        }
+        if (loadedData?.id && !staleDraftConflict) {
+          finalData.__conflictBaseline = { dt: loadedData.dt_aktualizace, order: pickConflictBaseline(loadedData) };
+          setFormData(prev => ({ ...prev, __conflictBaseline: finalData.__conflictBaseline }));
+        }
+        if (loadedData?.id) {
+          if (staleDraftConflict) {
+            // koncept vychází ze starší verze → i backend odmítne uložení (expected_dt_aktualizace)
+            serverDtAktualizaceRef.current = staleDraftConflict.draftDt;
+            orderConflictRef.current = staleDraftConflict;
+            setOrderConflict(staleDraftConflict);
+            setShowConflictDialog(true);
+          }
+          loadConflictBaseline(loadedData.id);
         }
 
         // 🔒 Uložit _enriched financovani data (lp_info + smlouva_info s ke_schvaleni) do separátního state
@@ -11237,6 +11570,14 @@ function OrderForm25() {
         const currentDateTime = getMySQLDateTime(); // ✅ LOKÁLNÍ ČAS
         orderData.dt_objednavky = currentDateTime;
 
+        // 🔒 CONFLICT DETECTION i pro archivovanou objednávku
+        if (orderConflictRef.current || await checkForOrderConflict()) {
+          setShowConflictDialog(true);
+          setIsSaving(false);
+          return;
+        }
+        orderData.expected_dt_aktualizace = serverDtAktualizaceRef.current;
+
         // updateOrderV2 vrací přímo data nebo hodí error
         const updatedOrder = await updateOrderV2(formData.id, orderData, token, username);
 
@@ -11245,6 +11586,12 @@ function OrderForm25() {
         // Znovu načíst aktuální data z DB (použije se getOrderV2)
         if (formData.id || formData.id) {
           const freshOrderData = await getOrderV2(parseInt(formData.id || formData.id), token, username, true);
+
+          // 🔐 Nová verze = nový základ pro kontrolu konfliktů
+          if (freshOrderData?.dt_aktualizace) {
+            serverDtAktualizaceRef.current = freshOrderData.dt_aktualizace;
+            serverSnapshotRef.current = freshOrderData;
+          }
 
           if (freshOrderData?.id) {
             // ✅ KRITICKÉ: Transformovat data z backendu (parsovat JSON poznámky)
@@ -12913,47 +13260,17 @@ function OrderForm25() {
 
         addDebugLog('info', 'SAVE-V2', 'update-start', `Volam updateOrderV2(${formData.id})`);
 
-        // 🔒 CONFLICT DETECTION: Porovnej timestamp s DB před uložením
-        // Vždy kontroluj v edit mode (formData.id existuje)
+        // 🔒 CONFLICT DETECTION: Byla objednávka mezitím změněna někým jiným?
+        // (backend to navíc hlídá přes expected_dt_aktualizace → HTTP 409)
         if (formData.id) {
-          try {
-            const serverTs = await getOrderTimestampV2(formData.id, token, username);
-            const dbDt = serverTs?.dt_aktualizace;
-
-            addDebugLog('info', 'SAVE-V2', 'conflict-check', `ref=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
-            if (dbDt) {
-              if (serverDtAktualizaceRef.current === null) {
-                // Ref nebyl nastaven (edge case) - zkus fallback na formData.dt_aktualizace
-                const fallbackRef = formData.dt_aktualizace;
-                if (fallbackRef && dbDt !== fallbackRef) {
-                  // formData timestamp se liší od DB - CONFLICT!
-
-                  addDebugLog('warning', 'SAVE-V2', 'conflict-detected-fallback',
-                    `Konflikt (fallback): formData.dt=${fallbackRef}, DB=${dbDt}`);
-                  setShowConflictDialog(true);
-                  setIsSaving(false);
-                  return;
-                }
-                // Inicializuj ref pro příští save
-                serverDtAktualizaceRef.current = dbDt;
-
-              } else if (dbDt !== serverDtAktualizaceRef.current) {
-                // DB timestamp se liší od toho co jsme načetli - CONFLICT!
-
-                addDebugLog('warning', 'SAVE-V2', 'conflict-detected',
-                  `Konflikt: načteno=${serverDtAktualizaceRef.current}, DB=${dbDt}`);
-                setShowConflictDialog(true);
-                setIsSaving(false);
-                return; // Přerušit save - čekáme na rozhodnutí uživatele
-              } else {
-
-              }
-            }
-          } catch (tsErr) {
-            // Chyba při kontrole timestampu - loguj ale pokračuj v save (neblokuj uživatele)
-
-            addDebugLog('warning', 'SAVE-V2', 'conflict-check-failed', `Nepodařilo se zkontrolovat timestamp: ${tsErr.message}`);
+          const hasConflict = orderConflictRef.current || await checkForOrderConflict();
+          if (hasConflict) {
+            addDebugLog('warning', 'SAVE-V2', 'conflict-detected', 'Uložení přerušeno - v DB je novější verze objednávky');
+            setShowConflictDialog(true);
+            setIsSaving(false);
+            return;
           }
+          orderData.expected_dt_aktualizace = serverDtAktualizaceRef.current;
         }
 
         // LP guard: pro LP financování nelze uložit potvrzenou věcnou správnost bez uloženého LP rozkladu.
@@ -13033,6 +13350,8 @@ function OrderForm25() {
         if (result.dt_aktualizace) {
           serverDtAktualizaceRef.current = result.dt_aktualizace;
         }
+        // Nový základ pro zjištění cizích změn (surová DB data uložené verze)
+        loadConflictBaseline(formData.id, true);
 
         // �🔍 DEBUG: Zkontroluj co backend vrací v dodavatel_zpusob_potvrzeni
 
@@ -13817,6 +14136,26 @@ function OrderForm25() {
     } catch (error) {
       const endpoint = (!isOrderSavedToDB || !formData.id) ? 'order-v2/create' : 'order-v2/update';
       addDebugLog('error', 'API', endpoint, error.message);
+
+      // 🛡️ HTTP 409 - backend odmítl uložení, v DB je novější verze objednávky
+      if (error.code === 'ORDER_VERSION_CONFLICT') {
+        const detected = await checkForOrderConflict();
+        if (!detected) {
+          // Sledovaná pole se nezměnila, ale verze ano → přesto nepustit uložení bez obnovení
+          const conflict = {
+            source: 'db',
+            upravil: error.conflict?.upravil_jmeno || getUserNameById(error.conflict?.upravil_id),
+            dtZmeny: error.conflict?.current_dt_aktualizace,
+            changes: []
+          };
+          orderConflictRef.current = conflict;
+          setOrderConflict(conflict);
+        }
+        setShowConflictDialog(true);
+        setIsSaving(false);
+        setShowSaveProgress(false);
+        return;
+      }
 
       // Zpracovat HTTP 423 error (zamčeno jiným uživatelem)
       if (error.lock_info) {
@@ -15275,18 +15614,25 @@ function OrderForm25() {
     return () => clearTimeout(debounceTimer);
   }, [formData, user_id, isSaving, showSaveProgress, disableAutosave, isDraftLoaded]);
 
-  // 🔍 Page Visibility listener - pozastaví autosave když uživatel přepne záložku
+  // 🔍 Návrat na záložku / do okna → zkontrolovat, zda objednávku mezitím nezměnil někdo jiný
+  // (autosave se na skryté záložce pozastavuje v hlavním autosave useEffect)
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-      } else {
-        // NEDĚLÁME okamžitý autosave - nechť ho spustí hlavní useEffect s debouncem
-      }
+    const runConflictCheck = () => {
+      if (document.hidden) return;
+      const now = Date.now();
+      if (now - lastConflictCheckAtRef.current < 5000) return; // focus + visibilitychange přichází často spolu
+      if (isSavingRef.current) return; // vlastní ukládání by se vyhodnotilo jako cizí změna
+      lastConflictCheckAtRef.current = now;
+      if (checkForOrderConflictRef.current) checkForOrderConflictRef.current();
     };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [formData, user_id]);
+    document.addEventListener('visibilitychange', runConflictCheck);
+    window.addEventListener('focus', runConflictCheck);
+    return () => {
+      document.removeEventListener('visibilitychange', runConflictCheck);
+      window.removeEventListener('focus', runConflictCheck);
+    };
+  }, []);
   // Ochrana před opuštěním stránky s neuloženými přílohami
   useEffect(() => {
     const handleBeforeUnload = (e) => {
@@ -18822,10 +19168,21 @@ function OrderForm25() {
           // Storno checkboxy - false (stav_stornovano neexistuje v DB)
           orderData.stav_odeslano = false;
 
+          // 🔒 CONFLICT DETECTION: neukládat přes novější verzi v DB
+          if (orderConflictRef.current || await checkForOrderConflict()) {
+            setShowConflictDialog(true);
+            return;
+          }
+          orderData.expected_dt_aktualizace = serverDtAktualizaceRef.current;
+
           // Zavolej API přímo (bez progress baru) - V2 API
           // ⚠️ prepareDataForAPI() se volá automaticky uvnitř updateOrderV2() - NEMĚNIT ZNOVU!
           // const preparedData = prepareDataForAPI(orderData);  ❌ DUPLICITNÍ - již se dělá v updateOrderV2()
-          await updateOrderV2(formData.id, orderData, token, username);
+          const unlockSaveResult = await updateOrderV2(formData.id, orderData, token, username);
+          if (unlockSaveResult?.dt_aktualizace) {
+            serverDtAktualizaceRef.current = unlockSaveResult.dt_aktualizace;
+          }
+          loadConflictBaseline(formData.id, true);
           setPendingAuditUnlockAction(null);
 
         } catch (error) {
@@ -19207,10 +19564,32 @@ function OrderForm25() {
         });
       }
 
+      // ✅ FÁZE 8: Objednávku lze dokončit, až když jsou VŠECHNY její faktury dokončené
+      // (nejdřív se dokončují faktury, teprve potom objednávka)
+      const jeDokonceniNovePotvrzeno = (formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true)
+        && !hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA');
+      if (jeDokonceniNovePotvrzeno && !isPokladna) {
+        const aktivniFaktury = (formData.faktury || []).filter(f => f.stav !== 'STORNO');
+        // faktury právě dokončené přes potvrzovací dialog (formData ještě nemusí být přerenderované)
+        const nedokoncene = aktivniFaktury.filter(f =>
+          f.stav !== 'DOKONCENA' && !autoDokonceneFakturyRef.current.has(String(f.id)));
+        if (aktivniFaktury.length === 0) {
+          errors.potvrzeni_dokonceni_objednavky = 'Objednávku nelze dokončit – nemá žádnou fakturu.';
+        } else if (nedokoncene.length > 0) {
+          errors.potvrzeni_dokonceni_objednavky = `Objednávku nelze dokončit – faktury nejsou všechny dokončené (${aktivniFaktury.length - nedokoncene.length}/${aktivniFaktury.length}): `
+            + nedokoncene.map(f => f.fa_cislo_vema || f.fa_vema_kod || `#${f.id}`).join(', ');
+        }
+      }
+
       // ✅ FÁZE 7+: VALIDACE VĚCNÉ SPRÁVNOSTI (per-invoice)
       if (currentPhase >= 7 && !isPokladna && formData.faktury && formData.faktury.length > 0) {
-        const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
-        
+        // Součet všech faktur vs. částka objednávky (položky s DPH / MAX cena s DPH)
+        const fakturaceOverrun = calcInvoiceOverrun({
+          faktury: formData.faktury,
+          maxCena: formData.max_cena_s_dph,
+          polozkyCelkem: sumPolozkySDph(formData.polozky_objednavky)
+        });
+
         formData.faktury.forEach((faktura, index) => {
           // ✅ Potvrzení věcné správnosti - MUSÍ být buď potvrzeno (1) nebo zamítnuto (2), ne nepotvrzeno (0/null)
           const status = faktura.vecna_spravnost_potvrzeno;
@@ -19226,10 +19605,12 @@ function OrderForm25() {
             }
           }
           
-          // ✅ Poznámka je POVINNÁ pokud faktura překračuje MAX cenu objednávky (pouze pro potvrzení)
-          const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
-          if (status === VS_STATUS.POTVRZENA && fakturaCastka > maxCena && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
-            errors[`faktura_${index + 1}_poznamka_vs`] = `Faktura ${index + 1}: Vysvětlete v poznámce, proč faktura překračuje max. cenu objednávky (${maxCena.toFixed(2)} Kč)`;
+          // ✅ Poznámka je POVINNÁ pokud součet faktur překračuje částku objednávky
+          // (jen při novém potvrzení - již potvrzené v DB jsou zamčené)
+          if (status === VS_STATUS.POTVRZENA && !faktura.potvrdil_vecnou_spravnost_id
+              && fakturaceOverrun.prekroceno
+              && (!faktura.vecna_spravnost_poznamka || faktura.vecna_spravnost_poznamka.trim() === '')) {
+            errors[`faktura_${index + 1}_poznamka_vs`] = `Faktura ${index + 1}: ${formatOverrunMessage(fakturaceOverrun)}`;
           }
           
           // 💰 VALIDACE LP ČERPÁNÍ - kontrola prázdných/neúplných řádků
@@ -19843,10 +20224,167 @@ function OrderForm25() {
     }
   };
 
+  // =====================================================================
+  // 🛡️ KONFLIKT VERZÍ: kontrola, zda objednávku mezitím nezměnil někdo jiný
+  // =====================================================================
+  // (jména uživatelů: existující getUserNameById() výše v komponentě)
+  // Převod hodnot na čitelný text pro dialog konfliktu (jména uživatelů, stavy workflow z DB číselníku)
+  function getConflictResolvers() {
+    return {
+      userName: (id) => getUserNameById(id) || null,
+      workflowLabel: (kod) => stavyWorkflowMap?.[kod]?.nazev || null,
+      optionLabel: (kind, code) => {
+        const list = { financovani: financovaniOptions, druh: druhyObjednavkyOptions, strediska: strediskaOptions, lp: lpKodyOptions }[kind] || [];
+        const opt = list.find(o => [o.kod, o.kod_stavu, o.value, o.id, o.cislo_lp].some(x => x !== undefined && x !== null && String(x) === String(code)));
+        if (!opt) return null;
+        if (kind === 'lp') return opt.cislo_lp || opt.kod || opt.label || null;
+        return opt.nazev_stavu || opt.nazev || opt.label || null;
+      }
+    };
+  }
+
+  // Surová DB data aktuální verze = základ pro zjištění, co změnil někdo jiný
+  // overrideDt = po vlastním uložení převzít i dt_aktualizace z DB
+  const loadConflictBaseline = async (orderId, overrideDt = false) => {
+    if (!orderId || !token || !username) return;
+    if (overrideDt) baselinePendingRef.current = true; // po vlastním uložení: do načtení nekontrolovat
+    try {
+      const raw = await getOrderV2(orderId, token, username);
+      if (raw) {
+        serverSnapshotRef.current = raw;
+        if ((overrideDt || !serverDtAktualizaceRef.current) && raw.dt_aktualizace) {
+          serverDtAktualizaceRef.current = raw.dt_aktualizace;
+        }
+        if (overrideDt && raw.dt_aktualizace && !orderConflictRef.current) {
+          // koncept se ukládá s formData → musí nést verzi, ze které vychází
+          setFormData(prev => ({
+            ...prev,
+            dt_aktualizace: raw.dt_aktualizace,
+            __conflictBaseline: { dt: raw.dt_aktualizace, order: pickConflictBaseline(raw) }
+          }));
+        }
+      }
+    } catch (e) {
+      addDebugLog('warning', 'CONFLICT', 'baseline-failed', e.message);
+    } finally {
+      if (overrideDt) baselinePendingRef.current = false;
+    }
+  };
+
+  /**
+   * Zjistí, zda je v DB novější verze objednávky se změnami sledovaných polí.
+   * - jen systémová změna (bez změny sledovaných polí) → tiše převezme novou verzi
+   * - skutečná změna → nastaví orderConflict (ULOŽIT zablokováno, ZAVŘÍT = Obnovit) a zobrazí dialog
+   * @returns {Promise<boolean>} true = konflikt
+   */
+  const checkForOrderConflict = async () => {
+    const orderId = formDataRef.current?.id || formData.id;
+    if (!orderId || String(orderId).startsWith('temp-') || !token || !username) return false;
+    if (orderConflictRef.current) return true;
+    if (conflictCheckInFlightRef.current || baselinePendingRef.current) return false;
+    conflictCheckInFlightRef.current = true;
+    try {
+      const ts = await getOrderTimestampV2(orderId, token, username);
+      const dbDt = ts?.dt_aktualizace;
+      if (!dbDt) return false;
+      if (!serverDtAktualizaceRef.current) {
+        serverDtAktualizaceRef.current = dbDt;
+        loadConflictBaseline(orderId);
+        return false;
+      }
+      if (dbDt === serverDtAktualizaceRef.current) return false;
+
+      const fresh = await getOrderV2(orderId, token, username);
+      if (!fresh) return false;
+      // základ = verze z DB, ze které uživatel vychází (NE jeho rozpracovaný formulář)
+      const base = serverSnapshotRef.current || formDataRef.current?.__conflictBaseline?.order;
+      if (!base) return false;
+      const changes = diffOrderVersions(base, fresh, getConflictResolvers());
+      if (changes.length === 0) {
+        // Změnila se jen systémová data → převzít novou verzi bez obtěžování uživatele
+        serverDtAktualizaceRef.current = fresh.dt_aktualizace || dbDt;
+        serverSnapshotRef.current = fresh;
+        setFormData(prev => ({
+          ...prev,
+          dt_aktualizace: serverDtAktualizaceRef.current,
+          __conflictBaseline: { dt: serverDtAktualizaceRef.current, order: pickConflictBaseline(fresh) }
+        }));
+        addDebugLog('info', 'CONFLICT', 'rebase', `Systémová změna objednávky, nová verze ${serverDtAktualizaceRef.current}`);
+        return false;
+      }
+      const conflict = {
+        source: 'db',
+        upravil: getUserNameById(fresh.uzivatel_akt_id),
+        dtZmeny: fresh.dt_aktualizace || dbDt,
+        changes
+      };
+      orderConflictRef.current = conflict;
+      setOrderConflict(conflict);
+      setShowConflictDialog(true);
+      addDebugLog('warning', 'CONFLICT', 'detected', `Změněno: ${changes.map(c => c.label).join(', ')}`);
+      return true;
+    } catch (e) {
+      addDebugLog('warning', 'CONFLICT', 'check-failed', e.message);
+      return false;
+    } finally {
+      conflictCheckInFlightRef.current = false;
+    }
+  };
+  checkForOrderConflictRef.current = checkForOrderConflict;
+
+  // "Obnovit" (tlačítko ZAVŘÍT při konfliktu): smazat koncept a načíst objednávku znovu z DB.
+  // Objednávka se neodemyká - uživatel na ní pokračuje s čerstvými daty.
+  const handleConflictReload = async () => {
+    const orderId = formData.id || editOrderId;
+    isClosingRef.current = true; // zabrání autosave konceptu při odchodu ze stránky
+    draftManager.setAutosaveEnabled(false, 'Conflict reload - discard stale concept');
+    disableAutosaveRef.current = true;
+    setDisableAutosave(true);
+    if (cancelAutosave) cancelAutosave();
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+    try {
+      if (user_id) {
+        draftManager.setCurrentUser(user_id);
+        await draftManager.deleteAllDraftKeys();
+        localStorage.removeItem(`order25_lpCerpani_${user_id}`);
+        localStorage.removeItem(`unsaved_attachments_${orderId || 'draft'}`);
+      }
+    } catch (e) {
+      addDebugLog('warning', 'CONFLICT', 'reload-cleanup-failed', e.message);
+    }
+    const url = new URL(window.location.href);
+    if (orderId) url.searchParams.set('edit', String(orderId));
+    window.location.replace(url.toString());
+  };
+
+  // Uložené (ne temp-) faktury, které brání dokončení objednávky - nabídnou se k automatickému dokončení
+  // ignoreCheckbox = volá se právě při zaškrtávání checkboxu (ještě není v formData)
+  const getFakturyKAutoDokonceni = (ignoreCheckbox = false) => {
+    const jeCheckbox = ignoreCheckbox
+      || formData.potvrzeni_dokonceni_objednavky === 1 || formData.potvrzeni_dokonceni_objednavky === true;
+    const jeDokonceniNovePotvrzeno = jeCheckbox && !hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA');
+    const isPokladna = formData.financovani?.platba === 'pokladna' || formData.dodavatel_zpusob_potvrzeni?.platba === 'pokladna';
+    if (!jeDokonceniNovePotvrzeno || isPokladna) return [];
+    return (formData.faktury || []).filter(f =>
+      f.stav !== 'STORNO' && f.stav !== 'DOKONCENA'
+      && f.id && !String(f.id).startsWith('temp-')
+      && !autoDokonceneFakturyRef.current.has(String(f.id)));
+  };
+
   const handleSaveOrder = async () => {
     // 🔒 OCHRANA PROTI DVOJKLIKU (race condition prevention)
     if (isSaving) {
       console.warn('⚠️ Ukládání již probíhá, ignoruji duplicitní požadavek');
+      return;
+    }
+
+    // Dokončení objednávky s nedokončenými fakturami → nejdřív varovný dialog
+    const fakturyKDokonceni = getFakturyKAutoDokonceni();
+    if (fakturyKDokonceni.length > 0) {
+      setDokonceniFakturyDialog({ isOpen: true, faktury: fakturyKDokonceni, processing: false, source: 'save' });
       return;
     }
 
@@ -19856,6 +20394,67 @@ function OrderForm25() {
 
     // Zavolej naši API funkci
     await saveOrderToAPI();
+    autoDokonceneFakturyRef.current = new Set();
+  };
+
+  // Zaškrtnutí "Potvrzuji finální dokončení" - při nedokončených fakturách nejdřív varovný dialog
+  const handleDokonceniCheckboxChange = (checked) => {
+    if (checked) {
+      const fakturyKDokonceni = getFakturyKAutoDokonceni(true);
+      if (fakturyKDokonceni.length > 0) {
+        // checkbox se zaškrtne až po potvrzení dialogu
+        setDokonceniFakturyDialog({ isOpen: true, faktury: fakturyKDokonceni, processing: false, source: 'checkbox' });
+        return;
+      }
+    }
+    handleInputChange('potvrzeni_dokonceni_objednavky', checked ? 1 : 0);
+  };
+
+  // Zrušení dialogu - u checkboxu zůstane odškrtnutý
+  const handleCancelDokonceniFaktur = () => {
+    if (dokonceniFakturyDialog.processing) return;
+    if (dokonceniFakturyDialog.source === 'checkbox') {
+      handleInputChange('potvrzeni_dokonceni_objednavky', 0);
+    }
+    setDokonceniFakturyDialog({ isOpen: false, faktury: [], processing: false });
+  };
+
+  // Potvrzení dialogu: přepnout nedokončené faktury na DOKONCENA
+  //  - z checkboxu: zaškrtnout dokončení (uloží se tlačítkem Uložit)
+  //  - z uložení: rovnou pokračovat v uložení (dokončení) objednávky
+  const handleConfirmDokonceniFaktur = async () => {
+    if (dokonceniFakturyDialog.processing) return; // ochrana proti dvojkliku
+    const faktury = dokonceniFakturyDialog.faktury || [];
+    const source = dokonceniFakturyDialog.source;
+    setDokonceniFakturyDialog(prev => ({ ...prev, processing: true }));
+    try {
+      for (const f of faktury) {
+        await updateInvoiceV2({ token, username, invoice_id: f.id, updateData: { stav: 'DOKONCENA' } });
+        autoDokonceneFakturyRef.current.add(String(f.id));
+      }
+    } catch (err) {
+      showToast && showToast(`Nepodařilo se dokončit faktury: ${err?.message || 'Neznámá chyba'}`, { type: 'error' });
+      setDokonceniFakturyDialog(prev => ({ ...prev, processing: false }));
+      return;
+    }
+
+    const doneIds = new Set(faktury.map(f => String(f.id)));
+    setFormData(prev => ({
+      ...prev,
+      faktury: (prev.faktury || []).map(f => (doneIds.has(String(f.id)) ? { ...f, stav: 'DOKONCENA' } : f))
+    }));
+    setDokonceniFakturyDialog({ isOpen: false, faktury: [], processing: false });
+    showToast && showToast(`Faktury převedeny do stavu Dokončená (${faktury.length})`, { type: 'success' });
+
+    if (source === 'checkbox') {
+      handleInputChange('potvrzeni_dokonceni_objednavky', 1);
+      return;
+    }
+
+    clearDebugLogs();
+    addDebugLog('info', 'SAVE', 'order-save-start', 'Začínám ukládání objednávky (po dokončení faktur)...');
+    await saveOrderToAPI();
+    autoDokonceneFakturyRef.current = new Set();
   };
 
   // ====================== ŠABLONY - POKROČILÉ FUNKCE ======================
@@ -22072,6 +22671,8 @@ function OrderForm25() {
                   className="save-btn"
                   onClick={handleSaveOrder}
                   disabled={(() => {
+                    // 🛡️ Konflikt verzí - v DB je novější verze, nejdřív Obnovit
+                    if (orderConflict) return true;
                     // Základní blokovací podmínky
                     if (isSaving || showSaveProgress || !canSaveOrderEffective || isLoadingEvCislo || !isValidEvCislo(formData.ev_cislo)) {
                       return true;
@@ -22097,7 +22698,9 @@ function OrderForm25() {
                     return isWorkflowCompleted && !canUnlockAnything;
                   })()}
                   title={
-                    isLoadingEvCislo
+                    orderConflict
+                      ? 'Objednávku mezitím změnil jiný uživatel – nejdřív obnovte aktuální stav (tlačítko Obnovit)'
+                      : isLoadingEvCislo
                         ? 'Načítá se evidenční číslo...'
                         : !isValidEvCislo(formData.ev_cislo)
                           ? 'Evidenční číslo se nepodařilo načíst'
@@ -22116,12 +22719,14 @@ function OrderForm25() {
 
                 <ActionButton
                   className="cancel-btn"
-                  onClick={handleCancelOrder}
-                  title="Zavřít formulář"
+                  onClick={orderConflict ? handleConflictReload : handleCancelOrder}
+                  title={orderConflict
+                    ? 'Načíst aktuální stav objednávky z databáze (neuložené změny konceptu se zahodí)'
+                    : 'Zavřít formulář'}
                   disabled={showSaveProgress || isSaving}
                 >
-                  <FontAwesomeIcon icon={faTimes} />
-                  ZAVŘÍT
+                  <FontAwesomeIcon icon={orderConflict ? faSync : faTimes} />
+                  {orderConflict ? 'OBNOVIT' : 'ZAVŘÍT'}
                 </ActionButton>
               </FormActions>
             </PhaseRow>
@@ -26163,6 +26768,12 @@ function OrderForm25() {
                 // Pokud není určen typ platby, zobrazit jako fakturu (default)
                 const sectionTitle = 'Fakturace k objednávce';
                 const sectionDescription = `(počet: ${formData.faktury?.length || 0})`;
+                const fakturaceOverrun = calcInvoiceOverrun({
+                  faktury: formData.faktury,
+                  maxCena: formData.max_cena_s_dph,
+                  polozkyCelkem: sumPolozkySDph(formData.polozky_objednavky)
+                });
+                const fmtKc = (v) => `${v.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč`;
 
                 return (
                 <FormSection data-section="fakturace">
@@ -26192,6 +26803,27 @@ function OrderForm25() {
                         <LockWarning title="Sekce je zamčena. Odemknout může administrátor nebo uživatel s právem ORDER_MANAGE.">
                           🔒 Sekce zamčena
                         </LockWarning>
+                      )}
+                      {fakturaceOverrun.prekroceno && (
+                        <span
+                          title={`Součet faktur ${fmtKc(fakturaceOverrun.total)} převyšuje částku objednávky ${fmtKc(fakturaceOverrun.limit)} o ${fmtKc(fakturaceOverrun.rozdil)}`}
+                          style={{
+                            marginLeft: '0.75rem',
+                            padding: '0.2rem 0.6rem',
+                            borderRadius: '6px',
+                            background: '#dc2626',
+                            color: '#fff',
+                            fontSize: '0.75rem',
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.35rem',
+                            cursor: 'help',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          ⚠️ Faktury převyšují cenu o {fmtKc(fakturaceOverrun.rozdil)}
+                        </span>
                       )}
                     </SectionTitle>
 
@@ -27396,10 +28028,13 @@ function OrderForm25() {
                                     {/* ✅ POZNÁMKA K VĚCNÉ SPRÁVNOSTI - NAD TLAČÍTKY */}
                                     <FormGroup style={{gridColumn: '1 / -1'}}>
                                       {(() => {
-                                        const maxCena = parseFloat(formData.max_cena_s_dph) || 0;
-                                        const fakturaCastka = parseFloat(faktura.fa_castka) || 0;
-                                        const prekroceno = fakturaCastka > maxCena && maxCena > 0;
-                                        return <Label required={prekroceno} style={prekroceno ? {color: '#dc2626', fontWeight: '700'} : {}}>Poznámka k věcné správnosti{prekroceno ? ' (POVINNÁ - faktura překračuje MAX cenu)' : ''}</Label>;
+                                        // Jen u faktury, která ještě neprošla věcnou správností (ne u již potvrzených v DB)
+                                        const prekroceno = !faktura.potvrdil_vecnou_spravnost_id && calcInvoiceOverrun({
+                                          faktury: formData.faktury,
+                                          maxCena: formData.max_cena_s_dph,
+                                          polozkyCelkem: sumPolozkySDph(formData.polozky_objednavky)
+                                        }).prekroceno;
+                                        return <Label required={prekroceno} style={prekroceno ? {color: '#dc2626', fontWeight: '700'} : {}}>Poznámka k věcné správnosti{prekroceno ? ' (POVINNÁ - součet faktur překračuje částku objednávky)' : ''}</Label>;
                                       })()}
                                       <TextArea
                                         value={faktura.vecna_spravnost_poznamka || ''}
@@ -28431,9 +29066,7 @@ function OrderForm25() {
                                   formData.potvrzeni_dokonceni_objednavky === true ||
                                   hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA')
                                 }
-                                onChange={(e) => {
-                                  handleInputChange('potvrzeni_dokonceni_objednavky', e.target.checked ? 1 : 0);
-                                }}
+                                onChange={(e) => handleDokonceniCheckboxChange(e.target.checked)}
                                 required
                                 disabled={hasWorkflowState(formData.stav_workflow_kod, 'DOKONCENA')}
                                 style={{
@@ -30364,6 +30997,49 @@ function OrderForm25() {
         {cancelWarningMessage || 'Koncept bude zrušen a neuložené změny nebudou uloženy.'}
       </ConfirmDialog>
 
+      {/* ⚠️ Dokončení objednávky s nedokončenými fakturami */}
+      <ConfirmDialog
+        isOpen={dokonceniFakturyDialog.isOpen}
+        onClose={handleCancelDokonceniFaktur}
+        onConfirm={handleConfirmDokonceniFaktur}
+        title="Dokončení objednávky s nedokončenými fakturami"
+        icon={faExclamationTriangle}
+        variant="warning"
+        confirmText={dokonceniFakturyDialog.processing
+          ? 'Dokončuji…'
+          : (dokonceniFakturyDialog.source === 'checkbox' ? 'Ano, dokončit faktury' : 'Ano, dokončit faktury i objednávku')}
+        cancelText="Zrušit"
+      >
+        <p style={{ marginTop: 0 }}>
+          Dokončujete objednávku, která má faktury v nedokončeném stavu.
+          Potvrzením se <strong>tyto faktury ihned převedou do stavu Dokončená</strong>
+          {dokonceniFakturyDialog.source === 'checkbox'
+            ? ' a dokončení objednávky se označí (uloží se tlačítkem Uložit). Stav faktur nemění workflow objednávky:'
+            : ' a objednávka se dokončí:'}
+        </p>
+        <ul style={{ margin: '0.5rem 0 0.75rem 1.25rem', padding: 0 }}>
+          {(dokonceniFakturyDialog.faktury || []).map(f => (
+            <li key={f.id}>
+              <strong>{f.fa_cislo_vema || f.fa_vema_kod || `#${f.id}`}</strong>
+              {' – '}{(parseFloat(f.fa_castka) || 0).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Kč
+              {' – stav: '}{getInvoiceStavLabel(f.stav)}
+            </li>
+          ))}
+        </ul>
+        <p style={{
+          background: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)',
+          padding: '0.75rem',
+          borderRadius: '6px',
+          border: '1px solid rgba(245, 158, 11, 0.35)',
+          color: '#92400e',
+          fontSize: '0.9rem',
+          margin: 0
+        }}>
+          <strong>⚠️ Pozor:</strong> Standardně se nejdřív dokončují faktury (po zaplacení), teprve potom objednávka.
+          Pokračujte jen pokud víte, že jsou faktury vyřízené.
+        </p>
+      </ConfirmDialog>
+
     {/* 🗑️ Confirm Dialog pro smazání přílohy - GRADIENT-MODERN RED */}
     <ConfirmDialog
       isOpen={showDeleteAttachmentDialog}
@@ -30861,43 +31537,55 @@ function OrderForm25() {
       />
     )}
 
-    {/* 🔒 CONFLICT DETECTION: Dialog při detekci konfliktu (jiný uživatel změnil objednávku) */}
+    {/* 🔒 CONFLICT DETECTION: objednávku mezitím změnil jiný uživatel → uložení zablokováno */}
     {showConflictDialog && (
       <ConfirmDialog
         isOpen={showConflictDialog}
         title="⚠️ Objednávka byla změněna jiným uživatelem"
         icon={faExclamationTriangle}
         variant="warning"
-        confirmText="Načíst aktuální data"
-        showCancel={false}
+        confirmText="Obnovit"
+        cancelText="Zavřít okno"
         onConfirm={() => {
-          // Načíst aktuální data z DB (zahodit lokální změny)
           setShowConflictDialog(false);
-          if (formData.id) {
-            getOrderV2(formData.id, token, username, true)
-              .then(freshData => {
-                if (freshData) {
-                  const transformed = transformBackendDataToFrontend(freshData);
-                  setFormData(prev => ({ ...prev, ...transformed }));
-                  // Aktualizovat server timestamp
-                  if (freshData.dt_aktualizace) {
-                    serverDtAktualizaceRef.current = freshData.dt_aktualizace;
-
-                  }
-                  showToast && showToast('Objednávka byla znovu načtena z databáze. Zkontrolujte data a uložte znovu.', { type: 'info' });
-                }
-              })
-              .catch(err => {
-                showToast && showToast('Nepodařilo se načíst aktuální data objednávky.', { type: 'error' });
-              });
-          }
+          handleConflictReload();
         }}
-        onClose={() => {
-          setShowConflictDialog(false);
-        }}
+        onClose={() => setShowConflictDialog(false)}
       >
-        <p>Objednávka <strong>{formData.cislo_objednavky || formData.ev_cislo || `#${formData.id}`}</strong> byla od doby, kdy jste ji otevřeli, změněna jiným uživatelem.</p>
-        <p style={{ marginTop: '0.75rem', fontWeight: 'bold', color: '#c0392b' }}>Uložení není možné. Musíte nejprve načíst aktuální data z databáze a poté provést své změny znovu.</p>
+        <p style={{ marginTop: 0 }}>
+          Objednávka <strong>{formData.cislo_objednavky || formData.ev_cislo || `#${formData.id}`}</strong>{' '}
+          {orderConflict?.source === 'draft'
+            ? 'byla od uložení vašeho konceptu změněna'
+            : 'byla od doby, kdy jste ji otevřeli, změněna'}
+          {orderConflict?.upravil ? <> uživatelem <strong>{orderConflict.upravil}</strong></> : ' jiným uživatelem'}
+          {orderConflict?.dtZmeny ? ` (${new Date(String(orderConflict.dtZmeny).replace(' ', 'T')).toLocaleString('cs-CZ')})` : ''}.
+        </p>
+        {orderConflict?.changes?.length > 0 && (
+          <div style={{ maxHeight: '240px', overflowY: 'auto', margin: '0.5rem 0 0.75rem' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+              <thead>
+                <tr style={{ textAlign: 'left', color: '#64748b' }}>
+                  <th style={{ padding: '0.25rem 0.5rem' }}>Pole</th>
+                  <th style={{ padding: '0.25rem 0.5rem' }}>{orderConflict.source === 'draft' ? 'Váš koncept' : 'Při otevření'}</th>
+                  <th style={{ padding: '0.25rem 0.5rem' }}>Aktuálně v DB</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderConflict.changes.map(c => (
+                  <tr key={c.key} style={{ borderTop: '1px solid #e2e8f0' }}>
+                    <td style={{ padding: '0.25rem 0.5rem', fontWeight: 600 }}>{c.label}</td>
+                    <td style={{ padding: '0.25rem 0.5rem', color: '#991b1b' }}>{c.from}</td>
+                    <td style={{ padding: '0.25rem 0.5rem', color: '#166534', fontWeight: 600 }}>{c.to}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p style={{ margin: 0, fontWeight: 'bold', color: '#c0392b' }}>
+          Uložení není možné, jinak byste přepsali novější změny. Tlačítkem <em>Obnovit</em> (místo Zavřít)
+          se zahodí váš koncept a načte se aktuální stav objednávky – poté můžete své úpravy provést znovu.
+        </p>
       </ConfirmDialog>
     )}
 

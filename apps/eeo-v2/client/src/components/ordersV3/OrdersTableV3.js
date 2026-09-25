@@ -5425,7 +5425,9 @@ const OrdersTableV3 = ({
                         // Číselné sloupce - OperatorInput
                         if (columnId === 'max_cena_s_dph' || columnId === 'cena_s_dph' || columnId === 'faktury_celkova_castka_s_dph') {
                           return (
-                            <div style={{ position: 'relative', marginTop: '4px', width: '100%' }}>
+                            // OperatorInput má height: 100% → bez výšky rodiče by se zmenšil na výšku textu;
+                            // výška = ColumnFilterInput (font 0.7rem × line-height + padding 2×0.35rem + border)
+                            <div style={{ position: 'relative', marginTop: '4px', width: '100%', height: 'calc(0.7rem * 1.2 + 0.7rem + 2px)' }}>
                               <OperatorInput
                                 value={inputValues[columnId] || ''}
                                 onChange={(value) => handleFilterChange(columnId, value)}

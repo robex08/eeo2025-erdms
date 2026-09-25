@@ -66,6 +66,7 @@ import { CustomSelect } from '../../CustomSelect';
 import SmlouvyFormModal from './SmlouvyFormModal';
 import SmlouvyDetailModal from './SmlouvyDetailModal';
 import SmlouvyImportModal from './SmlouvyImportModal';
+import SmlouvyPrekroceniWarning from '../../SmlouvyPrekroceniWarning';
 
 // =============================================================================
 // INVOICE STATE LABELS (české názvy stavů faktur)
@@ -530,60 +531,125 @@ const TableHeaderFilterRow = styled.tr`
 `;
 
 const TableHeaderFilterCell = styled.th`
-  padding: 0.5rem 0.75rem;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  vertical-align: middle;
   background: #f8f9fa;
   border-bottom: 1px solid #e5e7eb;
 `;
 
+// Sloupcové filtry - vzhled podle tabulky objednávek V3 (OrdersTableV3)
 const ColumnFilterWrapper = styled.div`
   position: relative;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  
-  > svg {
+
+  > input, > select {
+    flex: 1 1 auto;
+    min-width: 0;
+    box-sizing: border-box;
+  }
+
+  > svg:first-of-type {
     position: absolute;
-    left: 0.75rem;
+    left: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
     color: #9ca3af;
     z-index: 1;
     pointer-events: none;
-    width: 14px !important;
-    height: 14px !important;
+    width: 12px !important;
+    height: 12px !important;
+  }
+`;
+
+const ColumnClearButton = styled.button`
+  position: absolute;
+  right: ${props => props.$forSelect ? '1.4rem' : '0.5rem'};
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: #9ca3af;
+  cursor: pointer;
+  padding: 0.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+
+  &:hover {
+    color: #6b7280;
+  }
+
+  > svg {
+    width: 10px !important;
+    height: 10px !important;
   }
 `;
 
 const ColumnFilterInput = styled.input`
   width: 100%;
-  padding: 0.5rem 0.75rem 0.5rem 2.25rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  background: white;
-  
+  padding: 0.35rem 1.75rem 0.35rem 1.75rem;
+  border: 1px solid ${props => props.$active ? '#f59e0b' : '#d1d5db'};
+  border-radius: 4px;
+  font-size: 0.7rem;
+  background: ${props => props.$active ? '#fffbeb' : '#f9fafb'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.2)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
+  transition: all 0.15s ease;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+
   &:focus {
     outline: none;
     border-color: #3b82f6;
+    background: white;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
   }
-  
+
   &::placeholder {
     color: #9ca3af;
+    font-size: 0.7rem;
   }
 `;
 
 const ColumnFilterSelect = styled.select`
   width: 100%;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 0.8rem;
-  background: white;
+  padding: 0.35rem ${props => props.$active ? '2.5rem' : '1.5rem'} 0.35rem 0.5rem;
+  border: 1px solid ${props => props.$active ? '#f59e0b' : '#d1d5db'};
+  border-radius: 4px;
+  font-size: 0.7rem;
+  background-color: ${props => props.$active ? '#fffbeb' : '#f9fafb'};
+  box-shadow: ${props => props.$active ? '0 0 0 2px rgba(245, 158, 11, 0.2)' : 'none'};
+  font-weight: ${props => props.$active ? '600' : '400'};
+  transition: all 0.15s ease;
   cursor: pointer;
-  
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L2 4h8z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+
   &:focus {
     outline: none;
     border-color: #3b82f6;
+    background-color: white;
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+  }
+
+  option {
+    padding: 0.5rem;
+    font-weight: 400;
   }
 `;
 
@@ -1281,6 +1347,34 @@ const LoadingSubtext = styled.div`
 const FILTERS_STORAGE_KEY = 'smlouvy_filters';
 const SHOW_FILTERS_STORAGE_KEY = 'smlouvy_showFilters';
 const SKUPINA_FILTER_STORAGE_KEY = 'smlouvy_skupinaFilter';
+const COLUMN_FILTERS_STORAGE_KEY = 'smlouvy_columnFilters';
+
+// Zbývá = hodnota smlouvy − (Dokončeno + V procesu), za celou smlouvu - stejně jako progress bar
+const calcZbyvaSmlouvy = (row) => {
+  const hodnota = parseFloat(row?.hodnota_s_dph) || 0;
+  if (hodnota <= 0) return NaN;
+  return hodnota - ((parseFloat(row?.cerpano_faktury_dokoncene) || 0) + (parseFloat(row?.cerpano_v_procesu) || 0));
+};
+
+// Barva čísla objednávky podle stavu (podřádek smlouvy + tooltip čerpání)
+const getObjStavColors = (stav) => {
+  if (['Dokončená', 'DOKONCENA', 'Uvejřejněná', 'UVEREJNENA'].includes(stav)) return { text: '#059669', underline: '#86efac' };
+  if (['Zkontrolovaná', 'ZKONTROLOVANA', 'Schválená', 'SCHVALENA'].includes(stav)) return { text: '#ea580c', underline: '#fdba74' };
+  if (['Zrušená', 'ZRUSENA'].includes(stav)) return { text: '#dc2626', underline: '#fca5a5' };
+  return { text: '#3b82f6', underline: '#93c5fd' };
+};
+
+const EMPTY_COLUMN_FILTERS = {
+  cislo_smlouvy: '',
+  nazev_firmy: '',
+  ico: '',
+  nazev_smlouvy: '',
+  usek_zkr: '',
+  druh_smlouvy: '',
+  stav: '',
+  pouzit_v_obj_formu: '',
+  zbyva: '' // '' = vše, 'precerpane' = zbývá < 0, 'neprecerpane' = zbývá >= 0
+};
 
 // Práh pro rozlišení smluv "bez stropu" - částky menší než toto se považují za symbolické (bez reálného limitu)
 const MIN_CAP_THRESHOLD = 100; // Kč - smlouvy s limitem < 100 Kč (např. 1 Kč) = bez stropu
@@ -1327,6 +1421,32 @@ const saveShowFiltersToStorage = (show) => {
     localStorage.setItem(SHOW_FILTERS_STORAGE_KEY, show.toString());
   } catch (error) {
     console.warn('⚠️ Chyba při ukládání stavu filtrů do localStorage:', error);
+  }
+};
+
+// Helper funkce pro načtení sloupcových filtrů (hlavička tabulky) z localStorage
+const loadColumnFiltersFromStorage = () => {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMN_FILTERS_STORAGE_KEY) || 'null');
+    if (saved && typeof saved === 'object') {
+      // Jen známé klíče a stringové hodnoty
+      return Object.keys(EMPTY_COLUMN_FILTERS).reduce((acc, key) => {
+        acc[key] = typeof saved[key] === 'string' ? saved[key] : '';
+        return acc;
+      }, {});
+    }
+  } catch (error) {
+    console.warn('⚠️ Chyba při načítání sloupcových filtrů smluv z localStorage:', error);
+  }
+  return { ...EMPTY_COLUMN_FILTERS };
+};
+
+// Helper funkce pro uložení sloupcových filtrů do localStorage
+const saveColumnFiltersToStorage = (columnFilters) => {
+  try {
+    localStorage.setItem(COLUMN_FILTERS_STORAGE_KEY, JSON.stringify(columnFilters));
+  } catch (error) {
+    console.warn('⚠️ Chyba při ukládání sloupcových filtrů smluv do localStorage:', error);
   }
 };
 
@@ -1401,15 +1521,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
 
   // TanStack Table state
   const [sorting, setSorting] = useState([]);
-  const [columnFilters, setColumnFilters] = useState({
-    cislo_smlouvy: initialFilter || '',
-    nazev_firmy: '',
-    ico: '',
-    nazev_smlouvy: '',
-    usek_zkr: '',
-    druh_smlouvy: '',
-    stav: '',
-    pouzit_v_obj_formu: ''
+  // Sloupcové filtry - z localStorage; deep-link (initialFilter) má přednost pro číslo smlouvy
+  const [columnFilters, setColumnFilters] = useState(() => {
+    const saved = loadColumnFiltersFromStorage();
+    return initialFilter ? { ...saved, cislo_smlouvy: initialFilter } : saved;
   });
 
   // Filtr skupiny (klik na dlaždici): null = vše, 'se_stropem', 'bez_stropu'
@@ -1496,10 +1611,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
     const vProcesu = usePersonal
       ? (parseFloat(smlouva?.cerpano_v_procesu_uzivatel) || 0)
       : (parseFloat(smlouva?.cerpano_v_procesu) || 0);
-    const celkem = usePersonal
-      ? (dokonceno + vProcesu)
-      : (parseFloat(smlouva?.cerpano_celkem) || 0);
-    return { isMujUsek, usePersonal, celkem, dokonceno, vProcesu };
+    // Celkem = součet částí progressu, aby % sedělo s barem (Dokončeno + V procesu)
+    const celkem = dokonceno + vProcesu;
+    const prekroceni = (usePersonal ? smlouva?.v_procesu_prekroceni_uzivatel : smlouva?.v_procesu_prekroceni) || [];
+    return { isMujUsek, usePersonal, celkem, dokonceno, vProcesu, prekroceni };
   }, [isRestrictedCerpaniUser, isRowInUserUsek]);
 
   const toggleContractExpand = useCallback(async (smlouvaId, filterByUser = false) => {
@@ -1627,6 +1742,10 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
   useEffect(() => {
     saveShowFiltersToStorage(showFilters);
   }, [showFilters]);
+
+  useEffect(() => {
+    saveColumnFiltersToStorage(columnFilters);
+  }, [columnFilters]);
 
   // =============================================================================
   // LOCAL FILTERING
@@ -1816,6 +1935,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           return false;
         }
       }
+      if (columnFilters.zbyva) {
+        // Smlouvy bez stropu (i symbolický strop < MIN_CAP_THRESHOLD, např. 1 Kč) do filtru přečerpání nepatří
+        const zbyvaSml = calcZbyvaSmlouvy(smlouva);
+        if (!Number.isFinite(zbyvaSml) || (parseFloat(smlouva.hodnota_s_dph) || 0) < MIN_CAP_THRESHOLD) return false;
+        if (columnFilters.zbyva === 'precerpane' && !(zbyvaSml < 0)) return false;
+        if (columnFilters.zbyva === 'neprecerpane' && zbyvaSml < 0) return false;
+      }
       if (columnFilters.pouzit_v_obj_formu !== '' && smlouva.pouzit_v_obj_formu !== parseInt(columnFilters.pouzit_v_obj_formu)) {
         return false;
       }
@@ -1937,6 +2063,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
         } else if (smlouva.stav !== cfStav) {
           return false;
         }
+      }
+      if (columnFilters.zbyva) {
+        // Smlouvy bez stropu (i symbolický strop < MIN_CAP_THRESHOLD, např. 1 Kč) do filtru přečerpání nepatří
+        const zbyvaSml = calcZbyvaSmlouvy(smlouva);
+        if (!Number.isFinite(zbyvaSml) || (parseFloat(smlouva.hodnota_s_dph) || 0) < MIN_CAP_THRESHOLD) return false;
+        if (columnFilters.zbyva === 'precerpane' && !(zbyvaSml < 0)) return false;
+        if (columnFilters.zbyva === 'neprecerpane' && zbyvaSml < 0) return false;
       }
       if (columnFilters.pouzit_v_obj_formu !== '' && smlouva.pouzit_v_obj_formu !== parseInt(columnFilters.pouzit_v_obj_formu)) {
         return false;
@@ -2477,28 +2610,15 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       header: 'Čerpání s DPH',
       cell: info => {
         const row = info.row.original;
-        const { usePersonal, celkem, dokonceno, vProcesu } = resolveCerpani(row);
+        const { usePersonal, celkem, dokonceno, vProcesu, prekroceni } = resolveCerpani(row);
         const pocatecniStav = parseFloat(row.hodnota_s_dph) || 0;
         // Smlouva má reálný strop (>= 100 Kč) - symbolické částky jako 1 Kč = bez stropu
         const hasCap = pocatecniStav >= MIN_CAP_THRESHOLD;
         const cerpano = celkem;
-        const backendPercent = usePersonal || row.procento_cerpani === null || row.procento_cerpani === undefined
-          ? null
-          : Number(row.procento_cerpani);
-
         const computedPercent = hasCap ? (cerpano / pocatecniStav) * 100 : null;
-
-        const percentForBar = hasCap
-          ? (Number.isFinite(backendPercent)
-              ? backendPercent
-              : (Number.isFinite(computedPercent) ? computedPercent : 0))
-          : 0;
-
-        const percentText = hasCap
-          ? (Number.isFinite(backendPercent)
-              ? `${backendPercent.toFixed(1)}%`
-              : (Number.isFinite(computedPercent) ? `${computedPercent.toFixed(1)}%` : '—'))
-          : '—';
+        const percentForBar = Number.isFinite(computedPercent) ? computedPercent : 0;
+        const percentText = Number.isFinite(computedPercent) ? `${computedPercent.toFixed(1)}%` : '—';
+        const prekroceniIcon = <SmlouvyPrekroceniWarning prekroceni={prekroceni} size="0.7rem" />;
 
         // Detekce nekonečné platnosti (rok >= 2100 → 2199, 9999 apod.)
         const isInfinite = (() => {
@@ -2633,9 +2753,25 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                           {vProcesu > 0 && (
                             <tr>
                               <td>V procesu:</td>
-                              <td style={{ color: '#fcd34d' }}>{formatCurrency(vProcesu)}</td>
+                              <td style={{ color: '#fcd34d' }}>
+                                {formatCurrency(vProcesu)}{prekroceni.length > 0 && ' ⚠️'}
+                              </td>
                             </tr>
                           )}
+                          {prekroceni.length > 0 && (
+                            <tr>
+                              <td colSpan={2} style={{ color: '#fca5a5', textAlign: 'left', paddingRight: 0 }}>
+                                Fakturace převyšuje částku:
+                              </td>
+                            </tr>
+                          )}
+                          {prekroceni.map(p => (
+                            <tr key={p.objednavka_id}>
+                              <td colSpan={2} style={{ color: getObjStavColors(p.stav_objednavky).text, textAlign: 'right', paddingRight: 0, fontWeight: 600, overflowWrap: 'anywhere' }}>
+                                {p.cislo_objednavky}
+                              </td>
+                            </tr>
+                          ))}
                           <tr className="divider">
                             <td>Celkem čerpáno:</td>
                             <td style={{ color: barColor }}>{formatCurrency(cerpano)} ({percentText})</td>
@@ -2678,6 +2814,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', color: '#94a3b8' }}>
                       <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: barColorLight, opacity: 0.6 }} />
                       V&nbsp;procesu&nbsp;{formatCurrency(vProcesu)}
+                      {prekroceniIcon}
                     </span>
                   </div>
                   <JezStatusBadge $level={barLevel}>
@@ -2709,7 +2846,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                     <span style={{ fontWeight: 600, color: '#64748b', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
                       V procesu:
                     </span>
-                    <span style={{ fontWeight: 700, color: '#f59e0b', fontSize: '0.85rem' }}>
+                    <span style={{ fontWeight: 700, color: '#f59e0b', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                      {prekroceniIcon}
                       {formatCurrency(vProcesu)}
                     </span>
                   </div>
@@ -2761,16 +2899,7 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
             );
           }
 
-          const raw = info.getValue();
-          if (raw === null || raw === undefined || raw === '') {
-            return (
-              <span style={{ color: '#6b7280', fontWeight: '600' }}>
-                —
-              </span>
-            );
-          }
-
-          const zbyva = Number(raw);
+          const zbyva = calcZbyvaSmlouvy(row);
           if (!Number.isFinite(zbyva)) {
             return (
               <span style={{ color: '#6b7280', fontWeight: '600' }}>
@@ -2810,17 +2939,8 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
           if (!aCap) return 1;
           if (!bCap) return -1;
 
-          const aRaw = rowA.original.zbyva;
-          const bRaw = rowB.original.zbyva;
-
-          const aNull = aRaw === null || aRaw === undefined || aRaw === '';
-          const bNull = bRaw === null || bRaw === undefined || bRaw === '';
-          if (aNull && bNull) return 0;
-          if (aNull) return 1;
-          if (bNull) return -1;
-
-          const a = Number(aRaw);
-          const b = Number(bRaw);
+          const a = calcZbyvaSmlouvy(rowA.original);
+          const b = calcZbyvaSmlouvy(rowB.original);
           if (!Number.isFinite(a) && !Number.isFinite(b)) return 0;
           if (!Number.isFinite(a)) return 1;
           if (!Number.isFinite(b)) return -1;
@@ -2955,16 +3075,9 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
       platnost_od: '',
       platnost_do: ''
     });
-    setColumnFilters({
-      cislo_smlouvy: '',
-      nazev_firmy: '',
-      ico: '',
-      nazev_smlouvy: '',
-      usek_zkr: '',
-      druh_smlouvy: '',
-      stav: '',
-      pouzit_v_obj_formu: ''
-    });
+    setColumnFilters({ ...EMPTY_COLUMN_FILTERS });
+    setSkupinaFilter(null); // i filtr klikem na dlaždici (se stropem / bez stropu)
+    setPageIndex(0);
   };
 
   const handleFormClose = (reload) => {
@@ -3409,7 +3522,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                       placeholder="Hledat číslo..."
                       value={columnFilters.cislo_smlouvy}
                       onChange={(e) => setColumnFilters(prev => ({...prev, cislo_smlouvy: e.target.value}))}
+                      $active={!!columnFilters.cislo_smlouvy}
                     />
+                    {columnFilters.cislo_smlouvy && (
+                      <ColumnClearButton type="button" title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, cislo_smlouvy: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
                   </ColumnFilterWrapper>
                 </TableHeaderFilterCell>
                 {/* Firma */}
@@ -3421,7 +3540,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                       placeholder="Hledat firmu..."
                       value={columnFilters.nazev_firmy}
                       onChange={(e) => setColumnFilters(prev => ({...prev, nazev_firmy: e.target.value}))}
+                      $active={!!columnFilters.nazev_firmy}
                     />
+                    {columnFilters.nazev_firmy && (
+                      <ColumnClearButton type="button" title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, nazev_firmy: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
                   </ColumnFilterWrapper>
                 </TableHeaderFilterCell>
                 {/* IČO */}
@@ -3433,7 +3558,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                       placeholder="Hledat IČO..."
                       value={columnFilters.ico}
                       onChange={(e) => setColumnFilters(prev => ({...prev, ico: e.target.value}))}
+                      $active={!!columnFilters.ico}
                     />
+                    {columnFilters.ico && (
+                      <ColumnClearButton type="button" title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, ico: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
                   </ColumnFilterWrapper>
                 </TableHeaderFilterCell>
                 {/* Název smlouvy */}
@@ -3445,7 +3576,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                       placeholder="Hledat název..."
                       value={columnFilters.nazev_smlouvy}
                       onChange={(e) => setColumnFilters(prev => ({...prev, nazev_smlouvy: e.target.value}))}
+                      $active={!!columnFilters.nazev_smlouvy}
                     />
+                    {columnFilters.nazev_smlouvy && (
+                      <ColumnClearButton type="button" title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, nazev_smlouvy: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
                   </ColumnFilterWrapper>
                 </TableHeaderFilterCell>
                 {/* Úsek */}
@@ -3457,7 +3594,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                       placeholder="Hledat úsek..."
                       value={columnFilters.usek_zkr}
                       onChange={(e) => setColumnFilters(prev => ({...prev, usek_zkr: e.target.value}))}
+                      $active={!!columnFilters.usek_zkr}
                     />
+                    {columnFilters.usek_zkr && (
+                      <ColumnClearButton type="button" title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, usek_zkr: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
                   </ColumnFilterWrapper>
                 </TableHeaderFilterCell>
                 {/* Platnost - prázdná buňka */}
@@ -3466,30 +3609,64 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                 <TableHeaderFilterCell />
                 {/* Čerpání - prázdná buňka */}
                 <TableHeaderFilterCell />
-                {/* Zbývá - prázdná buňka */}
-                <TableHeaderFilterCell />
+                {/* Zbývá - filtr přečerpaných smluv */}
+                <TableHeaderFilterCell>
+                  <ColumnFilterWrapper>
+                    <ColumnFilterSelect
+                      value={columnFilters.zbyva}
+                      $active={columnFilters.zbyva !== ''}
+                      onChange={(e) => setColumnFilters(prev => ({...prev, zbyva: e.target.value}))}
+                      title="Přečerpané = zbývá méně než 0 Kč (smlouvy bez stropu se při filtru nezobrazí)"
+                    >
+                      <option value="">Vše</option>
+                      <option value="precerpane">⛔ Přečerpané</option>
+                      <option value="neprecerpane">✓ Nepřečerpané</option>
+                    </ColumnFilterSelect>
+                    {columnFilters.zbyva !== '' && (
+                      <ColumnClearButton type="button" $forSelect title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, zbyva: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
+                  </ColumnFilterWrapper>
+                </TableHeaderFilterCell>
                 {/* Použití */}
                 <TableHeaderFilterCell>
-                  <ColumnFilterSelect
-                    value={columnFilters.pouzit_v_obj_formu}
-                    onChange={(e) => setColumnFilters(prev => ({...prev, pouzit_v_obj_formu: e.target.value}))}
-                  >
-                    <option value="">Vše</option>
-                    <option value="1">📋 Objednávky</option>
-                    <option value="0">🔒 Faktury</option>
-                  </ColumnFilterSelect>
+                  <ColumnFilterWrapper>
+                    <ColumnFilterSelect
+                      value={columnFilters.pouzit_v_obj_formu}
+                      $active={columnFilters.pouzit_v_obj_formu !== ''}
+                      onChange={(e) => setColumnFilters(prev => ({...prev, pouzit_v_obj_formu: e.target.value}))}
+                    >
+                      <option value="">Vše</option>
+                      <option value="1">📋 Objednávky</option>
+                      <option value="0">🔒 Faktury</option>
+                    </ColumnFilterSelect>
+                    {columnFilters.pouzit_v_obj_formu !== '' && (
+                      <ColumnClearButton type="button" $forSelect title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, pouzit_v_obj_formu: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
+                  </ColumnFilterWrapper>
                 </TableHeaderFilterCell>
                 {/* Stav */}
                 <TableHeaderFilterCell>
-                  <ColumnFilterSelect
-                    value={columnFilters.stav}
-                    onChange={(e) => setColumnFilters(prev => ({...prev, stav: e.target.value}))}
-                  >
-                    <option value="">Všechny</option>
-                    {availableStavOptions.map(opt => (
-                      <option key={opt.value} value={opt.value}>{opt.label}</option>
-                    ))}
-                  </ColumnFilterSelect>
+                  <ColumnFilterWrapper>
+                    <ColumnFilterSelect
+                      value={columnFilters.stav}
+                      $active={columnFilters.stav !== ''}
+                      onChange={(e) => setColumnFilters(prev => ({...prev, stav: e.target.value}))}
+                    >
+                      <option value="">Všechny</option>
+                      {availableStavOptions.map(opt => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </ColumnFilterSelect>
+                    {columnFilters.stav !== '' && (
+                      <ColumnClearButton type="button" $forSelect title="Vymazat filtr" onClick={() => setColumnFilters(prev => ({...prev, stav: ''}))}>
+                        <FontAwesomeIcon icon={faTimes} />
+                      </ColumnClearButton>
+                    )}
+                  </ColumnFilterWrapper>
                 </TableHeaderFilterCell>
                 {/* Akce - prázdná buňka */}
                 <TableHeaderFilterCell />
@@ -3627,13 +3804,13 @@ const SmlouvyTab = ({ readOnly = false, forceUnrestrictedReadOnly = false, initi
                                             style={{
                                               background: 'none',
                                               border: 'none',
-                                              color: (ord.stav === 'Dokončená' || ord.stav === 'DOKONCENA' || ord.stav === 'Uvejřejněná' || ord.stav === 'UVEREJNENA') ? '#059669' : (ord.stav === 'Zkontrolovaná' || ord.stav === 'ZKONTROLOVANA' || ord.stav === 'Schválená' || ord.stav === 'SCHVALENA') ? '#ea580c' : (ord.stav === 'Zrušená' || ord.stav === 'ZRUSENA') ? '#dc2626' : '#3b82f6',
+                                              color: getObjStavColors(ord.stav).text,
                                               fontWeight: 600,
                                               cursor: 'pointer',
                                               padding: 0,
                                               fontSize: 'inherit',
                                               fontFamily: 'inherit',
-                                              borderBottom: `1px dashed ${ (ord.stav === 'Dokončená' || ord.stav === 'DOKONCENA' || ord.stav === 'Uvejřejněná' || ord.stav === 'UVEREJNENA') ? '#86efac' : (ord.stav === 'Zkontrolovaná' || ord.stav === 'ZKONTROLOVANA' || ord.stav === 'Schválená' || ord.stav === 'SCHVALENA') ? '#fdba74' : (ord.stav === 'Zrušená' || ord.stav === 'ZRUSENA') ? '#fca5a5' : '#93c5fd'}`
+                                              borderBottom: `1px dashed ${getObjStavColors(ord.stav).underline}`
                                             }}
                                             title="Otevřít objednávku"
                                           >

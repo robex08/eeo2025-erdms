@@ -1726,6 +1726,15 @@ function handle_orders_v3_update($input, $config) {
 
         // Přidej timestamp aktualizace
         $update_parts[] = "`dt_objednavky` = NOW()";
+        // 🛡️ Verze záznamu pro kontrolu konfliktů v OrderForm25 (optimistic locking):
+        // bez dt_aktualizace formulář otevřený u jiného uživatele změnu (např. schválení) nepozná
+        // a při uložení ji přepíše.
+        $update_parts[] = "`dt_aktualizace` = ?";
+        $params[] = TimezoneHelper::getCzechDateTime();
+        if (!empty($acting_user_id)) {
+            $update_parts[] = "`uzivatel_akt_id` = ?";
+            $params[] = (int)$acting_user_id;
+        }
         $params[] = $order_id;
 
         $sql = "UPDATE `" . TBL_OBJEDNAVKY . "` 

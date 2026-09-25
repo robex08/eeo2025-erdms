@@ -82,6 +82,7 @@ import { useDictionaries } from '../forms/OrderForm25/hooks/useDictionaries';
 import AttachmentViewer from '../components/invoices/AttachmentViewer';
 import { fetchLPList, saveOdboryLP, getOdboryLP, deleteOdboryLP } from '../services/apiLP';
 import LPBadge from '../components/LPBadge';
+import { calcInvoiceOverrun, formatOverrunMessage } from '../utils/invoiceOverrun';
 
 // Helper: formátování kódu LP s rokem platnosti (např. LPP4'26)
 const formatLpWithYear = (cisloLp, platneDo) => {
@@ -2764,6 +2765,23 @@ export default function InvoiceEvidencePage() {
     return false;
   }, [originalFormData, isOrderCompleted, hasPermission, isSuperAdmin, isAdmin, orderData, user_id, activeSubstitutions]);
 
+  // Součet všech faktur objednávky (vč. aktuální / nové) vs. částka objednávky (položky / MAX cena s DPH)
+  const getFakturaceOverrun = () => {
+    if (!orderData) return { limit: 0, total: 0, rozdil: 0, prekroceno: false };
+    const faktury = orderData.faktury || [];
+    const isInList = !!editingInvoiceId && faktury.some(f => String(f.id) === String(editingInvoiceId));
+    return calcInvoiceOverrun({
+      faktury,
+      currentInvoiceId: isInList ? editingInvoiceId : null,
+      currentCastka: formData.fa_castka,
+      includeCurrentAsNew: !isInList,
+      maxCena: orderData.max_cena_s_dph,
+      polozkyCelkem: orderData.polozky_celkova_cena_s_dph
+    });
+  };
+  // Povinná poznámka jen u faktury, která ještě neprošla věcnou správností
+  const fakturacePrekrocena = originalFormData?.vecna_spravnost_potvrzeno !== 1 && getFakturaceOverrun().prekroceno;
+
   // 🧾 Upozornění pro věcnou správnost: faktura je předána jinému zaměstnanci
   const vecnaSpravnostAssignedEmployee = useMemo(() => {
     const assignedId = formData?.fa_predana_zam_id;
@@ -5361,19 +5379,16 @@ export default function InvoiceEvidencePage() {
         }
       }
       
-      // 3. Kontrola překročení ceny - pokud faktura překračuje max. cenu objednávky, MUSÍ být poznámka
-      if (orderData && formData.vecna_spravnost_potvrzeno === 1) {
-        const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
-        const fakturaCastka = parseFloat(formData.fa_castka) || 0;
-        const rozdil = fakturaCastka - maxCena;
-        const prekroceno = rozdil > 0;
+    }
 
-        if (prekroceno) {
-          // Pokud je cena překročena, MUSÍ být vyplněna poznámka k věcné správnosti
-          if (!formData.vecna_spravnost_poznamka || formData.vecna_spravnost_poznamka.trim() === '') {
-            errors.vecna_spravnost_poznamka = `⚠️ Faktura překračuje max. cenu objednávky o ${rozdil.toLocaleString('cs-CZ', { minimumFractionDigits: 2 })} Kč. Vyplňte prosím důvod překročení v poznámce k věcné správnosti.`;
-          }
-        }
+    // 🔥 Překročení fakturace - při potvrzování věcné správnosti (všechny role):
+    // pokud součet faktur objednávky převyšuje částku objednávky / MAX cenu, MUSÍ být poznámka
+    if (!isVemaKodOnlySave && orderData && formData.vecna_spravnost_potvrzeno === 1
+        && originalFormData?.vecna_spravnost_potvrzeno !== 1
+        && (!formData.vecna_spravnost_poznamka || formData.vecna_spravnost_poznamka.trim() === '')) {
+      const overrun = getFakturaceOverrun();
+      if (overrun.prekroceno) {
+        errors.vecna_spravnost_poznamka = `⚠️ ${formatOverrunMessage(overrun)}`;
       }
     }
 
@@ -8699,12 +8714,12 @@ export default function InvoiceEvidencePage() {
 
                 <FieldRow $columns="1fr">
                   <FieldGroup>
-                    <FieldLabel 
-                      required={orderData && formData.fa_castka && parseFloat(formData.fa_castka) > parseFloat(orderData.max_cena_s_dph || 0)}
-                      style={(orderData && formData.fa_castka && parseFloat(formData.fa_castka) > parseFloat(orderData.max_cena_s_dph || 0)) ? {color: '#dc2626', fontWeight: '700'} : {}}
+                    <FieldLabel
+                      required={fakturacePrekrocena}
+                      style={fakturacePrekrocena ? {color: '#dc2626', fontWeight: '700'} : {}}
                     >
                       Poznámka k věcné správnosti
-                      {(orderData && formData.fa_castka && parseFloat(formData.fa_castka) > parseFloat(orderData.max_cena_s_dph || 0)) && ' (POVINNÁ - faktura překračuje MAX cenu)'}
+                      {fakturacePrekrocena && ' (POVINNÁ - součet faktur překračuje částku objednávky)'}
                     </FieldLabel>
                     <textarea
                       name="vecna_spravnost_poznamka"
@@ -8719,17 +8734,8 @@ export default function InvoiceEvidencePage() {
                         fontSize: '0.95rem',
                         border: (() => {
                           // Červený border POUZE když je editovatelná A překročená
-                          if (isVecnaSpravnostEditable && orderData && orderData.max_cena_s_dph && orderData.faktury) {
-                            const maxCena = parseFloat(orderData.max_cena_s_dph) || 0;
-                            const totalFaktur = orderData.faktury.reduce((sum, f) => {
-                              if (f.id === editingInvoiceId) {
-                                return sum + (parseFloat(formData.fa_castka) || 0);
-                              }
-                              return sum + (parseFloat(f.fa_castka) || 0);
-                            }, 0);
-                            if (totalFaktur > maxCena) {
-                              return '3px solid #dc2626';
-                            }
+                          if (isVecnaSpravnostEditable && fakturacePrekrocena) {
+                            return '3px solid #dc2626';
                           }
                           return '2px solid #e5e7eb';
                         })(),

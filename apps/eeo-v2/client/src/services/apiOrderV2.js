@@ -586,6 +586,18 @@ export async function updateOrderV2(orderId, orderData, token, username) {
 
     if (errorData) {
 
+      // ORDER_VERSION_CONFLICT (409) - v DB je novější verze, než ze které formulář vycházel
+      if (errorData.code === 'ORDER_VERSION_CONFLICT') {
+        const err = new Error(errorData.message || 'Objednávka byla mezitím změněna jiným uživatelem.');
+        err.code = 'ORDER_VERSION_CONFLICT';
+        err.conflict = {
+          current_dt_aktualizace: errorData.current_dt_aktualizace,
+          upravil_id: errorData.upravil_id,
+          upravil_jmeno: errorData.upravil_jmeno
+        };
+        throw err;
+      }
+
       // ORDER_NOT_FOUND
       if (errorData.error_code === 'ORDER_NOT_FOUND') {
         throw new Error(`Objednávka #${errorData.details?.order_id} nebyla nalezena`);

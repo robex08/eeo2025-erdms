@@ -1697,6 +1697,10 @@ function Orders25ListV3() {
         return;
       }
 
+      // Koncept bez změn (např. dříve otevřená jiná objednávka) → smazat, jinak by
+      // /order-form-25 bez parametru obnovil TENTO koncept místo prázdného formuláře
+      await draftManager.deleteAllDraftKeys();
+      localStorage.removeItem(`activeOrderEditId_${user_id}`);
       navigate('/order-form-25');
     } catch (error) {
       console.warn('⚠️ [Orders25ListV3] Kontrola draftu selhala, pokračuji na nový formulář:', error);
@@ -1708,7 +1712,8 @@ function Orders25ListV3() {
   const handleConfirmCreateNewOrder = useCallback(async () => {
     try {
       draftManager.setCurrentUser(user_id);
-      await draftManager.deleteDraft();
+      // vč. všech pomocných klíčů konceptu (LP čerpání, metadata editace, ...)
+      await draftManager.deleteAllDraftKeys();
     } catch (error) {
       console.warn('⚠️ [Orders25ListV3] Nepodařilo se smazat draft:', error);
     }

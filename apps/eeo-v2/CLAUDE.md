@@ -17,6 +17,7 @@ Staré/dokončené debug, test a fix soubory (desítky `test_*.php`, `FIX_*.md`,
 - **DEV:** DB `EEO-OSTRA-DEV`, build `npm run build:dev:explicit` → `client/build/`, API `/dev/api.eeo/`
 - **PROD:** DB `eeo2025`, build `npm run build:prod` → `client/build-prod/`, API `/api.eeo/`, nasazeno v `/var/www/erdms-platform/`
 - Detail postupu a troubleshooting: skill `eeo-build-troubleshoot`
+- **Před každým deployem na PROD** projít `_docs/DEPLOY_TODO.md` – ruční kroky na PROD DB (procedury, indexy), které se s kódem nenasazují.
 
 ## Klíčové konvence
 

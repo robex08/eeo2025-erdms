@@ -10321,16 +10321,31 @@ const Orders25List = () => {
       setOrderToEdit(null); // Žádná konkrétní objednávka - vytváříme novou
       setShowEditConfirmModal(true);
     } else {
+      // Koncept bez změn (např. dříve otevřená jiná objednávka) → smazat, jinak by
+      // /order-form-25 bez parametru obnovil TENTO koncept místo prázdného formuláře
+      if (hasDraft) {
+        try {
+          draftManager.setCurrentUser(user_id);
+          await draftManager.deleteAllDraftKeys();
+          localStorage.removeItem(`activeOrderEditId_${user_id}`);
+        } catch (error) {
+          // pokračovat i při chybě úklidu
+        }
+      }
       // Rovnou přesměruj na prázdný formulář
       navigate('/order-form-25');
     }
   };
 
   // Handler pro potvrzení vytvoření nové objednávky (po confirm dialogu)
-  const handleCreateNewOrderConfirm = () => {
-    // Smaž existující draft - DRAFT MANAGER
+  const handleCreateNewOrderConfirm = async () => {
+    // Smaž existující draft vč. všech pomocných klíčů konceptu - DRAFT MANAGER
     draftManager.setCurrentUser(user_id);
-    draftManager.deleteDraft();
+    try {
+      await draftManager.deleteAllDraftKeys();
+    } catch (error) {
+      draftManager.deleteDraft();
+    }
 
     //  KRITICKÉ: Vymaž activeOrderEditId z localStorage (jinak se načte původní objednávka)
     localStorage.removeItem(`activeOrderEditId_${user_id}`);

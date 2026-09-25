@@ -1248,7 +1248,36 @@ function handle_order_v2_update($input, $config, $queries) {
             ));
             return;
         }
-        
+
+        // 🛡️ OPTIMISTIC LOCKING: klient posílá dt_aktualizace verze, ze které vycházel.
+        // Pokud je v DB novější verze (např. mezitím schválil příkazce), neukládat - jinak by
+        // se staré údaje z formuláře/konceptu zapsaly přes novější změny.
+        // Kontrola jen pokud ji klient pošle (ostatní volání endpointu beze změny).
+        if (!empty($input['expected_dt_aktualizace']) && !empty($audit_old_order)) {
+            $db_dt_aktualizace = (string)($audit_old_order['dt_aktualizace'] ?? '');
+            if ($db_dt_aktualizace !== trim((string)$input['expected_dt_aktualizace'])) {
+                $upravil_id = isset($audit_old_order['uzivatel_akt_id']) ? (int)$audit_old_order['uzivatel_akt_id'] : null;
+                $upravil_jmeno = null;
+                if ($upravil_id) {
+                    $stmt_upr = $audit_db->prepare("SELECT TRIM(CONCAT(COALESCE(jmeno, ''), ' ', COALESCE(prijmeni, ''))) FROM " . TBL_UZIVATELE . " WHERE id = ?");
+                    $stmt_upr->execute(array($upravil_id));
+                    $upravil_jmeno = $stmt_upr->fetchColumn() ?: null;
+                }
+                http_response_code(409); // Conflict
+                echo json_encode(array(
+                    'status' => 'error',
+                    'code' => 'ORDER_VERSION_CONFLICT',
+                    'message' => 'Objednávka byla mezitím změněna jiným uživatelem. Načtěte aktuální stav.',
+                    'current_dt_aktualizace' => $db_dt_aktualizace,
+                    'upravil_id' => $upravil_id,
+                    'upravil_jmeno' => $upravil_jmeno
+                ));
+                return;
+            }
+        }
+        // Kontrolní parametr není sloupec tabulky - nesmí se dostat do UPDATE ... SET
+        unset($input['expected_dt_aktualizace']);
+
         // 🔥 DETEKCE PARTIAL UPDATE - různé scénáře bez úplné validace
         $is_partial_update = false;
         $skip_items_validation = false;
@@ -2241,8 +2270,9 @@ function handle_order_v2_update($input, $config, $queries) {
         }
         
         // === PŘEPOČET ČERPÁNÍ SMLOUVY (pokud je smlouva A došlo ke změně) ===
-        $should_recalculate_smlouvy = $items_updated || (isset($dbData['stav_workflow_kod']) && 
-            in_array($dbData['stav_workflow_kod'], array('["ODESLANA"]', '["SCHVALENA"]', '["DOKONCENA"]')));
+        // Jakákoli změna workflow stavu (dokončení, zrušení, zamítnutí, návrat...) mění čerpání smlouvy
+        $should_recalculate_smlouvy = $items_updated || isset($dbData['stav_workflow_kod'])
+            || isset($dbData['max_cena_s_dph']) || isset($dbData['financovani']);
         
         if ($should_recalculate_smlouvy) {
             // financovani je JSON: {"typ":"SMLOUVA","cislo_smlouvy":"XXX",...}

@@ -29,6 +29,7 @@ import ConfirmDialog from '../../ConfirmDialog';
 import { useContext } from 'react';
 import AuthContext from '../../../context/AuthContext';
 import { prepocetCerpaniSmluv } from '../../../services/apiSmlouvy';
+import SmlouvyPrekroceniWarning from '../../SmlouvyPrekroceniWarning';
 import draftManager from '../../../services/DraftManager';
 import { isValidConcept, hasDraftChanges } from '../../../utils/draftUtils';
 
@@ -672,8 +673,9 @@ const SmlouvyDetailModal = ({ smlouva, onClose, onEdit }) => {
                         Čerpáno s DPH
                       </span>
                       {inProcessPct > 0 && (
-                        <span style={{ fontSize: '0.55rem', fontWeight: 700, color: '#64748b' }}>
-                          + {(inProcessPct).toFixed(1)}% v procesu
+                        <span style={{ fontSize: '0.55rem', fontWeight: 700, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          + {(inProcessPct).toFixed(1)}% v procesu ({formatCurrency(inProcessAmount)})
+                          <SmlouvyPrekroceniWarning prekroceni={smlouvaData.v_procesu_prekroceni} size="0.75rem" />
                         </span>
                       )}
                     </div>

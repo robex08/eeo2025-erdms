@@ -1657,24 +1657,36 @@ function handle_order_v2_update_invoice($input, $config, $queries) {
         }
         
         // 🔄 AUTO PŘEPOČET čerpání smluv po aktualizaci faktury
-        // Přepočítáme, pokud se změnila částka, smlouva nebo objednávka
-        $contractRelevantFields = array('fa_castka', 'smlouva_id', 'objednavka_id');
+        // Přepočítáme, pokud se změnila částka, stav (vč. STORNO), aktivita, smlouva nebo objednávka
+        // (stav rozhoduje o Dokončeno / V procesu i o započtení do čerpání)
+        $contractRelevantFields = array('fa_castka', 'smlouva_id', 'objednavka_id', 'stav', 'aktivni');
         $shouldRecalculate = false;
         foreach ($contractRelevantFields as $field) {
-            if (isset($input[$field])) {
+            if (array_key_exists($field, $input)) {
                 $shouldRecalculate = true;
                 break;
             }
         }
-        
+
         if ($shouldRecalculate) {
             // Načíst aktuální data faktury po UPDATE (mohou se změnit smlouva_id nebo objednavka_id)
             $stmt_updated = $db->prepare("SELECT objednavka_id, smlouva_id FROM " . TBL_FAKTURY . " WHERE id = ?");
             $stmt_updated->execute(array($invoice_id));
             $updated_invoice = $stmt_updated->fetch(PDO::FETCH_ASSOC);
-            
+
             if ($updated_invoice) {
                 autoRecalculateContractSpendingForInvoice($invoice_id, $updated_invoice);
+            }
+
+            // Při odpojení / změně vazby (např. STORNO odpojí fakturu) přepočítat i PŮVODNÍ smlouvu
+            $old_links = array(
+                'objednavka_id' => $current_invoice['objednavka_id'] ?? null,
+                'smlouva_id' => $current_invoice['smlouva_id'] ?? null
+            );
+            if (!$updated_invoice
+                || (string)$old_links['objednavka_id'] !== (string)$updated_invoice['objednavka_id']
+                || (string)$old_links['smlouva_id'] !== (string)$updated_invoice['smlouva_id']) {
+                autoRecalculateContractSpendingForInvoice($invoice_id, $old_links);
             }
         }
         

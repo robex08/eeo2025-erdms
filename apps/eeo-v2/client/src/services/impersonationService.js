@@ -96,9 +96,10 @@ export const startImpersonation = async (targetUserId, token, username) => {
       const message = error.response.data?.message || 'Neznámá chyba';
 
       if (status === 403) {
+        // Backend vrací konkrétní důvod (neaktivní účet, SUPERADMIN, vypnutá funkce...)
         return {
           success: false,
-          message: 'Nemáte oprávnění k této operaci nebo je funkce vypnuta'
+          message: error.response.data?.message || 'Nemáte oprávnění k této operaci nebo je funkce vypnuta'
         };
       } else if (status === 404) {
         return {
