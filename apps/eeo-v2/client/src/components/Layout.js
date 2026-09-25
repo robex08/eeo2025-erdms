@@ -2,7 +2,7 @@ import React, { useState, useEffect, useContext, useCallback, useRef, useMemo } 
 import ReactDOM from 'react-dom';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends, faUserSecret, faSpinner, faRobot, faClipboardList, faFileContract } from '@fortawesome/free-solid-svg-icons';
+import { faFileInvoice, faUser, faSignOutAlt, faUsers, faPlus, faBug, faTrash, faCopy, faRotateLeft, faPlusSquare, faMinusSquare, faEdit, faTasks, faStickyNote, faBell, faFilter, faCalendarDays, faCalendarAlt, faAddressBook, faKey, faComments, faBook, faCalculator, faMicrophone, faInfoCircle, faChartBar, faChartLine, faPhone, faCog, faTruck, faSitemap, faQuestionCircle, faLockOpen, faSquareRootAlt, faPlug, faDatabase, faRocket, faMoneyBill, faFlask, faList, faLock, faExclamationTriangle, faChevronUp, faChevronDown, faHome, faUserFriends, faUserSecret, faSpinner, faRobot, faClipboardList, faFileContract, faScrewdriverWrench } from '@fortawesome/free-solid-svg-icons';
 import ChangePasswordDialog from './ChangePasswordDialog';
 import ImpersonationDialog from './ImpersonationDialog';
 import { AuthContext } from '../context/AuthContext';
@@ -4839,6 +4839,15 @@ const Layout = ({ children }) => {
                         onClick={() => setBetaMenuOpen(false)}
                       >
                         <FontAwesomeIcon icon={faMoneyBill} fixedWidth /> Čerpání <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
+                      </MenuDropdownItem>
+                    )}
+                    {/* Opravy - ruční opravy vazeb OBJ/SML/FA - jen SUPERADMIN / ADMINISTRATOR */}
+                    {typeof hasAdminRole === 'function' && hasAdminRole() && (
+                      <MenuDropdownItem 
+                        to="/opravy" 
+                        onClick={() => setBetaMenuOpen(false)}
+                      >
+                        <FontAwesomeIcon icon={faScrewdriverWrench} fixedWidth style={{color: '#f59e0b'}} /> Opravy <span style={{fontSize: '0.7em', color: '#ef4444'}}>(BETA)</span>
                       </MenuDropdownItem>
                     )}
                     

@@ -5,6 +5,17 @@ Po provedení položku odškrtni / přesuň do sekce „Hotovo“ s datem.
 
 ## Čeká na deploy
 
+### 0. Tabulka `25_opravy_navrhy` – modul Opravy (BETA) (DEV 2026-09-25)
+
+Sdílené koncepty spárování SML-FA → OBJ-SML-FA a historie uložených oprav (Undo). Bez ní modul Opravy na PROD spadne (list i akce ji čtou).
+Nasazuje se společně s kódem: `opravyHandlers.php`, routy `opravy/*` + konstanta `TBL_OPRAVY_NAVRHY` v `api.php`, FE `OpravyPage.js`, `apiOpravy.js`, menu BETA v `Layout.js`, routa `/opravy` v `App.js`.
+
+```sql
+SOURCE _sql/25_opravy_navrhy_20260925.sql;
+```
+
+- Jen nová tabulka, na existující data nesahá. Rollback: `DROP TABLE 25_opravy_navrhy;` (jen pokud v ní nejsou uložené opravy, jinak se ztratí historie pro Undo).
+
 ### 1. Procedura `sp_prepocet_cerpani_smluv` v2 – čerpání smluv (DEV 2026-09-25)
 
 Sjednocení uloženého čerpání (`25_smlouvy.cerpano_*`, `zbyva`, `procento_*`) s progressem Dokončeno / V procesu v modulu smluv:

@@ -160,6 +160,7 @@ define('TBL_UZIVATELE_AKTIVITA_LOG', '25_uzivatele_aktivita_log');
 // define('TBL_OBJEDNAVKY_LEGACY', '25_objednavky'); // DEPRECATED - nepoužívá se
 define('TBL_SMLOUVY', '25_smlouvy');
 define('TBL_SMLOUVY_IMPORT_LOG', '25_smlouvy_import_log');
+define('TBL_OPRAVY_NAVRHY', '25_opravy_navrhy'); // Opravy (BETA): koncepty + historie ručních oprav vazeb
 define('TBL_FAKTURY', '25a_objednavky_faktury');
 define('TBL_FAKTURY_PRILOHY', '25a_faktury_prilohy');
 define('TBL_FAKTURY_LP_CERPANI', '25a_faktury_lp_cerpani');
@@ -310,6 +311,7 @@ require_once __DIR__ . '/v2025.03_25/lib/vemaPropojenHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaBetaGroupedHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaSmlGroupedHandlers.php';
 require_once __DIR__ . '/v2025.03_25/lib/vemaPrehledVazebHandlers.php';
+require_once __DIR__ . '/v2025.03_25/lib/opravyHandlers.php';
 
 // ORDER V2 - Standardized API endpoints
 require_once __DIR__ . '/v2025.03_25/lib/orderQueries.php';
@@ -2529,6 +2531,31 @@ switch ($endpoint) {
 
     case 'vema-faktury/kontrola-sml/grouped-list':
         handle_vema_sml_grouped_list($input, $config);
+        break;
+
+    // Opravy (BETA) - OBJ ze smlouvy bez FA + FA napojené přímo na SML
+    case 'opravy/obj-sml-faktury/list':
+        handle_opravy_obj_sml_faktury_list($input, $config);
+        break;
+
+    case 'opravy/navrhy/create':
+        handle_opravy_navrhy_create($input, $config);
+        break;
+
+    case 'opravy/navrhy/revert':
+        handle_opravy_navrhy_revert($input, $config);
+        break;
+
+    case 'opravy/navrhy/commit':
+        handle_opravy_navrhy_commit($input, $config);
+        break;
+
+    case 'opravy/navrhy/historie':
+        handle_opravy_navrhy_historie($input, $config);
+        break;
+
+    case 'opravy/navrhy/undo':
+        handle_opravy_navrhy_undo($input, $config);
         break;
 
     case 'vema-faktury/prehled-vazeb':
