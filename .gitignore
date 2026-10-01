@@ -105,5 +105,6 @@ docs/deprecated/backups/
 .stale-build-assets/
 **/.stale-build-assets/
 
-# samostatne repo erdms-apps (vetev vehicles/develop)
+# samostatna repa erdms-apps (vetev <app>/develop)
 apps/vehicles/
+apps/eeo-v2/
