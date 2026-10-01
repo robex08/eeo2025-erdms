@@ -104,3 +104,6 @@ docs/deprecated/backups/
 # Stale build cache
 .stale-build-assets/
 **/.stale-build-assets/
+
+# samostatne repo erdms-apps (vetev vehicles/develop)
+apps/vehicles/
