@@ -21,6 +21,17 @@ Kořen `/var/www/erdms-dev` je repo `robex08/eeo2025-erdms` (docs, dashboard, au
 - Před pushem vždy ověř `git rev-parse --show-toplevel`, `git branch --show-current` a `git remote -v`;
   pokud nesedí s tabulkou, **zastav se a upozorni uživatele**.
 
+## Příkaz „workspace <app>“
+Když uživatel napíše `workspace <app>` (např. `workspace vehicles`, `workspace eeo-v2`, `workspace root`):
+1. Ověř (jen čtení) `apps/<app>`: `git -C apps/<app> rev-parse --show-toplevel`, `branch --show-current`,
+   `remote get-url origin`, `status -sb` (necommitnuté změny, ahead/behind).
+2. Vypiš krátce: složka, repo, aktuální větev, očekávaná větev `<app>/develop`, stav. Neznámý `<app>` → nabídni seznam z tabulky.
+3. **Zeptej se na potvrzení** (AskUserQuestion). Bez potvrzení nic neměň.
+4. Po potvrzení: pracuj jen v `apps/<app>` (soubory i git přes `git -C apps/<app>`), dokud uživatel nezmění workspace.
+   Pokud větev ≠ `<app>/develop`, nabídni přepnutí (`git -C apps/<app> switch <app>/develop`) – jen po dalším potvrzení,
+   a nikdy při necommitnutých změnách (nejdřív upozorni).
+5. Na začátku každé odpovědi s git operací uveď aktivní workspace; operace mimo něj → upozorni a zeptej se.
+
 ## Ochrana
 Pre-push hook `/root/erdms-git-hooks/pre-push` (nastaven přes `core.hooksPath` + `git config erdms.app <app|root>`)
 blokuje push do cizí větve/repa. Obejít jen na výslovný pokyn uživatele: `ERDMS_PUSH_FORCE=1 git push`.
