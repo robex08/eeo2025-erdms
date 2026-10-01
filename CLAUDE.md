@@ -10,7 +10,7 @@ Kořen `/var/www/erdms-dev` je repo `robex08/eeo2025-erdms` (docs, dashboard, au
 | `apps/vehicles` | erdms-apps | `vehicles/develop` |
 | `apps/burza-sluzby` | erdms-apps | `burza-sluzby/develop` |
 | `apps/inventik` | erdms-apps | `inventik/develop` |
-| `apps/intranet-v26` | vlastní repo (zatím bez remote) | `main` |
+| `apps/intranet-v26` | erdms-apps | `intranet-v26/develop` |
 | kořen + ostatní `apps/*` | eeo2025-erdms (`git@github.com:robex08/eeo2025-erdms.git`) | `feature/v3-development` |
 
 ## Pravidla
