@@ -107,6 +107,7 @@ docs/deprecated/backups/
 
 # samostatna repa erdms-apps (vetev <app>/develop)
 apps/vehicles/
+apps/pwahelp/
 apps/eeo-v2/
 apps/burza-sluzby/
 apps/inventik/
