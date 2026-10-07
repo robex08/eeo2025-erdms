@@ -4,20 +4,11 @@ Systém pro správu dat záchranné služby s přihlášením přes Microsoft En
 
 ## 📁 Dokumentace
 
-- **[START.md](START.md)** - 🚀 Návod na spuštění aplikace (začni tady!)
-- **[QUICK_BUILD_REFERENCE.md](QUICK_BUILD_REFERENCE.md)** - ⚡ Rychlý přehled build systému & version checking
-- **[BUILD.md](BUILD.md)** - 🔧 Kompletní build & deploy guide
-- **[VERSION_CHECKING_GUIDE.md](VERSION_CHECKING_GUIDE.md)** - 🔄 Detailní průvodce version checking systémem
-- **[apps/eeo-v2/client/BUILD_SEPARATION.md](apps/eeo-v2/client/BUILD_SEPARATION.md)** - 🔧 **BUILD konfigurace DEV vs PROD** (DŮLEŽITÉ!)
-- **[MICROSOFT_ENTRA_SETUP.md](MICROSOFT_ENTRA_SETUP.md)** - Instrukce pro IT admina - registrace v Microsoft Entra ID
+- **EEO v2 build & deploy:** `apps/eeo-v2/_docs/BUILD.md` (samostatné repo `erdms-apps`, větev `eeo-v2/develop`)
+- Dashboard / Entra build: [docs/BUILD-CONFIGURATION.md](docs/BUILD-CONFIGURATION.md)
 
-### ⚠️ DŮLEŽITÉ: Version & Build System
-
-**Build Hash ≠ Číslo Verze:**
-- Build hash se generuje **automaticky** při každém buildu
-- Uživatelé dostanou notifikaci i při malé změně (i když verze zůstane 2.21-DEV)
-- Build script automaticky kontroluje synchronizaci hashů
-- Viz [QUICK_BUILD_REFERENCE.md](QUICK_BUILD_REFERENCE.md)
+> Starší build dokumentace eeo-v2 (BUILD.md, QUICK_BUILD_REFERENCE.md, VERSION_CHECKING_GUIDE.md, build prompty)
+> je archivována v `/home/erdms_zalohy/root/docs-eeo-v2/root-build-docs-20261007/`.
 
 ## 🏗️ Struktura projektu
 
@@ -70,7 +61,6 @@ cd client && npm run dev
 # 5. Otevři http://localhost:3000
 ```
 
-Detailní instrukce v **[START.md](START.md)**
 
 ## 📦 Build pro produkci
 
