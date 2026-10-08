@@ -43,6 +43,12 @@ Když uživatel napíše `workspace <app>` (např. `workspace vehicles`, `worksp
 Pre-push hook `/root/erdms-git-hooks/pre-push` (nastaven přes `core.hooksPath` + `git config erdms.app <app|root>`)
 blokuje push do cizí větve/repa. Obejít jen na výslovný pokyn uživatele: `ERDMS_PUSH_FORCE=1 git push`.
 
+## Nová aplikace v `apps/` → git záloha (skill `erdms-app-git`)
+Platí pro celé `apps/`: každá aplikace, kterou chce uživatel zálohovat v gitu, dostane repo v erdms-apps
+s větví **`<app>/develop`** (hlavní větev pro push). Automaticky přes skript:
+`/root/erdms-git-hooks/erdms-new-app <app>` (jen kontrola) → po potvrzení `… <app> --push`.
+Pak doplnit řádek do tabulky výše a commitnout kořen.
+
 ## Převod další aplikace do erdms-apps
 záloha (tar do `/home/erdms_zalohy/root/`) → `git subtree split --prefix=apps/<app>` → push do `<app>/develop`
 → v `apps/<app>`: `git init`, remote, `git reset origin/<app>/develop`, vlastní `.gitignore` (kopie kořenového)
