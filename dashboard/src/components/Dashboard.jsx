@@ -1839,7 +1839,7 @@ function Dashboard() {
                     </div>
                     <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">Portal HR / Vema</h3>
+                  <h3 className="app-title">Portál HR / Vema</h3>
                   <p className="app-description">Mzdy, personalistika, docházka, cestovní příkazy</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
@@ -1929,7 +1929,7 @@ function Dashboard() {
                   </div>
                 </a>
 
-                <a href="https://itop.zachranka.cz/" className="app-card itop-card" target="_blank" rel="noopener noreferrer">
+                <a href="https://helpdesk.zachranka.cz" className="app-card itop-card" target="_blank" rel="noopener noreferrer">
                   <div className="app-card-header">
                     <div className="app-icon-wrapper" style={{ background: "rgba(255, 255, 255, 0.25)" }}>
                       <svg className="app-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1938,8 +1938,8 @@ function Dashboard() {
                     </div>
                     <span className="app-badge" style={{ background: "rgba(255, 255, 255, 0.3)" }}>Aktivní</span>
                   </div>
-                  <h3 className="app-title">iTOP</h3>
-                  <p className="app-description">IT service management a helpdesk</p>
+                  <h3 className="app-title">Helpdesk</h3>
+                  <p className="app-description">Hlášení IT požadavků a závad</p>
                   <div className="app-footer">
                     <span className="app-link-text">Otevřít aplikaci</span>
                     <svg className="app-arrow" viewBox="0 0 20 20" fill="currentColor">

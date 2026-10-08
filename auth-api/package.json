@@ -1,6 +1,6 @@
 {
   "name": "erdms-auth-api",
-  "version": "1.0.0",
+  "version": "1.99.0",
   "description": "ERDMS Shared Authentication API - Microsoft Entra ID",
   "main": "src/index.js",
   "scripts": {

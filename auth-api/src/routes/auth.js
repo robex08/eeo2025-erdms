@@ -16,6 +16,42 @@ const pkceStore = new Map();
 // MSAL Confidential Client
 const msalClient = new msal.ConfidentialClientApplication(msalConfig);
 
+// Ochrana proti open redirect: po přihlášení přesměrovat jen na povolené hosty.
+// Povolené = host z CLIENT_URL + volitelně ALLOWED_REDIRECT_HOSTS (čárkami, např. "erdms-dev.zachranka.cz").
+const ALLOWED_REDIRECT_HOSTS = new Set(
+  [process.env.CLIENT_URL, ...(process.env.ALLOWED_REDIRECT_HOSTS || '').split(',')]
+    .map((v) => (v || '').trim())
+    .filter(Boolean)
+    .map((v) => {
+      try { return new URL(v.includes('://') ? v : `https://${v}`).host.toLowerCase(); } catch (e) { return null; }
+    })
+    .filter(Boolean)
+);
+
+const isAllowedAbsoluteUrl = (value) => {
+  try {
+    const u = new URL(value);
+    return u.protocol === 'https:' && ALLOWED_REDIRECT_HOSTS.has(u.host.toLowerCase());
+  } catch (e) {
+    return false;
+  }
+};
+
+// Origin: jen https://<povolený host>, jinak CLIENT_URL
+const sanitizeOrigin = (value) => {
+  if (value && isAllowedAbsoluteUrl(value)) return new URL(value).origin;
+  return process.env.CLIENT_URL;
+};
+
+// Redirect: relativní cesta "/..." (ne "//", ne "\\") nebo absolutní URL na povolený host, jinak /dashboard
+const sanitizeRedirect = (value) => {
+  if (typeof value !== 'string' || value === '') return '/dashboard';
+  if (value.startsWith('/') && !value.startsWith('//') && !value.includes('\\')) return value;
+  if (isAllowedAbsoluteUrl(value)) return value;
+  console.warn('⚠️ SERVER: Nepovolený redirect zamítnut:', value);
+  return '/dashboard';
+};
+
 /**
  * GET /auth/login
  * Zahájí OAuth flow - redirect na Microsoft
@@ -24,11 +60,11 @@ router.get('/login', async (req, res) => {
   console.log('🟢 SERVER: /auth/login endpoint CALLED');
   try {
     // Získej redirect URL z parametrů (fallback na dashboard)
-    const redirectUrl = req.query.redirect || '/dashboard';
+    const redirectUrl = sanitizeRedirect(req.query.redirect);
     console.log('🟢 SERVER: Redirect URL:', redirectUrl);
     
     // Zjisti původní origin z query parametru nebo fallback na CLIENT_URL
-    const origin = req.query.origin || process.env.CLIENT_URL;
+    const origin = sanitizeOrigin(req.query.origin);
     console.log('🟢 SERVER: Origin:', origin);
     
     // Generuj PKCE code verifier a challenge
