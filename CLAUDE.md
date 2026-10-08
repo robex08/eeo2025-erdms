@@ -12,6 +12,7 @@ Kořen `/var/www/erdms-dev` je repo `robex08/eeo2025-erdms` (docs, dashboard, au
 | `apps/inventik` | erdms-apps | `inventik/develop` |
 | `apps/intranet-v26` | erdms-apps | `intranet-v26/develop` |
 | `apps/pwahelp` | erdms-apps | `pwahelp/develop` |
+| `apps/datovy_sklad` | erdms-apps | `datovy_sklad/develop` |
 | kořen + ostatní `apps/*` | eeo2025-erdms (`git@github.com:robex08/eeo2025-erdms.git`) | `feature/v3-development` |
 
 ## Pravidla
