@@ -116,3 +116,8 @@ apps/datovy_sklad/
 
 # lokální nastavení Claude Code (obsahuje citlivé údaje)
 apps/.claude/
+
+# dashboard + auth-api = samostatne repo erdms-apps (erdms-dashboard/develop), git pres dashgit
+/dashboard/
+/auth-api/
+/.git-erdms-dashboard/

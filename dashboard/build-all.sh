@@ -1,1 +1,0 @@
-docs/scripts-shell/build-all.sh

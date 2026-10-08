@@ -13,7 +13,12 @@ Kořen `/var/www/erdms-dev` je repo `robex08/eeo2025-erdms` (docs, dashboard, au
 | `apps/intranet-v26` | erdms-apps | `intranet-v26/develop` |
 | `apps/pwahelp` | erdms-apps | `pwahelp/develop` |
 | `apps/datovy_sklad` | erdms-apps | `datovy_sklad/develop` |
+| `dashboard/` + `auth-api/` | erdms-apps – git-dir `.git-erdms-dashboard`, příkaz **`dashgit`** | `erdms-dashboard/develop` |
 | kořen + ostatní `apps/*` | eeo2025-erdms (`git@github.com:robex08/eeo2025-erdms.git`) | `feature/v3-development` |
+
+`dashboard/` a `auth-api/` leží v kořeni (cesty používají buildy a docs), proto mají oddělený git-dir
+se stromem `/var/www/erdms-dev`, sledují jen tyto dvě složky. Git pro ně **vždy přes `dashgit`**
+(`dashgit status`, `dashgit commit`, `dashgit push`), nikdy obyčejným `git` v kořeni.
 
 ## Pravidla
 - Git příkazy pro aplikaci spouštěj **vždy v její složce** (`git -C apps/<app> ...`), nikdy z kořene.
